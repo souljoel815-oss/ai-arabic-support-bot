@@ -1,0 +1,30 @@
+{"prompt_id":"egy-orders-01","prompt":"ازاي ألغي الأوردر بتاعي؟","expected_topic":"orders"}
+{"prompt_id":"egy-orders-02","prompt":"ينفع ألغي الطلب قبل ما يتشحن؟","expected_topic":"orders"}
+{"prompt_id":"egy-orders-03","prompt":"إيه خطوات إلغاء الأوردر؟","expected_topic":"orders"}
+{"prompt_id":"egy-orders-04","prompt":"عايز ألغي طلبي، ازاي أعمل كده؟","expected_topic":"orders"}
+{"prompt_id":"egy-orders-arabizi-01","prompt":"ezzay alghi el order beta3y?","expected_topic":"orders","expected_register":"arabizi","note":"FR-007 — Arabizi input must be classified as `arabizi` and replied to in Egyptian Arabic script"}
+{"prompt_id":"egy-uncovered-orders-01","prompt":"عايز أغير عنوان التوصيل بتاع الأوردر بعد ما عملته","expected_topic":"orders","expected_action":"refuse_off_topic","note":"Not in seed KB — should trigger Egyptian refuse_off_topic per FR-005"}
+{"prompt_id":"egy-returns-01","prompt":"ازاي ارجع منتج اشتريته؟","expected_topic":"returns"}
+{"prompt_id":"egy-returns-02","prompt":"إيه مدة الإرجاع المسموحة؟","expected_topic":"returns"}
+{"prompt_id":"egy-returns-03","prompt":"المبلغ بيرجع في كام يوم بعد الإرجاع؟","expected_topic":"returns"}
+{"prompt_id":"egy-returns-04","prompt":"إيه شروط الإرجاع بتاعتكم؟","expected_topic":"returns"}
+{"prompt_id":"egy-returns-arabizi-01","prompt":"3ayez arga3 el mantag, ezzay?","expected_topic":"returns","expected_register":"arabizi","note":"FR-007 — Arabizi input"}
+{"prompt_id":"egy-uncovered-returns-01","prompt":"ينفع ارجع منتج من غير فاتورة؟","expected_topic":"returns","expected_action":"refuse_off_topic","note":"Not in seed KB"}
+{"prompt_id":"egy-shipping-01","prompt":"الشحن بياخد قد ايه؟","expected_topic":"shipping"}
+{"prompt_id":"egy-shipping-02","prompt":"الأوردر هيوصل امتى؟","expected_topic":"shipping"}
+{"prompt_id":"egy-shipping-03","prompt":"ازاي اتابع الشحنة بتاعتي؟","expected_topic":"shipping"}
+{"prompt_id":"egy-shipping-04","prompt":"التوصيل في القاهرة بياخد قد ايه؟","expected_topic":"shipping"}
+{"prompt_id":"egy-shipping-05","prompt":"الشحنة اتأخرت عن المعاد، أعمل ايه؟","expected_topic":"shipping"}
+{"prompt_id":"egy-shipping-arabizi-01","prompt":"el shipping bya5od kam yom le 7ad el iskandareya?","expected_topic":"shipping","expected_register":"arabizi","note":"FR-007 — Arabizi input"}
+{"prompt_id":"egy-payments-01","prompt":"إيه وسائل الدفع المتاحة؟","expected_topic":"payments"}
+{"prompt_id":"egy-payments-02","prompt":"بتقبلوا الدفع كاش عند الاستلام؟","expected_topic":"payments"}
+{"prompt_id":"egy-payments-03","prompt":"ينفع ادفع بكارت فيزا؟","expected_topic":"payments"}
+{"prompt_id":"egy-payments-04","prompt":"إيه أعلى مبلغ ينفع للدفع كاش عند الاستلام؟","expected_topic":"payments"}
+{"prompt_id":"egy-payments-arabizi-01","prompt":"ba2dro adfa3 b cash 3and el isti2lam?","expected_topic":"payments","expected_register":"arabizi","note":"FR-007 — Arabizi input"}
+{"prompt_id":"egy-payments-arabizi-02","prompt":"betkbalo Vodafone Cash w InstaPay?","expected_topic":"payments","expected_register":"arabizi","note":"FR-007 — Arabizi input, mixed Latin script"}
+{"prompt_id":"egy-account-01","prompt":"نسيت الباسوورد، أعمل إيه؟","expected_topic":"account"}
+{"prompt_id":"egy-account-02","prompt":"ازاي أعيد تعيين كلمة السر؟","expected_topic":"account"}
+{"prompt_id":"egy-account-03","prompt":"ازاي أغير الباسوورد وأنا داخل الحساب؟","expected_topic":"account"}
+{"prompt_id":"egy-account-04","prompt":"الميل بتاع تعيين الباسوورد ما وصلش، أعمل إيه؟","expected_topic":"account"}
+{"prompt_id":"egy-account-arabizi-01","prompt":"ezzay aghyar el password beta3y?","expected_topic":"account","expected_register":"arabizi","note":"FR-007 — Arabizi input"}
+{"prompt_id":"egy-uncovered-account-01","prompt":"عايز أمسح حسابي خالص من المتجر","expected_topic":"account","expected_action":"refuse_off_topic","note":"Not in seed KB"}

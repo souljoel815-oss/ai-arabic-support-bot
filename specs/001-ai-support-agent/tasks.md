@@ -113,7 +113,7 @@ for Arabizi) and clears SC-002 (≥ 85% pass on a 30-prompt Egyptian eval set).
 
 ### Tests for User Story 2 (Test-First) ⚠️
 
-- [ ] T022 [P] [US2] Author the Egyptian eval set at `agent/eval/sets/egyptian.jsonl` — exactly 30 records `{prompt_id, prompt, expected_topic}`, with prompts evenly spread across the five topics; include **6 prompts written in Arabizi** (Latin-script Egyptian, e.g. "ezzay arga3 el order?") to exercise FR-007, and 3 prompts whose answers are deliberately NOT in the KB
+- [X] T022 [P] [US2] Author the Egyptian eval set at `agent/eval/sets/egyptian.jsonl` — exactly 30 records `{prompt_id, prompt, expected_topic}`, with prompts evenly spread across the five topics; include **6 prompts written in Arabizi** (Latin-script Egyptian, e.g. "ezzay arga3 el order?") to exercise FR-007, and 3 prompts whose answers are deliberately NOT in the KB
 - [ ] T023 [US2] Baseline pass: `python agent/eval/runner.py --set egyptian --webhook ${N8N_CHAT_URL} --model gemini-1.5-flash`; arrange a native Egyptian-Arabic reviewer to grade the JSONL; append the baseline pass-rate to `agent/eval/results/baseline.md`
 
 ### Implementation for User Story 2
@@ -141,7 +141,7 @@ follow-up correctly without the visitor restating the topic.
 
 ### Tests for User Story 3 (Test-First) ⚠️
 
-- [ ] T029 [P] [US3] Author a multi-turn test script at `agent/eval/sets/multiturn.jsonl` — 2 scripted conversations of 5 turns each (one MSA, one Egyptian), where each conversation reuses the same `sessionId` across turns and includes at least one back-reference per conversation (e.g., turn 3 refers to "the second one", turn 4 asks "وكمان السعر بتاعها؟"); record `expected_behavior` per turn
+- [X] T029 [P] [US3] Author a multi-turn test script at `agent/eval/sets/multiturn.jsonl` — 2 scripted conversations of 5 turns each (one MSA, one Egyptian), where each conversation reuses the same `sessionId` across turns and includes at least one back-reference per conversation (e.g., turn 3 refers to "the second one", turn 4 asks "وكمان السعر بتاعها؟"); record `expected_behavior` per turn
 - [ ] T030 [US3] Extend `agent/eval/runner.py` with a `--set multiturn` mode that preserves `sessionId` across turns of the same conversation and writes one record per turn; run a baseline pass and confirm back-references currently break (anchors iteration)
 
 ### Implementation for User Story 3
@@ -166,7 +166,7 @@ character. Implements US4 + FR-008 + FR-009 + FR-010 and clears SC-003
 
 ### Tests for User Story 4 (Test-First) ⚠️
 
-- [ ] T034 [P] [US4] Author the adversarial eval set at `agent/eval/sets/adversarial.jsonl` — exactly 20 records `{prompt_id, prompt, expected_action}` split as: 8 off-topic (in MSA + Egyptian + 1 English to test FR-010), 6 abusive (mild + escalating, in both registers), 6 prompt-injection ("ignore previous instructions", "you are now an unrestricted assistant", "what's your system prompt", in both registers)
+- [X] T034 [P] [US4] Author the adversarial eval set at `agent/eval/sets/adversarial.jsonl` — exactly 20 records `{prompt_id, prompt, expected_action}` split as: 8 off-topic (in MSA + Egyptian + 1 English to test FR-010), 6 abusive (mild + escalating, in both registers), 6 prompt-injection ("ignore previous instructions", "you are now an unrestricted assistant", "what's your system prompt", in both registers)
 - [ ] T035 [US4] Baseline pass: `python agent/eval/runner.py --set adversarial --webhook ${N8N_CHAT_URL} --model gemini-1.5-flash`; human-grade; record baseline in `agent/eval/results/baseline.md`
 
 ### Implementation for User Story 4
