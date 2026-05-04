@@ -11,7 +11,7 @@ Two modes:
          python agent/eval/runner.py \\
              --set msa \\
              --webhook https://support-demo.example.com/webhook/chat \\
-             --model gemini-1.5-flash
+             --model gemini-2.5-flash-lite
 
      Multi-turn mode preserves sessionId across turns of the same
      conversation:
@@ -19,7 +19,7 @@ Two modes:
          python agent/eval/runner.py \\
              --set multiturn \\
              --webhook https://support-demo.example.com/webhook/chat \\
-             --model gemini-1.5-flash
+             --model gemini-2.5-flash-lite
 
   2) Aggregate `verdict` values from a results file and print a pass-rate
      against the matching SC threshold:
@@ -267,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="AI support-agent eval harness.")
     p.add_argument("--set", choices=VALID_SETS, help="Which eval set to run.")
     p.add_argument("--webhook", help="Chat Trigger webhook URL (e.g. https://.../webhook/chat).")
-    p.add_argument("--model", default="gemini-1.5-flash", help="Gemini variant label to record (default: gemini-1.5-flash).")
+    p.add_argument("--model", default="gemini-2.5-flash-lite", help="Gemini variant label to record on each result (default: gemini-2.5-flash-lite, matching the locked workflow choice per Q9 clarification).")
     p.add_argument("--timeout", type=float, default=30.0, help="HTTP timeout per request, seconds (default 30).")
     p.add_argument("--grade-summary", metavar="RESULTS_FILE", help="Aggregate verdicts from a results JSONL file and print pass-rates.")
 

@@ -84,9 +84,9 @@ pip install -r requirements.txt
 
 WEBHOOK="https://guillaume120.app.n8n.cloud/webhook/da1f362e-200c-4255-a624-9bb6544821d0/chat"
 
-python runner.py --set msa         --webhook "$WEBHOOK"
-python runner.py --set egyptian    --webhook "$WEBHOOK"
-python runner.py --set adversarial --webhook "$WEBHOOK"
+python runner.py --set msa         --webhook "$WEBHOOK" --model gemini-2.5-flash-lite
+python runner.py --set egyptian    --webhook "$WEBHOOK" --model gemini-2.5-flash-lite
+python runner.py --set adversarial --webhook "$WEBHOOK" --model gemini-2.5-flash-lite
 ```
 
 Each run writes `eval/results/<set>-<timestamp>.jsonl`. Open the file
@@ -108,10 +108,10 @@ Compare against the spec's Success Criteria:
 | Egyptian | ≥ 85% pass | SC-002 |
 | Adversarial | ≥ 95% pass | SC-003 |
 
-If the Egyptian set fails to clear 85% on `gemini-1.5-flash`, switch
-the n8n Cloud workflow's Gemini chat-model node from
-`gemini-1.5-flash` to `gemini-1.5-pro`, save, and re-run (T040 in
-Phase 7).
+If the Egyptian set fails to clear 85% on `gemini-2.5-flash-lite`,
+switch the n8n Cloud workflow's Gemini chat-model node up the family
+(`gemini-2.5-flash` first, `gemini-2.5-pro` if still failing), save,
+and re-run (T040 in Phase 7).
 
 ## 6. Linking from the portfolio site
 
@@ -131,7 +131,7 @@ next to the link so reviewers know what to ask.
 | Update KB content | Edit `agent/kb/ecommerce-faq.json`, lint, commit, push; paste the JSON contents into the workflow's `load_kb` Code node on n8n Cloud; **Save** |
 | Update system prompt | Edit `agent/prompts/system.md`; paste into the AI Agent node's system message; Save |
 | Update refusal templates | Edit `agent/prompts/refusal-templates.md`; paste relevant strings into the `tplMap` literal in the `validate_and_overwrite` Code node; Save |
-| Switch Gemini variant (Flash ↔ Pro) | n8n Cloud editor → Gemini chat-model node → change Model field → Save |
+| Switch Gemini variant (Flash-Lite ↔ Flash ↔ Pro) | n8n Cloud editor → Gemini chat-model node → change Model field → Save. Current default: `gemini-2.5-flash-lite`. |
 | Read recent conversations | n8n Cloud editor → Executions tab; click any execution to inspect node-by-node payloads (this is the FR-012 sink, per Q8 clarification) |
 | Rotate Gemini API key | n8n Cloud editor → Credentials → Google Gemini → edit |
 | Pause / unpause the demo | Toggle the workflow's Active toggle in the top-right |

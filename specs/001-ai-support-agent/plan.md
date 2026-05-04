@@ -18,9 +18,10 @@ KB, and end-to-end deployment competence on n8n.
 **Language/Version**: n8n workflow JSON (declarative, n8n Cloud current
   version); evaluation harness in Python 3.11 (small CLI scripts only)
 **Primary Dependencies**: n8n Cloud (managed), Google Gemini API
-  (specific variant decided in Phase 7 bake-off — candidates: Gemini 1.5
-  Pro, Gemini 1.5 Flash, Gemini 2.0 Flash if available), n8n Chat Trigger
-  node, n8n AI Agent / LangChain nodes
+  (`gemini-2.5-flash-lite` — locked during T011 per Q9 clarification;
+  upgrade candidates `gemini-2.5-flash` and `gemini-2.5-pro` tested by
+  T040 in Phase 7 if quality sign-off fails), n8n Chat Trigger node,
+  n8n AI Agent / LangChain nodes
 **Storage**: Bilingual knowledge base inlined as JSON inside the workflow's
   `load_kb` Code node (mirrored canonically by `agent/kb/ecommerce-faq.json`
   in the repo); n8n's built-in chat session memory for short-term

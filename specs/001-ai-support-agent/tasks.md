@@ -87,7 +87,7 @@ human-grade the results, confirm pass-rate ≥ 90%.
 > iterate to make it pass.
 
 - [X] T016 [P] [US1] Author the MSA eval set at `agent/eval/sets/msa.jsonl` — exactly 30 records, each `{prompt_id, prompt, expected_topic}`, with prompts evenly spread across the five KB topics (`orders`, `returns`, `shipping`, `payments`, `account`); include 3 prompts whose answers are deliberately NOT in the KB to exercise FR-005's refusal path
-- [ ] T017 [US1] Run a baseline pass: `python agent/eval/runner.py --set msa --webhook ${N8N_CHAT_URL} --model gemini-1.5-flash`, then human-grade the resulting JSONL and run `--grade-summary` on it; record the baseline pass-rate in `agent/eval/results/baseline.md` and confirm it falls below 90% (this anchors the iteration)
+- [ ] T017 [US1] Run a baseline pass: `python agent/eval/runner.py --set msa --webhook ${N8N_CHAT_URL} --model gemini-2.5-flash-lite`, then human-grade the resulting JSONL and run `--grade-summary` on it; record the baseline pass-rate in `agent/eval/results/baseline.md` and confirm it falls below 90% (this anchors the iteration)
 
 ### Implementation for User Story 1
 
@@ -114,7 +114,7 @@ for Arabizi) and clears SC-002 (≥ 85% pass on a 30-prompt Egyptian eval set).
 ### Tests for User Story 2 (Test-First) ⚠️
 
 - [X] T022 [P] [US2] Author the Egyptian eval set at `agent/eval/sets/egyptian.jsonl` — exactly 30 records `{prompt_id, prompt, expected_topic}`, with prompts evenly spread across the five topics; include **6 prompts written in Arabizi** (Latin-script Egyptian, e.g. "ezzay arga3 el order?") to exercise FR-007, and 3 prompts whose answers are deliberately NOT in the KB
-- [ ] T023 [US2] Baseline pass: `python agent/eval/runner.py --set egyptian --webhook ${N8N_CHAT_URL} --model gemini-1.5-flash`; arrange a native Egyptian-Arabic reviewer to grade the JSONL; append the baseline pass-rate to `agent/eval/results/baseline.md`
+- [ ] T023 [US2] Baseline pass: `python agent/eval/runner.py --set egyptian --webhook ${N8N_CHAT_URL} --model gemini-2.5-flash-lite`; arrange a native Egyptian-Arabic reviewer to grade the JSONL; append the baseline pass-rate to `agent/eval/results/baseline.md`
 
 ### Implementation for User Story 2
 
@@ -167,7 +167,7 @@ character. Implements US4 + FR-008 + FR-009 + FR-010 and clears SC-003
 ### Tests for User Story 4 (Test-First) ⚠️
 
 - [X] T034 [P] [US4] Author the adversarial eval set at `agent/eval/sets/adversarial.jsonl` — exactly 20 records `{prompt_id, prompt, expected_action}` split as: 8 off-topic (in MSA + Egyptian + 1 English to test FR-010), 6 abusive (mild + escalating, in both registers), 6 prompt-injection ("ignore previous instructions", "you are now an unrestricted assistant", "what's your system prompt", in both registers)
-- [ ] T035 [US4] Baseline pass: `python agent/eval/runner.py --set adversarial --webhook ${N8N_CHAT_URL} --model gemini-1.5-flash`; human-grade; record baseline in `agent/eval/results/baseline.md`
+- [ ] T035 [US4] Baseline pass: `python agent/eval/runner.py --set adversarial --webhook ${N8N_CHAT_URL} --model gemini-2.5-flash-lite`; human-grade; record baseline in `agent/eval/results/baseline.md`
 
 ### Implementation for User Story 4
 
@@ -187,7 +187,7 @@ adversarial probing.
 **Purpose**: Polish that touches more than one story, plus the
 non-functional sign-offs the spec requires.
 
-- [ ] T040 [P] Run the Gemini variant bake-off (research.md R1): re-run all four eval sets (`msa`, `egyptian`, `adversarial`, `multiturn`) after switching the n8n Cloud workflow's Gemini chat-model node to `gemini-1.5-pro`, grade, and compare against the Flash results; record the decision (Flash vs. Pro) and rationale in `agent/eval/results/variant-bakeoff.md`; if Pro wins, leave the workflow on Pro and update the buildbook's default model note in `agent/workflow/README.md`
+- [ ] T040 [P] Run the Gemini variant upgrade test (research.md R1, post-Q9): trigger ONLY if SC-001 or SC-002 fails on `gemini-2.5-flash-lite`. Re-run the failing set(s) against `gemini-2.5-flash` (regular tier) and, if still failing, `gemini-2.5-pro`. Grade and compare; record the decision and pass-rate deltas in `agent/eval/results/variant-upgrade.md`; if a higher tier wins, switch the n8n Cloud workflow's Gemini chat-model node to it and update the buildbook's default model note in `agent/workflow/README.md`
 - [ ] T041 [P] Verify SC-004: across the four sign-off result files, compute median `latency_ms`; confirm < 3000 ms; if not, identify and trim the highest-cost prompt-template section in `agent/prompts/system.md`; record the median in `agent/eval/results/latency-signoff.md`
 - [ ] T042 Grow the KB to the planned 20–50 entries: add 15–45 more entries to `agent/kb/ecommerce-faq.json` covering finer-grained questions in each of the five topics; run `python agent/kb/lint.py`; copy the new JSON contents into the n8n Cloud workflow's `load_kb` Code node and save; spot-re-run the `msa` and `egyptian` eval sets to confirm no regressions
 - [ ] T043 [P] Verify SC-005 manually: time how long it takes to add one new KB entry on n8n Cloud (edit the repo file → run lint → copy contents into the workflow's `load_kb` Code node → Save the workflow → see it answer in chat); confirm under 10 minutes; record observation in `agent/eval/results/sc-005-signoff.md`

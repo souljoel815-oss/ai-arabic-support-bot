@@ -146,7 +146,7 @@ Distinct from a Turn — eval records are batch-produced for grading.
 | `response` | string | yes | Agent reply. |
 | `detected_register` | enum | yes | What the agent identified the prompt as. |
 | `latency_ms` | integer | yes | Visible latency. |
-| `model` | string | yes | Gemini variant used (e.g., `gemini-1.5-flash`). |
+| `model` | string | yes | Gemini variant used (e.g., `gemini-2.5-flash-lite`). |
 | `run_at` | string (ISO datetime) | yes | When the prompt was sent. |
 | `verdict` | enum \| null | no | Filled by the human reviewer: `pass` \| `fail` \| `partial` \| null (ungraded). |
 | `verdict_notes` | string | no | Free text from the reviewer. |

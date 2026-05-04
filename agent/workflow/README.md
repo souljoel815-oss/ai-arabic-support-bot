@@ -156,13 +156,20 @@ Before you start, confirm:
 - **Sub-connection — Memory**: leave empty for now; **Phase 5 / T031**
   adds a `Memory: Window Buffer` sub-node here keyed off `sessionId`
   with a 6-turn window.
+- **Settings → On Error**: set to `Retry on Fail` with **Max Tries** = 3
+  and **Wait Between Tries** = 2000 ms. This absorbs upstream Gemini
+  503s (transient capacity overload) which would otherwise surface to
+  visitors as `Error in workflow`. Observed at ~4% rate on first
+  baseline; retry config eliminates them.
 
 ### Node 5 — Google Gemini Chat Model
 
 - Add sub-node: **`@n8n/n8n-nodes-langchain.lmChatGoogleGemini`**.
 - **Credential**: the Gemini credential created during n8n Cloud setup.
-- **Model**: `gemini-1.5-flash` (default; switch to `gemini-1.5-pro`
-  during T040 bake-off if SC-002 fails on Flash).
+- **Model**: `gemini-2.5-flash-lite` (locked default per Q9 clarification;
+  cheapest + lowest-latency variant in the Gemini family. T040 in
+  Phase 7 tests upgrades to `gemini-2.5-flash` and `gemini-2.5-pro`
+  only if SC-001 or SC-002 fails human grading on Flash-Lite).
 - **Temperature**: `0.2` (favor faithful retrieval; deterministic).
 - **Max Output Tokens**: 1024.
 - Wire it to the AI Agent's **Chat Model** sub-input.

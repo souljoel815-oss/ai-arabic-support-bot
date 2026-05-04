@@ -49,6 +49,34 @@ commit results in `eval/results/`").
 
 ---
 
+**Decision (revised post-T011, per Q9 clarification)**: The actual locked
+variant is **`gemini-2.5-flash-lite`**, not `gemini-1.5-flash`. The
+operator picked it during T011 (workflow build on n8n Cloud) — by the
+time the workflow was wired up, the Gemini 2.5 family had become
+generally available, and `gemini-2.5-flash-lite` strictly dominates
+`gemini-1.5-flash` on both axes (cheaper, faster) while remaining
+adequate for grounded retrieval over a pre-translated KB.
+
+First-run baselines (the four eval sets posted at 2026-05-04 06:19–06:23)
+showed:
+- p50 latency ~2048 ms across all 90 records (SC-004 budget 3000 ms)
+- 0 detected MSA leakage in Egyptian replies on heuristic pre-screen
+- 0 prompt-leakage / persona-break under 6 injection attempts
+- 4 transient HTTP 503s from upstream Gemini overload (capacity, not bug)
+- 1 fabrication-via-overgeneralization in the Egyptian set (refused→answered)
+- 3 ad-hoc refusals in the adversarial set instead of canonical templates
+
+The 503s are mitigated by adding **retry-on-error** to the AI Agent node
+in the n8n Cloud editor (3 tries, 2-second backoff) — a workflow-side
+fix, not a model choice.
+
+**Upgrade path**: Phase 7 T040 is reframed as a stability/quality
+upgrade test against `gemini-2.5-flash` (regular tier, ~3× cost) and
+`gemini-2.5-pro` (~10× cost), to be triggered only if SC-001 or SC-002
+fail human grading on `2.5-flash-lite`.
+
+---
+
 ## R2. Knowledge base storage shape
 
 **Question**: Where should the bilingual KB live, and in what shape?

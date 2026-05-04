@@ -17,6 +17,7 @@
 - Q: Hosting decision update — actual deployment? → A: **n8n Cloud** (managed). Supersedes Q5 above. Owner has built and tested the workflow on n8n Cloud at the URL recorded in the Assumptions section. The repo's VPS-deploy artifacts (Caddyfile, docker-compose.yml) are retained in git history for reference only and removed from the working tree.
 - Q: How should the bilingual KB be loaded by the workflow? → A: **Inline JSON inside a Code node** in the n8n Cloud workflow. The repo's `agent/kb/ecommerce-faq.json` remains the authoritative version-controlled source; updates are propagated by copy-pasting the file's contents into the workflow's `load_kb` Code node and saving.
 - Q: How should conversation logging (FR-012) be implemented? → A: **n8n's built-in execution history**. The dedicated `log_turn` node and `/var/log/ai-support-agent/turns.jsonl` sink are dropped; per-turn payloads (timestamps, visitor input, agent reply, detected register) are inspectable in the n8n Cloud Executions UI, which satisfies FR-012.
+- Q: Specific Gemini variant — locked decision? → A: **`gemini-2.5-flash-lite`**. Picked during T011 (workflow build on n8n Cloud) ahead of the originally-deferred Phase 7 bake-off. This supersedes research.md R1's "default to `gemini-1.5-flash`" placeholder. Rationale: 2.5-flash-lite is cheapest and lowest-latency in the current Gemini family, and the agent's task (structured retrieval + lightly-stitched reply from a pre-translated KB) is well within its capability — first-run latency p50 is ~2 sec, well under SC-004's 3000 ms budget. T040 (Phase 7) is reframed as a stability/quality upgrade test against `gemini-2.5-flash` (regular) and `gemini-2.5-pro`, not against the deprecated 1.5 line.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -234,12 +235,13 @@ politely in matching language without fabricating answers or breaking character.
   by the portfolio owner. n8n's role is an implementation detail; the
   requirements above remain technology-agnostic. n8n is fixed because the
   portfolio's purpose is to showcase competence with this platform.
-- The underlying language model is the **Google Gemini family** (specific
-  Gemini variant — e.g., Gemini Pro vs. Gemini Flash — to be decided in
-  planning based on cost/latency/dialect-quality trade-offs). This sets the
-  achievable ceiling for SC-001 and SC-002; planning MUST include a small
-  evaluation pass to confirm the chosen Gemini variant clears these targets
-  on Egyptian-dialect output before committing to it.
+- The underlying language model is **`gemini-2.5-flash-lite`** in the
+  Google Gemini family (locked during T011, per Q9 clarification). It
+  is the cheapest and lowest-latency variant in the Gemini family and
+  has demonstrated SC-004-passing latency (~2 sec p50) on the first
+  baseline run. SC-001 and SC-002 sign-off pass-rates are still pending
+  human grading; if either falls below threshold, T040 (Phase 7) tests
+  upgrades to `gemini-2.5-flash` (regular) or `gemini-2.5-pro`.
 - The agent is a **demo / portfolio piece**, not a production support system
   for a real business. Scope is therefore optimized for demonstrability over
   scale, multi-tenancy, or SLA guarantees.
