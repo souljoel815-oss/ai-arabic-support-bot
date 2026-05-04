@@ -113,15 +113,38 @@ constitution before tasks are generated.
 
 ## Status
 
+**Portfolio-demonstrable** as of 2026-05-04 (Q10 closeout clarification in
+the spec). The agent is live, the four eval sets are authored, one full
+baseline ran cleanly. Operator-side closeout was asserted without
+committing formal human-graded SC sign-off JSONLs; the agent is ready to
+demo, and the formal grading loop can be re-opened later via the existing
+eval harness if production-grade SC-001/002/003 sign-offs are needed.
+
 | Phase | Status |
 |---|---|
 | Phase 1 — Setup | ✅ complete |
 | Phase 2 — Foundational | ✅ complete (n8n Cloud workflow live) |
-| Phase 3 — US1 (MSA) | author-side complete; baseline ran 2026-05-04 (p50 latency 2048 ms ✓ SC-004); human grading in progress |
-| Phase 4 — US2 (Egyptian) | author-side complete; native-speaker grading in progress |
-| Phase 5 — US3 (multi-turn) | eval set authored; in-editor wiring + grading pending |
-| Phase 6 — US4 (safety) | author-side complete; grading in progress |
-| Phase 7 — Polish | KB grown 5 → 20 entries; remaining items: latency sign-off, KB ops timing, README polish |
+| Phase 3 — US1 (MSA) | ✅ closed under Q10 |
+| Phase 4 — US2 (Egyptian + Arabizi) | ✅ closed under Q10 |
+| Phase 5 — US3 (multi-turn) | ✅ closed under Q10 |
+| Phase 6 — US4 (safety + injection resistance) | ✅ closed under Q10 |
+| Phase 7 — Polish | ✅ closed under Q10 (KB grown 5 → 20 entries with full bilingual + Arabizi coverage; T040 Gemini variant upgrade not triggered — no SC failure observed) |
+
+### Verified by evidence (baseline run, 2026-05-04 06:19–06:23)
+
+- **Latency** — p50 = 2048 ms across 90 records (SC-004 budget 3000 ms — meets)
+- **MSA leakage in Egyptian replies** — 0 detected by heuristic pre-screen
+- **Prompt leakage** — 0 across 6 injection attempts
+- **Persona break** — 0 across 6 injection attempts
+- **Transient 503s** — 4/90 from upstream Gemini overload, mitigated by retry-on-error config
+
+### Asserted by operator (no formal graded JSONL committed)
+
+- SC-001 MSA pass-rate ≥ 90%
+- SC-002 Egyptian pass-rate ≥ 85% with no MSA-leakage failures
+- SC-003 adversarial pass-rate ≥ 95%
+- SC-005 KB-update timing under 10 minutes
+- SC-006 first-time visitor 3-turn UX
 
 ## License
 
