@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://speckit-co.local/contracts/eval-record.schema.json",
+  "title": "Eval-Run Record",
+  "description": "One (prompt, response) pair produced by the eval harness, optionally graded later by a human reviewer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eval_set",
+    "prompt_id",
+    "prompt",
+    "response",
+    "detected_register",
+    "latency_ms",
+    "model",
+    "run_at"
+  ],
+  "properties": {
+    "eval_set": {
+      "type": "string",
+      "enum": ["msa", "egyptian", "adversarial"]
+    },
+    "prompt_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "response": {
+      "type": "string"
+    },
+    "detected_register": {
+      "type": "string",
+      "enum": ["msa", "egyptian", "arabizi", "other"]
+    },
+    "latency_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Gemini variant, e.g. 'gemini-1.5-flash'."
+    },
+    "run_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "type": ["string", "null"],
+      "enum": ["pass", "fail", "partial", null],
+      "description": "Filled by the human reviewer; null until graded."
+    },
+    "verdict_notes": {
+      "type": "string"
+    }
+  }
+}

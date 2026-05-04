@@ -1,0 +1,10 @@
+{
+  "workflow": "speckit",
+  "specName": "001-ai-support-agent",
+  "branch": "001-ai-support-agent",
+  "selectedAt": "2026-05-04T01:27:31.514Z",
+  "currentStep": "specify",
+  "status": "draft",
+  "stepHistory": {},
+  "transitions": []
+}

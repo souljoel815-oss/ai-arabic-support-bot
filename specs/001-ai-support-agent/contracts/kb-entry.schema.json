@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://speckit-co.local/contracts/kb-entry.schema.json",
+  "title": "Knowledge Entry",
+  "description": "A single bilingual customer-support entry. Both register variants are required before the entry is eligible to ground answers (FR-014).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "topic",
+    "keywords_msa",
+    "keywords_egy",
+    "wording_msa",
+    "wording_egy",
+    "last_updated"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^kb-[a-z0-9-]+$",
+      "description": "Stable unique identifier, e.g. 'kb-orders-cancel-01'."
+    },
+    "topic": {
+      "type": "string",
+      "enum": ["orders", "returns", "shipping", "payments", "account"],
+      "description": "Coarse-grained topic. Entries outside this set are out of scope for v1."
+    },
+    "keywords_msa": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 10,
+      "items": { "type": "string", "minLength": 2 },
+      "description": "Short MSA phrases used for keyword-style retrieval."
+    },
+    "keywords_egy": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 10,
+      "items": { "type": "string", "minLength": 2 },
+      "description": "Short Egyptian-dialect phrases (and common Arabizi forms) used for retrieval."
+    },
+    "wording_msa": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Final answer in Modern Standard Arabic."
+    },
+    "wording_egy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Final answer in Egyptian Arabic dialect. MUST NOT contain MSA paragraphs."
+    },
+    "source": {
+      "type": "string",
+      "description": "Free-text provenance note."
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO date (YYYY-MM-DD); updated whenever any wording field changes."
+    }
+  }
+}

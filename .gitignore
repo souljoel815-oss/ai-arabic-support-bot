@@ -1,0 +1,24 @@
+# Spec Kit local-only settings
+.claude/settings.local.json
+
+# Feature 001-ai-support-agent — explicit per tasks.md T002
+agent/deploy/.env
+agent/eval/results/*.jsonl
+agent/eval/.venv/
+
+# Python (eval harness)
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+.vscode/
+.idea/
