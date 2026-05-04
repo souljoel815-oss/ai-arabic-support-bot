@@ -86,7 +86,7 @@ human-grade the results, confirm pass-rate ≥ 90%.
 > first run MUST be observed failing (or partially failing) before T017+
 > iterate to make it pass.
 
-- [ ] T016 [P] [US1] Author the MSA eval set at `agent/eval/sets/msa.jsonl` — exactly 30 records, each `{prompt_id, prompt, expected_topic}`, with prompts evenly spread across the five KB topics (`orders`, `returns`, `shipping`, `payments`, `account`); include 3 prompts whose answers are deliberately NOT in the KB to exercise FR-005's refusal path
+- [X] T016 [P] [US1] Author the MSA eval set at `agent/eval/sets/msa.jsonl` — exactly 30 records, each `{prompt_id, prompt, expected_topic}`, with prompts evenly spread across the five KB topics (`orders`, `returns`, `shipping`, `payments`, `account`); include 3 prompts whose answers are deliberately NOT in the KB to exercise FR-005's refusal path
 - [ ] T017 [US1] Run a baseline pass: `python agent/eval/runner.py --set msa --webhook ${N8N_CHAT_URL} --model gemini-1.5-flash`, then human-grade the resulting JSONL and run `--grade-summary` on it; record the baseline pass-rate in `agent/eval/results/baseline.md` and confirm it falls below 90% (this anchors the iteration)
 
 ### Implementation for User Story 1

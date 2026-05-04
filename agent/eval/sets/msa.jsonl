@@ -1,0 +1,30 @@
+{"prompt_id":"msa-orders-01","prompt":"كيف ألغي طلبي؟","expected_topic":"orders"}
+{"prompt_id":"msa-orders-02","prompt":"هل يمكنني إلغاء الطلب قبل الشحن؟","expected_topic":"orders"}
+{"prompt_id":"msa-orders-03","prompt":"ما هي خطوات إلغاء الطلب من حسابي؟","expected_topic":"orders"}
+{"prompt_id":"msa-orders-04","prompt":"أريد إلغاء طلبي، كيف أفعل ذلك؟","expected_topic":"orders"}
+{"prompt_id":"msa-orders-05","prompt":"هل يمكنني إلغاء طلب تم شحنه بالفعل؟","expected_topic":"orders"}
+{"prompt_id":"msa-returns-01","prompt":"كيف يمكنني إرجاع منتج اشتريته؟","expected_topic":"returns"}
+{"prompt_id":"msa-returns-02","prompt":"ما هي مدة الإرجاع المسموح بها؟","expected_topic":"returns"}
+{"prompt_id":"msa-returns-03","prompt":"كم يستغرق رد المبلغ بعد الإرجاع؟","expected_topic":"returns"}
+{"prompt_id":"msa-returns-04","prompt":"ما هي شروط إرجاع المنتج؟","expected_topic":"returns"}
+{"prompt_id":"msa-returns-05","prompt":"هل يمكنني إرجاع منتج بعد ١٠ أيام من الاستلام؟","expected_topic":"returns"}
+{"prompt_id":"msa-shipping-01","prompt":"كم تستغرق الشحنة للوصول؟","expected_topic":"shipping"}
+{"prompt_id":"msa-shipping-02","prompt":"متى سيصلني الطلب؟","expected_topic":"shipping"}
+{"prompt_id":"msa-shipping-03","prompt":"كيف يمكنني متابعة شحنتي؟","expected_topic":"shipping"}
+{"prompt_id":"msa-shipping-04","prompt":"ما هي مدة التوصيل في القاهرة؟","expected_topic":"shipping"}
+{"prompt_id":"msa-shipping-05","prompt":"الشحنة تأخرت عن موعدها المتوقع، ماذا أفعل؟","expected_topic":"shipping"}
+{"prompt_id":"msa-shipping-06","prompt":"كم يستغرق التوصيل خارج القاهرة والإسكندرية؟","expected_topic":"shipping"}
+{"prompt_id":"msa-payments-01","prompt":"ما هي وسائل الدفع المتاحة؟","expected_topic":"payments"}
+{"prompt_id":"msa-payments-02","prompt":"هل تقبلون الدفع عند الاستلام؟","expected_topic":"payments"}
+{"prompt_id":"msa-payments-03","prompt":"هل يمكنني الدفع ببطاقة فيزا؟","expected_topic":"payments"}
+{"prompt_id":"msa-payments-04","prompt":"ما هو الحد الأقصى للدفع نقداً عند الاستلام؟","expected_topic":"payments"}
+{"prompt_id":"msa-payments-05","prompt":"هل تقبلون الدفع عبر فودافون كاش؟","expected_topic":"payments"}
+{"prompt_id":"msa-account-01","prompt":"نسيت كلمة المرور، ماذا أفعل؟","expected_topic":"account"}
+{"prompt_id":"msa-account-02","prompt":"كيف يمكنني إعادة تعيين كلمة السر؟","expected_topic":"account"}
+{"prompt_id":"msa-account-03","prompt":"كيف أغير كلمة المرور وأنا داخل حسابي؟","expected_topic":"account"}
+{"prompt_id":"msa-account-04","prompt":"لم يصلني بريد إعادة تعيين كلمة المرور، كيف أحل المشكلة؟","expected_topic":"account"}
+{"prompt_id":"msa-account-05","prompt":"أين أجد إعدادات تغيير كلمة المرور في حسابي؟","expected_topic":"account"}
+{"prompt_id":"msa-account-06","prompt":"كيف أسترجع الوصول إلى حسابي إذا نسيت كلمة المرور؟","expected_topic":"account"}
+{"prompt_id":"msa-uncovered-orders-01","prompt":"هل يمكنني تغيير عنوان التوصيل لطلبي بعد إتمامه؟","expected_topic":"orders","expected_action":"refuse_off_topic","note":"Not in seed KB — should trigger MSA refuse_off_topic per FR-005"}
+{"prompt_id":"msa-uncovered-returns-01","prompt":"هل يمكنني إرجاع منتج بدون فاتورة؟","expected_topic":"returns","expected_action":"refuse_off_topic","note":"Not in seed KB — should trigger MSA refuse_off_topic per FR-005"}
+{"prompt_id":"msa-uncovered-account-01","prompt":"كيف أحذف حسابي نهائياً من المتجر؟","expected_topic":"account","expected_action":"refuse_off_topic","note":"Not in seed KB — should trigger MSA refuse_off_topic per FR-005"}
