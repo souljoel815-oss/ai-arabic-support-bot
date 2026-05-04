@@ -53,32 +53,42 @@ commit results in `eval/results/`").
 
 **Question**: Where should the bilingual KB live, and in what shape?
 
-**Decision**: A single **JSON file** at `agent/kb/ecommerce-faq.json`, loaded
-into the workflow at execution time via n8n's "Read Binary File" or HTTP
-fetch from the local filesystem. Conforms to `kb-entry.schema.json`
-(Phase 1 contract).
+**Decision (revised — n8n Cloud)**: The bilingual KB is **inlined as a JSON
+literal inside the workflow's `load_kb` Code node** on n8n Cloud. The
+repo's `agent/kb/ecommerce-faq.json` remains the **authoritative,
+version-controlled source of truth**; the operator copy-pastes its
+contents into the Code node when updating. Conforms to
+`contracts/kb-entry.schema.json` (Phase 1 contract).
 
 **Rationale**:
-- Scale is 20–50 entries — a flat JSON file is trivially loaded into memory,
-  searchable by keyword, and version-controllable in git.
-- FR-011 requires editing without code changes — editing a JSON file in a
-  text editor (or via the VPS's web shell) satisfies this.
-- Avoids dragging in Postgres/SQLite for a workload that doesn't need
-  indexing, joins, or concurrent writes.
-- Deterministic: the entire KB is auditable in a single commit.
+- Scale is 20–50 entries — fits comfortably as an inline JSON literal in
+  a Code node (a few KB).
+- n8n Cloud has no host filesystem mount, so the original "read JSON file
+  from `/data/...`" approach (this section's earlier decision) is not
+  available.
+- FR-011 ("update KB content without code changes") is still met:
+  refreshing the inline JSON is a content edit, not a JavaScript code
+  edit. SC-005 ("under 10 minutes editor time") is comfortably met by
+  copy-paste into the n8n editor.
+- The repo file remains the authoritative version-controlled source so
+  KB content stays diffable, reviewable in PRs, and recoverable from git.
 
-**Alternatives considered**:
-- **n8n built-in Data Tables / variables**: Tied to a single workflow, less
-  greppable, harder to diff across versions; rejected.
-- **External Postgres**: Massive overkill for ~50 rows; rejected on
-  Principle IV (Simplicity & YAGNI).
-- **Separate MSA and Egyptian files**: Risks drift between registers; the
-  single-file-with-both-fields shape encodes the FR-014 invariant in the
-  schema itself.
+**Alternatives considered (post-n8n-Cloud)**:
+- **Public raw GitHub URL fetch**: `load_kb` HTTP-GETs the JSON file from
+  `raw.githubusercontent.com`. Eliminates the copy-paste step and makes
+  KB updates fully zero-touch, but requires the repo to be public (or a
+  PAT). Held in reserve as a v2 upgrade if SC-005 fails in practice.
+- **n8n Data Tables**: stores rows in n8n itself; rejected because it
+  decouples KB content from git history.
+- **External Postgres**: still overkill; rejected.
 
-**Action**: Phase 1 produces the JSON Schema in `contracts/kb-entry.schema.json`
-and a sample seed file with 5–10 entries; the full 20–50-entry KB is a
-Phase 2 authoring task.
+**Original (pre-n8n-Cloud) decision and alternatives are preserved in the
+Q5 → Q6 supersession recorded in spec.md → Clarifications.**
+
+**Action**: Phase 2 (T008) produces the seed file at
+`agent/kb/ecommerce-faq.json`; the operator copies its contents into the
+workflow's `load_kb` Code node on n8n Cloud. The full 20–50-entry KB
+grow-out is Phase 7 (T042).
 
 ---
 
@@ -154,29 +164,36 @@ parameter.
 **Question**: FR-012 requires logging timestamps, visitor input, agent
 reply, and detected register. Where do logs live?
 
-**Decision**: **JSON Lines file** at `/var/log/ai-support-agent/turns.jsonl`
-on the VPS, written by a "Write to File" node at the end of each workflow
-execution. n8n's own execution history stays as a secondary, automatic log.
+**Decision (revised — n8n Cloud)**: Use **n8n's built-in execution
+history**. Each workflow run automatically records every node's input
+and output payloads, including the visitor turn, the structured Gemini
+response, and the final reply. The dedicated `log_turn` Code node and
+the `/var/log/ai-support-agent/turns.jsonl` sink are dropped.
 
 **Rationale**:
-- One line per turn → trivially appendable, greppable, and rotatable with
-  `logrotate`.
-- Conforms to a contract (`contracts/eval-record.schema.json` covers eval
-  records; turn logs follow a parallel small schema documented in
-  `data-model.md`).
-- Visitors are anonymous (only `sessionId`), so no PII handling is needed.
+- n8n Cloud has no host filesystem; writing JSONL to disk would require
+  shelling out to an external service.
+- The execution-history payloads contain everything FR-012 requires
+  (timestamp, visitor input, agent reply, detected register, and chosen
+  KB entry IDs — all present in node payloads). Aggregate queries are
+  done via the Executions UI, which is acceptable for portfolio-grade
+  reliability and demo-scale traffic.
+- Removing the dedicated log node simplifies the workflow graph by one
+  node and one Code-node failure mode.
 
-**Alternatives considered**:
-- **Database table**: Adds dependency and migration concerns for content
-  the portfolio owner mostly never reads; rejected.
-- **Rely solely on n8n execution history**: Hard to query in aggregate;
-  loses structure (n8n stores entire execution payloads, not turn-shaped
-  records); rejected.
-- **External log aggregator (Loki, ELK)**: Overkill for portfolio-grade;
-  rejected on Principle IV.
+**Alternatives considered (post-n8n-Cloud)**:
+- **Webhook-out to an external logger** (Datadog, a Cloudflare Worker,
+  Google Sheets): adds a dependency and an outbound-call failure mode
+  for content the portfolio owner mostly never reads at scale; deferred
+  as a v2 upgrade if FR-012 review needs become more demanding.
+- **External log aggregator (Loki, ELK)**: still overkill; rejected.
 
-**Action**: Phase 2 task adds the Write-to-File node with explicit field
-ordering (`{ts, sessionId, turnIndex, register, visitorText, agentText, kbEntryIds}`).
+**Original (pre-n8n-Cloud) JSONL decision is preserved by the Q8
+clarification in spec.md → Clarifications.**
+
+**Action**: No new node is added; the workflow's Respond to Webhook
+node (after `validate_and_overwrite`) terminates the run, and n8n
+Cloud's execution history captures the full per-turn payload for review.
 
 ---
 
@@ -217,36 +234,51 @@ the refusal templates and verifies them with adversarial-set evaluation.
 
 ---
 
-## R7. VPS deployment shape
+## R7. Deployment shape
 
 **Question**: How is the n8n workflow actually deployed and made stably
 reachable on a public URL?
 
-**Decision**: **Docker Compose on a $5–10/mo VPS** (Hetzner CX11 or
-DigitalOcean basic droplet, Ubuntu 22.04 LTS), with:
-- Caddy as a reverse proxy fronting n8n on port 443 with auto-renewing
-  Let's Encrypt certificates.
-- A subdomain such as `support-demo.<owner-domain>` pointing to the VPS.
-- n8n configured with `N8N_HOST`, `WEBHOOK_URL`, and a randomly generated
-  encryption key.
-- A `deploy/` directory in the repo containing `docker-compose.yml`,
-  `.env.example`, and a `README.md` with copy-pasteable setup steps.
+**Decision (revised)**: **n8n Cloud (managed)**. The workflow is built
+and operated in the portfolio owner's n8n Cloud workspace at
+`https://guillaume120.app.n8n.cloud`. The Chat Trigger exposes a public
+chat URL that the portfolio site links to:
+`https://guillaume120.app.n8n.cloud/webhook/da1f362e-200c-4255-a624-9bb6544821d0/chat`.
 
 **Rationale**:
-- Caddy + Docker Compose is the lowest-overhead path to TLS + a stable URL
-  on a single small VPS. It is also a well-trodden n8n self-host setup,
-  which keeps the demo focused on the agent rather than novel infra.
-- Including `deploy/` in the repo is itself part of the portfolio signal
-  (reviewers can read the README).
+- TLS, uptime, scaling, and updates are handled by n8n Cloud — zero
+  infrastructure work needed for portfolio-grade reliability.
+- The portfolio's signal is "I built this on n8n", not "I run n8n
+  myself"; managed hosting lets the work focus stay on the agent.
+- Eliminates the entire VPS provisioning / DNS / Caddy / Docker
+  surface area, simplifying onboarding for a reviewer who clones the
+  repo (no infra prerequisites).
 
-**Alternatives considered**:
-- **Bare nginx + certbot**: More moving parts than Caddy; rejected.
-- **Traefik**: Overkill for one service; rejected on Principle IV.
-- **n8n Cloud Starter**: Already rejected by the spec via clarification Q5;
-  noted here for traceability.
+**Alternatives considered (post-revision)**:
+- **Self-hosted on a small VPS** (the original Q5 / R7 decision): real
+  signal of DevOps competence, but ongoing operational toll and a
+  separate "things that can break during a demo" surface area.
+  Superseded by Q6 in spec clarifications.
+- **Bare nginx + certbot, Traefik, etc.**: moot under managed hosting.
 
-**Action**: Phase 1 produces `quickstart.md` with the VPS setup steps;
-Phase 2 produces `deploy/docker-compose.yml` and `.env.example`.
+**Original (pre-n8n-Cloud) decision is preserved by clarifications Q5 →
+Q6 in spec.md.**
+
+**Action**: Phase 1 (T011/T012) is replaced by:
+- T011 (build the workflow) — done by the portfolio owner in the n8n
+  Cloud editor; the workflow JSON SHOULD be exported and committed
+  over `agent/workflow/ai-support-agent.json` for repo
+  self-containment, but the live runtime is in n8n Cloud, not in the
+  repo.
+- T012 (provision VPS) — dropped. n8n Cloud account creation replaces
+  it (a one-time UI sign-up, not a runbook).
+
+The VPS-deploy artifacts authored before this revision
+(`agent/deploy/Caddyfile`, `agent/deploy/docker-compose.yml`,
+`agent/deploy/.env.example`, the previous `agent/deploy/README.md`)
+are removed from the working tree but remain in git history under the
+Phase 2 boundary commit for reference. They are replaced by a single
+short `agent/deploy/n8n-cloud-setup.md`.
 
 ---
 

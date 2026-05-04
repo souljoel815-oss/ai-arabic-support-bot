@@ -15,32 +15,33 @@ KB, and end-to-end deployment competence on n8n.
 
 ## Technical Context
 
-**Language/Version**: n8n workflow JSON (declarative, n8n ≥ 1.60); evaluation
-  harness in Python 3.11 (small CLI scripts only)
-**Primary Dependencies**: n8n (self-hosted, Docker), Google Gemini API
-  (specific variant decided in Phase 0 bake-off — candidates: Gemini 1.5 Pro,
-  Gemini 1.5 Flash, Gemini 2.0 Flash if available), n8n Chat Trigger node,
-  n8n AI Agent / LangChain nodes
-**Storage**: Bilingual knowledge base as a versioned JSON file
-  (`kb/ecommerce-faq.json`) loaded into the workflow at request time; n8n's
-  built-in chat session memory for short-term conversation context;
-  conversation logs as JSON Lines on the VPS filesystem
-**Testing**: Custom evaluation harness — Python script that posts eval prompts
-  to the deployed Chat Trigger webhook and records responses for human review;
-  three eval sets (MSA, Egyptian, adversarial) of fixed sizes per the spec's
-  Success Criteria
-**Target Platform**: Small Linux VPS (Ubuntu 22.04 LTS, 1–2 vCPU, 2 GB RAM,
-  ~$5–10/month tier — e.g., Hetzner CX11, DigitalOcean basic droplet)
-  running n8n via Docker Compose
+**Language/Version**: n8n workflow JSON (declarative, n8n Cloud current
+  version); evaluation harness in Python 3.11 (small CLI scripts only)
+**Primary Dependencies**: n8n Cloud (managed), Google Gemini API
+  (specific variant decided in Phase 7 bake-off — candidates: Gemini 1.5
+  Pro, Gemini 1.5 Flash, Gemini 2.0 Flash if available), n8n Chat Trigger
+  node, n8n AI Agent / LangChain nodes
+**Storage**: Bilingual knowledge base inlined as JSON inside the workflow's
+  `load_kb` Code node (mirrored canonically by `agent/kb/ecommerce-faq.json`
+  in the repo); n8n's built-in chat session memory for short-term
+  conversation context; conversation logging via n8n Cloud's built-in
+  execution history
+**Testing**: Custom evaluation harness — Python script that posts eval
+  prompts to the n8n Cloud Chat Trigger webhook and records responses for
+  human review; three eval sets (MSA, Egyptian, adversarial) of fixed
+  sizes per the spec's Success Criteria
+**Target Platform**: **n8n Cloud** (managed). Public chat URL:
+  `https://guillaume120.app.n8n.cloud/webhook/da1f362e-200c-4255-a624-9bb6544821d0/chat`.
+  No self-hosted infrastructure.
 **Project Type**: Web service (single project) — one workflow exposing one
   HTTP chat endpoint, with supporting KB and eval scripts in the same repo
-**Performance Goals**: Median visible response under 3 seconds (SC-004) under
-  demo conditions (≤ 5 concurrent visitors, 1–3 turn sessions); cold-start of
-  workflow run < 1 second
-**Constraints**: Pre-translated bilingual KB only (no on-the-fly cross-register
-  translation, FR-014); Gemini-family LLM only; self-hosted single-node
-  deployment; anonymous visitors; no PII collection; portfolio-grade
-  reliability (works on demand, not 24/7)
+**Performance Goals**: Median visible response under 3 seconds (SC-004)
+  under demo conditions (≤ 5 concurrent visitors, 1–3 turn sessions);
+  cold-start of workflow run < 1 second
+**Constraints**: Pre-translated bilingual KB only (no on-the-fly
+  cross-register translation, FR-014); Gemini-family LLM only; managed
+  n8n Cloud deployment (no shell, no filesystem); anonymous visitors; no
+  PII collection; portfolio-grade reliability (works on demand, not 24/7)
 **Scale/Scope**: 20–50 KB entries; ~30+30+20 = 80 evaluation prompts; demo
   load ≤ 5 concurrent visitors; one fictional e-commerce domain
 
@@ -97,9 +98,7 @@ agent/
 │   ├── runner.py                 # Hits Chat Trigger webhook, writes eval-record.jsonl
 │   └── reviewer-template.md      # Template the human reviewer fills out
 ├── deploy/
-│   ├── docker-compose.yml        # n8n service + volume mounts
-│   ├── .env.example              # GEMINI_API_KEY, N8N_HOST, etc.
-│   └── README.md                 # VPS setup steps
+│   └── n8n-cloud-setup.md        # n8n Cloud account / credential / live-URL notes
 └── docs/
     └── quickstart.md             # Mirror of specs/.../quickstart.md for dev convenience
 ```

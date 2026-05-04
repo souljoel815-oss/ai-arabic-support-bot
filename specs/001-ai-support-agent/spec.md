@@ -14,6 +14,9 @@
 - Q: How should the bilingual knowledge base be authored? → A: Pre-translated — every entry is manually authored in both MSA and Egyptian dialect
 - Q: Through which chat surface should visitors reach the agent? → A: n8n native Chat Trigger (hosted public chat URL provided by n8n, linked from the portfolio page)
 - Q: Where should the n8n workflow be hosted? → A: Self-hosted n8n on a small VPS (stable public URL, owner-operated)
+- Q: Hosting decision update — actual deployment? → A: **n8n Cloud** (managed). Supersedes Q5 above. Owner has built and tested the workflow on n8n Cloud at the URL recorded in the Assumptions section. The repo's VPS-deploy artifacts (Caddyfile, docker-compose.yml) are retained in git history for reference only and removed from the working tree.
+- Q: How should the bilingual KB be loaded by the workflow? → A: **Inline JSON inside a Code node** in the n8n Cloud workflow. The repo's `agent/kb/ecommerce-faq.json` remains the authoritative version-controlled source; updates are propagated by copy-pasting the file's contents into the workflow's `load_kb` Code node and saving.
+- Q: How should conversation logging (FR-012) be implemented? → A: **n8n's built-in execution history**. The dedicated `log_turn` node and `/var/log/ai-support-agent/turns.jsonl` sink are dropped; per-turn payloads (timestamps, visitor input, agent reply, detected register) are inspectable in the n8n Cloud Executions UI, which satisfies FR-012.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -258,13 +261,24 @@ politely in matching language without fabricating answers or breaking character.
   intended to be openly demonstrable.
 - The knowledge base is **manually curated** by the portfolio owner; no
   automated scraping or live data integration is in scope for v1.
-- The n8n workflow is **self-hosted on a small VPS** operated by the portfolio
-  owner. This provides a stable public URL suitable for permanent linking from
-  the portfolio site, at low ongoing cost, and doubles as a demonstration of
-  basic deployment competence. Operational expectations are scoped to
-  "portfolio-grade reliability" (below), not production-grade SLAs.
-- "Portfolio-grade reliability" means the agent must work reliably during a
-  short live demo (< 30 minutes) on demand. The self-hosted instance is
-  expected to remain reachable on its public URL during normal review
-  windows; brief planned outages for maintenance or model-key rotation are
-  acceptable. 24/7 uninterrupted uptime is NOT a goal.
+- The n8n workflow is hosted on **n8n Cloud** (managed). The active public
+  chat URL is
+  `https://guillaume120.app.n8n.cloud/webhook/da1f362e-200c-4255-a624-9bb6544821d0/chat`
+  — this is the URL linked from the portfolio site. (Earlier clarification
+  Q5 specified self-hosted VPS; superseded by clarifications Q6–Q8 in this
+  session.)
+- The bilingual KB is **inlined as JSON inside a Code node** in the n8n
+  Cloud workflow. The repo's `agent/kb/ecommerce-faq.json` is the
+  authoritative version-controlled source; KB updates are propagated by
+  copy-pasting that file's contents into the workflow's `load_kb` Code
+  node and saving the workflow. FR-011 is satisfied — KB content updates
+  do not require JavaScript code changes, only an inline-JSON refresh.
+- Conversation logging (FR-012) is satisfied by **n8n's built-in execution
+  history**: every workflow run records the full per-turn payload
+  (timestamps, visitor input, agent reply, detected register, KB entry
+  IDs), inspectable in the n8n Cloud Executions UI. No dedicated log file
+  or external sink is provisioned in v1.
+- "Portfolio-grade reliability" means the agent must work reliably during
+  a short live demo (< 30 minutes) on demand. n8n Cloud's managed uptime
+  comfortably covers normal review windows; 24/7 uninterrupted uptime is
+  NOT a goal.

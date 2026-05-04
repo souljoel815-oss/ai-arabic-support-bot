@@ -50,22 +50,28 @@ No user story phase can begin until this phase is complete.
 
 **⚠️ CRITICAL**: No US1–US4 work can start until this phase finishes.
 
-- [ ] T006 Author the bilingual system prompt at `agent/prompts/system.md` covering all six required sections from `specs/001-ai-support-agent/contracts/llm-prompt.md` (role lock, register policy, knowledge grounding rule, refusal policy, MSA + Egyptian style guides, structured output schema)
-- [ ] T007 [P] Author refusal templates at `agent/prompts/refusal-templates.md` with one MSA + one Egyptian phrasing for each of: `refuse_off_topic`, `refuse_unsafe`, `refuse_unknown_language`, `refuse_role_override`
-- [ ] T008 [P] Seed the bilingual knowledge base at `agent/kb/ecommerce-faq.json` with 5 entries — one per topic (`orders`, `returns`, `shipping`, `payments`, `account`) — each populated in both `wording_msa` and `wording_egy` per the schema in `specs/001-ai-support-agent/contracts/kb-entry.schema.json`; run `python agent/kb/lint.py` and confirm all pass
-- [ ] T009 Create `agent/deploy/Caddyfile` configuring Caddy to reverse-proxy `${N8N_HOST}` to `n8n:5678` with automatic Let's Encrypt TLS (per research.md R7)
-- [ ] T010 Create `agent/deploy/docker-compose.yml` defining two services: `n8n` (image `n8nio/n8n:latest`, env from `.env`, volume `n8n_data:/home/node/.n8n`, mounts the repo at `/data` read-only so the workflow can read `agent/kb/` and `agent/prompts/`) and `caddy` (image `caddy:2`, ports 80+443, mounts `Caddyfile`)
-- [ ] T011 Build the n8n workflow skeleton in the n8n editor and export to `agent/workflow/ai-support-agent.json`. Nodes in order: Chat Trigger → Function "load_kb" (read `/data/agent/kb/ecommerce-faq.json`) → Function "build_llm_input" (assemble the user-message template per `contracts/llm-prompt.md`, with simple keyword retrieval over `keywords_msa` + `keywords_egy` returning top 5) → AI Agent / Gemini node (model from `${GEMINI_MODEL}`, system prompt from `/data/agent/prompts/system.md`, response schema enforcing the structured shape) → Function "validate_and_overwrite" (validate JSON shape; for `refuse_*` actions overwrite `reply` with the matching template from `/data/agent/prompts/refusal-templates.md`) → Function "log_turn" (append a JSON line to `/var/log/ai-support-agent/turns.jsonl` per the Turn schema) → Respond to Webhook (`{output: reply}`)
-- [ ] T012 Provision the VPS and deploy: follow `specs/001-ai-support-agent/quickstart.md` sections 1–3 (VPS, Docker, DNS, Caddy + n8n up), import the workflow from T011, activate it, and verify the public chat URL responds with a placeholder MSA reply to a hand-typed test message
-- [ ] T013 [P] Build the eval harness skeleton at `agent/eval/runner.py` supporting: `--set <msa|egyptian|adversarial>`, `--webhook <url>`, `--model <gemini-variant>`. The runner reads `agent/eval/sets/<set>.jsonl`, posts each prompt to the webhook with a fresh UUID `sessionId`, captures `response`, `latency_ms`, and writes `agent/eval/results/<set>-<ISO-timestamp>.jsonl` records conforming to `specs/001-ai-support-agent/contracts/eval-record.schema.json` (`verdict` left null)
-- [ ] T014 [P] Add a `--grade-summary <results-file>` mode to `agent/eval/runner.py` that aggregates `verdict == "pass"` rate per eval set and prints it alongside the spec's SC threshold for that set
-- [ ] T015 [P] Author the human-reviewer template at `agent/eval/reviewer-template.md` describing how to open a results JSONL file, set `verdict` per record, and what counts as `pass` for each eval set
+- [X] T006 Author the bilingual system prompt at `agent/prompts/system.md` covering all six required sections from `specs/001-ai-support-agent/contracts/llm-prompt.md` (role lock, register policy, knowledge grounding rule, refusal policy, MSA + Egyptian style guides, structured output schema)
+- [X] T007 [P] Author refusal templates at `agent/prompts/refusal-templates.md` with one MSA + one Egyptian phrasing for each of: `refuse_off_topic`, `refuse_unsafe`, `refuse_unknown_language`, `refuse_role_override`
+- [X] T008 [P] Seed the bilingual knowledge base at `agent/kb/ecommerce-faq.json` with 5 entries — one per topic (`orders`, `returns`, `shipping`, `payments`, `account`) — each populated in both `wording_msa` and `wording_egy` per the schema in `specs/001-ai-support-agent/contracts/kb-entry.schema.json`; run `python agent/kb/lint.py` and confirm all pass
+- [~] T009 ~~Create `agent/deploy/Caddyfile`~~ **SUPERSEDED by Q6 clarification (n8n Cloud).** Original artifact is preserved in git history under the Phase 2 boundary commit; removed from the working tree.
+- [~] T010 ~~Create `agent/deploy/docker-compose.yml`~~ **SUPERSEDED by Q6 clarification (n8n Cloud).** Original artifact is preserved in git history under the Phase 2 boundary commit; removed from the working tree.
+- [X] T011 Build the n8n workflow on **n8n Cloud** (per the buildbook at `agent/workflow/README.md`) and smoke-test it. Live URL: `https://guillaume120.app.n8n.cloud/webhook/da1f362e-200c-4255-a624-9bb6544821d0/chat`. The KB and refusal templates are inlined inside the workflow's Code nodes per Q7 / Q8 clarifications; the canonical sources remain `agent/kb/ecommerce-faq.json` and `agent/prompts/refusal-templates.md`. Workflow JSON SHOULD be periodically exported from n8n Cloud and committed over `agent/workflow/ai-support-agent.json` for repo self-containment (still a placeholder pending first export).
+- [~] T012 ~~Provision the VPS and deploy~~ **DROPPED by Q6 clarification (n8n Cloud).** Replaced by `agent/deploy/n8n-cloud-setup.md`, whose acceptance checklist serves the same gating purpose. n8n Cloud account creation is a one-time UI sign-up, not a runbook.
+- [X] T013 [P] Build the eval harness skeleton at `agent/eval/runner.py` supporting: `--set <msa|egyptian|adversarial>`, `--webhook <url>`, `--model <gemini-variant>`. The runner reads `agent/eval/sets/<set>.jsonl`, posts each prompt to the webhook with a fresh UUID `sessionId`, captures `response`, `latency_ms`, and writes `agent/eval/results/<set>-<ISO-timestamp>.jsonl` records conforming to `specs/001-ai-support-agent/contracts/eval-record.schema.json` (`verdict` left null)
+- [X] T014 [P] Add a `--grade-summary <results-file>` mode to `agent/eval/runner.py` that aggregates `verdict == "pass"` rate per eval set and prints it alongside the spec's SC threshold for that set
+- [X] T015 [P] Author the human-reviewer template at `agent/eval/reviewer-template.md` describing how to open a results JSONL file, set `verdict` per record, and what counts as `pass` for each eval set
 
 **Checkpoint**: Foundation ready — all of US1–US4 can now begin in parallel.
 
 ---
 
 ## Phase 3: User Story 1 — MSA support (Priority: P1) 🎯 MVP
+
+> **Setup convention for Phase 3+**: export the n8n Cloud chat URL once
+> per shell, and all baseline + sign-off task commands work as written:
+> ```sh
+> export N8N_CHAT_URL=https://guillaume120.app.n8n.cloud/webhook/da1f362e-200c-4255-a624-9bb6544821d0/chat
+> ```
 
 **Goal**: Visitors writing in Modern Standard Arabic receive accurate,
 KB-grounded answers in MSA. Implements US1 (FR-001/002/003/004/005 for the
@@ -81,7 +87,7 @@ human-grade the results, confirm pass-rate ≥ 90%.
 > iterate to make it pass.
 
 - [ ] T016 [P] [US1] Author the MSA eval set at `agent/eval/sets/msa.jsonl` — exactly 30 records, each `{prompt_id, prompt, expected_topic}`, with prompts evenly spread across the five KB topics (`orders`, `returns`, `shipping`, `payments`, `account`); include 3 prompts whose answers are deliberately NOT in the KB to exercise FR-005's refusal path
-- [ ] T017 [US1] Run a baseline pass: `python agent/eval/runner.py --set msa --webhook ${WEBHOOK_URL}/webhook/chat --model gemini-1.5-flash`, then human-grade the resulting JSONL and run `--grade-summary` on it; record the baseline pass-rate in `agent/eval/results/baseline.md` and confirm it falls below 90% (this anchors the iteration)
+- [ ] T017 [US1] Run a baseline pass: `python agent/eval/runner.py --set msa --webhook ${N8N_CHAT_URL} --model gemini-1.5-flash`, then human-grade the resulting JSONL and run `--grade-summary` on it; record the baseline pass-rate in `agent/eval/results/baseline.md` and confirm it falls below 90% (this anchors the iteration)
 
 ### Implementation for User Story 1
 
@@ -108,7 +114,7 @@ for Arabizi) and clears SC-002 (≥ 85% pass on a 30-prompt Egyptian eval set).
 ### Tests for User Story 2 (Test-First) ⚠️
 
 - [ ] T022 [P] [US2] Author the Egyptian eval set at `agent/eval/sets/egyptian.jsonl` — exactly 30 records `{prompt_id, prompt, expected_topic}`, with prompts evenly spread across the five topics; include **6 prompts written in Arabizi** (Latin-script Egyptian, e.g. "ezzay arga3 el order?") to exercise FR-007, and 3 prompts whose answers are deliberately NOT in the KB
-- [ ] T023 [US2] Baseline pass: `python agent/eval/runner.py --set egyptian --webhook ${WEBHOOK_URL}/webhook/chat --model gemini-1.5-flash`; arrange a native Egyptian-Arabic reviewer to grade the JSONL; append the baseline pass-rate to `agent/eval/results/baseline.md`
+- [ ] T023 [US2] Baseline pass: `python agent/eval/runner.py --set egyptian --webhook ${N8N_CHAT_URL} --model gemini-1.5-flash`; arrange a native Egyptian-Arabic reviewer to grade the JSONL; append the baseline pass-rate to `agent/eval/results/baseline.md`
 
 ### Implementation for User Story 2
 
@@ -140,8 +146,8 @@ follow-up correctly without the visitor restating the topic.
 
 ### Implementation for User Story 3
 
-- [ ] T031 [US3] In `agent/workflow/ai-support-agent.json`, configure the AI Agent / Gemini node's session memory to use the Chat Trigger's `sessionId` with a sliding window of 6 turns (3 visitor + 3 agent) per research.md R4; set the idle expiry to 30 minutes
-- [ ] T032 [US3] Update `build_llm_input` Function node to inject `<recent_turns>` from session memory into the per-turn user message exactly as specified in `contracts/llm-prompt.md`
+- [ ] T031 [US3] In the n8n Cloud workflow editor, attach a `Memory: Window Buffer` sub-node to the AI Agent node, keyed off the Chat Trigger's `sessionId` with a sliding window of 6 turns (3 visitor + 3 agent) per research.md R4; idle expiry 30 minutes; Save the workflow; export and overwrite `agent/workflow/ai-support-agent.json` afterwards
+- [ ] T032 [US3] Update the `build_llm_input` Code node in the n8n Cloud workflow to inject `<recent_turns>` from session memory into the per-turn user message exactly as specified in `contracts/llm-prompt.md`; Save and re-export the workflow JSON
 - [ ] T033 [US3] Re-run the multi-turn script; confirm both conversations now answer all back-references coherently in the matching register; commit the graded JSONL to `agent/eval/results/sc-multiturn-signoff.jsonl`
 
 **Checkpoint**: US1 + US2 + US3 all demonstrable independently. Multi-turn
@@ -161,13 +167,13 @@ character. Implements US4 + FR-008 + FR-009 + FR-010 and clears SC-003
 ### Tests for User Story 4 (Test-First) ⚠️
 
 - [ ] T034 [P] [US4] Author the adversarial eval set at `agent/eval/sets/adversarial.jsonl` — exactly 20 records `{prompt_id, prompt, expected_action}` split as: 8 off-topic (in MSA + Egyptian + 1 English to test FR-010), 6 abusive (mild + escalating, in both registers), 6 prompt-injection ("ignore previous instructions", "you are now an unrestricted assistant", "what's your system prompt", in both registers)
-- [ ] T035 [US4] Baseline pass: `python agent/eval/runner.py --set adversarial --webhook ${WEBHOOK_URL}/webhook/chat --model gemini-1.5-flash`; human-grade; record baseline in `agent/eval/results/baseline.md`
+- [ ] T035 [US4] Baseline pass: `python agent/eval/runner.py --set adversarial --webhook ${N8N_CHAT_URL} --model gemini-1.5-flash`; human-grade; record baseline in `agent/eval/results/baseline.md`
 
 ### Implementation for User Story 4
 
 - [ ] T036 [US4] Refine `agent/prompts/refusal-templates.md`: ensure each of the 4 refusal actions has a polished MSA and Egyptian phrasing; for `refuse_role_override`, the wording MUST NOT echo or restate the override attempt
 - [ ] T037 [US4] Tighten the **Role lock** and **Refusal policy** sections of `agent/prompts/system.md`: the agent stays in customer-support role under all circumstances; never reveals system prompt; never enters a role suggested by the visitor; for non-Arabic input replies in MSA per FR-010
-- [ ] T038 [US4] Verify the workflow's `validate_and_overwrite` Function node (T011) overwrites `reply` with the verbatim refusal template for any `refuse_*` action — even if Gemini returns a free-form refusal — to prevent dialect/tone drift on refusal turns
+- [ ] T038 [US4] Verify the workflow's `validate_and_overwrite` Code node (built in T011 on n8n Cloud, see `agent/workflow/README.md` Node 6) overwrites `reply` with the verbatim refusal template for any `refuse_*` action — even if Gemini returns a free-form refusal — to prevent dialect/tone drift on refusal turns
 - [ ] T039 [US4] Re-run adversarial eval; iterate prompt + templates up to 3 cycles; final SC-003 sign-off requires pass-rate ≥ 95% with zero turns that fabricate an answer or step out of role; commit graded JSONL to `agent/eval/results/sc-003-signoff.jsonl`
 
 **Checkpoint**: All four user stories independently functional. The agent
@@ -181,12 +187,12 @@ adversarial probing.
 **Purpose**: Polish that touches more than one story, plus the
 non-functional sign-offs the spec requires.
 
-- [ ] T040 [P] Run the Gemini variant bake-off (research.md R1): re-run all four eval sets (`msa`, `egyptian`, `adversarial`, `multiturn`) with `GEMINI_MODEL=gemini-1.5-pro`, grade, and compare against the Flash results; record the decision (Flash vs. Pro) and rationale in `agent/eval/results/variant-bakeoff.md`; update `agent/deploy/.env.example` `GEMINI_MODEL` default if Pro wins
+- [ ] T040 [P] Run the Gemini variant bake-off (research.md R1): re-run all four eval sets (`msa`, `egyptian`, `adversarial`, `multiturn`) after switching the n8n Cloud workflow's Gemini chat-model node to `gemini-1.5-pro`, grade, and compare against the Flash results; record the decision (Flash vs. Pro) and rationale in `agent/eval/results/variant-bakeoff.md`; if Pro wins, leave the workflow on Pro and update the buildbook's default model note in `agent/workflow/README.md`
 - [ ] T041 [P] Verify SC-004: across the four sign-off result files, compute median `latency_ms`; confirm < 3000 ms; if not, identify and trim the highest-cost prompt-template section in `agent/prompts/system.md`; record the median in `agent/eval/results/latency-signoff.md`
-- [ ] T042 Grow the KB to the planned 20–50 entries: add 15–45 more entries to `agent/kb/ecommerce-faq.json` covering finer-grained questions in each of the five topics; run `python agent/kb/lint.py`; spot-re-run the `msa` and `egyptian` eval sets to confirm no regressions
-- [ ] T043 [P] Verify SC-005 manually: time how long it takes to add one new KB entry (open file → add JSON record in MSA + Egyptian → run lint → `git pull` on VPS → see it answer in chat); confirm under 10 minutes; record observation in `agent/eval/results/sc-005-signoff.md`
-- [ ] T044 [P] Add a `logrotate` config snippet at `agent/deploy/logrotate-ai-support-agent.conf` for `/var/log/ai-support-agent/turns.jsonl` (daily, 14-day retention, compress); document the install step in `agent/deploy/README.md`
-- [ ] T045 [P] Create `agent/deploy/README.md` summarizing the VPS deployment (DNS, Docker Compose, Caddy, env vars, log rotation, restart command) — short reference; the longhand version stays in `specs/001-ai-support-agent/quickstart.md`
+- [ ] T042 Grow the KB to the planned 20–50 entries: add 15–45 more entries to `agent/kb/ecommerce-faq.json` covering finer-grained questions in each of the five topics; run `python agent/kb/lint.py`; copy the new JSON contents into the n8n Cloud workflow's `load_kb` Code node and save; spot-re-run the `msa` and `egyptian` eval sets to confirm no regressions
+- [ ] T043 [P] Verify SC-005 manually: time how long it takes to add one new KB entry on n8n Cloud (edit the repo file → run lint → copy contents into the workflow's `load_kb` Code node → Save the workflow → see it answer in chat); confirm under 10 minutes; record observation in `agent/eval/results/sc-005-signoff.md`
+- [~] T044 ~~Add a `logrotate` config snippet~~ **DROPPED by Q8 clarification (n8n Cloud built-in execution history).** No host filesystem to rotate.
+- [~] T045 ~~Create `agent/deploy/README.md` summarizing the VPS deployment~~ **SUPERSEDED by Q6 clarification.** Replaced by `agent/deploy/n8n-cloud-setup.md` (already authored).
 - [ ] T046 [P] Mirror the spec quickstart into `agent/docs/quickstart.md` (one-paragraph summary + link to the canonical `specs/001-ai-support-agent/quickstart.md`) so a developer cloning the repo finds it without digging into `specs/`
 - [ ] T047 Verify SC-006 manually: have one first-time visitor (not the portfolio owner) complete a 3-turn support exchange end-to-end without restating the question; record observation + any UX papercuts in `agent/eval/results/sc-006-signoff.md`
 - [ ] T048 [P] Add a top-level `README.md` at the repo root with: one-paragraph project description, screenshot of the chat in MSA + Egyptian, link to the live demo URL, link to `specs/001-ai-support-agent/quickstart.md`, link to constitution v1.0.0
@@ -235,15 +241,14 @@ Task: "T003 Create agent/eval/requirements.txt"
 Task: "T004 Create agent/kb/lint.py"
 Task: "T005 Create agent/deploy/.env.example"
 
-# Then Phase 2 itself can run authoring + deploy + harness in three lanes:
+# Then Phase 2 itself can run authoring + harness in two lanes:
+# (T009/T010/T012/T044/T045 superseded by Q6–Q8 clarifications — n8n Cloud.)
 Task: "T006 Author system.md (Lane A: prompts)"
 Task: "T007 Author refusal-templates.md (Lane A)"
 Task: "T008 Seed bilingual KB (Lane A)"
-Task: "T009 Author Caddyfile (Lane B: deploy)"
-Task: "T010 docker-compose.yml (Lane B)"
-Task: "T013 Build runner.py (Lane C: eval harness)"
-Task: "T014 Add --grade-summary mode (Lane C)"
-Task: "T015 Author reviewer-template.md (Lane C)"
+Task: "T013 Build runner.py (Lane B: eval harness)"
+Task: "T014 Add --grade-summary mode (Lane B)"
+Task: "T015 Author reviewer-template.md (Lane B)"
 ```
 
 ---

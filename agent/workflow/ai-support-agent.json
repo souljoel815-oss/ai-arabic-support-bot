@@ -1,0 +1,15 @@
+{
+  "_comment": "PLACEHOLDER. The runtime workflow lives in n8n Cloud at https://guillaume120.app.n8n.cloud. Export the workflow from the n8n Cloud editor (⋮ → Download) and overwrite this file so the repo holds a current snapshot. See agent/workflow/README.md for the buildbook.",
+  "name": "ai-support-agent",
+  "nodes": [],
+  "connections": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Cairo",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "tags": ["spec-kit", "001-ai-support-agent", "n8n-cloud"]
+}
