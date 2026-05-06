@@ -190,59 +190,77 @@ def _render_outlook(outlook_df, gw, horizon, title='Multi-GW Outlook'):
 # V11 NEW: Multi-week plan renderer
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _render_multi_week_plan(mw_plan):
-    if mw_plan is None:
+def _render_multi_week_plan(plan, *, pid_lookup=None):
+    """Render a typed :class:`fpl.types.MultiWeekPlan`.
+
+    The original V11 implementation consumed a legacy nested-dict shape;
+    the analyzer now produces a typed dataclass via
+    :func:`fpl.optimizer.multiweek.beam_search_multi_week`. This
+    rewritten renderer takes the typed object directly. ``pid_lookup``
+    is an optional ``{player_id: player_name}`` map used for the
+    transfer summary column; falls back to numeric IDs when absent.
+    """
+    if plan is None:
         return
+    if pid_lookup is None:
+        pid_lookup = {}
+
     st.subheader('🗓️ Multi-Week Transfer Plan')
-    best = mw_plan['best_path']
 
     cols = st.columns(4)
-    cols[0].metric('Plan Total Score', f"{mw_plan['best_total_score_with_transfers']:.2f}")
-    cols[1].metric('Hold Baseline', f"{mw_plan['baseline_horizon_total']:.2f}")
-    cols[2].metric('Net Gain vs Baseline', f"{mw_plan['best_total_net_gain_vs_baseline']:+.2f}")
-    cols[3].metric('Total Hits', f"{best['cumulative_hits']}")
+    cols[0].metric('Plan Total Score', f"{plan.total_score:.2f}")
+    cols[1].metric('Hold Baseline', f"{plan.baseline_score:.2f}")
+    cols[2].metric('Net Gain vs Baseline', f"{plan.net_gain_vs_baseline:+.2f}")
+    cols[3].metric('Total Hits', f"{plan.cumulative_hits}")
 
     st.caption('Beam search across the planning horizon. Each row = one gameweek decision. '
                'Bank and free transfers carry over (FTs cap at 5).')
 
+    def _name(pid):
+        return pid_lookup.get(int(pid), str(int(pid)))
+
     rows = []
-    for step in best['path']:
-        if step['transfer_count'] == 0:
+    for step in plan.steps:
+        if step.action.kind == 'hold':
             rows.append({
-                'GW': step['gw'],
+                'GW': step.gw,
                 'Action': 'HOLD',
                 'Transfers': '—',
-                'Hit': step['hit_cost'],
-                'Week Pred': f"{step['week_score']:.2f}",
-                'Bank After': _format_money(step['new_bank']),
-                'FTs After': step['fts_after'],
+                'Hit': step.action.hit_cost,
+                'Week Pred': f"{step.week_predicted_score:.2f}",
+                'Bank After': _format_money(step.bank_after),
+                'FTs After': step.fts_after,
             })
         else:
-            summary = ', '.join(f"{t['out_name']} → {t['in_name']}" for t in step['transfers'])
+            summary = ', '.join(
+                f"{_name(t.out_player_id)} → {_name(t.in_player_id)}"
+                for t in step.action.transfers
+            )
             rows.append({
-                'GW': step['gw'],
-                'Action': f"{step['transfer_count']}-transfer",
+                'GW': step.gw,
+                'Action': step.action.kind,
                 'Transfers': summary,
-                'Hit': step['hit_cost'],
-                'Week Pred': f"{step['week_score']:.2f}",
-                'Bank After': _format_money(step['new_bank']),
-                'FTs After': step['fts_after'],
+                'Hit': step.action.hit_cost,
+                'Week Pred': f"{step.week_predicted_score:.2f}",
+                'Bank After': _format_money(step.bank_after),
+                'FTs After': step.fts_after,
             })
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-    if mw_plan.get('alternatives'):
-        with st.expander(f"Alternative paths ({len(mw_plan['alternatives'])})"):
+    if plan.alternatives:
+        with st.expander(f"Alternative paths ({len(plan.alternatives)})"):
             alt_rows = []
-            for i, alt in enumerate(mw_plan['alternatives'][:3], 1):
+            for i, alt in enumerate(plan.alternatives[:3], 1):
                 summary = ' | '.join(
-                    'HOLD' if s['transfer_count'] == 0 else f"{s['transfer_count']}T@GW{s['gw']}"
-                    for s in alt['path']
+                    'HOLD' if s.action.kind == 'hold'
+                    else f"{len(s.action.transfers)}T@GW{s.gw}"
+                    for s in alt.steps
                 )
                 alt_rows.append({
                     'Path': i,
                     'Steps': summary,
-                    'Cumulative Gain': f"{alt['cumulative_gain']:+.2f}",
-                    'Total Hits': alt['cumulative_hits'],
+                    'Cumulative Gain': f"{alt.net_gain_vs_baseline:+.2f}",
+                    'Total Hits': alt.cumulative_hits,
                 })
             st.dataframe(pd.DataFrame(alt_rows), use_container_width=True, hide_index=True)
 
@@ -364,7 +382,11 @@ def main():
 
         # V11: Multi-week plan goes here, between the "this week" block and the outlook.
         if show_multi_week and mw_plan is not None:
-            _render_multi_week_plan(mw_plan)
+            pid_lookup = {
+                int(r.player_id): str(r.player_name)
+                for _, r in result['pred_df'].iterrows()
+            }
+            _render_multi_week_plan(mw_plan, pid_lookup=pid_lookup)
 
         _render_outlook(plan['outlook_df'], result['gw'], result['horizon'],
                         title='Your Squad — Multi-GW Outlook')
