@@ -124,3 +124,23 @@ All tests are fully offline (FPL HTTP responses are stubbed via `responses`, tim
 | FR-038 diagnostics panel | Step 2 / Step 5 — `=== RUN STATUS ===` block / bottom panel of the web UI. |
 | SC-001 latency budgets | Time Step 2 cold (≤120 s) and again warm (<5 s). |
 | SC-006 squad-rule satisfaction | Step 3, then count GK/DEF/MID/FWD and per-club. |
+
+---
+
+## Recorded latencies (T053)
+
+> Run steps 2, 3, 4, 5 above against the **live** FPL API on a typical laptop and record the observed cold-run / cached-run timings here. SC-001 budget: ≤120 s cold, ≤5 s cached. SC-002 budget: ≤120 s cold for the from-scratch path. Update the rows below in-place; the empty rows act as a placeholder until the first measurement run lands.
+
+| Step | Cold-run elapsed | Cached-run elapsed | Hardware | Date | Notes |
+|------|------------------|--------------------|----------|------|-------|
+| 2 (CLI weekly rec, `--team-id` + `--horizon 3`) | _TBD_ | _TBD_ | _TBD_ | _TBD_ | |
+| 3 (CLI from-scratch, no `--team-id`) | _TBD_ | _TBD_ | _TBD_ | _TBD_ | |
+| 4 (CLI `--backtest 8,10,15,18,20,25,28,30`) | _TBD_ | n/a | _TBD_ | _TBD_ | |
+| 5 (Streamlit Run Analysis) | _TBD_ | _TBD_ | _TBD_ | _TBD_ | display-toggle no-recompute (FR-033) |
+
+**Operator notes for the first measurement run**:
+
+- Time the **cold** run with a freshly cleared cache: `python fpl_main.py --clear-cache` first, then run the scenario with `time` (or PowerShell `Measure-Command`).
+- Time the **cached** run by repeating the same command immediately afterward (within the 1-hour TTL) — should drop to a few seconds.
+- Watch the `=== RUN STATUS ===` block's `cache.hit` field to confirm the cached run actually hit the cache.
+- If any scenario exceeds its SC budget, file an issue rather than tweaking the budget — the budgets in spec.md are the contract.

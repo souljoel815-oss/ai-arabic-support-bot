@@ -38,6 +38,7 @@ import argparse
 import sys
 from typing import IO, Any
 
+from fpl.backtest import run_backtest
 from fpl.cache import DiskCache
 from fpl.diagnostics import render_cli_block
 from fpl.errors import CacheWriteError, FPLApiError, UnknownTeamId
@@ -136,11 +137,47 @@ def main(argv: list[str] | None = None) -> int:
         print("Cache cleared.")
         return 0
 
-    # ---- --backtest stub (T051 lands the real impl) ----------------------
+    # ---- --backtest mode (T051 / FR-029) ---------------------------------
     if args.backtest is not None:
-        print("Backtest mode is not yet implemented (T051 / Phase 8).",
-              file=sys.stderr)
-        return 2
+        try:
+            gws = [int(g.strip()) for g in args.backtest.split(",") if g.strip()]
+        except ValueError:
+            print(
+                "--backtest must be a comma-separated list of integer "
+                "gameweek numbers (e.g. --backtest 8,10,15).",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            result = run_backtest(gws, cache_dir=args.cache_dir)
+        except ValueError as exc:
+            print(f"[fpl] Invalid backtest argument: {exc}", file=sys.stderr)
+            return 2
+        except FPLApiError as exc:
+            print(f"[fpl] FPL API error: {exc}", file=sys.stderr)
+            return 3
+        except CacheWriteError as exc:
+            print(f"[fpl] Cache write error: {exc}", file=sys.stderr)
+            return 4
+
+        out = sys.stdout
+        out.write("=== BACKTEST SUMMARY ===\n")
+        out.write(
+            f"{'GW':<5}{'MAE':<8}{'XI Pred':<10}{'XI Actual':<11}"
+            f"{'XI Δ':<8}{'Rec vs Hold Δ':<14}\n"
+        )
+        for row in result["summary_rows"]:
+            gw_str = str(row["gw"])
+            out.write(
+                f"{gw_str:<5}"
+                f"{float(row['mae']):<8.3f}"
+                f"{float(row['xi_pred']):<10.2f}"
+                f"{float(row['xi_actual']):<11.2f}"
+                f"{float(row['xi_delta']):<+8.2f}"
+                f"{float(row['rec_vs_hold_delta']):<+14.2f}\n"
+            )
+        out.write(f"\nWrote backtest detail to: {result['detail_path']}\n")
+        return 0
 
     # ---- Run the analysis ------------------------------------------------
     horizon = args.horizon if args.horizon is not None else 3
