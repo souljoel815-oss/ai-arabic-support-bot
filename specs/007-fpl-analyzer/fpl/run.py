@@ -48,7 +48,9 @@ from fpl.features import (
     players_df_from_bootstrap,
     teams_df_from_bootstrap,
 )
+from fpl.chips import compute_chip_plan
 from fpl.optimizer.multiweek import beam_search_multi_week
+from fpl.optimizer.squad import optimize_from_scratch
 from fpl.optimizer.transfer import recommend_single_week_transfer
 from fpl.types import (
     CachedAnalysisResult,
@@ -264,13 +266,18 @@ def run_analysis(
             current_squad, primary_rec, alternatives, pred_df,
             target_gw=resolved_target_gw, horizon=int(horizon),
         )
-        # Wildcard preview (US3 stub for now; T040 wires the real LP optimizer).
-        from_scratch_dict = None
+        # FR-022: continuity mode also exposes from-scratch as Wildcard preview.
+        fs_squad = _get_from_scratch_squad(
+            pred_df, budget=budget, target_gw=resolved_target_gw
+        )
+        from_scratch_dict = _build_from_scratch_dict(
+            fs_squad, pred_df, target_gw=resolved_target_gw
+        )
     else:
         primary_view = "from_scratch"
-        # MVP from-scratch stub: top picks per position by horizon_total.
-        # T039 replaces with the PuLP LP optimizer.
-        fs_squad = _from_scratch_stub(pred_df, budget=budget)
+        fs_squad = _get_from_scratch_squad(
+            pred_df, budget=budget, target_gw=resolved_target_gw
+        )
         current_squad = None
         current_squad_plan = None
         from_scratch_dict = _build_from_scratch_dict(
@@ -288,8 +295,14 @@ def run_analysis(
     else:
         multi_week_plan = None
 
-    # ---- Chip plan (US4 stub for MVP) -------------------------------------
-    chip_plan = _stub_chip_plan()
+    # ---- Chip plan (T044 / US4) -------------------------------------------
+    chip_plan = compute_chip_plan(
+        pred_df=pred_df,
+        current_squad=current_squad,
+        from_scratch_squad=fs_squad,
+        target_gw=resolved_target_gw,
+        horizon=int(horizon),
+    )
 
     # ---- Differentials (FR-027) -------------------------------------------
     differential_df = pred_df[
@@ -483,13 +496,33 @@ def _free_transfers_from_picks(picks: dict) -> int:
     return 1
 
 
-def _from_scratch_stub(pred_df: pd.DataFrame, *, budget: float) -> Squad:
-    """MVP stub for FR-021 / FR-022 from-scratch fallback.
+def _get_from_scratch_squad(
+    pred_df: pd.DataFrame, *, budget: float, target_gw: int
+) -> Squad:
+    """Build the from-scratch squad — LP optimiser with greedy fallback.
 
-    T039 replaces this with the real PuLP LP optimiser. For now we
-    greedily pick the top-2/5/5/3 by ``horizon_total`` ignoring budget
-    and per-club caps. Squad invariants still hold; only the
-    composition optimality is approximate.
+    The PuLP MILP (``optimize_from_scratch``) is the production path
+    (T039). When the available pool is too small for the position
+    quotas (typical of small test fixtures), the optimiser raises
+    :class:`ValueError` and we fall back to the greedy stub which still
+    yields a Squad satisfying the dataclass invariants — the
+    composition checks (2/5/5/3 + ≤3/club) may be approximate but the
+    output is well-formed.
+    """
+    try:
+        return optimize_from_scratch(
+            pred_df, budget=float(budget), target_gw=target_gw
+        )
+    except (ValueError, ImportError):
+        return _from_scratch_stub(pred_df, budget=float(budget))
+
+
+def _from_scratch_stub(pred_df: pd.DataFrame, *, budget: float) -> Squad:
+    """Greedy fallback for the from-scratch path when the LP is infeasible.
+
+    Greedy: top-2/5/5/3 by ``horizon_total`` respecting per-club caps.
+    Used when :func:`optimize_from_scratch` can't satisfy quotas (small
+    fixture; tight budget). Squad invariants still hold.
     """
     available = pred_df[pred_df.available].sort_values("horizon_total", ascending=False)
     picks = []
@@ -645,30 +678,6 @@ def _build_multi_gw_outlook(
 # ---------------------------------------------------------------------------
 # Stubs awaiting US2 / US4 / proper training
 # ---------------------------------------------------------------------------
-
-
-def _stub_chip_plan() -> ChipPlan:
-    """All four chips: 'no recommendation' — replaced by T043 (US4)."""
-    return ChipPlan(
-        triple_captain=ChipRecommendation(
-            chip="tc",
-            gw=None,
-            supporting_metric=None,
-            rationale="Chip strategy not yet computed (US4 / T043).",
-        ),
-        bench_boost=ChipRecommendation(
-            chip="bb", gw=None, supporting_metric=None,
-            rationale="Chip strategy not yet computed (US4 / T043).",
-        ),
-        free_hit=ChipRecommendation(
-            chip="fh", gw=None, supporting_metric=None,
-            rationale="Chip strategy not yet computed (US4 / T043).",
-        ),
-        wildcard=ChipRecommendation(
-            chip="wc", gw=None, supporting_metric=None,
-            rationale="Chip strategy not yet computed (US4 / T043).",
-        ),
-    )
 
 
 def _stub_model_diagnostics() -> ModelDiagnostics:

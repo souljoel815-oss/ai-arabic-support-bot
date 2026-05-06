@@ -137,13 +137,13 @@ description: "Task list for FPL Ultimate Analyzer (007-fpl-analyzer)"
 
 ### Tests for User Story 3
 
-- [ ] T037 [P] [US3] Write `specs/007-fpl-analyzer/tests/unit/test_squad_optimizer.py` — Red — assert `optimize_from_scratch(pred_df, budget=100.0) -> Squad` returns a `Squad` whose every invariant in T011 holds, plus: total `price ≤ budget`, exactly 15 distinct players, exactly 2 GK / 5 DEF / 5 MID / 3 FWD, ≤3 per club (FR-019, SC-006); the chosen XI is a valid formation; the captain is in XI
-- [ ] T038 [P] [US3] Write `specs/007-fpl-analyzer/tests/integration/test_p3_from_scratch.py` — Red — covers all 3 US-3 acceptance scenarios: (1) £100m + current GW → legal squad; (2) returned result includes both 15-man and starting XI with captain/vice; (3) when team_id IS supplied, the same `from_scratch` view is included as a Wildcard preview without overwriting continuity-mode fields
+- [X] T037 [P] [US3] Write `specs/007-fpl-analyzer/tests/unit/test_squad_optimizer.py` — Red — assert `optimize_from_scratch(pred_df, budget=100.0) -> Squad` returns a `Squad` whose every invariant in T011 holds, plus: total `price ≤ budget`, exactly 15 distinct players, exactly 2 GK / 5 DEF / 5 MID / 3 FWD, ≤3 per club (FR-019, SC-006); the chosen XI is a valid formation; the captain is in XI
+- [X] T038 [P] [US3] Write `specs/007-fpl-analyzer/tests/integration/test_p3_from_scratch.py` — Red — covers all 3 US-3 acceptance scenarios: (1) £100m + current GW → legal squad; (2) returned result includes both 15-man and starting XI with captain/vice; (3) when team_id IS supplied, the same `from_scratch` view is included as a Wildcard preview without overwriting continuity-mode fields
 
 ### Implementation for User Story 3
 
-- [ ] T039 [US3] Implement `specs/007-fpl-analyzer/fpl/optimizer/squad.py` per research.md § 6: PuLP MILP with binary variables `x_i, s_i, c_i`; FPL composition + budget + per-club + XI formation + captain constraints; objective `sum(horizon_total * s) + sum(ceiling * c)`. Public API: `optimize_from_scratch(pred_df, budget=100.0) -> Squad`. Passes T037 Green.
-- [ ] T040 [US3] Update `specs/007-fpl-analyzer/fpl/run.py`: when `team_id is None`, drive the from-scratch path; when `team_id is not None`, additionally compute the from-scratch Wildcard-preview squad and include it under `result['from_scratch']` (legacy key) without disturbing continuity-mode fields. Passes T038 Green.
+- [X] T039 [US3] Implement `specs/007-fpl-analyzer/fpl/optimizer/squad.py` per research.md § 6: PuLP MILP with binary variables `x_i, s_i, c_i`; FPL composition + budget + per-club + XI formation + captain constraints; objective `sum(horizon_total * s) + sum(ceiling * c)`. Public API: `optimize_from_scratch(pred_df, budget=100.0) -> Squad`. Passes T037 Green.
+- [X] T040 [US3] Update `specs/007-fpl-analyzer/fpl/run.py`: when `team_id is None`, drive the from-scratch path; when `team_id is not None`, additionally compute the from-scratch Wildcard-preview squad and include it under `result['from_scratch']` (legacy key) without disturbing continuity-mode fields. Passes T038 Green.
 
 **Checkpoint**: P1 + P2 + P3 all work independently. The CLI now serves from-scratch use without a Team ID.
 
@@ -157,14 +157,14 @@ description: "Task list for FPL Ultimate Analyzer (007-fpl-analyzer)"
 
 ### Tests for User Story 4
 
-- [ ] T041 [P] [US4] Write `specs/007-fpl-analyzer/tests/unit/test_chips.py` — Red — assert each of the 4 heuristic functions (`triple_captain`, `bench_boost`, `free_hit`, `wildcard`) returns a `ChipRecommendation` matching research.md § 9; FR-024 (TC uses ceiling, not mean); FR-025 (BB by 4-bench projection); FR-026 (FH by from-scratch vs own-squad swing); each returns `gw=None, supporting_metric=None` when no positive case exists in the horizon (FR-023)
-- [ ] T042 [P] [US4] Write `specs/007-fpl-analyzer/tests/integration/test_p4_chip_strategy.py` — Red — covers all 3 US-4 acceptance scenarios using the T006 DGW fixture: BB prefers DGW; TC chooses the player whose ceiling is highest in any GW; "no recommendation" when no GW improves on hold for any chip
+- [X] T041 [P] [US4] Write `specs/007-fpl-analyzer/tests/unit/test_chips.py` — Red — assert each of the 4 heuristic functions (`triple_captain`, `bench_boost`, `free_hit`, `wildcard`) returns a `ChipRecommendation` matching research.md § 9; FR-024 (TC uses ceiling, not mean); FR-025 (BB by 4-bench projection); FR-026 (FH by from-scratch vs own-squad swing); each returns `gw=None, supporting_metric=None` when no positive case exists in the horizon (FR-023)
+- [X] T042 [P] [US4] Write `specs/007-fpl-analyzer/tests/integration/test_p4_chip_strategy.py` — Red — covers all 3 US-4 acceptance scenarios using the T006 DGW fixture: BB prefers DGW; TC chooses the player whose ceiling is highest in any GW; "no recommendation" when no GW improves on hold for any chip
 
 ### Implementation for User Story 4
 
-- [ ] T043 [US4] Implement `specs/007-fpl-analyzer/fpl/chips.py` with `triple_captain(pred_df, squad)`, `bench_boost(pred_df, squad)`, `free_hit(pred_df, current_squad, from_scratch_squad_per_gw)`, `wildcard(pred_df, current_squad)` returning typed `ChipRecommendation` per data-model.md § 7. Compose them into `compute_chip_plan(...)` returning a `ChipPlan`. Passes T041 Green.
-- [ ] T044 [US4] Update `specs/007-fpl-analyzer/fpl/run.py` to compute `chip_plan` via `chips.compute_chip_plan(...)` for both modes; write to `result['chip_plan']` and the typed `ChipPlan` accessor. Passes T042 Green.
-- [ ] T045 [US4] Update `specs/007-fpl-analyzer/fpl/cli.py` to render the `=== CHIP PLAN ===` block per `contracts/cli.md`. Re-run T022.
+- [X] T043 [US4] Implement `specs/007-fpl-analyzer/fpl/chips.py` with `triple_captain(pred_df, squad)`, `bench_boost(pred_df, squad)`, `free_hit(pred_df, current_squad, from_scratch_squad_per_gw)`, `wildcard(pred_df, current_squad)` returning typed `ChipRecommendation` per data-model.md § 7. Compose them into `compute_chip_plan(...)` returning a `ChipPlan`. Passes T041 Green.
+- [X] T044 [US4] Update `specs/007-fpl-analyzer/fpl/run.py` to compute `chip_plan` via `chips.compute_chip_plan(...)` for both modes; write to `result['chip_plan']` and the typed `ChipPlan` accessor. Passes T042 Green.
+- [X] T045 [US4] Update `specs/007-fpl-analyzer/fpl/cli.py` to render the `=== CHIP PLAN ===` block per `contracts/cli.md`. Re-run T022.
 
 **Checkpoint**: P1-P4 all work independently. CLI now provides full strategic guidance.
 
@@ -178,13 +178,13 @@ description: "Task list for FPL Ultimate Analyzer (007-fpl-analyzer)"
 
 ### Tests for User Story 5
 
-- [ ] T046 [P] [US5] Write `specs/007-fpl-analyzer/tests/unit/test_ui_helpers.py` — Red — covers the pure formatting helpers in `fpl/ui.py` (`format_money`, `decorate_squad_table`, `build_status_panel_view`) without any Streamlit runtime, using small synthetic DataFrames
-- [ ] T047 [P] [US5] Write `specs/007-fpl-analyzer/tests/integration/test_p5_web_ui_smoke.py` — Red — uses Streamlit's `AppTest` to render `specs/007-fpl-analyzer/fpl_gui.py` against a stubbed `run_analysis` returning a fixed `CachedAnalysisResult`; asserts every FR-031 panel is present (recommendation card, XI table, bench table, multi-week plan table, heatmap, 4 chip cards, differentials, run-status panel); asserts that flipping a display toggle does not retrigger the underlying `cached_run_analysis` call (FR-033)
+- [X] T046 [P] [US5] Write `specs/007-fpl-analyzer/tests/unit/test_ui_helpers.py` — Red — covers the pure formatting helpers in `fpl/ui.py` (`format_money`, `decorate_squad_table`, `build_status_panel_view`) without any Streamlit runtime, using small synthetic DataFrames
+- [X] T047 [P] [US5] Write `specs/007-fpl-analyzer/tests/integration/test_p5_web_ui_smoke.py` — Red — uses Streamlit's `AppTest` to render `specs/007-fpl-analyzer/fpl_gui.py` against a stubbed `run_analysis` returning a fixed `CachedAnalysisResult`; asserts every FR-031 panel is present (recommendation card, XI table, bench table, multi-week plan table, heatmap, 4 chip cards, differentials, run-status panel); asserts that flipping a display toggle does not retrigger the underlying `cached_run_analysis` call (FR-033)
 
 ### Implementation for User Story 5
 
-- [ ] T048 [US5] Implement `specs/007-fpl-analyzer/fpl/ui.py` by extracting and porting the existing private `_format_money`, `_decorate_squad_table`, `_render_continuity_header`, `_render_recommendation_card`, `_render_alternatives`, `_render_squad_tables`, `_render_outlook`, `_render_chip_cards`, `_render_multi_week_plan`, `_render_from_scratch_view` helpers from `fpl_gui.py` into pure functions taking `(typed_view, container)` arguments. Add a new `render_run_status_panel(rs, container)` for the Run Status / Diagnostics surface (FR-038). Passes T046 Green.
-- [ ] T049 [US5] Refactor `specs/007-fpl-analyzer/fpl_gui.py` to delegate rendering to `fpl/ui.py` functions. Preserve the existing `@st.cache_data(ttl=3600)` wrapper around `cached_run_analysis(...)` (FR-033). Add the run-status panel render at the bottom of the page (FR-031, FR-038). Passes T047 Green.
+- [X] T048 [US5] Implement `specs/007-fpl-analyzer/fpl/ui.py` by extracting and porting the existing private `_format_money`, `_decorate_squad_table`, `_render_continuity_header`, `_render_recommendation_card`, `_render_alternatives`, `_render_squad_tables`, `_render_outlook`, `_render_chip_cards`, `_render_multi_week_plan`, `_render_from_scratch_view` helpers from `fpl_gui.py` into pure functions taking `(typed_view, container)` arguments. Add a new `render_run_status_panel(rs, container)` for the Run Status / Diagnostics surface (FR-038). Passes T046 Green.
+- [X] T049 [US5] Refactor `specs/007-fpl-analyzer/fpl_gui.py` to delegate rendering to `fpl/ui.py` functions. Preserve the existing `@st.cache_data(ttl=3600)` wrapper around `cached_run_analysis(...)` (FR-033). Add the run-status panel render at the bottom of the page (FR-031, FR-038). Passes T047 Green.
 
 **Checkpoint**: All five user stories work independently. The web UI provides visual access to everything the CLI offers.
 

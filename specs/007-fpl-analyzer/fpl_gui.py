@@ -31,6 +31,12 @@ def _setup_logging():
 _setup_logging()
 
 from fpl import run_analysis
+from fpl.ui import (
+    decorate_squad_table as _decorate_squad_table,
+    format_money as _format_money,
+    render_chip_cards as _render_chip_cards,
+    render_run_status_panel,
+)
 
 st.set_page_config(page_title='FPL Ultimate Analyzer', page_icon='⚽', layout='wide')
 
@@ -51,29 +57,12 @@ def cached_run_analysis(target_gw, budget, horizon, team_id, no_understat):
     )
 
 
-def _format_money(v):
-    return f"£{float(v):.1f}m"
-
-
-def _decorate_squad_table(df, captain_name=None, vice_name=None):
-    cols = [c for c in ['player_name', 'team_name', 'position', 'price',
-                        'predicted', 'horizon_total', 'selected_by_percent', 'fixture_ticker_5']
-            if c in df.columns]
-    view = df[cols].copy()
-    rename_map = {
-        'player_name': 'Player', 'team_name': 'Team', 'position': 'Pos',
-        'price': 'Price', 'predicted': 'GW Pred', 'horizon_total': 'Weighted Total',
-        'selected_by_percent': 'Own %', 'fixture_ticker_5': 'Fixture Ticker',
-    }
-    view = view.rename(columns=rename_map)
-    if captain_name is not None and 'Player' in view.columns:
-        roles = ['Captain' if p == captain_name else ('Vice' if p == vice_name else '') for p in view['Player']]
-        view.insert(0, 'Role', roles)
-    return view
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Section renderers
+# (`_format_money`, `_decorate_squad_table`, `_render_chip_cards` are imported
+# from `fpl.ui` above; the inline V11 helpers were extracted in T048/T049
+# so the typed surfaces — Run Status panel, ChipPlan — go through one
+# canonical implementation.)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _render_continuity_header(plan, gw, horizon):
@@ -191,41 +180,10 @@ def _render_outlook(outlook_df, gw, horizon, title='Multi-GW Outlook'):
             st.plotly_chart(fig, use_container_width=True)
 
 
-def _render_chip_cards(chip_plan, show_tc=True, show_bb=True, show_fh=True, show_wc=True):
-    enabled = [k for k, v in [('tc', show_tc), ('bb', show_bb), ('fh', show_fh), ('wc', show_wc)] if v]
-    if not enabled:
-        return
-    cols = st.columns(len(enabled))
-    idx = 0
-    if show_tc:
-        tc = chip_plan.get('triple_captain')
-        text = 'No recommendation available'
-        if tc:
-            text = f"GW{tc['gw']} — {tc['player_name']} ({tc['team_name']})\n\nCeiling: {tc['ceiling']:.2f}"
-        cols[idx].info(f"**Triple Captain**\n\n{text}")
-        idx += 1
-    if show_bb:
-        bb = chip_plan.get('bench_boost')
-        text = 'No recommendation available'
-        if bb:
-            text = f"GW{bb['gw']}\n\nBench projection: {bb['bench_points']:.2f}\n\n{', '.join(bb.get('bench_names', []))}"
-        cols[idx].info(f"**Bench Boost**\n\n{text}")
-        idx += 1
-    if show_fh:
-        fh = chip_plan.get('free_hit')
-        text = 'No recommendation available'
-        if fh:
-            text = f"GW{fh['gw']}\n\nSwing score: {fh['swing_score']:.2f}\n\nBlanks: {fh['blank_teams']} | Doubles: {fh['double_teams']}"
-        cols[idx].info(f"**Free Hit**\n\n{text}")
-        idx += 1
-    if show_wc:
-        wc = chip_plan.get('wildcard')
-        text = 'No recommendation available'
-        if wc:
-            gw_text = f"GW{wc['gw']}" if wc.get('gw') else 'Hold'
-            text = f"{gw_text}\n\n{wc['reason']}"
-        cols[idx].info(f"**Wildcard**\n\n{text}")
-        idx += 1
+# NOTE: `_render_chip_cards` was the V11 inline implementation that consumed
+# a legacy dict-shape ``chip_plan``. After T043/T048 the analyzer emits a
+# typed :class:`fpl.types.ChipPlan` and the imported ``_render_chip_cards``
+# (from :mod:`fpl.ui`) takes that typed input directly.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -327,8 +285,10 @@ def _render_from_scratch_view(result, show_differentials, show_tc, show_bb, show
             st.info('No low-ownership differential table was generated for this run.')
 
     st.subheader('Chip Strategy')
-    _render_chip_cards(result.get('chip_plan', {}), show_tc=show_tc, show_bb=show_bb,
-                       show_fh=show_fh, show_wc=show_wc)
+    _render_chip_cards(
+        result.get('chip_plan'),
+        show_tc=show_tc, show_bb=show_bb, show_fh=show_fh, show_wc=show_wc,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -418,7 +378,10 @@ def main():
                 st.info('No differential table generated for this run.')
 
         st.subheader('Chip Strategy')
-        _render_chip_cards(result.get('chip_plan', {}), show_tc, show_bb, show_fh, show_wc)
+        _render_chip_cards(
+            result.get('chip_plan'),
+            show_tc=show_tc, show_bb=show_bb, show_fh=show_fh, show_wc=show_wc,
+        )
 
         if show_from_scratch:
             with st.expander('🔄 Reference: from-scratch optimum (Wildcard preview)'):
@@ -429,12 +392,12 @@ def main():
                     f"a {result['horizon']}-GW horizon. Add a Team ID for continuity mode.")
         _render_from_scratch_view(result, show_differentials, show_tc, show_bb, show_fh, show_wc)
 
-    with st.expander('Model Diagnostics (V11 ensemble: + Poisson + Quantile q=0.9)'):
-        top_feats = pd.DataFrame(result.get('top_features', []), columns=['Feature', 'Importance'])
-        if len(top_feats) > 0:
-            st.dataframe(top_feats, use_container_width=True, hide_index=True)
-        st.write(f"Baseline MAE: **{result.get('baseline_mae')}**")
-        st.json(result.get('model_weights', {}))
+    # FR-038 — unified Run Status / Diagnostics panel (subsumes the V11
+    # Model Diagnostics expander; renders sources, cache, baseline MAE,
+    # warnings, and the model-diagnostics expander).
+    rs = result.get('run_status')
+    if rs is not None:
+        render_run_status_panel(rs)
 
 
 if __name__ == '__main__':
