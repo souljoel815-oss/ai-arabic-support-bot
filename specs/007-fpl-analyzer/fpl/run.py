@@ -254,6 +254,13 @@ def run_analysis(
         on="team_id",
         how="left",
     )
+    # V11 GUI sorts bench/XI by a column called `predicted` (the target-GW
+    # prediction). Alias the per-GW column so existing renderers work.
+    target_pred_col = f"predicted_gw{resolved_target_gw}"
+    if target_pred_col in pred_df.columns:
+        pred_df["predicted"] = pred_df[target_pred_col]
+    else:
+        pred_df["predicted"] = pred_df.get("horizon_total", 0.0)
 
     # ---- Mode selection (FR-021 / FR-022) ---------------------------------
     primary_view: str
