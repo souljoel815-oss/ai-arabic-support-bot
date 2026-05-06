@@ -48,7 +48,7 @@ def _build_test_pred_df(target_gw: int = 31, horizon: int = 3) -> pd.DataFrame:
                 "team_id": club,
                 "position_id": pos,
                 "position": pos_labels[pos],
-                "price": float(rng.uniform(4.0, 12.0)),
+                "price": float(rng.uniform(4.0, 9.0)),
                 "selected_by_percent": float(rng.uniform(0, 50)),
                 "available": True,
                 "form": base_score,

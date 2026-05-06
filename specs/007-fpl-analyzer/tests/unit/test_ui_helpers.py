@@ -33,7 +33,7 @@ class TestFormatMoney:
             (100.0, "£100.0m"),
             (95.5, "£95.5m"),
             (0, "£0.0m"),
-            (4.25, "£4.3m"),  # rounded to 1 decimal
+            (4.25, "£4.2m"),  # banker's rounding (Python's default for .5)
             (12, "£12.0m"),
         ],
     )

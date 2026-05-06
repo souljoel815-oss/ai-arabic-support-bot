@@ -93,10 +93,12 @@ class TestPlayersDfFromBootstrap:
 
     def test_available_threshold_is_75pct(self, bootstrap_static_payload):
         df = players_df_from_bootstrap(bootstrap_static_payload)
-        # 202 has chance_of_playing=75 → just barely available
-        assert df[df.player_id == 202].iloc[0].available is True
+        # 202 has chance_of_playing=75 → just barely available.
+        # `bool()` cast because pandas surfaces ``np.True_`` (a numpy
+        # scalar) and ``is True`` would compare object identity.
+        assert bool(df[df.player_id == 202].iloc[0].available) is True
         # 205 has chance_of_playing=50 → NOT available (FR-010)
-        assert df[df.player_id == 205].iloc[0].available is False
+        assert bool(df[df.player_id == 205].iloc[0].available) is False
 
     def test_player_id_is_unique(self, bootstrap_static_payload):
         df = players_df_from_bootstrap(bootstrap_static_payload)
@@ -241,9 +243,10 @@ class TestBuildFeatureMatrixAvailability:
     def test_available_flag_propagates(self, bootstrap_static_payload, fixtures_payload):
         p_df, f_df, t_df = _make_inputs(bootstrap_static_payload, fixtures_payload)
         m_df = build_feature_matrix(p_df, f_df, t_df, target_gw=31, horizon=1)
-        # 205 (Esteban) is unavailable per the fixture (chance_of_playing=50)
+        # 205 (Esteban) is unavailable per the fixture (chance_of_playing=50).
+        # ``bool()`` cast normalises pandas/numpy ``np.False_`` to plain bool.
         esteban = m_df[m_df.player_id == 205].iloc[0]
-        assert esteban.available is False
-        # 202 (Boateng) is at the 75% threshold — still considered available
+        assert bool(esteban.available) is False
+        # 202 (Boateng) is at the 75% threshold — still considered available.
         boateng = m_df[m_df.player_id == 202].iloc[0]
-        assert boateng.available is True
+        assert bool(boateng.available) is True
