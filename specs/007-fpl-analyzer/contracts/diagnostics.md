@@ -35,7 +35,7 @@ source.understat.detail=python_3_14_no_aiohttp_wheel
 source.understat.elapsed_ms=0
 model.baseline_mae=1.83
 model.weights={"xgb":0.33,"lgbm":0.33,"catboost":0.33}
-model.top_features=form,fixture_difficulty_5,minutes_last5,xG_last5,price
+model.top_features=form:0.31,fixture_difficulty_5:0.18,minutes_last5:0.14,xG_last5:0.11,price:0.09
 warning.0=Player 348 (Smith) flagged 50% chance — excluded from XI
 ```
 
@@ -46,6 +46,8 @@ Rules:
 - The block is bounded by a leading `=== RUN STATUS ===` line and a trailing blank line.
 - The order of keys is fixed (matches the dataclass field order in data-model.md).
 - Tests use a small parser (`fpl.diagnostics.parse_status_block`) to round-trip the stdout block into a `RunStatus` and compare structurally.
+- `model.top_features` uses `name:importance` pairs (comma-separated) so the round-trip in `parse_status_block` is lossless. The JSON-on-disk schema (below) carries the same pairs as `[name, importance]` arrays.
+- `inputs` are intentionally **not** in the CLI block — only the JSON-on-disk record carries them. The CLI surface is a diagnostic, not an audit log.
 
 ## Web UI rendering
 

@@ -1,0 +1,9 @@
+[
+  {"id": 1, "event": 31, "kickoff_time": "2026-05-03T18:30:00Z", "finished": false, "team_h": 1, "team_a": 2, "team_h_difficulty": 3, "team_a_difficulty": 4},
+  {"id": 2, "event": 31, "kickoff_time": "2026-05-04T16:00:00Z", "finished": false, "team_h": 3, "team_a": 4, "team_h_difficulty": 2, "team_a_difficulty": 5},
+  {"id": 3, "event": 31, "kickoff_time": "2026-05-04T18:30:00Z", "finished": false, "team_h": 1, "team_a": 5, "team_h_difficulty": 3, "team_a_difficulty": 4},
+
+  {"id": 4, "event": 32, "kickoff_time": "2026-05-10T18:30:00Z", "finished": false, "team_h": 2, "team_a": 3, "team_h_difficulty": 5, "team_a_difficulty": 2},
+  {"id": 5, "event": 32, "kickoff_time": "2026-05-11T16:00:00Z", "finished": false, "team_h": 4, "team_a": 5, "team_h_difficulty": 4, "team_a_difficulty": 3},
+  {"id": 6, "event": 32, "kickoff_time": "2026-05-11T18:30:00Z", "finished": false, "team_h": 2, "team_a": 4, "team_h_difficulty": 4, "team_a_difficulty": 4}
+]

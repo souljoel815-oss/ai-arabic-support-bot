@@ -1,0 +1,8 @@
+# FPL Ultimate Analyzer — development / test dependencies
+# Install:   pip install -r requirements.txt -r requirements-dev.txt
+
+pytest>=8
+pytest-cov>=5
+responses>=0.25      # HTTP mocking against the FPL public API
+freezegun>=1.5       # time-pinning for cache-TTL tests
+streamlit>=1.28      # required at test time for the AppTest harness in tests/integration/test_p5_web_ui_smoke.py

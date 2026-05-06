@@ -24,10 +24,10 @@ description: "Task list for FPL Ultimate Analyzer (007-fpl-analyzer)"
 
 **Purpose**: Initialise the project skeleton inside `specs/007-fpl-analyzer/` so subsequent phases have somewhere to import from.
 
-- [ ] T001 Create the package + tests directory skeleton at `specs/007-fpl-analyzer/`: create empty `fpl/__init__.py`, `fpl/models/__init__.py`, `fpl/optimizer/__init__.py`, `tests/__init__.py`, `tests/conftest.py`, `tests/contract/__init__.py`, `tests/integration/__init__.py`, `tests/unit/__init__.py`, `tests/fixtures/fpl/.gitkeep`, `tests/fixtures/understat/.gitkeep`
-- [ ] T002 Add `specs/007-fpl-analyzer/requirements-dev.txt` listing test dependencies: `pytest>=8`, `responses>=0.25`, `freezegun>=1.5`, `pytest-cov>=5`, `streamlit>=1.28` (for the P5 AppTest harness)
-- [ ] T003 [P] Add `specs/007-fpl-analyzer/pytest.ini` with `[pytest] testpaths = tests`, `addopts = -q --strict-markers`, and markers `contract`, `integration`, `unit`
-- [ ] T004 [P] Add `specs/007-fpl-analyzer/fpl/_version.py` with `__version__ = "0.1.0"` and re-export from `fpl/__init__.py`
+- [X] T001 Create the package + tests directory skeleton at `specs/007-fpl-analyzer/`: create empty `fpl/__init__.py`, `fpl/models/__init__.py`, `fpl/optimizer/__init__.py`, `tests/__init__.py`, `tests/conftest.py`, `tests/contract/__init__.py`, `tests/integration/__init__.py`, `tests/unit/__init__.py`, `tests/fixtures/fpl/.gitkeep`, `tests/fixtures/understat/.gitkeep`
+- [X] T002 Add `specs/007-fpl-analyzer/requirements-dev.txt` listing test dependencies: `pytest>=8`, `responses>=0.25`, `freezegun>=1.5`, `pytest-cov>=5`, `streamlit>=1.28` (for the P5 AppTest harness)
+- [X] T003 [P] Add `specs/007-fpl-analyzer/pytest.ini` with `[pytest] testpaths = tests`, `addopts = -q --strict-markers`, and markers `contract`, `integration`, `unit`
+- [X] T004 [P] Add `specs/007-fpl-analyzer/fpl/_version.py` with `__version__ = "0.1.0"` and re-export from `fpl/__init__.py`
 
 ---
 
@@ -39,44 +39,44 @@ description: "Task list for FPL Ultimate Analyzer (007-fpl-analyzer)"
 
 ### Test fixtures (parallel, no internal deps)
 
-- [ ] T005 [P] Create representative bootstrap-static fixture at `specs/007-fpl-analyzer/tests/fixtures/fpl/bootstrap_static.json` — 4 events spanning a current/finished/upcoming mix, 3 teams, 8 elements covering all 4 positions, with `history_past`, `chance_of_playing_next_round`, `expected_goals`, `expected_assists`, `selected_by_percent` populated
-- [ ] T006 [P] Create fixtures fixture at `specs/007-fpl-analyzer/tests/fixtures/fpl/fixtures.json` — 6 fixtures across 2 GWs, including one DGW for one team and one blank for another
-- [ ] T007 [P] Create picks fixture at `specs/007-fpl-analyzer/tests/fixtures/fpl/picks_team_12345_gw30.json` — 15 picks (2 GK / 5 DEF / 5 MID / 3 FWD), captain + vice flagged, `entry_history` with bank/value/total_transfers
-- [ ] T008 [P] Create Understat fixture at `specs/007-fpl-analyzer/tests/fixtures/understat/epl_2025.html` — minimal HTML containing a `<script>` block with `playersData` JSON for the 8 players in `bootstrap_static.json` (xG, xA, time)
+- [X] T005 [P] Create representative bootstrap-static fixture at `specs/007-fpl-analyzer/tests/fixtures/fpl/bootstrap_static.json` — 4 events spanning a current/finished/upcoming mix, 3 teams, 8 elements covering all 4 positions, with `history_past`, `chance_of_playing_next_round`, `expected_goals`, `expected_assists`, `selected_by_percent` populated
+- [X] T006 [P] Create fixtures fixture at `specs/007-fpl-analyzer/tests/fixtures/fpl/fixtures.json` — 6 fixtures across 2 GWs, including one DGW for one team and one blank for another
+- [X] T007 [P] Create picks fixture at `specs/007-fpl-analyzer/tests/fixtures/fpl/picks_team_12345_gw30.json` — 15 picks (2 GK / 5 DEF / 5 MID / 3 FWD), captain + vice flagged, `entry_history` with bank/value/total_transfers
+- [X] T008 [P] Create Understat fixture at `specs/007-fpl-analyzer/tests/fixtures/understat/epl_2025.html` — minimal HTML containing a `<script>` block with `playersData` JSON for the 8 players in `bootstrap_static.json` (xG, xA, time)
 
 ### Errors module (no test needed — pure exception classes)
 
-- [ ] T009 [P] Implement `specs/007-fpl-analyzer/fpl/errors.py` defining `UnknownTeamId`, `FPLApiError`, `CacheWriteError` exceptions per `contracts/package_api.md` § Errors
+- [X] T009 [P] Implement `specs/007-fpl-analyzer/fpl/errors.py` defining `UnknownTeamId`, `FPLApiError`, `CacheWriteError` exceptions per `contracts/package_api.md` § Errors
 
 ### Typed dataclass layer (test-first)
 
-- [ ] T010 [P] Write `specs/007-fpl-analyzer/tests/unit/test_squad_invariants.py` — Red — assert `Squad.__post_init__` rejects: wrong total count, wrong position split, >3 per club, invalid XI formation, captain == vice (FR-019, SC-006, SC-007). Use small synthetic `player_ids` lists.
-- [ ] T011 Implement `specs/007-fpl-analyzer/fpl/types.py` with `TransferLeg`, `Squad`, `Recommendation`, `MultiWeekStep`, `MultiWeekPlan`, `ChipRecommendation`, `ChipPlan`, `CachedAnalysisResult` dataclasses + `__post_init__` invariant checks per `data-model.md` §§ 4-7, 9. Passes T010 Green.
+- [X] T010 [P] Write `specs/007-fpl-analyzer/tests/unit/test_squad_invariants.py` — Red — assert `Squad.__post_init__` rejects: wrong total count, wrong position split, >3 per club, invalid XI formation, captain == vice (FR-019, SC-006, SC-007). Use small synthetic `player_ids` lists.
+- [X] T011 Implement `specs/007-fpl-analyzer/fpl/types.py` with `TransferLeg`, `Squad`, `Recommendation`, `MultiWeekStep`, `MultiWeekPlan`, `ChipRecommendation`, `ChipPlan`, `CachedAnalysisResult` dataclasses + `__post_init__` invariant checks per `data-model.md` §§ 4-7, 9. Passes T010 Green.
 
 ### FPL API client (test-first)
 
-- [ ] T012 [P] Write `specs/007-fpl-analyzer/tests/contract/test_fpl_api.py` — Red — locks `contracts/fpl_api.md`: assert that `fpl.api.fetch_bootstrap_static`, `fetch_fixtures`, `fetch_team_picks(team_id, gw)`, `fetch_understat_optional(season)` exist; the User-Agent header matches `fpl-analyzer/<version>`; only the listed endpoints are called; field subset consumed matches the contract; cold-run total request count ≤ 4 with all four sources or ≤ 2 without picks/Understat (FR-037)
-- [ ] T013 [P] Write `specs/007-fpl-analyzer/tests/unit/test_api_retry.py` — Red — using `responses`, assert exponential backoff on 429/5xx with `total=3, backoff_factor=1.0`; final `FPLApiError` after exhaustion; non-retried 4xx (other than 429) raises immediately; 404 on the picks endpoint raises `UnknownTeamId`
-- [ ] T014 Implement `specs/007-fpl-analyzer/fpl/api.py`: `requests.Session` + `urllib3.Retry` adapter, descriptive User-Agent header sourced from `fpl._version.__version__`, 100 ms inter-request gap, 10 s connect / 20 s read timeouts, four bulk fetchers (`fetch_bootstrap_static`, `fetch_fixtures`, `fetch_team_picks`, `fetch_understat_optional`). Passes T012 + T013 Green.
+- [X] T012 [P] Write `specs/007-fpl-analyzer/tests/contract/test_fpl_api.py` — Red — locks `contracts/fpl_api.md`: assert that `fpl.api.fetch_bootstrap_static`, `fetch_fixtures`, `fetch_team_picks(team_id, gw)`, `fetch_understat_optional(season)` exist; the User-Agent header matches `fpl-analyzer/<version>`; only the listed endpoints are called; field subset consumed matches the contract; cold-run total request count ≤ 4 with all four sources or ≤ 2 without picks/Understat (FR-037)
+- [X] T013 [P] Write `specs/007-fpl-analyzer/tests/unit/test_api_retry.py` — Red — using `responses`, assert exponential backoff on 429/5xx with `total=3, backoff_factor=1.0`; final `FPLApiError` after exhaustion; non-retried 4xx (other than 429) raises immediately; 404 on the picks endpoint raises `UnknownTeamId`
+- [X] T014 Implement `specs/007-fpl-analyzer/fpl/api.py`: `requests.Session` + `urllib3.Retry` adapter, descriptive User-Agent header sourced from `fpl._version.__version__`, 100 ms inter-request gap, 10 s connect / 20 s read timeouts, four bulk fetchers (`fetch_bootstrap_static`, `fetch_fixtures`, `fetch_team_picks`, `fetch_understat_optional`). Passes T012 + T013 Green.
 
 ### Disk cache (test-first)
 
-- [ ] T015 [P] Write `specs/007-fpl-analyzer/tests/unit/test_cache.py` — Red — using `freezegun` and `tmp_path`: assert TTL expiry at 1 h, restart-survival within TTL (re-instantiate cache and re-read), SHA-1 cache-key derivation from canonical input tuple, `clear_cache()` removes the directory and recreates skeleton, `cache.lock` blocks a second writer attempting to write the same key concurrently
-- [ ] T016 Implement `specs/007-fpl-analyzer/fpl/cache.py`: resolve cache root via `platformdirs.user_cache_dir("fpl-analyzer")` (overridable via `cache_dir` arg used in tests); read/write Parquet (data), joblib (models), JSON (runs); SHA-1 key from canonical-JSON of `(target_gw, horizon, budget, team_id, no_understat, package_version)`; advisory `cache.lock` file. Passes T015 Green.
+- [X] T015 [P] Write `specs/007-fpl-analyzer/tests/unit/test_cache.py` — Red — using `freezegun` and `tmp_path`: assert TTL expiry at 1 h, restart-survival within TTL (re-instantiate cache and re-read), SHA-1 cache-key derivation from canonical input tuple, `clear_cache()` removes the directory and recreates skeleton, `cache.lock` blocks a second writer attempting to write the same key concurrently
+- [X] T016 Implement `specs/007-fpl-analyzer/fpl/cache.py`: resolve cache root via `platformdirs.user_cache_dir("fpl-analyzer")` (overridable via `cache_dir` arg used in tests); read/write Parquet (data), joblib (models), JSON (runs); SHA-1 key from canonical-JSON of `(target_gw, horizon, budget, team_id, no_understat, package_version)`; advisory `cache.lock` file. Passes T015 Green.
 
 ### Run Status / Diagnostics (test-first)
 
-- [ ] T017 [P] Write `specs/007-fpl-analyzer/tests/contract/test_diagnostics.py` — Red — locks `contracts/diagnostics.md`: assert `render_cli_block(rs)` produces the exact key order documented; `parse_status_block(text)` round-trips back to a structurally-equal `RunStatus`; on-disk JSON conforms to the schema in the contract; required-source presence matrix holds across the 4 input combinations (with/without team_id × with/without Understat)
-- [ ] T018 Implement `specs/007-fpl-analyzer/fpl/diagnostics.py`: `DataSourceStatus`, `CacheStatus`, `ModelDiagnostics`, `RunStatus` dataclasses; `render_cli_block(rs) -> str`; `parse_status_block(text) -> RunStatus`; `write_json_run(rs, path)`. Passes T017 Green.
+- [X] T017 [P] Write `specs/007-fpl-analyzer/tests/contract/test_diagnostics.py` — Red — locks `contracts/diagnostics.md`: assert `render_cli_block(rs)` produces the exact key order documented; `parse_status_block(text)` round-trips back to a structurally-equal `RunStatus`; on-disk JSON conforms to the schema in the contract; required-source presence matrix holds across the 4 input combinations (with/without team_id × with/without Understat)
+- [X] T018 Implement `specs/007-fpl-analyzer/fpl/diagnostics.py`: `DataSourceStatus`, `CacheStatus`, `ModelDiagnostics`, `RunStatus` dataclasses; `render_cli_block(rs) -> str`; `parse_status_block(text) -> RunStatus`; `write_json_run(rs, path)`. Passes T017 Green.
 
 ### Feature engineering (test-first)
 
-- [ ] T019 [P] Write `specs/007-fpl-analyzer/tests/unit/test_features.py` — Red — assert `build_feature_matrix(players_df, fixtures_df, target_gw, horizon, understat_df=None) -> pd.DataFrame` produces one row per (player, target_gw); columns match research.md § 5; rolling windows respect target deadline (no leakage — pin `kickoff_time`, query a past GW, assert no future fixture leaks in)
-- [ ] T020 Implement `specs/007-fpl-analyzer/fpl/features.py` per research.md § 5. Passes T019 Green.
+- [X] T019 [P] Write `specs/007-fpl-analyzer/tests/unit/test_features.py` — Red — assert `build_feature_matrix(players_df, fixtures_df, target_gw, horizon, understat_df=None) -> pd.DataFrame` produces one row per (player, target_gw); columns match research.md § 5; rolling windows respect target deadline (no leakage — pin `kickoff_time`, query a past GW, assert no future fixture leaks in)
+- [X] T020 Implement `specs/007-fpl-analyzer/fpl/features.py` per research.md § 5. Passes T019 Green.
 
 ### Foundation export
 
-- [ ] T021 Update `specs/007-fpl-analyzer/fpl/__init__.py` to re-export `__version__` and a placeholder `run_analysis` raising `NotImplementedError("US1 not yet implemented")` — lets contract tests for `package_api.md` import the symbol even before US1 is built
+- [X] T021 Update `specs/007-fpl-analyzer/fpl/__init__.py` to re-export `__version__` and a placeholder `run_analysis` raising `NotImplementedError("US1 not yet implemented")` — lets contract tests for `package_api.md` import the symbol even before US1 is built
 
 **Checkpoint**: Foundation ready. User Stories 1-5 may now begin in any order (or in parallel by separate developers).
 
@@ -90,19 +90,19 @@ description: "Task list for FPL Ultimate Analyzer (007-fpl-analyzer)"
 
 ### Tests for User Story 1
 
-- [ ] T022 [P] [US1] Write `specs/007-fpl-analyzer/tests/contract/test_cli.py` — Red — locks `contracts/cli.md`: assert each documented flag is parsed; mutually-exclusive combinations exit 2; exit codes 0/2/3/4/5 match; in analysis mode the stdout block order is RUN STATUS → RECOMMENDATION → MULTI-WEEK PLAN → CHIP PLAN → DIFFERENTIALS; `--no-multi-week` omits the MULTI-WEEK PLAN block
-- [ ] T023 [P] [US1] Write `specs/007-fpl-analyzer/tests/contract/test_package_api.py` — Red — locks `contracts/package_api.md`: assert the `fpl.run_analysis(...)` keyword-only signature; assert the returned mapping exposes both the typed-field accessors AND every legacy key consumed by `fpl_gui.py` (`'mode'`, `'gw'`, `'pred_df'`, `'differential_df'`, `'multi_gw_outlook'`, `'squad'`, `'current_squad_plan'`, `'multi_week_plan'`, `'chip_plan'`, `'top_features'`, `'baseline_mae'`, `'model_weights'`, `'primary_view'`)
-- [ ] T024 [P] [US1] Write `specs/007-fpl-analyzer/tests/integration/test_p1_weekly_rec.py` — Red — covers all 4 US-1 acceptance scenarios using the fixtures from T005-T008: (1) HOLD or transfer with gain/hit/captain; (2) HOLD when no positive-gain transfer exists, with note; (3) net-of-hit gain shown when 0 FTs; (4) invalid Team ID → `UnknownTeamId` from package, exit 5 from CLI, with fallback-to-from-scratch suggestion message
-- [ ] T025 [P] [US1] Write `specs/007-fpl-analyzer/tests/unit/test_models.py` — Red — assert: ensemble mean-head output has shape `(n_players, horizon)`; quantile head ≥ mean head element-wise (FR-008 ceiling monotonicity); Poisson head non-negative; baseline-vs-ensemble MAE on the fixture set is reasonable
+- [X] T022 [P] [US1] Write `specs/007-fpl-analyzer/tests/contract/test_cli.py` — Red — locks `contracts/cli.md`: assert each documented flag is parsed; mutually-exclusive combinations exit 2; exit codes 0/2/3/4/5 match; in analysis mode the stdout block order is RUN STATUS → RECOMMENDATION → MULTI-WEEK PLAN → CHIP PLAN → DIFFERENTIALS; `--no-multi-week` omits the MULTI-WEEK PLAN block
+- [X] T023 [P] [US1] Write `specs/007-fpl-analyzer/tests/contract/test_package_api.py` — Red — locks `contracts/package_api.md`: assert the `fpl.run_analysis(...)` keyword-only signature; assert the returned mapping exposes both the typed-field accessors AND every legacy key consumed by `fpl_gui.py` (`'mode'`, `'gw'`, `'pred_df'`, `'differential_df'`, `'multi_gw_outlook'`, `'squad'`, `'current_squad_plan'`, `'multi_week_plan'`, `'chip_plan'`, `'top_features'`, `'baseline_mae'`, `'model_weights'`, `'primary_view'`)
+- [X] T024 [P] [US1] Write `specs/007-fpl-analyzer/tests/integration/test_p1_weekly_rec.py` — Red — covers all 4 US-1 acceptance scenarios using the fixtures from T005-T008: (1) HOLD or transfer with gain/hit/captain; (2) HOLD when no positive-gain transfer exists, with note; (3) net-of-hit gain shown when 0 FTs; (4) invalid Team ID → `UnknownTeamId` from package, exit 5 from CLI, with fallback-to-from-scratch suggestion message
+- [X] T025 [P] [US1] Write `specs/007-fpl-analyzer/tests/unit/test_models.py` — Red — assert: ensemble mean-head output has shape `(n_players, horizon)`; quantile head ≥ mean head element-wise (FR-008 ceiling monotonicity); Poisson head non-negative; baseline-vs-ensemble MAE on the fixture set is reasonable
 
 ### Implementation for User Story 1
 
-- [ ] T026 [P] [US1] Implement `specs/007-fpl-analyzer/fpl/models/baseline.py` — naive baseline (`predicted = season_PPG × form_modifier`) with `train(X, y)` and `predict(X) -> np.ndarray`. Used by T025 and SC-008 backtest comparison
-- [ ] T027 [US1] Implement `specs/007-fpl-analyzer/fpl/models/ensemble.py` with three trained heads per research.md § 4: mean = equal-weighted mean of `XGBRegressor + LGBMRegressor + CatBoostRegressor` (n_estimators=400, learning_rate=0.05, max_depth=6); quantile = `LGBMRegressor(objective="quantile", alpha=0.9)`; Poisson = `LGBMRegressor(objective="poisson")`. Public API: `Ensemble.train(X, y)`, `Ensemble.predict_mean(X)`, `Ensemble.predict_ceiling(X)`, `Ensemble.predict_goal_rate(X)`. Passes T025 Green.
-- [ ] T028 [US1] Implement `specs/007-fpl-analyzer/fpl/optimizer/transfer.py` per research.md § 7: enumerate hold / 1-transfer / 2-transfer; pre-filter candidate pool to top-50 per position; pre-filter 2-transfer combos by free-budget heuristic; score each candidate by net gain after hits; return a `Recommendation` plus up to 5 alternatives (FR-013)
-- [ ] T029 [US1] Implement `specs/007-fpl-analyzer/fpl/run.py`'s `run_analysis(...)` for the P1-only path: validate args; resolve cache; if hit, load cached result and rebuild RunStatus; if miss, fetch (api), build features (features), train/predict (models), run transfer-optimizer (optimizer.transfer), assemble RunStatus, persist to cache, return mapping. Multi-week / chips / from-scratch branches return `None`/placeholders; differentials filter on `selected_by_percent < 10`. Passes T023 + T024 Green for P1 scenarios.
-- [ ] T030 [US1] Implement `specs/007-fpl-analyzer/fpl/cli.py` `main(argv=None) -> int` per `contracts/cli.md`: argparse with all flags; mutually-exclusive validation; invokes `run_analysis` (or backtest path — placeholder until Phase 8); prints `=== RUN STATUS ===` and `=== RECOMMENDATION ===` and `=== CHIP PLAN ===` and `=== DIFFERENTIALS ===` blocks; maps exceptions to exit codes. Passes T022 Green.
-- [ ] T031 [US1] Wire `specs/007-fpl-analyzer/fpl/__init__.py` to export the real `run_analysis` from `fpl.run`. Verify `python fpl_main.py --team-id 12345 --gw 30 --no-multi-week` works end-to-end against the fixtures in T005-T008 (mocked via responses inside the integration test).
+- [X] T026 [P] [US1] Implement `specs/007-fpl-analyzer/fpl/models/baseline.py` — naive baseline (`predicted = season_PPG × form_modifier`) with `train(X, y)` and `predict(X) -> np.ndarray`. Used by T025 and SC-008 backtest comparison
+- [X] T027 [US1] Implement `specs/007-fpl-analyzer/fpl/models/ensemble.py` with three trained heads per research.md § 4: mean = equal-weighted mean of `XGBRegressor + LGBMRegressor + CatBoostRegressor` (n_estimators=400, learning_rate=0.05, max_depth=6); quantile = `LGBMRegressor(objective="quantile", alpha=0.9)`; Poisson = `LGBMRegressor(objective="poisson")`. Public API: `Ensemble.train(X, y)`, `Ensemble.predict_mean(X)`, `Ensemble.predict_ceiling(X)`, `Ensemble.predict_goal_rate(X)`. Passes T025 Green.
+- [X] T028 [US1] Implement `specs/007-fpl-analyzer/fpl/optimizer/transfer.py` per research.md § 7: enumerate hold / 1-transfer / 2-transfer; pre-filter candidate pool to top-50 per position; pre-filter 2-transfer combos by free-budget heuristic; score each candidate by net gain after hits; return a `Recommendation` plus up to 5 alternatives (FR-013)
+- [X] T029 [US1] Implement `specs/007-fpl-analyzer/fpl/run.py`'s `run_analysis(...)` for the P1-only path: validate args; resolve cache; if hit, load cached result and rebuild RunStatus; if miss, fetch (api), build features (features), train/predict (models), run transfer-optimizer (optimizer.transfer), assemble RunStatus, persist to cache, return mapping. Multi-week / chips / from-scratch branches return `None`/placeholders; differentials filter on `selected_by_percent < 10`. Passes T023 + T024 Green for P1 scenarios.
+- [X] T030 [US1] Implement `specs/007-fpl-analyzer/fpl/cli.py` `main(argv=None) -> int` per `contracts/cli.md`: argparse with all flags; mutually-exclusive validation; invokes `run_analysis` (or backtest path — placeholder until Phase 8); prints `=== RUN STATUS ===` and `=== RECOMMENDATION ===` and `=== CHIP PLAN ===` and `=== DIFFERENTIALS ===` blocks; maps exceptions to exit codes. Passes T022 Green.
+- [X] T031 [US1] Wire `specs/007-fpl-analyzer/fpl/__init__.py` to export the real `run_analysis` from `fpl.run`. Verify `python fpl_main.py --team-id 12345 --gw 30 --no-multi-week` works end-to-end against the fixtures in T005-T008 (mocked via responses inside the integration test).
 
 **Checkpoint**: P1 fully functional and demonstrable. MVP shippable.
 
