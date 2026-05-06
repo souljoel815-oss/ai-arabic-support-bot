@@ -153,8 +153,9 @@ def parse_status_block(text: str) -> RunStatus:
     """
     lines = [line for line in text.splitlines() if line.strip() != ""]
     if not lines or lines[0] != _HEADER:
+        first_seen = repr(lines[0]) if lines else "<empty>"
         raise ValueError(
-            f"Run status block must start with {_HEADER!r}, got {lines[0]!r if lines else '<empty>'}"
+            f"Run status block must start with {_HEADER!r}, got {first_seen}"
         )
 
     kv: dict[str, str] = {}
