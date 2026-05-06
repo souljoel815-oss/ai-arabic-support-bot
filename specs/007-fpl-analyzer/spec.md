@@ -5,6 +5,16 @@
 **Status**: Draft
 **Input**: User description: "Build a Fantasy Premier League (FPL) analyzer that helps a manager make better weekly decisions across a multi-gameweek planning horizon. The system ingests live FPL data (players, fixtures, prices, ownership, results) and scores each player's expected points using an ML ensemble of gradient-boosting models plus quantile/Poisson regression for ceiling and goal-rate estimates. It produces (a) a single-gameweek recommendation — transfer or hold, captain/vice picks, expected score — and (b) a multi-week transfer plan via beam search that respects bank balance, free-transfer rollover (capped at 5), and -4 hit costs. Two operating modes: (1) from-scratch squad construction within £100m using an LP optimizer that enforces all FPL squad-composition rules (15 players, 2 GK / 5 DEF / 5 MID / 3 FWD, max 3 per club), and (2) squad-continuity mode when the user supplies their FPL Team ID, comparing their actual squad against alternatives. Surface the analysis through a CLI (gameweek/horizon/team-id flags, backtest mode, cache control) and a Streamlit web UI (sidebar inputs, starting XI / bench tables, multi-week plan table, predicted-points heatmap, chip-strategy cards for Triple Captain / Bench Boost / Free Hit / Wildcard, differential-picks panel, model diagnostics). Cache fetched data and trained models for ~1 hour to avoid redundant work. Stay robust when optional data sources (e.g. Understat xG/xA) are unavailable on the user's Python version — expose a no-understat toggle and degrade gracefully with documented accuracy impact. Existing scaffolding lives in specs/007-fpl-analyzer/ (fpl_main.py CLI shim, fpl_gui.py Streamlit shim, requirements.txt) — these import from a `fpl/` package that is not yet present and needs to be designed and built as part of this feature."
 
+## Clarifications
+
+### Session 2026-05-06
+
+- Q: Authentication scope — does v1 require an FPL login for squad-continuity mode? → A: No. Post-deadline public data only; no FPL login or credential storage required or supported.
+- Q: What does CLI backtest mode output? → A: A per-gameweek summary table on stdout (MAE, recommended-XI vs actual, recommendation vs hold-baseline) plus a detailed per-player results file (CSV or JSON) written to the analyzer's cache directory for offline analysis.
+- Q: Where does the ~1-hour analysis cache live, and does it survive a restart? → A: Disk-based with 1-hour TTL in the OS-standard user cache directory; both fetched data and trained models persist across process restarts within the TTL. Same directory holds backtest artifacts.
+- Q: What's the rate-limiting strategy against the public FPL API? → A: Polite client (descriptive User-Agent, modest pacing, exponential backoff with small retry count on 429/5xx) **and** a structural preference for FPL's bulk/batched endpoints, so a cold-cache run completes in a small constant number of API requests rather than per-player loops.
+- Q: Where do data-source statuses, non-fatal warnings, and diagnostic info appear? → A: A unified Run Status / Diagnostics panel rendered in both the CLI output and the web UI on every analysis run, reporting per-source status (FPL feed, Understat), cache hit/miss, baseline prediction accuracy, and any non-fatal warnings.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Weekly transfer & captain decision for my existing squad (Priority: P1)
@@ -108,9 +118,9 @@ A manager who prefers a richer interface than the CLI opens the Streamlit app, e
 - **FR-001**: System MUST ingest the current state of all Premier League players (id, name, club, position, price, total points, ownership, status flag) from the official public FPL data feed.
 - **FR-002**: System MUST ingest fixture data covering at least the current gameweek through the maximum supported horizon (5 gameweeks ahead), including blank- and double-gameweek information per club.
 - **FR-003**: System MUST ingest historical results sufficient to train the prediction model (rolling form, recent minutes, recent goals/assists/clean sheets/saves, opponent strength).
-- **FR-004**: System MUST allow the manager to look up their own current squad, bank balance, free-transfer count, and chip-availability state by supplying an FPL Team ID.
-- **FR-005**: System MUST OPTIONALLY enrich predictions with xG/xA data from Understat when available, and MUST function correctly without it when unavailable, with a visible indicator that the optional source was skipped.
-- **FR-006**: System MUST cache fetched data and trained prediction models for approximately one hour, keyed by the inputs that affect analysis (target gameweek, horizon, budget, Team ID, no-understat toggle), and MUST expose a manual cache-clear control.
+- **FR-004**: System MUST allow the manager to look up their own squad, bank balance, free-transfer count, and chip-availability state by supplying an FPL Team ID. All squad data is read from the public, post-deadline FPL feed; v1 MUST NOT require, accept, or store FPL login credentials or session cookies.
+- **FR-005**: System MUST OPTIONALLY enrich predictions with xG/xA data from Understat when available, and MUST function correctly without it when unavailable. When the optional source is skipped (by toggle or because it is unavailable on the user's environment), this MUST be reported in the Run Status / Diagnostics panel (FR-038) so the user can see, before acting on the recommendation, that the result is from the no-Understat code path.
+- **FR-006**: System MUST cache fetched data and trained prediction models for approximately one hour on disk in the OS-standard user cache directory, keyed by the inputs that affect analysis (target gameweek, horizon, budget, Team ID, no-understat toggle). The cache MUST survive process restarts within the TTL window so a re-run from a fresh CLI invocation or web-UI reload satisfies SC-001's cached-run latency. The system MUST expose a manual cache-clear control. The same directory MUST hold backtest output artifacts (FR-029).
 
 **Prediction & scoring**
 
@@ -154,20 +164,22 @@ A manager who prefers a richer interface than the CLI opens the Streamlit app, e
 **CLI surface**
 
 - **FR-028**: The CLI MUST accept at minimum: target gameweek (auto-detect if omitted), planning horizon (default 3), Team ID (optional), budget (default £100m), no-understat toggle, multi-week-plan toggle, and a clear-cache action.
-- **FR-029**: The CLI MUST support a backtest mode that evaluates prediction accuracy against actual results for a user-supplied list of past gameweeks, using only data available before each evaluated deadline (no look-ahead bias).
+- **FR-029**: The CLI MUST support a backtest mode that evaluates prediction accuracy against actual results for a user-supplied list of past gameweeks, using only data available before each evaluated deadline (no look-ahead bias). Backtest output MUST include both: (a) a per-gameweek summary table printed to stdout with at minimum MAE, the recommended starting XI's predicted-vs-actual point delta, and the recommendation's net-points-vs-hold-baseline delta, plus an aggregate row across all evaluated gameweeks; and (b) a detailed per-player results file in CSV or JSON format written to the analyzer's cache directory, sufficient to support offline analysis (per-GW, per-player predicted vs actual points, position, club).
 
 **Web UI surface**
 
 - **FR-030**: The web UI MUST present sidebar inputs equivalent to the CLI flags (target GW, horizon, budget, Team ID, no-understat) and a Run Analysis button.
-- **FR-031**: The web UI MUST render the recommendation card, starting XI table, bench table, multi-week plan table, predicted-points heatmap, chip-strategy cards, differentials panel, and a model-diagnostics panel.
+- **FR-031**: The web UI MUST render the recommendation card, starting XI table, bench table, multi-week plan table, predicted-points heatmap, chip-strategy cards, differentials panel, and a Run Status / Diagnostics panel (FR-038) that subsumes model diagnostics.
 - **FR-032**: The web UI MUST visibly warn the manager that public FPL endpoints only update after each deadline, and that recent transfers may not be reflected.
 - **FR-033**: Display-only UI toggles (e.g., show/hide differentials, show/hide a chip card) MUST NOT invalidate the cached analysis.
 
 **Robustness & UX**
 
 - **FR-034**: System MUST gracefully handle an invalid Team ID by reporting the error and falling back to from-scratch mode rather than crashing.
-- **FR-035**: System MUST gracefully handle transient failures of the public data feed by retrying briefly and then surfacing a clear error to the manager.
+- **FR-035**: System MUST handle transient failures of the public data feed (HTTP 429, 5xx, network errors) by retrying with exponential backoff and a small maximum retry count, then surfacing a clear error to the manager if retries are exhausted. Outbound requests MUST set a descriptive User-Agent identifying the analyzer and MUST be paced modestly (no tight request loops) to remain a polite client of the public FPL API.
 - **FR-036**: All numeric outputs (predicted points, gains, costs) MUST be displayed with sufficient precision to distinguish recommendations (typically 2 decimal places).
+- **FR-037**: System MUST prefer the FPL public API's bulk/batched endpoints (e.g., single calls that return all players or all fixtures) over per-player or per-fixture iteration. A cold-cache analysis run MUST complete in a small constant number of outbound API requests across all endpoints (target: ≤10), independent of player or fixture count. Per-entity iteration is permitted only where no bulk endpoint exists.
+- **FR-038**: System MUST surface a unified Run Status / Diagnostics panel for every analysis run, in BOTH the CLI output and the web UI. The panel MUST report at minimum: (a) data-source status for each source consulted (e.g., FPL public feed: OK / retried / failed; Understat: enabled / skipped-by-toggle / unavailable on this environment); (b) cache hit or miss for the current input tuple; (c) baseline prediction accuracy (e.g., the MAE figure surfaced via FR-009); and (d) any non-fatal warnings produced during the run (e.g., a player flagged unavailable mid-fetch). The panel MUST be machine-parseable in CLI mode (key=value or structured tabular form) so it is testable.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -200,6 +212,7 @@ A manager who prefers a richer interface than the CLI opens the Streamlit app, e
 - **No persistent state between sessions**. The Team ID and other inputs are re-entered each session; only the ~1-hour analysis cache persists. A future iteration may add lightweight profile persistence.
 - **Official FPL public data feed is the primary source of truth**. Player, fixture, and squad data come from the official public endpoints. The only optional secondary source is Understat for xG/xA.
 - **Public data is post-deadline only**. Public FPL endpoints reflect each manager's squad as of the last finished gameweek deadline. Mid-week transfers made after that deadline are not visible to the analyzer until the next deadline passes; this is surfaced as a visible warning, not a bug.
+- **No FPL authentication in v1**. The analyzer reads only the public, post-deadline FPL feed. It does not log into the FPL site, does not accept or store session cookies, and does not need user credentials. (Adding optional authentication for pre-deadline current picks is a candidate for a future iteration but is explicitly out of scope here.)
 - **Default planning horizon is 3 gameweeks** (range 1-5). Longer horizons compound prediction error and exhaust beam-search budget without proportional gain.
 - **Default budget is £100m** for from-scratch mode (the FPL season-start budget). Custom budgets are supported for what-if analysis.
 - **Differential ownership threshold defaults to 10%**. Players above this are considered widely-owned and excluded from the differentials panel.
