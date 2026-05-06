@@ -48,6 +48,7 @@ from fpl.features import (
     players_df_from_bootstrap,
     teams_df_from_bootstrap,
 )
+from fpl.optimizer.multiweek import beam_search_multi_week
 from fpl.optimizer.transfer import recommend_single_week_transfer
 from fpl.types import (
     CachedAnalysisResult,
@@ -276,8 +277,16 @@ def run_analysis(
             fs_squad, pred_df, target_gw=resolved_target_gw,
         )
 
-    # ---- Multi-week plan (US2 stub for MVP) -------------------------------
-    multi_week_plan = None  # T034 fills this in
+    # ---- Multi-week plan (T034 / US2) -------------------------------------
+    if (not no_multi_week) and current_squad is not None:
+        multi_week_plan = beam_search_multi_week(
+            pred_df=pred_df,
+            starting_squad=current_squad,
+            target_gw=resolved_target_gw,
+            horizon=int(horizon),
+        )
+    else:
+        multi_week_plan = None
 
     # ---- Chip plan (US4 stub for MVP) -------------------------------------
     chip_plan = _stub_chip_plan()

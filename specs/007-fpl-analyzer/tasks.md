@@ -116,14 +116,14 @@ description: "Task list for FPL Ultimate Analyzer (007-fpl-analyzer)"
 
 ### Tests for User Story 2
 
-- [ ] T032 [P] [US2] Write `specs/007-fpl-analyzer/tests/unit/test_multiweek.py` — Red — assert beam-search invariants: every state's `fts_after ≤ 5` (FR-016, SC-007); `bank_after ≥ 0`; `hit_cost` is a multiple of 4; `len(alternatives) ≤ 3` (FR-018); `len(steps) == horizon`; consecutive steps' `gw` increments by 1
-- [ ] T033 [P] [US2] Write `specs/007-fpl-analyzer/tests/integration/test_p2_multiweek_plan.py` — Red — covers all 3 US-2 acceptance scenarios: (1) horizon-4 with FT carry-over; (2) -4 hit week 2 chosen when cumulative net gain is positive; (3) DGW/blank reflected in weekly predictions (use the DGW row in the T006 fixture)
+- [X] T032 [P] [US2] Write `specs/007-fpl-analyzer/tests/unit/test_multiweek.py` — Red — assert beam-search invariants: every state's `fts_after ≤ 5` (FR-016, SC-007); `bank_after ≥ 0`; `hit_cost` is a multiple of 4; `len(alternatives) ≤ 3` (FR-018); `len(steps) == horizon`; consecutive steps' `gw` increments by 1
+- [X] T033 [P] [US2] Write `specs/007-fpl-analyzer/tests/integration/test_p2_multiweek_plan.py` — Red — covers all 3 US-2 acceptance scenarios: (1) horizon-4 with FT carry-over; (2) -4 hit week 2 chosen when cumulative net gain is positive; (3) DGW/blank reflected in weekly predictions (use the DGW row in the T006 fixture)
 
 ### Implementation for User Story 2
 
-- [ ] T034 [US2] Implement `specs/007-fpl-analyzer/fpl/optimizer/multiweek.py` per research.md § 8: beam search with width=16, branching factor 12 actions/step (hold + top-N 1-transfer + top-M 2-transfer), state = `(squad_player_ids, bank, free_transfers, cumulative_score, cumulative_hits, path)`. Returns `MultiWeekPlan` with up to 3 alternatives. Passes T032 Green.
-- [ ] T035 [US2] Update `specs/007-fpl-analyzer/fpl/run.py` to invoke `optimizer.multiweek.beam_search(...)` when `team_id is not None` and `not no_multi_week`; populate `result['multi_week_plan']` and the typed `MultiWeekPlan` field. Passes T033 Green.
-- [ ] T036 [US2] Update `specs/007-fpl-analyzer/fpl/cli.py` to render the `=== MULTI-WEEK PLAN ===` block per `contracts/cli.md` when the plan is present. Re-run T022 — the new block becomes part of the locked stdout layout.
+- [X] T034 [US2] Implement `specs/007-fpl-analyzer/fpl/optimizer/multiweek.py` per research.md § 8: beam search with width=16, branching factor 12 actions/step (hold + top-N 1-transfer + top-M 2-transfer), state = `(squad_player_ids, bank, free_transfers, cumulative_score, cumulative_hits, path)`. Returns `MultiWeekPlan` with up to 3 alternatives. Passes T032 Green.
+- [X] T035 [US2] Update `specs/007-fpl-analyzer/fpl/run.py` to invoke `optimizer.multiweek.beam_search(...)` when `team_id is not None` and `not no_multi_week`; populate `result['multi_week_plan']` and the typed `MultiWeekPlan` field. Passes T033 Green.
+- [X] T036 [US2] Update `specs/007-fpl-analyzer/fpl/cli.py` to render the `=== MULTI-WEEK PLAN ===` block per `contracts/cli.md` when the plan is present. Re-run T022 — the new block becomes part of the locked stdout layout.
 
 **Checkpoint**: P1 + P2 both work, independently testable.
 

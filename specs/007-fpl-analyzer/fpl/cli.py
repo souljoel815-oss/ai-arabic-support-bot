@@ -234,10 +234,36 @@ def _render_recommendation(out: IO[str], result: Any) -> None:
 def _render_multi_week(out: IO[str], result: Any) -> None:
     plan = result.get("multi_week_plan")
     if plan is None:
-        out.write("Multi-week plan not yet computed (US2 / T034).\n")
+        out.write(
+            "(no multi-week plan — supply --team-id to enable continuity mode)\n"
+        )
         return
-    # T034 will render a per-GW table here.
-    out.write(str(plan) + "\n")
+    out.write(
+        f"Total: {plan.total_score:.2f}  Baseline (hold): {plan.baseline_score:.2f}  "
+        f"Net gain: {plan.net_gain_vs_baseline:+.2f}  "
+        f"Cumulative hits: {plan.cumulative_hits}\n"
+    )
+    out.write(
+        f"{'GW':<5}{'Action':<14}{'Hit':<5}{'Wk pred':<10}"
+        f"{'Bank after':<13}{'FTs after':<10}\n"
+    )
+    for step in plan.steps:
+        bank_str = f"£{step.bank_after:.2f}m"
+        out.write(
+            f"{step.gw:<5}"
+            f"{step.action.kind:<14}"
+            f"{step.action.hit_cost:<5}"
+            f"{step.week_predicted_score:<10.2f}"
+            f"{bank_str:<13}"
+            f"{step.fts_after:<10}\n"
+        )
+    if plan.alternatives:
+        out.write(f"\nAlternative paths considered: {len(plan.alternatives)}\n")
+        for i, alt in enumerate(plan.alternatives, 1):
+            out.write(
+                f"  {i}. total={alt.total_score:.2f}  hits={alt.cumulative_hits}  "
+                f"net gain={alt.net_gain_vs_baseline:+.2f}\n"
+            )
 
 
 def _render_chip_plan(out: IO[str], result: Any) -> None:
