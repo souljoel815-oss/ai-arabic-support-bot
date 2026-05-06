@@ -247,6 +247,13 @@ def run_analysis(
         target_gw=resolved_target_gw,
         horizon=int(horizon),
     )
+    # Enrich pred_df with team names so the V11 GUI's Out/In/Team columns
+    # render with human-readable values rather than raw team_id ints.
+    pred_df = pred_df.merge(
+        teams_df[["team_id", "team_name", "team_short_name"]],
+        on="team_id",
+        how="left",
+    )
 
     # ---- Mode selection (FR-021 / FR-022) ---------------------------------
     primary_view: str
@@ -634,28 +641,58 @@ def _build_current_squad_plan(
         "captain_team": int(captain_row.team_id) if captain_row is not None else 0,
         "current_score_gw1": float(xi_df.get(f"predicted_gw{target_gw}", pd.Series([0])).sum()),
         "current_score_horizon": float(xi_df.get("horizon_total", pd.Series([0])).sum()),
-        "recommended": _rec_to_dict(rec),
-        "alternatives": [_rec_to_dict(a) for a in alternatives],
+        "recommended": _rec_to_dict(rec, pred_df),
+        "alternatives": [_rec_to_dict(a, pred_df) for a in alternatives],
         "xi_df": xi_df,
         "bench_df": bench_df,
         "outlook_df": pred_df.copy(),
     }
 
 
-def _rec_to_dict(rec: Recommendation) -> dict:
+def _rec_to_dict(rec: Recommendation, pred_df: pd.DataFrame) -> dict:
+    """Render a typed Recommendation as the legacy dict shape expected by
+    ``fpl_gui.py``'s `_render_recommendation_card` and `_render_alternatives`.
+
+    Enriches each TransferLeg with the V11 fields (player name, team
+    name, horizon total) and adds a top-level ``new_score`` (sum of the
+    new starting-XI horizon totals) used by the V11 metric card.
+    """
+    pid_to_row = {int(r.player_id): r for _, r in pred_df.iterrows()}
+
+    def _team_label(row) -> str:
+        for col in ("team_short_name", "team_name"):
+            if col in row.index and row[col] is not None:
+                return str(row[col])
+        return str(int(row.team_id))
+
+    def _enrich(t) -> dict:
+        out_row = pid_to_row.get(int(t.out_player_id))
+        in_row = pid_to_row.get(int(t.in_player_id))
+        return {
+            "out_player_id": int(t.out_player_id),
+            "in_player_id": int(t.in_player_id),
+            "delta": float(t.delta),
+            "out_name": str(out_row.player_name) if out_row is not None else "?",
+            "out_team": _team_label(out_row) if out_row is not None else "?",
+            "out_horizon_total": float(out_row.horizon_total) if out_row is not None else 0.0,
+            "in_name": str(in_row.player_name) if in_row is not None else "?",
+            "in_team": _team_label(in_row) if in_row is not None else "?",
+            "in_horizon_total": float(in_row.horizon_total) if in_row is not None else 0.0,
+        }
+
+    new_xi_score = sum(
+        float(pid_to_row[int(p)].horizon_total)
+        for p in rec.new_squad.starting_xi
+        if int(p) in pid_to_row
+    )
+
     return {
         "kind": rec.kind,
-        "transfers": [
-            {
-                "out_player_id": int(t.out_player_id),
-                "in_player_id": int(t.in_player_id),
-                "delta": float(t.delta),
-            }
-            for t in rec.transfers
-        ],
+        "transfers": [_enrich(t) for t in rec.transfers],
         "hit_cost": int(rec.hit_cost),
         "gain": float(rec.gain),
         "new_bank": float(rec.new_bank),
+        "new_score": round(new_xi_score, 4),
         "captain_id": int(rec.captain_id),
         "vice_captain_id": int(rec.vice_captain_id),
         "note": rec.note,
