@@ -1,4 +1,5 @@
 using EgyptTax.Domain.Audit;
+using EgyptTax.Infrastructure.Audit;
 using Microsoft.EntityFrameworkCore;
 
 namespace EgyptTax.Infrastructure.Persistence;
