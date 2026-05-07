@@ -40,6 +40,10 @@
         <div class="tile-label">Failed</div>
         <div class="tile-value">@_failedTotal</div>
     </div>
+    <div class="eta-tile eta-tile-expired" title="Failed AND past the regulator's submission window — manual operator intervention required.">
+        <div class="tile-label">Expired (post-deadline)</div>
+        <div class="tile-value">@_expiredFailedTotal</div>
+    </div>
     <div class="eta-tile eta-tile-submitted">
         <div class="tile-label">Submitted</div>
         <div class="tile-value">@_submittedTotal</div>
@@ -110,6 +114,7 @@ else
     private int _pendingTotal;
     private int _failedTotal;
     private int _submittedTotal;
+    private int _expiredFailedTotal;
 
     private List<Row> _rows = new();
 
@@ -149,6 +154,15 @@ else
         _pendingTotal   = groups.FirstOrDefault(g => g.Status == EtaSubmissionStatus.Pending)?.Count ?? 0;
         _failedTotal    = groups.FirstOrDefault(g => g.Status == EtaSubmissionStatus.Failed)?.Count ?? 0;
         _submittedTotal = groups.FirstOrDefault(g => g.Status == EtaSubmissionStatus.Submitted)?.Count ?? 0;
+
+        // Expired Failed — past the regulator's submission window AND
+        // still Failed. Surfaced as its own tile so post-deadline rows
+        // never silently disappear from the operator's view; the
+        // FR-036 retry job intentionally leaves these alone (manual
+        // intervention is required to reattempt past the cutoff).
+        _expiredFailedTotal = await Db.Set<EtaSubmission>().AsNoTracking()
+            .CountAsync(s => s.Status == EtaSubmissionStatus.Failed
+                && s.SubmissionWindowExpiresAtUtc < _now);
 
         var critical = await Dashboard.GetUpcomingDeadlinesAsync(TimeSpan.FromHours(24), _now);
         _criticalCount = critical.Count;

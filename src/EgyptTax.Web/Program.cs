@@ -98,6 +98,7 @@ builder.Services.AddScoped<IAuditCheckpointStore, SqlSchemaCheckpointStore>();
 builder.Services.AddSingleton<INtpTimeClient>(_ => new SntpTimeClient());
 builder.Services.AddTransient<NtpHealthCheckJob>();
 builder.Services.AddTransient<AuditCheckpointJob>();
+builder.Services.AddTransient<EtaSubmissionRetryJob>();
 
 // FR-028 / R-03 — Hangfire on its own SQL Server connection
 // (`EgyptTax_Hangfire`) so the job-state schema does not pollute the
@@ -209,6 +210,17 @@ if (!string.IsNullOrWhiteSpace(hangfireConnection))
         recurringJobId: "audit-checkpoint",
         methodCall: j => j.RunOnceAsync(CancellationToken.None),
         cronExpression: "* * * * *");
+
+    // FR-036 — retry Failed-but-still-in-window ETA submissions every
+    // 15 minutes. The job's own filter excludes Submitted (terminal)
+    // and expired-window Failed rows, so cron frequency only governs
+    // recovery latency for transient mock failures, not regulator
+    // compliance — the post-time wrapper handler is responsible for
+    // the first attempt.
+    recurring.AddOrUpdate<EtaSubmissionRetryJob>(
+        recurringJobId: "eta-submission-retry",
+        methodCall: j => j.RunOnceAsync(CancellationToken.None),
+        cronExpression: "*/15 * * * *");
 }
 
 // T058 — Blazor + Razor Pages routing. The Blazor hub serves the

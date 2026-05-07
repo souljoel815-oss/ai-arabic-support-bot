@@ -211,6 +211,7 @@ html, body {
 .eta-tile-critical { border-left-color: #c62828; }
 .eta-tile-warning  { border-left-color: #ed6c02; }
 .eta-tile-failed   { border-left-color: #c62828; }
+.eta-tile-expired  { border-left-color: #555; background: #f4f4f4; }
 .eta-tile-submitted { border-left-color: #2e7d32; }
 
 .eta-tile .tile-label {
