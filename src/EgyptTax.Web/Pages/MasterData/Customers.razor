@@ -1,0 +1,268 @@
+@page "/customers"
+@using System.ComponentModel.DataAnnotations
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Customers / العملاء</h1>
+
+@if (_savedFlash is not null)
+{
+    <div class="flash-success" role="status">@_savedFlash</div>
+}
+
+<section class="master-data-list">
+    <h2>Existing customers</h2>
+    @if (_customers is null)
+    {
+        <p>Loading…</p>
+    }
+    else if (_customers.Count == 0)
+    {
+        <p><em>No customers yet — add one below.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Name (English)</th>
+                    <th>Name (Arabic)</th>
+                    <th>Profile</th>
+                    <th>TIN</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in _customers)
+                {
+                    <tr class="@(c.Status == CustomerStatus.Inactive ? "row-muted" : "")">
+                        <td>@c.Code</td>
+                        <td>@c.Name.English</td>
+                        <td>@c.Name.Arabic</td>
+                        <td>@c.TaxProfile.ProfileType</td>
+                        <td>@(c.TaxProfile.TinValue ?? "—")</td>
+                        <td>@c.Status</td>
+                        <td>
+                            @if (c.Status == CustomerStatus.Active)
+                            {
+                                <button type="button" @onclick="() => DeactivateAsync(c.Id)">Deactivate</button>
+                            }
+                            else
+                            {
+                                <button type="button" @onclick="() => ReactivateAsync(c.Id)">Reactivate</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section class="master-data-create">
+    <h2>Add a customer</h2>
+    <EditForm Model="_form" OnValidSubmit="OnCreateAsync" FormName="customer-create" class="form-grid">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <fieldset>
+            <legend>Identity</legend>
+            <label>
+                <span>Code</span>
+                <InputText @bind-Value="_form.Code" />
+            </label>
+            <label>
+                <span>Name (English)</span>
+                <InputText @bind-Value="_form.NameEnglish" />
+            </label>
+            <label>
+                <span>Name (Arabic)</span>
+                <InputText @bind-Value="_form.NameArabic" />
+            </label>
+            <label>
+                <span>Phone (optional)</span>
+                <InputText @bind-Value="_form.Phone" />
+            </label>
+            <label>
+                <span>Email (optional)</span>
+                <InputText @bind-Value="_form.Email" />
+            </label>
+        </fieldset>
+
+        <fieldset>
+            <legend>Tax profile (FR-040)</legend>
+            <label>
+                <span>Profile type</span>
+                <InputSelect @bind-Value="_form.ProfileType">
+                    <option value="@CustomerTaxProfileType.B2BRegistered">B2B — Registered</option>
+                    <option value="@CustomerTaxProfileType.B2BUnregistered">B2B — Unregistered</option>
+                    <option value="@CustomerTaxProfileType.B2CConsumer">B2C — Consumer</option>
+                </InputSelect>
+            </label>
+            @if (_form.ProfileType == CustomerTaxProfileType.B2BRegistered)
+            {
+                <label>
+                    <span>TIN (9 digits) — required for B2B Registered</span>
+                    <InputText @bind-Value="_form.Tin" />
+                </label>
+            }
+            <label>
+                <span>VAT exempt</span>
+                <InputCheckbox @bind-Value="_form.VatExemption" />
+            </label>
+            <label>
+                <span>Default sales VAT category</span>
+                <InputSelect @bind-Value="_form.DefaultVatCategoryId">
+                    <option value="@Guid.Empty">— none —</option>
+                    @if (_vatCategories is not null)
+                    {
+                        @foreach (var v in _vatCategories)
+                        {
+                            <option value="@v.Id">@v.Code (@v.RatePercent.ToString("0.##")%)</option>
+                        }
+                    }
+                </InputSelect>
+            </label>
+        </fieldset>
+
+        <fieldset>
+            <legend>Address</legend>
+            <label>
+                <span>Display (English)</span>
+                <InputText @bind-Value="_form.AddressDisplayEnglish" />
+            </label>
+            <label>
+                <span>Display (Arabic)</span>
+                <InputText @bind-Value="_form.AddressDisplayArabic" />
+            </label>
+            <label>
+                <span>Governorate</span>
+                <InputText @bind-Value="_form.AddressGovernorate" />
+            </label>
+            <label>
+                <span>Region / city</span>
+                <InputText @bind-Value="_form.AddressRegionCity" />
+            </label>
+            <label>
+                <span>Street</span>
+                <InputText @bind-Value="_form.AddressStreet" />
+            </label>
+            <label>
+                <span>Building number</span>
+                <InputText @bind-Value="_form.AddressBuildingNumber" />
+            </label>
+        </fieldset>
+
+        <button type="submit">Add customer</button>
+    </EditForm>
+</section>
+
+@code {
+    private List<Customer>? _customers;
+    private List<VatCategory>? _vatCategories;
+    private FormModel _form = new();
+    private string? _savedFlash;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _customers = await Db.Set<Customer>().AsNoTracking().OrderBy(c => c.Code).ToListAsync();
+        _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
+    }
+
+    private async Task OnCreateAsync()
+    {
+        // FR-040 — TIN required iff B2BRegistered.
+        if (_form.ProfileType == CustomerTaxProfileType.B2BRegistered
+            && string.IsNullOrWhiteSpace(_form.Tin))
+        {
+            _savedFlash = "TIN is required for B2B Registered customers.";
+            return;
+        }
+
+        var address = PostalAddress.Create(
+            display: new ArabicEnglishText(_form.AddressDisplayArabic, _form.AddressDisplayEnglish),
+            governorate: _form.AddressGovernorate,
+            regionCity: _form.AddressRegionCity,
+            street: _form.AddressStreet,
+            buildingNumber: _form.AddressBuildingNumber);
+
+        var defaultVat = _form.DefaultVatCategoryId == Guid.Empty
+            ? (Guid?)null
+            : _form.DefaultVatCategoryId;
+
+        var taxProfile = _form.ProfileType switch
+        {
+            CustomerTaxProfileType.B2BRegistered =>
+                CustomerTaxProfile.B2BRegistered(EgyptianTin.Parse(_form.Tin!), _form.VatExemption, defaultVat),
+            CustomerTaxProfileType.B2BUnregistered =>
+                CustomerTaxProfile.B2BUnregistered(_form.VatExemption, defaultVat),
+            _ =>
+                CustomerTaxProfile.B2CConsumer(_form.VatExemption, defaultVat),
+        };
+
+        var customer = new Customer(
+            code: _form.Code,
+            name: new ArabicEnglishText(_form.NameArabic, _form.NameEnglish),
+            address: address,
+            taxProfile: taxProfile,
+            phone: string.IsNullOrWhiteSpace(_form.Phone) ? null : _form.Phone,
+            email: string.IsNullOrWhiteSpace(_form.Email) ? null : _form.Email);
+        Db.Add(customer);
+        await Db.SaveChangesAsync();
+
+        _form = new FormModel();
+        _savedFlash = $"Customer {customer.Code} added.";
+        await ReloadAsync();
+    }
+
+    private async Task DeactivateAsync(Guid id)
+    {
+        var c = await Db.Set<Customer>().FirstAsync(x => x.Id == id);
+        c.Deactivate();
+        await Db.SaveChangesAsync();
+        _savedFlash = $"Customer {c.Code} deactivated.";
+        await ReloadAsync();
+    }
+
+    private async Task ReactivateAsync(Guid id)
+    {
+        var c = await Db.Set<Customer>().FirstAsync(x => x.Id == id);
+        c.Reactivate();
+        await Db.SaveChangesAsync();
+        _savedFlash = $"Customer {c.Code} reactivated.";
+        await ReloadAsync();
+    }
+
+    private sealed class FormModel
+    {
+        [Required, StringLength(32)] public string Code { get; set; } = "";
+        [Required, StringLength(200)] public string NameEnglish { get; set; } = "";
+        [Required, StringLength(200)] public string NameArabic { get; set; } = "";
+        [StringLength(32)] public string Phone { get; set; } = "";
+        [EmailAddress, StringLength(254)] public string Email { get; set; } = "";
+
+        public CustomerTaxProfileType ProfileType { get; set; } = CustomerTaxProfileType.B2BRegistered;
+        public string? Tin { get; set; }
+        public bool VatExemption { get; set; }
+        public Guid DefaultVatCategoryId { get; set; }
+
+        [Required, StringLength(500)] public string AddressDisplayEnglish { get; set; } = "";
+        [Required, StringLength(500)] public string AddressDisplayArabic { get; set; } = "";
+        [Required, StringLength(100)] public string AddressGovernorate { get; set; } = "";
+        [Required, StringLength(100)] public string AddressRegionCity { get; set; } = "";
+        [Required, StringLength(200)] public string AddressStreet { get; set; } = "";
+        [Required, StringLength(32)]  public string AddressBuildingNumber { get; set; } = "";
+    }
+}

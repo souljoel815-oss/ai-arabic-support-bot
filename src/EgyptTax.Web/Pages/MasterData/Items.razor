@@ -1,0 +1,180 @@
+@page "/items"
+@using System.ComponentModel.DataAnnotations
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Items / الأصناف</h1>
+
+@if (_savedFlash is not null)
+{
+    <div class="flash-success" role="status">@_savedFlash</div>
+}
+
+<section class="master-data-list">
+    <h2>Existing items</h2>
+    @if (_items is null)
+    {
+        <p>Loading…</p>
+    }
+    else if (_items.Count == 0)
+    {
+        <p><em>No items yet — add one below.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Name (English)</th>
+                    <th>Name (Arabic)</th>
+                    <th>Default VAT</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _items)
+                {
+                    <tr class="@(item.Status == ItemStatus.Inactive ? "row-muted" : "")">
+                        <td>@item.Code</td>
+                        <td>@item.Name.English</td>
+                        <td>@item.Name.Arabic</td>
+                        <td>@VatCodeFor(item.DefaultVatCategoryId)</td>
+                        <td>@item.Status</td>
+                        <td>
+                            @if (item.Status == ItemStatus.Active)
+                            {
+                                <button type="button" @onclick="() => DeactivateAsync(item.Id)">Deactivate</button>
+                            }
+                            else
+                            {
+                                <button type="button" @onclick="() => ReactivateAsync(item.Id)">Reactivate</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section class="master-data-create">
+    <h2>Add an item</h2>
+    @if (_vatCategories is null || _vatCategories.Count == 0)
+    {
+        <p class="flash-error">No VAT categories defined yet. The seed profile creates a Standard 14% category — run <code>dotnet run -- seed --profile us1-minimum</code> if missing.</p>
+    }
+    else
+    {
+        <EditForm Model="_form" OnValidSubmit="OnCreateAsync" FormName="item-create" class="form-grid">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <label>
+                <span>Code</span>
+                <InputText @bind-Value="_form.Code" />
+            </label>
+            <label>
+                <span>Name (English)</span>
+                <InputText @bind-Value="_form.NameEnglish" />
+            </label>
+            <label>
+                <span>Name (Arabic)</span>
+                <InputText @bind-Value="_form.NameArabic" />
+            </label>
+            <label>
+                <span>Default VAT category</span>
+                <InputSelect @bind-Value="_form.DefaultVatCategoryId">
+                    @foreach (var v in _vatCategories)
+                    {
+                        <option value="@v.Id">@v.Code (@v.RatePercent.ToString("0.##")%)</option>
+                    }
+                </InputSelect>
+            </label>
+
+            <button type="submit">Add item</button>
+        </EditForm>
+    }
+</section>
+
+@code {
+    private List<Item>? _items;
+    private List<VatCategory>? _vatCategories;
+    private FormModel _form = new();
+    private string? _savedFlash;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        if (_vatCategories is { Count: > 0 } && _form.DefaultVatCategoryId == Guid.Empty)
+        {
+            _form.DefaultVatCategoryId = _vatCategories[0].Id;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _items = await Db.Set<Item>().AsNoTracking().OrderBy(i => i.Code).ToListAsync();
+        _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
+    }
+
+    private async Task OnCreateAsync()
+    {
+        if (_form.DefaultVatCategoryId == Guid.Empty)
+        {
+            _savedFlash = "Pick a default VAT category before saving.";
+            return;
+        }
+
+        var item = new Item(
+            code: _form.Code,
+            name: new ArabicEnglishText(_form.NameArabic, _form.NameEnglish),
+            defaultVatCategoryId: _form.DefaultVatCategoryId);
+        Db.Add(item);
+        await Db.SaveChangesAsync();
+
+        _form = new FormModel
+        {
+            DefaultVatCategoryId = _vatCategories?.FirstOrDefault()?.Id ?? Guid.Empty,
+        };
+        _savedFlash = $"Item {item.Code} added.";
+        await ReloadAsync();
+    }
+
+    private async Task DeactivateAsync(Guid id)
+    {
+        var item = await Db.Set<Item>().FirstAsync(x => x.Id == id);
+        item.Deactivate();
+        await Db.SaveChangesAsync();
+        _savedFlash = $"Item {item.Code} deactivated.";
+        await ReloadAsync();
+    }
+
+    private async Task ReactivateAsync(Guid id)
+    {
+        var item = await Db.Set<Item>().FirstAsync(x => x.Id == id);
+        item.Reactivate();
+        await Db.SaveChangesAsync();
+        _savedFlash = $"Item {item.Code} reactivated.";
+        await ReloadAsync();
+    }
+
+    private string VatCodeFor(Guid id) =>
+        _vatCategories?.FirstOrDefault(v => v.Id == id) is { } v
+            ? $"{v.Code} ({v.RatePercent:0.##}%)"
+            : "—";
+
+    private sealed class FormModel
+    {
+        [Required, StringLength(32)] public string Code { get; set; } = "";
+        [Required, StringLength(200)] public string NameEnglish { get; set; } = "";
+        [Required, StringLength(200)] public string NameArabic { get; set; } = "";
+        public Guid DefaultVatCategoryId { get; set; }
+    }
+}

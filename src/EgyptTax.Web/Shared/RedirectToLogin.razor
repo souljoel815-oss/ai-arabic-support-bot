@@ -1,0 +1,15 @@
+@*
+    Renders nothing — issues a server-side redirect to /login when an
+    unauthenticated user lands on a protected route. The original URL
+    is preserved as a returnUrl query so a successful sign-in lands
+    them where they were heading.
+*@
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+    {
+        var current = Uri.EscapeDataString(new Uri(Nav.Uri).PathAndQuery);
+        Nav.NavigateTo($"/login?returnUrl={current}", forceLoad: true);
+    }
+}

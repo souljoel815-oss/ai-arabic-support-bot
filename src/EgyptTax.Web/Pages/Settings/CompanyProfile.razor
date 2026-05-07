@@ -1,0 +1,181 @@
+@page "/settings/company"
+@using System.ComponentModel.DataAnnotations
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Company profile / بيانات الشركة</h1>
+<p>Per FR-005, the single-tenant Company row drives the issuer block on every legal invoice and ETA submission.</p>
+
+@if (_savedFlash)
+{
+    <div class="flash-success" role="status">Saved.</div>
+}
+
+<EditForm Model="_form" OnValidSubmit="OnSaveAsync" FormName="company-profile" class="form-grid">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <fieldset>
+        <legend>Identity</legend>
+        <label>
+            <span>Legal name (English)</span>
+            <InputText @bind-Value="_form.LegalNameEnglish" />
+        </label>
+        <label>
+            <span>Legal name (Arabic) / الاسم القانوني</span>
+            <InputText @bind-Value="_form.LegalNameArabic" />
+        </label>
+        <label>
+            <span>Tax registration number (TIN, 9 digits)</span>
+            <InputText @bind-Value="_form.TaxRegistrationNumber" />
+        </label>
+        <label>
+            <span>Commercial registration number</span>
+            <InputText @bind-Value="_form.CommercialRegistrationNumber" />
+        </label>
+        <label>
+            <span>Taxpayer activity code (ETA)</span>
+            <InputText @bind-Value="_form.TaxpayerActivityCode" />
+        </label>
+        <label>
+            <span>Default language</span>
+            <InputSelect @bind-Value="_form.DefaultLanguage">
+                <option value="@Language.Ar">العربية / Arabic</option>
+                <option value="@Language.En">English</option>
+            </InputSelect>
+        </label>
+        <label>
+            <span>Fiscal-year start month (1–12)</span>
+            <InputNumber @bind-Value="_form.FiscalYearStartMonth" min="1" max="12" />
+        </label>
+    </fieldset>
+
+    <fieldset>
+        <legend>Address</legend>
+        <label>
+            <span>Display (English)</span>
+            <InputText @bind-Value="_form.AddressDisplayEnglish" />
+        </label>
+        <label>
+            <span>Display (Arabic) / العنوان</span>
+            <InputText @bind-Value="_form.AddressDisplayArabic" />
+        </label>
+        <label>
+            <span>Governorate</span>
+            <InputText @bind-Value="_form.AddressGovernorate" />
+        </label>
+        <label>
+            <span>Region / city</span>
+            <InputText @bind-Value="_form.AddressRegionCity" />
+        </label>
+        <label>
+            <span>Street</span>
+            <InputText @bind-Value="_form.AddressStreet" />
+        </label>
+        <label>
+            <span>Building number</span>
+            <InputText @bind-Value="_form.AddressBuildingNumber" />
+        </label>
+        <label>
+            <span>Postal code (optional)</span>
+            <InputText @bind-Value="_form.AddressPostalCode" />
+        </label>
+    </fieldset>
+
+    <button type="submit">Save</button>
+</EditForm>
+
+@code {
+    private FormModel _form = new();
+    private Company? _existing;
+    private bool _savedFlash;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _existing = await Db.Set<Company>().FirstOrDefaultAsync();
+        if (_existing is not null)
+        {
+            _form = FormModel.FromEntity(_existing);
+        }
+    }
+
+    private async Task OnSaveAsync()
+    {
+        var address = PostalAddress.Create(
+            display: new ArabicEnglishText(_form.AddressDisplayArabic, _form.AddressDisplayEnglish),
+            governorate: _form.AddressGovernorate,
+            regionCity: _form.AddressRegionCity,
+            street: _form.AddressStreet,
+            buildingNumber: _form.AddressBuildingNumber,
+            postalCode: string.IsNullOrWhiteSpace(_form.AddressPostalCode) ? null : _form.AddressPostalCode);
+
+        if (_existing is null)
+        {
+            var company = new Company(
+                legalName: new ArabicEnglishText(_form.LegalNameArabic, _form.LegalNameEnglish),
+                taxRegistrationNumber: EgyptianTin.Parse(_form.TaxRegistrationNumber),
+                commercialRegistrationNumber: _form.CommercialRegistrationNumber,
+                address: address,
+                taxpayerActivityCode: _form.TaxpayerActivityCode,
+                fiscalYearStartMonth: _form.FiscalYearStartMonth,
+                defaultLanguage: _form.DefaultLanguage);
+            Db.Add(company);
+            _existing = company;
+        }
+        else
+        {
+            _existing.UpdateAddress(address);
+            _existing.UpdateTaxpayerActivityCode(_form.TaxpayerActivityCode);
+            // Other fields (legal name, TIN, CR, fiscal year, language)
+            // are intentionally init-only on the entity for the MVP —
+            // changing them would invalidate posted documents that snapshotted them. A future "rebrand" flow lands as
+            // a dedicated audit-logged operation, not a silent edit.
+        }
+
+        await Db.SaveChangesAsync();
+        _savedFlash = true;
+    }
+
+    private sealed class FormModel
+    {
+        [Required, StringLength(200)] public string LegalNameEnglish { get; set; } = "";
+        [Required, StringLength(200)] public string LegalNameArabic  { get; set; } = "";
+        [Required, RegularExpression(@"^\d{9}$", ErrorMessage = "TIN must be exactly 9 digits.")]
+        public string TaxRegistrationNumber { get; set; } = "";
+        [Required, StringLength(32)] public string CommercialRegistrationNumber { get; set; } = "";
+        [Required, StringLength(16)] public string TaxpayerActivityCode { get; set; } = "0001";
+        [Range(1, 12)] public int FiscalYearStartMonth { get; set; } = 1;
+        public Language DefaultLanguage { get; set; } = Language.Ar;
+
+        [Required, StringLength(500)] public string AddressDisplayEnglish { get; set; } = "";
+        [Required, StringLength(500)] public string AddressDisplayArabic  { get; set; } = "";
+        [Required, StringLength(100)] public string AddressGovernorate    { get; set; } = "";
+        [Required, StringLength(100)] public string AddressRegionCity     { get; set; } = "";
+        [Required, StringLength(200)] public string AddressStreet         { get; set; } = "";
+        [Required, StringLength(32)]  public string AddressBuildingNumber { get; set; } = "";
+        [StringLength(16)]            public string AddressPostalCode    { get; set; } = "";
+
+        public static FormModel FromEntity(Company c) => new()
+        {
+            LegalNameEnglish = c.LegalName.English,
+            LegalNameArabic  = c.LegalName.Arabic,
+            TaxRegistrationNumber = c.TaxRegistrationNumber,
+            CommercialRegistrationNumber = c.CommercialRegistrationNumber,
+            TaxpayerActivityCode = c.TaxpayerActivityCode,
+            FiscalYearStartMonth = c.FiscalYearStartMonth,
+            DefaultLanguage = c.DefaultLanguage,
+            AddressDisplayEnglish = c.Address.DisplayEnglish,
+            AddressDisplayArabic  = c.Address.DisplayArabic,
+            AddressGovernorate    = c.Address.Governorate,
+            AddressRegionCity     = c.Address.RegionCity,
+            AddressStreet         = c.Address.Street,
+            AddressBuildingNumber = c.Address.BuildingNumber,
+            AddressPostalCode     = c.Address.PostalCode ?? "",
+        };
+    }
+}

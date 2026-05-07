@@ -11,8 +11,16 @@
         <div class="brand">EgyptTax</div>
         <nav class="app-nav">
             <a href="/">Home</a>
+            <a href="/customers">Customers</a>
+            <a href="/items">Items</a>
             <a href="/invoices">Invoices</a>
             <a href="/eta-dashboard">ETA Dashboard</a>
+            <a href="/settings/company">Company</a>
+            <AuthorizeView>
+                <Authorized>
+                    <a href="/logout" class="logout-link">Sign out</a>
+                </Authorized>
+            </AuthorizeView>
         </nav>
     </header>
     <main class="app-main">

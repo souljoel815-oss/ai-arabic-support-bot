@@ -113,7 +113,17 @@ builder.Services
         options.AccessDeniedPath = "/access-denied";
     });
 
-builder.Services.AddAuthorization();
+// T117 — auth policies. "FullyAuthenticated" gates the app pages
+// (master data, invoice editor, dashboard) so a user at the
+// password-verified stage can only reach /password/change and
+// /mfa/enroll, not the rest of the app.
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("FullyAuthenticated", policy => policy
+        .RequireAuthenticatedUser()
+        .RequireClaim(EgyptTax.Web.Auth.AuthClaims.AuthStage,
+            EgyptTax.Web.Auth.AuthClaims.StageFullyAuthenticated));
+});
 
 // T058 / R-11 — Blazor Server + Razor Pages host. The Razor Pages
 // runtime hosts the Blazor scaffold via /_Host (mapped as the
