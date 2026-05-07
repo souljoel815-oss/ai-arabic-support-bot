@@ -87,3 +87,12 @@ indent_size = 4
 [*Tests.cs]
 dotnet_diagnostic.CA1707.severity = none
 dotnet_diagnostic.CA2007.severity = none
+
+# EF Core auto-generated migration files — relax analyzer rules
+[**/Migrations/*.cs]
+generated_code = true
+dotnet_diagnostic.CA1861.severity = none   # Prefer static readonly over constant array
+dotnet_diagnostic.CA1062.severity = none
+dotnet_diagnostic.CA1305.severity = none
+dotnet_diagnostic.IDE0058.severity = none
+dotnet_diagnostic.IDE0290.severity = none

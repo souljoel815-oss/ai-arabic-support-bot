@@ -1,3 +1,4 @@
+using EgyptTax.Domain.Audit;
 using Microsoft.EntityFrameworkCore;
 
 namespace EgyptTax.Infrastructure.Persistence;
@@ -10,6 +11,8 @@ namespace EgyptTax.Infrastructure.Persistence;
 /// </summary>
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ValueObjectConversions.RegisterAll(modelBuilder);
