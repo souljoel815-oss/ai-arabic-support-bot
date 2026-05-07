@@ -53,6 +53,8 @@ builder.Services.AddScoped<ISessionService, SessionService>();
 // stateless singletons.
 builder.Services.AddScoped<EgyptTax.Application.Numbering.IDocumentNumberAllocator,
     EgyptTax.Infrastructure.Numbering.SqlSequentialNumberAllocator>();
+builder.Services.AddScoped<EgyptTax.Application.Accounting.IJournalEntryEmitter,
+    EgyptTax.Infrastructure.Accounting.SalesInvoiceJournalEmitter>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceWithEtaSubmissionHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.IssueCreditNoteHandler>();

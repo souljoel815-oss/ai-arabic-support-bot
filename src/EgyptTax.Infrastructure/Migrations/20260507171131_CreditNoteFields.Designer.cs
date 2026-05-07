@@ -5,6 +5,7 @@ using EgyptTax.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -12,9 +13,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EgyptTax.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260507171131_CreditNoteFields")]
+    partial class CreditNoteFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -22,92 +25,6 @@ namespace EgyptTax.Infrastructure.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("EgyptTax.Domain.Accounting.JournalEntry", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("PostedAtUtc")
-                        .HasColumnType("datetime2(3)")
-                        .HasColumnName("posted_at_utc");
-
-                    b.Property<Guid>("SourceDocumentId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("source_document_id");
-
-                    b.Property<string>("SourceDocumentNumber")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(32)")
-                        .HasColumnName("source_document_number");
-
-                    b.Property<string>("SourceDocumentType")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)")
-                        .HasColumnName("source_document_type");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SourceDocumentId")
-                        .HasDatabaseName("ix_journal_entries_source_document_id");
-
-                    b.HasIndex("SourceDocumentNumber")
-                        .HasDatabaseName("ix_journal_entries_source_document_number");
-
-                    b.ToTable("journal_entries", "accounting");
-                });
-
-            modelBuilder.Entity("EgyptTax.Domain.Accounting.JournalEntryLine", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("id");
-
-                    b.Property<string>("AccountCode")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(16)")
-                        .HasColumnName("account_code");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)")
-                        .HasColumnName("description");
-
-                    b.Property<Guid>("JournalEntryId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("journal_entry_id");
-
-                    b.ComplexProperty<Dictionary<string, object>>("Credit", "EgyptTax.Domain.Accounting.JournalEntryLine.Credit#MoneyEgp", b1 =>
-                        {
-                            b1.Property<decimal>("Amount")
-                                .HasColumnType("decimal(19,2)")
-                                .HasColumnName("credit");
-                        });
-
-                    b.ComplexProperty<Dictionary<string, object>>("Debit", "EgyptTax.Domain.Accounting.JournalEntryLine.Debit#MoneyEgp", b1 =>
-                        {
-                            b1.Property<decimal>("Amount")
-                                .HasColumnType("decimal(19,2)")
-                                .HasColumnName("debit");
-                        });
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountCode")
-                        .HasDatabaseName("ix_journal_entry_lines_account_code");
-
-                    b.HasIndex("JournalEntryId")
-                        .HasDatabaseName("ix_journal_entry_lines_journal_entry_id");
-
-                    b.ToTable("journal_entry_lines", "accounting");
-                });
 
             modelBuilder.Entity("EgyptTax.Domain.Audit.AuditLogEntry", b =>
                 {
@@ -1266,15 +1183,6 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.ToTable("user_roles", "identity");
                 });
 
-            modelBuilder.Entity("EgyptTax.Domain.Accounting.JournalEntryLine", b =>
-                {
-                    b.HasOne("EgyptTax.Domain.Accounting.JournalEntry", null)
-                        .WithMany("Lines")
-                        .HasForeignKey("JournalEntryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("EgyptTax.Domain.Invoices.SalesInvoiceLine", b =>
                 {
                     b.HasOne("EgyptTax.Domain.Invoices.SalesInvoice", null)
@@ -1321,11 +1229,6 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("EgyptTax.Domain.Accounting.JournalEntry", b =>
-                {
-                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("EgyptTax.Domain.Invoices.SalesInvoice", b =>

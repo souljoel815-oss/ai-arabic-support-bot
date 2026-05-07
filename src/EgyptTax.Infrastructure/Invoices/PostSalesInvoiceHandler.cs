@@ -1,4 +1,5 @@
 using System.Globalization;
+using EgyptTax.Application.Accounting;
 using EgyptTax.Application.Audit;
 using EgyptTax.Application.Invoices;
 using EgyptTax.Application.Numbering;
@@ -32,17 +33,20 @@ public sealed class PostSalesInvoiceHandler
     private readonly IDocumentNumberAllocator _allocator;
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
+    private readonly IJournalEntryEmitter? _journalEmitter;
 
     public PostSalesInvoiceHandler(
         AppDbContext db,
         IDocumentNumberAllocator allocator,
         IClock clock,
-        IAuditLogStore auditLog)
+        IAuditLogStore auditLog,
+        IJournalEntryEmitter? journalEmitter = null)
     {
         _db = db;
         _allocator = allocator;
         _clock = clock;
         _auditLog = auditLog;
+        _journalEmitter = journalEmitter;
     }
 
     public async Task<SalesInvoice> HandleAsync(
@@ -93,6 +97,16 @@ public sealed class PostSalesInvoiceHandler
             postedAtUtc: nowUtc,
             nowUtc: nowUtc);
         _db.Add(etaSubmission);
+
+        // T095 — emit the balanced journal entry IN THE SAME
+        // SaveChangesAsync as the post + ETA-submission row so all
+        // three commit atomically. If the emitter isn't wired (e.g.
+        // legacy callers in tests) we skip silently; production DI
+        // always supplies it.
+        if (_journalEmitter is not null)
+        {
+            await _journalEmitter.EmitForSalesInvoiceAsync(invoice, nowUtc, cancellationToken);
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 
