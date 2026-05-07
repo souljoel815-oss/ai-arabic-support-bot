@@ -8,7 +8,7 @@ using EgyptTax.Infrastructure.Persistence;
 using EgyptTax.Infrastructure.Verification;
 using Microsoft.EntityFrameworkCore;
 
-namespace EgyptTax.Web.Pages.Invoices;
+namespace EgyptTax.Infrastructure.Invoices;
 
 /// <summary>
 /// Shared loader that the PDF + eInvoice JSON download routes use to
@@ -16,8 +16,9 @@ namespace EgyptTax.Web.Pages.Invoices;
 /// id. The renderers consume an `InvoicePdfRequest` /
 /// `EInvoiceRenderRequest` shape that includes the issuer, receiver,
 /// item codes, and VAT category info; this helper builds those
-/// dictionaries in one DB roundtrip per table so /invoices/{id}/pdf
-/// and /invoices/{id}/einvoice.json both stay snappy.
+/// dictionaries in one DB roundtrip per table so the auto-submit
+/// orchestrator + the PDF / eInvoice JSON download routes all share
+/// the same hydration path.
 /// </summary>
 public static class InvoiceRenderingPipeline
 {

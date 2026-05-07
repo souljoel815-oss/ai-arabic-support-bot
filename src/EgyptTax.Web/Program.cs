@@ -54,9 +54,19 @@ builder.Services.AddScoped<ISessionService, SessionService>();
 builder.Services.AddScoped<EgyptTax.Application.Numbering.IDocumentNumberAllocator,
     EgyptTax.Infrastructure.Numbering.SqlSequentialNumberAllocator>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceWithEtaSubmissionHandler>();
 builder.Services.AddSingleton<EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer, EgyptTax.Infrastructure.Pdf.QuestPdfInvoiceRenderer>();
 builder.Services.AddSingleton<EgyptTax.Application.Eta.IEInvoiceJsonGenerator, EgyptTax.Infrastructure.Eta.EInvoiceJsonGenerator>();
 builder.Services.AddScoped<EgyptTax.Application.Eta.IEtaDashboardQuery, EgyptTax.Infrastructure.Eta.SqlEtaDashboardQuery>();
+
+// T094-T095 — ETA submission orchestration. Default mock failure rate
+// is 0% (see MockEtaSubmitter.DefaultFailureRate); operators dial it
+// up via configuration to exercise the Failed branch in dev / smoke /
+// load-test environments.
+var etaFailureRate = builder.Configuration.GetValue<double>("Eta:Mock:FailureRate",
+    EgyptTax.Infrastructure.Eta.MockEtaSubmitter.DefaultFailureRate);
+builder.Services.AddSingleton<EgyptTax.Application.Eta.IEtaSubmitter>(
+    _ => new EgyptTax.Infrastructure.Eta.MockEtaSubmitter(etaFailureRate));
 
 // EF context — primary persistence binding.
 var primaryConnection = builder.Configuration.GetConnectionString("EgyptTax")
@@ -282,7 +292,7 @@ app.MapGet("/invoices/{id:guid}/pdf", async (
     EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer renderer,
     CancellationToken cancellationToken) =>
 {
-    var bundle = await EgyptTax.Web.Pages.Invoices.InvoiceRenderingPipeline.LoadAsync(db, id, cancellationToken);
+    var bundle = await EgyptTax.Infrastructure.Invoices.InvoiceRenderingPipeline.LoadAsync(db, id, cancellationToken);
     if (bundle is null) return Results.NotFound();
     var pdf = renderer.Render(bundle.PdfRequest);
     return Results.File(pdf, "application/pdf", $"{bundle.Invoice.DocumentNumber}.pdf");
@@ -295,10 +305,46 @@ app.MapGet("/invoices/{id:guid}/einvoice.json", async (
     EgyptTax.Application.Eta.IEInvoiceJsonGenerator generator,
     CancellationToken cancellationToken) =>
 {
-    var bundle = await EgyptTax.Web.Pages.Invoices.InvoiceRenderingPipeline.LoadAsync(db, id, cancellationToken);
+    var bundle = await EgyptTax.Infrastructure.Invoices.InvoiceRenderingPipeline.LoadAsync(db, id, cancellationToken);
     if (bundle is null) return Results.NotFound();
     var json = generator.GenerateAsJson(bundle.EInvoiceRequest);
     return Results.Content(json, "application/json");
+}).RequireAuthorization("FullyAuthenticated");
+
+// T094 — /eta-mock/submit per contracts/api/openapi.yaml. Mock ETA
+// submission endpoint that accepts an eInvoice JSON document,
+// runs it through the same simulator the in-process MockEtaSubmitter
+// uses, and returns a simulated UUID + status. Bound to localhost in
+// production via standard ASP.NET Core hosting configuration; the
+// route itself is auth-gated so cross-installation calls require a
+// valid session cookie.
+app.MapPost("/api/v1/eta-mock/submit", async (
+    HttpRequest request,
+    EgyptTax.Application.Eta.IEtaSubmitter submitter,
+    CancellationToken cancellationToken) =>
+{
+    using var reader = new StreamReader(request.Body, leaveOpen: false);
+    var body = await reader.ReadToEndAsync(cancellationToken);
+    if (string.IsNullOrWhiteSpace(body))
+    {
+        return Results.BadRequest(new { type = "/errors/empty-body", title = "Request body is required.", status = 400 });
+    }
+
+    // The simulator key is the document id — for the /eta-mock/submit
+    // external surface we don't have one (caller is just passing
+    // generic JSON), so use a synthetic guid for the simulation. The
+    // mock's outcome is independent of the id; it's purely a coin
+    // flip against the failure rate.
+    var attempt = await submitter.SubmitAsync(Guid.NewGuid(), body, cancellationToken);
+
+    var statusCode = attempt.OutcomeStatus == EgyptTax.Domain.Eta.EtaSubmissionStatus.Submitted ? 202 : 500;
+    return Results.Json(new
+    {
+        submissionUuid = attempt.SubmissionUuid ?? Guid.Empty.ToString(),
+        status = attempt.OutcomeStatus.ToString(),
+        errorCode = attempt.ErrorCode,
+        errorMessage = attempt.ErrorMessage,
+    }, statusCode: statusCode);
 }).RequireAuthorization("FullyAuthenticated");
 
 // T096 — /api/v1/verify/{seal} per contracts/api/openapi.yaml +

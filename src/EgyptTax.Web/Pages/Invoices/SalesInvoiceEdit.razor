@@ -15,7 +15,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject NavigationManager Nav
-@inject PostSalesInvoiceHandler PostHandler
+@inject PostSalesInvoiceWithEtaSubmissionHandler PostHandler
 @inject AuthenticationStateProvider Auth
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
