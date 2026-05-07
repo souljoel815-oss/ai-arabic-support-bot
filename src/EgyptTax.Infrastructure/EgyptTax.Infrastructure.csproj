@@ -21,6 +21,7 @@
     <PackageReference Include="QRCoder" />
     <PackageReference Include="Otp.NET" />
     <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
+    <PackageReference Include="System.Formats.Cbor" />
     <PackageReference Include="Hangfire.Core" />
     <PackageReference Include="Hangfire.SqlServer" />
     <PackageReference Include="Polly" />
