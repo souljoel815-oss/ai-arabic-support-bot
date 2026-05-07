@@ -34,6 +34,7 @@ public sealed class PostSalesInvoiceWithEtaSubmissionHandler
     private readonly IEInvoiceJsonGenerator _jsonGenerator;
     private readonly IAuditLogStore _auditLog;
     private readonly IClock _clock;
+    private readonly IEtaStatusNotifier? _notifier;
 
     public PostSalesInvoiceWithEtaSubmissionHandler(
         PostSalesInvoiceHandler innerHandler,
@@ -41,7 +42,8 @@ public sealed class PostSalesInvoiceWithEtaSubmissionHandler
         IEtaSubmitter submitter,
         IEInvoiceJsonGenerator jsonGenerator,
         IAuditLogStore auditLog,
-        IClock clock)
+        IClock clock,
+        IEtaStatusNotifier? notifier = null)
     {
         _innerHandler = innerHandler;
         _db = db;
@@ -49,6 +51,7 @@ public sealed class PostSalesInvoiceWithEtaSubmissionHandler
         _jsonGenerator = jsonGenerator;
         _auditLog = auditLog;
         _clock = clock;
+        _notifier = notifier;
     }
 
     public async Task<SalesInvoice> HandleAsync(
@@ -95,6 +98,23 @@ public sealed class PostSalesInvoiceWithEtaSubmissionHandler
                 CompanyId: Guid.Empty,
                 PayloadJson: BuildAuditPayload(invoice, etaRow, attempt)),
             cancellationToken);
+
+        // T125 — broadcast the status change so the dashboard can
+        // refresh live without polling. Notifier is optional (the
+        // existing T080-T083 tests construct the handler without it
+        // and the field is nullable); when wired, fan-out goes to
+        // both SignalR clients + in-process Blazor subscribers.
+        if (_notifier is not null)
+        {
+            await _notifier.NotifyAsync(new EtaStatusChangedEvent(
+                SalesInvoiceId: invoice.Id,
+                EtaSubmissionId: etaRow.Id,
+                DocumentNumber: invoice.DocumentNumber!,
+                PreviousStatus: EtaSubmissionStatus.Pending,
+                NewStatus: attempt.OutcomeStatus,
+                AttemptCount: etaRow.AttemptCount,
+                AtUtc: _clock.UtcNow), cancellationToken);
+        }
 
         return invoice;
     }

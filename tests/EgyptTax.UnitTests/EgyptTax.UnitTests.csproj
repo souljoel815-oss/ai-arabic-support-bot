@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\src\EgyptTax.Domain\EgyptTax.Domain.csproj" />
     <ProjectReference Include="..\..\src\EgyptTax.Application\EgyptTax.Application.csproj" />
     <ProjectReference Include="..\..\src\EgyptTax.Infrastructure\EgyptTax.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\EgyptTax.Web\EgyptTax.Web.csproj" />
   </ItemGroup>
 
   <ItemGroup>

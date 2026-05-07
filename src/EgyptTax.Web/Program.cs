@@ -68,6 +68,15 @@ var etaFailureRate = builder.Configuration.GetValue<double>("Eta:Mock:FailureRat
 builder.Services.AddSingleton<EgyptTax.Application.Eta.IEtaSubmitter>(
     _ => new EgyptTax.Infrastructure.Eta.MockEtaSubmitter(etaFailureRate));
 
+// T125 — SignalR hub + in-process status notifier per FR-035 / R-22.
+// AddSignalR is registered before the hub-context-consuming notifier
+// so DI validates the dependency chain. Notifier is a singleton so
+// in-process Blazor pages can attach to its StatusChanged event and
+// have one stable subscription target across the page lifetime.
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<EgyptTax.Application.Eta.IEtaStatusNotifier,
+    EgyptTax.Web.Realtime.EtaStatusNotifier>();
+
 // EF context — primary persistence binding.
 var primaryConnection = builder.Configuration.GetConnectionString("EgyptTax")
     ?? Environment.GetEnvironmentVariable("EGYPTTAX_CONNECTION");
@@ -209,6 +218,14 @@ if (!string.IsNullOrWhiteSpace(hangfireConnection))
 app.MapBlazorHub();
 app.MapRazorPages();
 app.MapFallbackToPage("/_Host");
+
+// T125 — ETA status hub at /hubs/eta. Auth-gated so external
+// clients need a valid session cookie to subscribe to status
+// changes; in-process Blazor pages attach to the StatusChanged
+// event via IEtaStatusNotifier directly and don't traverse this
+// hub.
+app.MapHub<EgyptTax.Web.Realtime.EtaStatusHub>("/hubs/eta")
+    .RequireAuthorization("FullyAuthenticated");
 
 // T073 — Liveness / readiness probes per contracts/api/openapi.yaml.
 // Liveness only signals that the process is up; readiness verifies the

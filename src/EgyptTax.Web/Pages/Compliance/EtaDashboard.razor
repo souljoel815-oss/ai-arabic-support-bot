@@ -10,6 +10,8 @@
 @inject AppDbContext Db
 @inject IEtaDashboardQuery Dashboard
 @inject IClock Clock
+@inject IEtaStatusNotifier Notifier
+@implements IDisposable
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <h1>ETA Compliance Dashboard / لوحة الامتثال للضرائب الإلكترونية</h1>
@@ -113,8 +115,25 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        Notifier.StatusChanged += OnStatusChanged;
         await ReloadAsync();
         _loading = false;
+    }
+
+    private async void OnStatusChanged(object? sender, EtaStatusChangedEvent e)
+    {
+        // In-process broadcast fires on the thread the wrapper handler
+        // runs on; switch to the render thread before mutating state.
+        await InvokeAsync(async () =>
+        {
+            await ReloadAsync();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        Notifier.StatusChanged -= OnStatusChanged;
     }
 
     private async Task ReloadAsync()
