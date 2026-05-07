@@ -75,7 +75,11 @@ builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.IPurch
     EgyptTax.Application.Compliance.RiskScoring.Rules.MissingAttachmentRule>();
 builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.IPurchaseDocumentRiskRule,
     EgyptTax.Application.Compliance.RiskScoring.Rules.NonRecoverableInputVatRule>();
+builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.IPurchaseDocumentRiskRule,
+    EgyptTax.Application.Compliance.RiskScoring.Rules.DuplicateSupplierInvoiceRule>();
 builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.PurchaseDocumentRiskScorer>();
+builder.Services.AddScoped<EgyptTax.Application.Compliance.RiskScoring.IPurchaseInvoiceFingerprintQuery,
+    EgyptTax.Infrastructure.Compliance.SqlPurchaseInvoiceFingerprintQuery>();
 
 // US2 — purchase invoice post handler.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Purchases.PostPurchaseInvoiceHandler>();

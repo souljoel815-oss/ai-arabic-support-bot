@@ -83,7 +83,9 @@ public class MissingAttachmentRuleTests
             .ToList();
 
         return new PurchaseDocumentRiskContext(
-            invoice, supplier, attachList, new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
+            invoice, supplier, attachList,
+            SupplierInvoiceFingerprints: Array.Empty<PurchaseInvoiceFingerprint>(),
+            NowUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
     }
 
     private static Supplier NewRegisteredSupplier() =>

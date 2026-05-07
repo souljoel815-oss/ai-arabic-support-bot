@@ -71,7 +71,8 @@ public class NonRecoverableInputVatRuleTests
 
         var ctx = new PurchaseDocumentRiskContext(
             draft, laterRegisteredSupplier, Array.Empty<Attachment>(),
-            new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc));
+            SupplierInvoiceFingerprints: Array.Empty<PurchaseInvoiceFingerprint>(),
+            NowUtc: new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc));
 
         new NonRecoverableInputVatRule().Evaluate(ctx).Should().HaveCount(1,
             because: "the rule reads invoice.SupplierTaxProfileSnapshot, not the live supplier — historical decisions stay stable");
@@ -86,6 +87,7 @@ public class NonRecoverableInputVatRuleTests
             vatCategoryId: VatId, vatRatePercent: 14m, deductibleFlag: deductible);
         return new PurchaseDocumentRiskContext(
             draft, Supplier: null, Attachments: Array.Empty<Attachment>(),
+            SupplierInvoiceFingerprints: Array.Empty<PurchaseInvoiceFingerprint>(),
             NowUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
     }
 }
