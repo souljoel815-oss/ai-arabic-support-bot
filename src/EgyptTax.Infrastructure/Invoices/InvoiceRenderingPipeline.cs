@@ -83,6 +83,20 @@ public static class InvoiceRenderingPipeline
             VerifyUrl: "/api/v1/verify",
             IssuerTin: issuer.TaxRegistrationNumber));
 
+        OriginalInvoiceReference? originalRef = null;
+        if (invoice.IsCreditNote && invoice.CreditNoteOfInvoiceId is { } sourceId)
+        {
+            var source = await db.Set<SalesInvoice>()
+                .AsNoTracking()
+                .Where(i => i.Id == sourceId)
+                .Select(i => new { i.DocumentNumber, i.DocumentDate })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (source is not null && source.DocumentNumber is not null)
+            {
+                originalRef = new OriginalInvoiceReference(source.DocumentNumber, source.DocumentDate);
+            }
+        }
+
         var pdfRequest = new InvoicePdfRequest(
             Invoice: invoice,
             Issuer: issuer,
@@ -90,7 +104,8 @@ public static class InvoiceRenderingPipeline
             Items: itemRender,
             VatCategories: vatRender,
             PostedByUserDisplayName: "(unknown)",
-            SealQrPayload: sealPayload);
+            SealQrPayload: sealPayload,
+            OriginalInvoiceReference: originalRef);
 
         var eInvoiceRequest = new EInvoiceRenderRequest(
             Invoice: invoice,

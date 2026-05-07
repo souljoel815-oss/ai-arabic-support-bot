@@ -30,7 +30,18 @@ public sealed record InvoicePdfRequest(
     IReadOnlyDictionary<Guid, ItemRenderInfo> Items,
     IReadOnlyDictionary<Guid, VatCategoryRenderInfo> VatCategories,
     string PostedByUserDisplayName,
-    string SealQrPayload);
+    string SealQrPayload,
+    OriginalInvoiceReference? OriginalInvoiceReference = null);
+
+/// <summary>
+/// FR-013 — populated only when the rendered document is a credit
+/// note (the renderer's section G). Carries the source invoice's
+/// canonical document number + posting date so the credit note's
+/// PDF clearly identifies which invoice it corrects.
+/// </summary>
+public sealed record OriginalInvoiceReference(
+    string DocumentNumber,
+    DateOnly DocumentDate);
 
 public sealed record ItemRenderInfo(string Code, ArabicEnglishText Name);
 

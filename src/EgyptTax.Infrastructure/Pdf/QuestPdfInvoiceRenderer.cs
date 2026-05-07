@@ -43,7 +43,14 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
         var labelEn = DocumentTypeLabelEnglish(invoice, request.Receiver);
         var labelAr = DocumentTypeLabelArabic(invoice, request.Receiver);
         var qrPng = RenderQrPng(request.SealQrPayload);
-        var grandTotalArabicWords = ArabicWordsConverter.FromEgyptianPounds(invoice.GrandTotal);
+        // FR-014 Arabic-words converter is non-negative-only by spec;
+        // for credit notes (which carry negative totals) we render the
+        // absolute value with a "(credit)" prefix so the PDF reads
+        // sensibly without blowing up the converter.
+        var grandTotalArabicWords = invoice.IsCreditNote
+            ? "(credit) " + ArabicWordsConverter.FromEgyptianPounds(
+                EgyptTax.SharedKernel.MoneyEgp.From(Math.Abs(invoice.GrandTotal.Amount)))
+            : ArabicWordsConverter.FromEgyptianPounds(invoice.GrandTotal);
 
         var doc = QuestPDF.Fluent.Document.Create(c =>
         {
@@ -94,6 +101,23 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
                     if (!string.IsNullOrWhiteSpace(request.Receiver.Phone))
                     {
                         col.Item().Text($"Phone: {request.Receiver.Phone}");
+                    }
+
+                    // FR-013 / legal-invoice-fields.md section G —
+                    // credit-note specifics. Reference to the
+                    // original invoice number + date + reason. Only
+                    // rendered when the document is a credit note.
+                    if (invoice.IsCreditNote && request.OriginalInvoiceReference is { } orig)
+                    {
+                        col.Item().PaddingTop(10).Text("Credit note details / تفاصيل إشعار الخصم").Bold();
+                        col.Item().Text(
+                            $"Original invoice number: {orig.DocumentNumber}");
+                        col.Item().Text(
+                            $"Original invoice date: {orig.DocumentDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}");
+                        if (!string.IsNullOrWhiteSpace(invoice.CreditNoteReason))
+                        {
+                            col.Item().Text($"Reason: {invoice.CreditNoteReason}");
+                        }
                     }
 
                     col.Item().PaddingTop(10).Element(c => RenderLines(c, request));
@@ -200,15 +224,27 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
         });
     }
 
-    private static string DocumentTypeLabelEnglish(SalesInvoice invoice, Customer receiver) =>
-        invoice.CustomerTaxProfileSnapshot.ProfileType == CustomerTaxProfileType.B2CConsumer
+    private static string DocumentTypeLabelEnglish(SalesInvoice invoice, Customer receiver)
+    {
+        if (invoice.IsCreditNote)
+        {
+            return "Credit Note";
+        }
+        return invoice.CustomerTaxProfileSnapshot.ProfileType == CustomerTaxProfileType.B2CConsumer
             ? "Simplified Tax Invoice"
             : "Tax Invoice";
+    }
 
-    private static string DocumentTypeLabelArabic(SalesInvoice invoice, Customer receiver) =>
-        invoice.CustomerTaxProfileSnapshot.ProfileType == CustomerTaxProfileType.B2CConsumer
+    private static string DocumentTypeLabelArabic(SalesInvoice invoice, Customer receiver)
+    {
+        if (invoice.IsCreditNote)
+        {
+            return "إشعار خصم";
+        }
+        return invoice.CustomerTaxProfileSnapshot.ProfileType == CustomerTaxProfileType.B2CConsumer
             ? "فاتورة ضريبية مبسطة"
             : "فاتورة ضريبية";
+    }
 
     private static byte[] RenderQrPng(string payload)
     {

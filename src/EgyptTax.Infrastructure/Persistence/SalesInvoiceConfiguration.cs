@@ -21,6 +21,14 @@ internal sealed class SalesInvoiceConfiguration : IEntityTypeConfiguration<Sales
         b.Property(s => s.PostedByUserId).HasColumnName("posted_by_user_id");
         b.Property(s => s.PostingMode).HasColumnName("posting_mode").HasConversion<string>().HasMaxLength(32);
 
+        // FR-013 — credit note → original invoice link + reason. Both
+        // are nullable; non-null iff the row is a credit note.
+        b.Property(s => s.CreditNoteOfInvoiceId).HasColumnName("credit_note_of_invoice_id");
+        b.Property(s => s.CreditNoteReason).HasColumnName("credit_note_reason").HasMaxLength(2000);
+        b.HasIndex(s => s.CreditNoteOfInvoiceId)
+            .HasDatabaseName("ix_sales_invoices_credit_note_of_invoice_id")
+            .HasFilter("[credit_note_of_invoice_id] IS NOT NULL");
+
         b.ComplexProperty(s => s.CustomerTaxProfileSnapshot, t =>
         {
             t.Property(x => x.ProfileType).HasColumnName("customer_tax_profile_snapshot_type")

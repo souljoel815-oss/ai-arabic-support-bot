@@ -57,13 +57,18 @@ public sealed class PostSalesInvoiceHandler
             ?? throw new InvalidOperationException(
                 $"Sales invoice {command.SalesInvoiceId} not found.");
 
+        // FR-013 — credit notes allocate from the CN series + use the
+        // CreditNote approval setting; regular invoices use SalesInvoice.
+        // Derived from the entity rather than the command so the
+        // call-site is the same regardless of document type.
+        var documentType = invoice.IsCreditNote ? DocumentType.CreditNote : DocumentType.SalesInvoice;
         var approvalSetting = await _db.Set<DocumentTypeApprovalSetting>()
-            .FirstOrDefaultAsync(s => s.DocumentType == DocumentType.SalesInvoice, cancellationToken);
+            .FirstOrDefaultAsync(s => s.DocumentType == documentType, cancellationToken);
         var approvalRequired = approvalSetting?.ApprovalRequired ?? true;
 
         var fiscalYear = invoice.DocumentDate.Year;
         var documentNumber = await _allocator.AllocateAsync(
-            DocumentType.SalesInvoice, fiscalYear, cancellationToken);
+            documentType, fiscalYear, cancellationToken);
 
         var postingMode = approvalRequired
             ? DocumentPostingMode.ApprovedThenPosted

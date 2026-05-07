@@ -59,10 +59,14 @@ public sealed class SalesInvoiceLine
         Guid vatCategoryId,
         decimal vatRatePercent)
     {
-        if (quantity <= 0m)
+        if (quantity == 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(quantity), "Line quantity must be positive.");
+            throw new ArgumentOutOfRangeException(nameof(quantity), "Line quantity must be non-zero.");
         }
+        // Negative quantities are valid for credit-note lines per
+        // FR-013 (signs reversed against the original); the
+        // SalesInvoice aggregate validates sign-consistency at the
+        // header level.
         if (unitPrice.Amount < 0m)
         {
             throw new ArgumentOutOfRangeException(nameof(unitPrice), "Line unit price cannot be negative.");

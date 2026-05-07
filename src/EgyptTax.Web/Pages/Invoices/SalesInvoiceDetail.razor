@@ -94,6 +94,10 @@
         {
             <a href="/api/v1/verify/@_seal" target="_blank">Verify QR seal</a>
         }
+        @if (!_invoice.IsCreditNote)
+        {
+            <a href="/invoices/@_invoice.Id/credit-note/new">Issue credit note</a>
+        }
     </section>
 
     <section class="invoice-eta">

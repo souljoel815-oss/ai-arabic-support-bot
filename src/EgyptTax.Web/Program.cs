@@ -55,6 +55,7 @@ builder.Services.AddScoped<EgyptTax.Application.Numbering.IDocumentNumberAllocat
     EgyptTax.Infrastructure.Numbering.SqlSequentialNumberAllocator>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceWithEtaSubmissionHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.IssueCreditNoteHandler>();
 builder.Services.AddSingleton<EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer, EgyptTax.Infrastructure.Pdf.QuestPdfInvoiceRenderer>();
 builder.Services.AddSingleton<EgyptTax.Application.Eta.IEInvoiceJsonGenerator, EgyptTax.Infrastructure.Eta.EInvoiceJsonGenerator>();
 builder.Services.AddScoped<EgyptTax.Application.Eta.IEtaDashboardQuery, EgyptTax.Infrastructure.Eta.SqlEtaDashboardQuery>();

@@ -1,0 +1,205 @@
+@page "/invoices/{Id:guid}/credit-note/new"
+@using System.ComponentModel.DataAnnotations
+@using EgyptTax.Application.Invoices
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Invoices
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject IssueCreditNoteHandler Handler
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Issue credit note / إصدار إشعار خصم</h1>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+    return;
+}
+
+@if (_original is null)
+{
+    <div class="flash-error">Source invoice not found.</div>
+    return;
+}
+
+@if (_original.State != DocumentState.Posted)
+{
+    <div class="flash-error">
+        Source invoice @_original.DocumentNumber is in state @_original.State, not Posted.
+        Per FR-013 + FR-027, only Posted invoices can be credited.
+    </div>
+    <a href="/invoices/@_original.Id">← Back to invoice</a>
+    return;
+}
+
+<p>
+    Drafting a credit note against
+    <strong><a href="/invoices/@_original.Id">@_original.DocumentNumber</a></strong>
+    issued @_original.DocumentDate.ToString("yyyy-MM-dd").
+    Each line below carries the original quantity; reduce a quantity (or set to 0) for partial credit.
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass">@_flash</div>
+}
+
+<EditForm Model="_form" OnValidSubmit="OnSubmitAsync" FormName="credit-note-issue" class="form-grid">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <fieldset>
+        <legend>Reason (FR-013 — legally required)</legend>
+        <label>
+            <span>Why is this credit note being issued?</span>
+            <InputTextArea @bind-Value="_form.Reason" rows="3" />
+        </label>
+    </fieldset>
+
+    <fieldset>
+        <legend>Lines to credit</legend>
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th class="num">Original qty</th>
+                    <th class="num">Credit qty</th>
+                    <th class="num">Unit price</th>
+                    <th class="num">Line credit</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < _form.Lines.Count; i++)
+                {
+                    var idx = i;
+                    var line = _form.Lines[idx];
+                    var item = _items.GetValueOrDefault(line.ItemId);
+                    var lineCredit = line.QuantityToCredit * line.UnitPrice;
+                    <tr>
+                        <td>@(item?.Code ?? "?") — @(item?.Name.English ?? "")</td>
+                        <td class="num">@line.OriginalQuantity.ToString("0.##")</td>
+                        <td class="num">
+                            <input type="number" step="0.01" min="0" max="@line.OriginalQuantity"
+                                   @bind="line.QuantityToCredit" />
+                        </td>
+                        <td class="num">@line.UnitPrice.ToString("F2")</td>
+                        <td class="num">@lineCredit.ToString("F2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </fieldset>
+
+    <button type="submit" disabled="@(!CanSubmit)">Issue credit note (Draft)</button>
+    <a href="/invoices/@_original?.Id">Cancel</a>
+</EditForm>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private SalesInvoice? _original;
+    private Dictionary<Guid, Item> _items = new();
+    private FormModel _form = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _original = await Db.Set<SalesInvoice>()
+            .Include(i => i.Lines)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == Id);
+        if (_original is null)
+        {
+            _loading = false;
+            return;
+        }
+
+        var itemIds = _original.Lines.Select(l => l.ItemId).Distinct().ToArray();
+        _items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => itemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id);
+
+        _form.Lines = _original.Lines.Select(l => new FormLine
+        {
+            ItemId = l.ItemId,
+            OriginalQuantity = l.Quantity,
+            QuantityToCredit = l.Quantity,
+            UnitPrice = l.UnitPrice.Amount,
+            VatCategoryId = l.VatCategoryId,
+            VatRatePercent = l.VatRatePercent,
+        }).ToList();
+
+        _loading = false;
+    }
+
+    private bool CanSubmit =>
+        !string.IsNullOrWhiteSpace(_form.Reason)
+        && _form.Lines.Any(l => l.QuantityToCredit > 0);
+
+    private async Task OnSubmitAsync()
+    {
+        if (_original is null) return;
+
+        var lines = _form.Lines
+            .Where(l => l.QuantityToCredit > 0)
+            .Select(l => new IssueCreditNoteLine(
+                ItemId: l.ItemId,
+                Quantity: -l.QuantityToCredit,   // FR-013: negate.
+                UnitPrice: MoneyEgp.From(l.UnitPrice),
+                VatCategoryId: l.VatCategoryId,
+                VatRatePercent: l.VatRatePercent))
+            .ToList();
+        if (lines.Count == 0)
+        {
+            _flash = "Select at least one line with a positive credit quantity.";
+            _flashClass = "flash-error";
+            return;
+        }
+
+        try
+        {
+            var draft = await Handler.HandleAsync(new IssueCreditNoteCommand(
+                OriginalSalesInvoiceId: _original.Id,
+                Lines: lines,
+                Reason: _form.Reason,
+                DocumentDate: DateOnly.FromDateTime(DateTime.UtcNow)),
+                CancellationToken.None);
+
+            // Land on the credit note draft's edit page so the operator
+            // can review + post it through the regular flow (PostHandler
+            // will allocate the CN-{year}-{n} number on post).
+            Nav.NavigateTo($"/invoices/{draft.Id}/edit", forceLoad: true);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+    }
+
+    private sealed class FormModel
+    {
+        [Required(ErrorMessage = "Reason is required (FR-013).")]
+        [StringLength(2000, MinimumLength = 5)]
+        public string Reason { get; set; } = "";
+        public List<FormLine> Lines { get; set; } = new();
+    }
+
+    private sealed class FormLine
+    {
+        public Guid ItemId { get; set; }
+        public decimal OriginalQuantity { get; set; }
+        public decimal QuantityToCredit { get; set; }
+        public decimal UnitPrice { get; set; }
+        public Guid VatCategoryId { get; set; }
+        public decimal VatRatePercent { get; set; }
+    }
+}

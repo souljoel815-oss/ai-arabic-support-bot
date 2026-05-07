@@ -29,6 +29,20 @@ public sealed class SalesInvoice
     public Guid? PostedByUserId { get; private set; }
     public DocumentPostingMode? PostingMode { get; private set; }
 
+    /// <summary>
+    /// FR-013 — when non-null, this document is a CreditNote
+    /// referencing the original SalesInvoice. The
+    /// <see cref="IsCreditNote"/> getter is the canonical predicate;
+    /// numbering allocation, document-type label on the PDF, and the
+    /// sign-consistency rule on lines all branch on it.
+    /// </summary>
+    public Guid? CreditNoteOfInvoiceId { get; private set; }
+
+    /// <summary>FR-013 — free-text reason captured at issue time.</summary>
+    public string? CreditNoteReason { get; private set; }
+
+    public bool IsCreditNote => CreditNoteOfInvoiceId.HasValue;
+
     public MoneyEgp Subtotal { get; private set; } = MoneyEgp.Zero;
     public MoneyEgp InvoiceLevelDiscountAmount { get; private set; } = MoneyEgp.Zero;
     public decimal InvoiceLevelDiscountPercent { get; private set; }
@@ -61,6 +75,43 @@ public sealed class SalesInvoice
             throw new ArgumentException("CustomerId is required.", nameof(customerId));
         }
         return new SalesInvoice(customerId, customerTaxProfileSnapshot, documentDate);
+    }
+
+    /// <summary>
+    /// FR-013 — factory for a credit note that corrects an
+    /// existing posted SalesInvoice. The original's customer +
+    /// CustomerTaxProfile snapshot are copied so the credit note
+    /// references exactly the same parties; the caller adds lines
+    /// with negated quantities via <see cref="AddLine"/>. The
+    /// <c>reason</c> is the legally-required justification for
+    /// the correction and is non-empty per FR-013.
+    /// </summary>
+    public static SalesInvoice CreateCreditNoteFor(
+        SalesInvoice originalInvoice,
+        string reason,
+        DateOnly documentDate)
+    {
+        ArgumentNullException.ThrowIfNull(originalInvoice);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+
+        if (originalInvoice.State != DocumentState.Posted)
+        {
+            throw new InvalidOperationException(
+                $"Cannot issue a credit note against {originalInvoice.Id}: source state is {originalInvoice.State}, not Posted. FR-013 + FR-027 require the source to be Posted.");
+        }
+        if (originalInvoice.IsCreditNote)
+        {
+            throw new InvalidOperationException(
+                $"Cannot issue a credit note against {originalInvoice.Id}: source is itself a credit note. Credit-note-of-credit-note is non-sensical and would unwind the audit trail.");
+        }
+
+        var draft = new SalesInvoice(
+            originalInvoice.CustomerId,
+            originalInvoice.CustomerTaxProfileSnapshot,
+            documentDate);
+        draft.CreditNoteOfInvoiceId = originalInvoice.Id;
+        draft.CreditNoteReason = reason;
+        return draft;
     }
 
     public SalesInvoiceLine AddLine(
@@ -167,7 +218,13 @@ public sealed class SalesInvoice
             effectiveDiscount = InvoiceLevelDiscountAmount.Amount;
         }
 
-        if (effectiveDiscount > preDiscountSubtotal)
+        // The "discount exceeds subtotal" check only applies to
+        // regular (positive) subtotals. For credit notes the
+        // pre-discount subtotal is negative by construction; the
+        // invoice-level discount is always zero on credit notes
+        // (the editor doesn't expose it for them) so the comparison
+        // is degenerate.
+        if (effectiveDiscount > 0m && effectiveDiscount > preDiscountSubtotal)
         {
             throw new InvalidOperationException(
                 $"Invoice-level discount {effectiveDiscount:F2} exceeds pre-discount subtotal {preDiscountSubtotal:F2}.");
