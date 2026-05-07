@@ -86,6 +86,12 @@ builder.Services.AddScoped<EgyptTax.Application.Compliance.RiskScoring.IPurchase
 builder.Services.AddScoped<EgyptTax.Infrastructure.Purchases.PostPurchaseInvoiceHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Expenses.PostExpenseHandler>();
 
+// T140 / FR-007 — master-data deletion guard. Scoped because it
+// consumes AppDbContext. Future admin tooling + data-migration
+// scripts call into this BEFORE attempting any hard delete.
+builder.Services.AddScoped<EgyptTax.Application.Common.Guards.IMasterDataDeletionGuard,
+    EgyptTax.Infrastructure.Common.Guards.SqlMasterDataDeletionGuard>();
+
 // T139 / R-21 — attachment store lives on the filesystem under
 // EGYPTTAX_ATTACHMENT_ROOT (config key Attachments:Root). Defaults
 // to {ContentRootPath}/var/attachments for dev so a fresh clone
