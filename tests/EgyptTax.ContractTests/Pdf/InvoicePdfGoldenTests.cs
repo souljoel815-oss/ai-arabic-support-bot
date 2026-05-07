@@ -84,7 +84,14 @@ public class InvoicePdfGoldenTests
     /// </summary>
     private static string Normalize(string raw)
     {
-        var ligatures = raw
+        // PdfPig occasionally emits U+0000 between shaped Arabic
+        // glyph runs as a stream-boundary marker. Strip those so the
+        // golden file is readable and diffable; the test still
+        // catches semantic regressions because the surrounding glyph
+        // codepoints and ordering are preserved.
+        var nulStripped = Regex.Replace(raw, "\u0000", "");
+
+        var ligatures = nulStripped
             .Replace("ﬀ", "ff", StringComparison.Ordinal)
             .Replace("ﬁ", "fi", StringComparison.Ordinal)
             .Replace("ﬂ", "fl", StringComparison.Ordinal)
@@ -119,17 +126,24 @@ public class InvoicePdfGoldenTests
         // source tree's tests/EgyptTax.ContractTests/Pdf/ folder so
         // UPDATE_GOLDEN_PDF rewrites the source-tree file (the
         // developer commits this change), not the bin-folder copy.
+        // Source-tree path is checked FIRST on every iteration; the
+        // bin-folder sibling is only used as a final fallback when
+        // no source tree is reachable (e.g. running the test DLL
+        // outside its repo, on a CI runner that didn't clone the
+        // tests/ tree).
         var dir = AppContext.BaseDirectory;
-        for (var i = 0; i < 6 && dir is not null; i++)
+        for (var i = 0; i < 8 && dir is not null; i++)
         {
             var candidate = Path.Combine(dir, "tests", "EgyptTax.ContractTests", "Pdf", GoldenFileName);
             if (File.Exists(candidate)) return candidate;
-            var sibling = Path.Combine(dir, "Pdf", GoldenFileName);
-            if (File.Exists(sibling)) return sibling;
             dir = Path.GetDirectoryName(dir);
         }
-        // Fall back to the conventional source-tree path so
-        // UPDATE_GOLDEN_PDF=1 can bootstrap a missing file.
+        // Fallback: the bin-folder sibling that CopyToOutputDirectory
+        // produces. Used only when no source-tree path resolves.
+        var binSibling = Path.Combine(AppContext.BaseDirectory, "Pdf", GoldenFileName);
+        if (File.Exists(binSibling)) return binSibling;
+        // Last-resort bootstrap path so UPDATE_GOLDEN_PDF=1 can write
+        // a brand-new file even when the file does not exist anywhere.
         return Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "Pdf", GoldenFileName));
     }

@@ -9,6 +9,25 @@
     <ProjectReference Include="..\EgyptTax.Application\EgyptTax.Application.csproj" />
   </ItemGroup>
 
+  <!--
+    T102 — Cairo + Amiri TTFs from src/EgyptTax.Web/wwwroot/fonts/ are
+    embedded into the Infrastructure assembly so QuestPdfInvoiceRenderer
+    can register them at static-construction time without a disk-path
+    dependency. This keeps the renderer self-contained for contract
+    tests (which never go through Web's hosting pipeline) and removes
+    the "stripped CI image has no Arabic glyphs" failure mode flagged
+    in the T102 closeout note. Single source on disk; logical Link
+    flattens the namespace to EgyptTax.Infrastructure.Pdf.Fonts.{name}.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\EgyptTax.Web\wwwroot\fonts\Cairo-Regular.ttf"
+                      Link="Pdf\Fonts\Cairo-Regular.ttf" />
+    <EmbeddedResource Include="..\EgyptTax.Web\wwwroot\fonts\Amiri-Regular.ttf"
+                      Link="Pdf\Fonts\Amiri-Regular.ttf" />
+    <EmbeddedResource Include="..\EgyptTax.Web\wwwroot\fonts\Amiri-Bold.ttf"
+                      Link="Pdf\Fonts\Amiri-Bold.ttf" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />

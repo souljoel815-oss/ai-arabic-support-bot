@@ -5,6 +5,7 @@ using EgyptTax.Domain.MasterData;
 using EgyptTax.Domain.Workflow;
 using EgyptTax.SharedKernel.Localization;
 using QRCoder;
+using QuestPDF.Drawing;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -25,9 +26,34 @@ namespace EgyptTax.Infrastructure.Pdf;
 /// </summary>
 public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
 {
+    /// <summary>
+    /// T102 — Cairo (Latin + Arabic) is the primary font; Amiri is
+    /// registered as a fallback for any glyphs Cairo lacks (legacy
+    /// presentation forms in the Arabic block QuestPDF picks for
+    /// shaped text). Fonts are embedded resources in this assembly
+    /// so the renderer is self-contained on stripped CI images that
+    /// have no system fonts installed — that gap was flagged in the
+    /// T102 closeout note and is closed here.
+    /// </summary>
+    private const string PrimaryFontFamily = "Cairo";
+    private const string ArabicFallbackFamily = "Amiri";
+
     static QuestPdfInvoiceRenderer()
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        RegisterEmbeddedFont("Pdf.Fonts.Cairo-Regular.ttf");
+        RegisterEmbeddedFont("Pdf.Fonts.Amiri-Regular.ttf");
+        RegisterEmbeddedFont("Pdf.Fonts.Amiri-Bold.ttf");
+    }
+
+    private static void RegisterEmbeddedFont(string relativeName)
+    {
+        var assembly = typeof(QuestPdfInvoiceRenderer).Assembly;
+        var resourceName = $"{assembly.GetName().Name}.{relativeName}";
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException(
+                $"Embedded font resource '{resourceName}' was not found. Check the EmbeddedResource Link in EgyptTax.Infrastructure.csproj.");
+        FontManager.RegisterFont(stream);
     }
 
     public byte[] Render(InvoicePdfRequest request)
@@ -58,7 +84,9 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
             {
                 page.Size(PageSizes.A4);
                 page.Margin(40);
-                page.DefaultTextStyle(t => t.FontSize(10));
+                page.DefaultTextStyle(t => t
+                    .FontSize(10)
+                    .FontFamily(PrimaryFontFamily, ArabicFallbackFamily));
 
                 page.Header().Column(col =>
                 {
