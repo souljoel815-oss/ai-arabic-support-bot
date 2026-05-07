@@ -44,9 +44,25 @@ public class MigrationSmokeTests(SqlServerFixture fixture)
         usersTableExists.Should().BeTrue("identity.users must be created by the IdentityCore migration");
         rolesTableExists.Should().BeTrue("identity.roles must be created by the IdentityCore migration");
         permissionsTableExists.Should().BeTrue("identity.permissions must be created by the IdentityCore migration");
+
+        var allocatorTableExists = await ScalarBoolAsync(
+            db,
+            "SELECT CASE WHEN OBJECT_ID('[numbering].[document_number_allocator]', 'U') IS NULL THEN 0 ELSE 1 END");
+        var seriesSeedCount = await ScalarIntAsync(
+            db,
+            "SELECT COUNT(*) FROM [numbering].[document_series]");
+
+        allocatorTableExists.Should().BeTrue("numbering.document_number_allocator must be created by the NumberingCore migration");
+        seriesSeedCount.Should().Be(8, "the NumberingCore migration must seed one DocumentSeries per DocumentType");
     }
 
     private static async Task<bool> ScalarBoolAsync(DbContext db, string sql)
+    {
+        var value = await ScalarIntAsync(db, sql);
+        return value == 1;
+    }
+
+    private static async Task<int> ScalarIntAsync(DbContext db, string sql)
     {
         await using var cmd = db.Database.GetDbConnection().CreateCommand();
         if (cmd.Connection!.State != System.Data.ConnectionState.Open)
@@ -55,6 +71,6 @@ public class MigrationSmokeTests(SqlServerFixture fixture)
         }
         cmd.CommandText = sql;
         var result = await cmd.ExecuteScalarAsync();
-        return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture) == 1;
+        return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
     }
 }
