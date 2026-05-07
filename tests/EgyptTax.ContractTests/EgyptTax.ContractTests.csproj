@@ -30,6 +30,7 @@
   <ItemGroup>
     <None Include="..\..\specs\008-egypt-tax-accounting\contracts\**\*.json" Link="contracts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\specs\008-egypt-tax-accounting\contracts\api\openapi.yaml" Link="contracts\api\openapi.yaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Pdf\golden-invoice-b2bregistered.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

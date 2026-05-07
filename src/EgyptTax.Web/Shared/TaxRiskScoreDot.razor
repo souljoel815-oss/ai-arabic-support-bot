@@ -1,0 +1,27 @@
+@using EgyptTax.Application.Compliance.RiskScoring
+
+@if (Findings is null || Findings.Count == 0)
+{
+    <span class="risk-badge risk-clean" title="No risk findings">✓</span>
+}
+else
+{
+    var headline = DocumentRiskScorer.HighestSeverity(Findings)!.Value;
+    var icon = headline switch
+    {
+        RiskSeverity.Blocker             => "■",
+        RiskSeverity.MustFixBeforeFiling => "▲",
+        RiskSeverity.Warning             => "●",
+        _                                => "●",
+    };
+    var titleAttr = string.Join("\n",
+        Findings.Select(f => $"{f.Severity}: {f.Title.English}"));
+    <span class="risk-badge risk-@headline.ToString().ToLowerInvariant()" title="@titleAttr">
+        @icon @Findings.Count
+    </span>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<RiskFinding>? Findings { get; set; }
+}

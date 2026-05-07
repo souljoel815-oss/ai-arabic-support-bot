@@ -1,4 +1,6 @@
 @page "/invoices"
+@using EgyptTax.Application.Compliance.RiskScoring
+@using EgyptTax.Domain.Eta
 @using EgyptTax.Domain.Invoices
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Domain.Workflow
@@ -7,6 +9,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject NavigationManager Nav
+@inject DocumentRiskScorer RiskScorer
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <h1>Sales invoices / فواتير المبيعات</h1>
@@ -41,6 +44,7 @@ else
                 <th>Date</th>
                 <th>Customer</th>
                 <th>State</th>
+                <th>Risk</th>
                 <th class="num">Subtotal</th>
                 <th class="num">VAT</th>
                 <th class="num">Grand total</th>
@@ -55,6 +59,7 @@ else
                     <td>@row.Invoice.DocumentDate.ToString("yyyy-MM-dd")</td>
                     <td>@row.CustomerName</td>
                     <td><StateBadge State="row.Invoice.State" /></td>
+                    <td><TaxRiskScoreDot Findings="row.RiskFindings" /></td>
                     <td class="num">@row.Invoice.Subtotal.Amount.ToString("F2")</td>
                     <td class="num">@row.Invoice.VatTotal.Amount.ToString("F2")</td>
                     <td class="num">@row.Invoice.GrandTotal.Amount.ToString("F2")</td>
@@ -83,6 +88,7 @@ else
     {
         var rows = await Db.Set<SalesInvoice>()
             .AsNoTracking()
+            .Include(i => i.Lines)
             .OrderByDescending(i => i.DocumentDate)
             .ThenByDescending(i => i.PostedAtUtc)
             .Take(500)
@@ -94,8 +100,31 @@ else
             .Where(c => customerIds.Contains(c.Id))
             .ToDictionaryAsync(c => c.Id, c => c.Name.English);
 
+        // Differentiator 1 — score every row in the list so the
+        // operator can spot risky invoices at a glance. Items + ETA
+        // submissions are loaded in batch so the scorer's per-row
+        // work is constant-factor (no N+1 queries).
+        var itemIds = rows.SelectMany(r => r.Lines).Select(l => l.ItemId).Distinct().ToArray();
+        var items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => itemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id);
+        var invoiceIds = rows.Select(r => r.Id).ToArray();
+        var etaSubmissions = await Db.Set<EtaSubmission>().AsNoTracking()
+            .Where(s => invoiceIds.Contains(s.SalesInvoiceId))
+            .ToDictionaryAsync(s => s.SalesInvoiceId);
+
+        var nowUtc = DateTime.UtcNow;
         _invoices = rows
-            .Select(i => new Row(i, customers.GetValueOrDefault(i.CustomerId, i.CustomerId.ToString("D"))))
+            .Select(i =>
+            {
+                var customerName = customers.GetValueOrDefault(i.CustomerId, i.CustomerId.ToString("D"));
+                var findings = RiskScorer.Score(new DocumentRiskContext(
+                    Invoice: i,
+                    Items: items,
+                    EtaSubmission: etaSubmissions.GetValueOrDefault(i.Id),
+                    NowUtc: nowUtc));
+                return new Row(i, customerName, findings);
+            })
             .ToList();
     }
 
@@ -106,5 +135,5 @@ else
         .Where(r => string.IsNullOrEmpty(_stateFilter)
             || r.Invoice.State.ToString() == _stateFilter);
 
-    private sealed record Row(SalesInvoice Invoice, string CustomerName);
+    private sealed record Row(SalesInvoice Invoice, string CustomerName, IReadOnlyList<RiskFinding> RiskFindings);
 }

@@ -116,6 +116,17 @@ builder.Services.AddTransient<NtpHealthCheckJob>();
 builder.Services.AddTransient<AuditCheckpointJob>();
 builder.Services.AddTransient<EtaSubmissionRetryJob>();
 
+// T110 / R-13 — supplier-TIN revalidation cron. The MVP wires the
+// "always-valid" stub revalidator + the empty supplier source (no
+// Supplier aggregate yet); when US2 lands, the source registration
+// here flips to an EF-backed implementation, and the revalidator
+// flips to one that hits the published ETA list.
+builder.Services.AddSingleton<EgyptTax.Application.Compliance.TinRevalidation.ISupplierTinRevalidator,
+    EgyptTax.Infrastructure.Compliance.AlwaysValidTinRevalidator>();
+builder.Services.AddSingleton<EgyptTax.Application.Compliance.TinRevalidation.ISupplierTinSource,
+    EgyptTax.Infrastructure.Compliance.EmptySupplierTinSource>();
+builder.Services.AddTransient<SupplierTinRevalidationJob>();
+
 // FR-028 / R-03 — Hangfire on its own SQL Server connection
 // (`EgyptTax_Hangfire`) so the job-state schema does not pollute the
 // audit / domain database. Hangfire's storage manages its own schema
@@ -237,6 +248,15 @@ if (!string.IsNullOrWhiteSpace(hangfireConnection))
         recurringJobId: "eta-submission-retry",
         methodCall: j => j.RunOnceAsync(CancellationToken.None),
         cronExpression: "*/15 * * * *");
+
+    // R-13 — daily re-validation of supplier TINs against the ETA
+    // registry. Currently a no-op against an empty source + always-
+    // valid revalidator stub; the cron skeleton ships now so the
+    // Near-term registry-feed task only has to swap implementations.
+    recurring.AddOrUpdate<SupplierTinRevalidationJob>(
+        recurringJobId: "supplier-tin-revalidation",
+        methodCall: j => j.RunOnceAsync(CancellationToken.None),
+        cronExpression: "0 3 * * *");
 }
 
 // T058 — Blazor + Razor Pages routing. The Blazor hub serves the
