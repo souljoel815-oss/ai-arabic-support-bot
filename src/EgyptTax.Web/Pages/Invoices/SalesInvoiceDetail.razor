@@ -1,4 +1,5 @@
 @page "/invoices/{Id:guid}"
+@using EgyptTax.Application.Compliance.RiskScoring
 @using EgyptTax.Application.Verification
 @using EgyptTax.Domain.Eta
 @using EgyptTax.Domain.Invoices
@@ -9,6 +10,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
+@inject DocumentRiskScorer RiskScorer
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <h1>Sales invoice @(_invoice?.DocumentNumber ?? "(loading)")</h1>
@@ -28,6 +30,7 @@
         <div><strong>Posted at (UTC):</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
         <div><strong>Posting mode:</strong> @_invoice.PostingMode</div>
     }
+    <div><strong>Tax Risk Score:</strong> <TaxRiskScoreBadge Findings="_riskFindings" /></div>
 </section>
 
 <section>
@@ -131,6 +134,7 @@
     private Dictionary<Guid, Item> _items = new();
     private EtaSubmission? _etaSubmission;
     private string? _seal;
+    private IReadOnlyList<RiskFinding>? _riskFindings;
 
     protected override async Task OnInitializedAsync()
     {
@@ -168,5 +172,16 @@
                 VerifyUrl: "/api/v1/verify",
                 IssuerTin: ""));
         }
+
+        // Differentiator 1 — score the document right after the data
+        // is hydrated so the badge reflects the same view of the world
+        // the user just rendered. Drafts skip the ETA-related rules
+        // (no submission row exists yet) but still receive the
+        // TIN + ETA-code findings.
+        _riskFindings = RiskScorer.Score(new DocumentRiskContext(
+            Invoice: _invoice,
+            Items: _items,
+            EtaSubmission: _etaSubmission,
+            NowUtc: DateTime.UtcNow));
     }
 }

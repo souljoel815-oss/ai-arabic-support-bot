@@ -55,6 +55,19 @@ builder.Services.AddScoped<EgyptTax.Application.Numbering.IDocumentNumberAllocat
     EgyptTax.Infrastructure.Numbering.SqlSequentialNumberAllocator>();
 builder.Services.AddScoped<EgyptTax.Application.Accounting.IJournalEntryEmitter,
     EgyptTax.Infrastructure.Accounting.SalesInvoiceJournalEmitter>();
+
+// Differentiator 1 (Tax Risk Score) — rules registered as singletons
+// because they are stateless; the scorer fans out across every
+// registered rule. Adding a new rule = adding one AddSingleton line.
+builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.IDocumentRiskRule,
+    EgyptTax.Application.Compliance.RiskScoring.Rules.MissingTinRule>();
+builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.IDocumentRiskRule,
+    EgyptTax.Application.Compliance.RiskScoring.Rules.MissingEtaCodeRule>();
+builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.IDocumentRiskRule,
+    EgyptTax.Application.Compliance.RiskScoring.Rules.EtaSubmissionWindowExpiringRule>();
+builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.IDocumentRiskRule,
+    EgyptTax.Application.Compliance.RiskScoring.Rules.EtaSubmissionFailedRule>();
+builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.DocumentRiskScorer>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceWithEtaSubmissionHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.IssueCreditNoteHandler>();

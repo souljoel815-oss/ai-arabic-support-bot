@@ -269,6 +269,26 @@ html, body {
 .state-badge.state-voided    { background: #f4f4f4; color: #888; text-decoration: line-through; }
 .state-badge.state-rejected  { background: #fde9e9; color: #6a1818; }
 
+.risk-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.risk-badge.risk-clean              { background: #e6f4ea; color: #1b4d20; }
+.risk-badge.risk-info               { background: #eef3fb; color: #1b3a6f; }
+.risk-badge.risk-warning            { background: #fff4e5; color: #6e3e10; }
+.risk-badge.risk-mustfixbeforefiling{ background: #fde9e9; color: #6a1818; }
+.risk-badge.risk-blocker            { background: #6a1818; color: #fff; }
+.risk-badge summary { cursor: pointer; list-style-position: inside; }
+.risk-badge[open]   { padding: 8px 12px; display: block; max-width: 540px; }
+.risk-finding-list  { margin: 6px 0 0; padding-left: 20px; }
+.risk-finding       { margin: 6px 0; padding: 6px 8px; border-left: 3px solid currentColor; background: rgba(255,255,255,0.6); }
+.risk-finding-desc  { margin: 4px 0; font-weight: 400; font-size: 12px; }
+.risk-fix-hint      { margin: 4px 0 0; font-weight: 400; font-size: 11px; color: #555; }
+.risk-rule-id       { font-weight: 400; font-size: 10px; color: #888; margin-left: 4px; }
+
 .invoice-toolbar {
     display: flex;
     gap: 12px;

@@ -1,0 +1,41 @@
+@using EgyptTax.Application.Compliance.RiskScoring
+
+@if (Findings is null || Findings.Count == 0)
+{
+    <span class="risk-badge risk-clean" title="No risk findings detected">✓ No risk findings</span>
+}
+else
+{
+    var headline = DocumentRiskScorer.HighestSeverity(Findings)!.Value;
+    var label = headline switch
+    {
+        RiskSeverity.Blocker             => "BLOCKER",
+        RiskSeverity.MustFixBeforeFiling => "MUST FIX",
+        RiskSeverity.Warning             => "WARNING",
+        _                                => "INFO",
+    };
+    <details class="risk-badge risk-@headline.ToString().ToLowerInvariant()">
+        <summary>
+            ⚠ @label · @Findings.Count finding@(Findings.Count == 1 ? "" : "s")
+        </summary>
+        <ol class="risk-finding-list">
+            @foreach (var finding in Findings)
+            {
+                <li class="risk-finding risk-finding-@finding.Severity.ToString().ToLowerInvariant()">
+                    <strong>@finding.Title.English</strong>
+                    <span class="risk-rule-id">(@finding.RuleId)</span>
+                    <p class="risk-finding-desc">@finding.Description.English</p>
+                    @if (!string.IsNullOrWhiteSpace(finding.FixHint))
+                    {
+                        <p class="risk-fix-hint"><em>Fix:</em> @finding.FixHint</p>
+                    }
+                </li>
+            }
+        </ol>
+    </details>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<RiskFinding>? Findings { get; set; }
+}

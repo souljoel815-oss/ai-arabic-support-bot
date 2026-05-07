@@ -17,9 +17,20 @@ public sealed class Item
     public Guid DefaultVatCategoryId { get; private set; }
     public ItemStatus Status { get; private set; } = ItemStatus.Active;
 
+    /// <summary>
+    /// FR-035 / Differentiator 1 — ETA's GS1-style item code from
+    /// the regulator's master commodity list (assigned per item by
+    /// the operator). Optional in the MVP because not every demo
+    /// item has a real code yet; the
+    /// <c>MissingEtaCodeRule</c> flags posted documents whose lines
+    /// reference items without a code so the operator knows to
+    /// populate it before live filing.
+    /// </summary>
+    public string? EtaItemCode { get; private set; }
+
     private Item() { }
 
-    public Item(string code, ArabicEnglishText name, Guid defaultVatCategoryId)
+    public Item(string code, ArabicEnglishText name, Guid defaultVatCategoryId, string? etaItemCode = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         if (defaultVatCategoryId == Guid.Empty)
@@ -29,11 +40,14 @@ public sealed class Item
         Code = code;
         Name = name;
         DefaultVatCategoryId = defaultVatCategoryId;
+        EtaItemCode = string.IsNullOrWhiteSpace(etaItemCode) ? null : etaItemCode;
     }
 
     public void Deactivate() => Status = ItemStatus.Inactive;
     public void Reactivate() => Status = ItemStatus.Active;
     public void UpdateDefaultVatCategory(Guid vatCategoryId) => DefaultVatCategoryId = vatCategoryId;
+    public void SetEtaItemCode(string? etaItemCode) =>
+        EtaItemCode = string.IsNullOrWhiteSpace(etaItemCode) ? null : etaItemCode;
 }
 
 public enum ItemStatus

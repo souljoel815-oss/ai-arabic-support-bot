@@ -23,5 +23,6 @@ internal sealed class ItemConfiguration : IEntityTypeConfiguration<Item>
 
         b.Property(i => i.DefaultVatCategoryId).HasColumnName("default_vat_category_id").IsRequired();
         b.Property(i => i.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(16).IsRequired();
+        b.Property(i => i.EtaItemCode).HasColumnName("eta_item_code").HasMaxLength(32).IsUnicode(false);
     }
 }

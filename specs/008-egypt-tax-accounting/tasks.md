@@ -238,12 +238,12 @@ Per [plan.md](plan.md) §"Project Structure":
 
 ### Tax Risk Score MVP rules (Differentiator 1)
 
-- [ ] T111 [US1] Implement `IDocumentRiskRule` interface + `DocumentRiskScorer` at `src/EgyptTax.Application/Compliance/RiskScoring/`
-- [ ] T112 [P] [US1] Implement `MissingTinRule` at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/MissingTinRule.cs`
-- [ ] T113 [P] [US1] Implement `MissingEtaCodeRule` at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/MissingEtaCodeRule.cs`
-- [ ] T114 [P] [US1] Implement `EtaSubmissionWindowExpiringRule` at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/EtaSubmissionWindowExpiringRule.cs`
-- [ ] T115 [P] [US1] Implement `EtaSubmissionFailedRule` at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/EtaSubmissionFailedRule.cs`
-- [ ] T116 [P] [US1] Unit tests for each rule (positive + negative cases) at `tests/EgyptTax.UnitTests/Application/Compliance/Rules/` — MUST FAIL FIRST
+- [X] T111 [US1] `IDocumentRiskRule` + `RiskFinding` (4-level severity) + `DocumentRiskContext` + `DocumentRiskScorer` at `src/EgyptTax.Application/Compliance/RiskScoring/`. Scorer fans out across DI-registered rules, sorts findings (Severity desc → RuleId asc) so the badge picks the headline finding off index 0. Static helper `HighestSeverity` consumed by the badge component for colour selection.
+- [X] T112 [P] [US1] `MissingTinRule` at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/MissingTinRule.cs` — Blocker if `B2BRegistered` snapshot has empty TIN (data-rot canary), `MustFixBeforeFiling` if `B2BUnregistered` (B2B traffic without registered TIN frequently rejects at ETA), silent for `B2CConsumer`.
+- [X] T113 [P] [US1] `MissingEtaCodeRule` at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/MissingEtaCodeRule.cs` — fires when any line item lacks an `EtaItemCode` (GS1/commodity code). Required field added to `Item` aggregate as nullable string + EF mapping + migration `ItemEtaItemCode` (allows existing demo data to remain valid; population happens via Master Data → Items).
+- [X] T114 [P] [US1] `EtaSubmissionWindowExpiringRule` at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/EtaSubmissionWindowExpiringRule.cs` — silent for Submitted; Warning if window ≤ 24h; MustFixBeforeFiling if ≤ 6h; Blocker if expired. Honours the supplied `nowUtc` from the context so badge timing is deterministic for testing.
+- [X] T115 [P] [US1] `EtaSubmissionFailedRule` at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/EtaSubmissionFailedRule.cs` — Warning on first 1-2 failed attempts, MustFixBeforeFiling at ≥ 3 (repeated failures indicate a structural issue the retry tick won't resolve). Surfaces the regulator's error code in the finding title.
+- [X] T116 [P] [US1] 22 unit tests at `tests/EgyptTax.UnitTests/Application/Compliance/{DocumentRiskScorerTests, Rules/*RuleTests}.cs` cover positive + negative cases for each rule plus the scorer's aggregation + sort + headline-severity behaviour. Wired up via DI in `Program.cs` (each rule as singleton, scorer as singleton). Tax Risk Score badge `src/EgyptTax.Web/Shared/TaxRiskScoreBadge.razor` embedded on `SalesInvoiceDetail.razor` with `<details>`-driven drill-down list and CSS for the 4 severity colours (this also closes T238 partial — the column variant on document lists is deferred to its own task).
 
 ### Blazor pages for US1
 
