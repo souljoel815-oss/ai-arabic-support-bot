@@ -1,0 +1,188 @@
+@page "/cockpit"
+@using EgyptTax.Application.Compliance
+@using Microsoft.AspNetCore.Authorization
+@inject IMonthlyTaxClosingCockpitQuery CockpitQuery
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Monthly tax closing cockpit (Differentiator 2)</h1>
+
+<form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
+    <label>
+        <span>Year</span>
+        <input type="number" min="1900" max="9999" @bind="_year" />
+    </label>
+    <label>
+        <span>Month</span>
+        <select @bind="_month">
+            @for (var m = 1; m <= 12; m++)
+            {
+                <option value="@m">@System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m)</option>
+            }
+        </select>
+    </label>
+    <button type="submit" class="btn-primary" disabled="@_loading">
+        @(_loading ? "Computing…" : "Refresh")
+    </button>
+</form>
+
+@if (_data is null)
+{
+    @if (_loading) { <p>Loading…</p> }
+    else { <p><em>Pick a period above and click "Refresh".</em></p> }
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>Period:</strong> @_data.PeriodStart.ToString("yyyy-MM-dd") to @_data.PeriodEnd.ToString("yyyy-MM-dd")</div>
+    <div>
+        <strong>Period status:</strong>
+        @if (_data.PeriodIsLocked)
+        {
+            <span class="risk-badge risk-blocker">LOCKED (FR-037)</span>
+        }
+        else
+        {
+            <span class="risk-badge risk-clean">Open</span>
+        }
+    </div>
+    <div class="grand">
+        <strong>VAT readiness:</strong>
+        <span class="num">@_data.VatReadinessPercent.ToString("0.0")%</span>
+        — @_data.CleanPostsCount of @_data.TotalPostsInPeriod posts in period have no blocking findings
+    </div>
+</section>
+
+<section>
+    <h2>Period-lock checklist</h2>
+    <table class="data-grid">
+        <thead><tr><th></th><th>Check</th><th class="num">Outstanding</th></tr></thead>
+        <tbody>
+            @foreach (var item in _data.PeriodLockChecklist)
+            {
+                <tr>
+                    <td>@(item.Cleared ? "✓" : "✗")</td>
+                    <td>@item.Description</td>
+                    <td class="num">@(item.RelatedCount?.ToString() ?? "—")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</section>
+
+<section>
+    <h2>Drafts in period</h2>
+    @if (_data.DraftsInPeriodCount == 0)
+    {
+        <p>No drafts to clear.</p>
+    }
+    else
+    {
+        <p>
+            <strong class="num">@_data.DraftsInPeriodCount</strong> document(s) in Draft state are dated
+            inside this period. Post or void them before locking the period
+            (otherwise their dates would silently roll over into the next month
+            after lock + reopen).
+        </p>
+    }
+</section>
+
+<section>
+    <h2>ETA submissions</h2>
+    @if (_data.FailedEtaSubmissionCount == 0)
+    {
+        <p>No failed ETA submissions outstanding.</p>
+    }
+    else
+    {
+        <p class="flash-error">
+            <strong class="num">@_data.FailedEtaSubmissionCount</strong> failed submission(s) totalling
+            <span class="num">@_data.FailedEtaSubmissionTotalGrand.Amount.ToString("F2") EGP</span>.
+            <a href="/eta-dashboard">Open the ETA dashboard →</a>
+        </p>
+    }
+</section>
+
+<section>
+    <h2>Missing documents</h2>
+    @if (_data.MissingDocuments.Count == 0)
+    {
+        <p>No missing-document buckets — every deductible post has its supporting attachment + every posted sales invoice has an ETA submission row.</p>
+    }
+    else
+    {
+        @foreach (var bucket in _data.MissingDocuments)
+        {
+            <details>
+                <summary><strong>@bucket.Name</strong> — <span class="num">@bucket.Count</span> document(s)</summary>
+                <table class="data-grid">
+                    <thead><tr><th>Document #</th><th>Kind</th><th>Date</th><th>Description</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var ex in bucket.Examples)
+                        {
+                            <tr>
+                                <td>@(ex.DocumentNumber ?? "(draft)")</td>
+                                <td>@ex.Kind</td>
+                                <td>@ex.DocumentDate.ToString("yyyy-MM-dd")</td>
+                                <td>@ex.Description</td>
+                                <td><a href="@DrillDownUrl(ex.Kind, ex.DocumentId)">Open</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (bucket.Count > bucket.Examples.Count)
+                {
+                    <p><em>Showing first @bucket.Examples.Count of @bucket.Count.</em></p>
+                }
+            </details>
+        }
+    }
+</section>
+
+<section>
+    <h2>Non-recoverable input VAT (FR-020 information)</h2>
+    <p>
+        <span class="num">@_data.NonRecoverableInputVat.Amount.ToString("F2") EGP</span>
+        of input VAT on posted purchase invoices is non-recoverable because the supplier's
+        snapshot is not <code>RegisteredTaxpayer</code>. This number doesn't block the lock
+        but should match what your VAT report shows under "input VAT not claimed".
+    </p>
+</section>
+
+<section>
+    <h2>Reports for this period</h2>
+    <ul>
+        <li><a href="/reports/vat-monthly">Run the VAT report →</a></li>
+        <li><a href="/reports/taxable-income">Run the taxable-income report →</a></li>
+        <li><a href="/reports/trial-balance">Run the trial balance →</a></li>
+        <li><a href="/settings/tax-periods">Lock / reopen this period →</a></li>
+    </ul>
+</section>
+
+@code {
+    private int _year = DateTime.UtcNow.Year;
+    private int _month = DateTime.UtcNow.Month;
+    private bool _loading;
+    private MonthlyTaxClosingCockpit? _data;
+
+    private async Task OnRefresh()
+    {
+        _loading = true;
+        try
+        {
+            _data = await CockpitQuery.RunAsync(_year, _month);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string DrillDownUrl(string kind, Guid id) => kind switch
+    {
+        "SalesInvoice" => $"/invoices/{id}",
+        "CreditNote" => $"/invoices/{id}",
+        "PurchaseInvoice" => $"/purchase-invoices/{id}",
+        "Expense" => $"/expenses/{id}",
+        _ => $"/document360/{kind.ToLowerInvariant()}/{id}",
+    };
+}

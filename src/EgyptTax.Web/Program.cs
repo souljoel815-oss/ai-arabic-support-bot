@@ -113,6 +113,10 @@ builder.Services.AddScoped<EgyptTax.Application.Periods.ITaxPeriodLockGuard,
     EgyptTax.Infrastructure.Periods.SqlTaxPeriodLockGuard>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Periods.LockTaxPeriodHandler>();
 
+// Differentiator 2 — Monthly Tax Closing Cockpit projection.
+builder.Services.AddScoped<EgyptTax.Application.Compliance.IMonthlyTaxClosingCockpitQuery,
+    EgyptTax.Infrastructure.Compliance.SqlMonthlyTaxClosingCockpitQuery>();
+
 // T139 / R-21 — attachment store lives on the filesystem under
 // EGYPTTAX_ATTACHMENT_ROOT (config key Attachments:Root). Defaults
 // to {ContentRootPath}/var/attachments for dev so a fresh clone
