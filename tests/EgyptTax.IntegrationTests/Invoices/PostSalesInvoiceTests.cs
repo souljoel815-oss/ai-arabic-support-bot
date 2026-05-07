@@ -141,7 +141,12 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
         var customer = new Customer(
             code: "CUST-001",
             name: new ArabicEnglishText("عميل تجريبي", "Test Customer LLC"),
-            address: new ArabicEnglishText("القاهرة", "Cairo"),
+            address: PostalAddress.Create(
+                display: new ArabicEnglishText("القاهرة", "Cairo"),
+                governorate: "Cairo",
+                regionCity: "Downtown",
+                street: "Tahrir",
+                buildingNumber: "1"),
             taxProfile: CustomerTaxProfile.B2BRegistered(
                 tin: EgyptianTin.Parse("987654321"),
                 vatExemption: false,

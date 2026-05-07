@@ -21,10 +21,16 @@ internal sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
             n.Property(x => x.English).HasColumnName("name_en").HasMaxLength(200).IsRequired();
         });
 
-        b.ComplexProperty(c => c.Address, a =>
+        b.ComplexProperty(c => c.Address, addr =>
         {
-            a.Property(x => x.Arabic).HasColumnName("address_ar").HasMaxLength(500).IsRequired();
-            a.Property(x => x.English).HasColumnName("address_en").HasMaxLength(500).IsRequired();
+            addr.Property(x => x.DisplayArabic).HasColumnName("address_ar").HasMaxLength(500).IsRequired();
+            addr.Property(x => x.DisplayEnglish).HasColumnName("address_en").HasMaxLength(500).IsRequired();
+            addr.Property(x => x.Country).HasColumnName("address_country").HasMaxLength(2).IsUnicode(false).IsRequired();
+            addr.Property(x => x.Governorate).HasColumnName("address_governorate").HasMaxLength(100).IsRequired();
+            addr.Property(x => x.RegionCity).HasColumnName("address_region_city").HasMaxLength(100).IsRequired();
+            addr.Property(x => x.Street).HasColumnName("address_street").HasMaxLength(200).IsRequired();
+            addr.Property(x => x.BuildingNumber).HasColumnName("address_building_number").HasMaxLength(32).IsUnicode(false).IsRequired();
+            addr.Property(x => x.PostalCode).HasColumnName("address_postal_code").HasMaxLength(16).IsUnicode(false);
         });
 
         b.Property(c => c.Phone).HasColumnName("phone").HasMaxLength(32).IsUnicode(false);

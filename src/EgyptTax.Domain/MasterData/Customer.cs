@@ -13,7 +13,7 @@ public sealed class Customer
     public Guid Id { get; init; } = Guid.NewGuid();
     public string Code { get; init; } = default!;
     public ArabicEnglishText Name { get; init; }
-    public ArabicEnglishText Address { get; init; }
+    public PostalAddress Address { get; private set; }
     public string? Phone { get; private set; }
     public string? Email { get; private set; }
     public CustomerStatus Status { get; private set; } = CustomerStatus.Active;
@@ -24,7 +24,7 @@ public sealed class Customer
     public Customer(
         string code,
         ArabicEnglishText name,
-        ArabicEnglishText address,
+        PostalAddress address,
         CustomerTaxProfile taxProfile,
         string? phone = null,
         string? email = null)
@@ -37,6 +37,8 @@ public sealed class Customer
         Email = email;
         TaxProfile = taxProfile;
     }
+
+    public void UpdateAddress(PostalAddress address) => Address = address;
 
     public void Deactivate() => Status = CustomerStatus.Inactive;
     public void Reactivate() => Status = CustomerStatus.Active;
