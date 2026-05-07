@@ -42,7 +42,7 @@ Per [plan.md](plan.md) §"Project Structure":
 **Purpose**: Repository scaffolding, solution structure, and toolchain bootstrapping. No application logic yet.
 
 - [X] T001 Create solution `EgyptTax.sln` at repository root and add empty .csproj files for all 5 src projects + 4 test projects per [plan.md](plan.md) §"Project Structure"
-- [X] T002 [P] Add `Directory.Build.props` at `src/Directory.Build.props` enforcing C# 12, .NET 8, nullable enabled, treat warnings as errors, and shared analyzers
+- [X] T002 [P] Add `Directory.Build.props` at `Directory.Build.props` (repo root — corrected from the `src/Directory.Build.props` path originally written; restore failed for `tests/` projects because they didn't inherit the props from a `src/`-only file) enforcing C# 12, .NET 8, nullable enabled, treat warnings as errors, and shared analyzers
 - [X] T003 [P] Add `Directory.Packages.props` at repo root with `ManagePackageVersionsCentrally` and pin every NuGet version listed in [plan.md](plan.md) §"Primary Dependencies"
 - [X] T004 [P] Add `.editorconfig` at repo root with .NET formatting + Roslyn analyzers configuration
 - [X] T005 [P] Add `.gitignore` rules covering `bin/`, `obj/`, `appsettings.Development.json`, `*.user`, `EgyptTax-Dev/`, `coverage/`, `playwright-report/`
@@ -52,7 +52,7 @@ Per [plan.md](plan.md) §"Project Structure":
 - [X] T009 [P] Add `serilog.json` configuration template under `src/EgyptTax.Web/` for operational logging per R-20
 - [X] T010 [P] Create `docs/` directory with placeholder operator-runbook.md, accountant-guide.md, inspector-bundle-format.md
 - [X] T011 [P] Create empty `migrations/` directory with README documenting EF Core migration commands (note: EF Core migration *files* land at `src/EgyptTax.Infrastructure/Migrations/` per .NET convention; the root `migrations/` README documents the multi-feature layout because the directory pre-existed for an Alembic-using Python feature)
-- [ ] T012 Verify `dotnet build -c Release` produces no warnings; capture as the Setup-phase exit gate **(BLOCKED on .NET 8 SDK install — current environment has only .NET 6.0.428; user must install .NET 8 SDK before this gate can be verified)**
+- [X] T012 Verify `dotnet build -c Release` produces no warnings; capture as the Setup-phase exit gate. **Closed 2026-05-07 with .NET 8.0.420**: all 9 projects build clean (0 warnings, 0 errors) in 2.59 s after `dotnet restore` (~2 min, first-time package download). Required two corrections: (a) move `Directory.Build.props` from `src/` to repo root so `tests/` projects inherit `TargetFramework=net8.0` (see T002 note); (b) add a minimum-viable entry point at `src/EgyptTax.Web/Program.cs` so the `Microsoft.NET.Sdk.Web` SDK can produce an executable. The Stage-1 stub `Program.cs` will be replaced in Stage 2 by the full MediatR / Hangfire / Blazor / authentication wiring per T037, T050, T054, T058, T073–T076.
 
 ---
 
