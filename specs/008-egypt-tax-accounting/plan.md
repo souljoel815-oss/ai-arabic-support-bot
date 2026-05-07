@@ -27,7 +27,7 @@ The implementation builds on **.NET 8 / C# 12 + Blazor Server + EF Core 8 + SQL 
 - `OpenIddict` 5.x (server-side OAuth/OIDC; gated behind a feature flag — used only for the optional Near-term firm-IdP federation enhancement, NOT a vendor IdP)
 - `Microsoft.Identity.Client` (only if Near-term Azure AD federation is enabled)
 **Storage**:
-- SQL Server 2019+ (Standard or Express) for the relational store (operator-installed; LocalDB acceptable for dev)
+- SQL Server 2019+ (Standard or Express) for the relational store (operator-installed; for dev, either LocalDB OR a regular Express named instance reached via the Shared Memory protocol — `Server=lpc:.\SQLEXPRESS;...` — works equivalently and avoids needing to start the SQL Browser service or install LocalDB separately)
 - Local file system for attachments under `${INSTALL_ROOT}/attachments/{yyyy}/{mm}/{document_id}/...`
 - Audit integrity checkpoint stored in operator's choice (FR-028): either dedicated `audit_checkpoint` table on a separate `audit_meta` schema with restricted privileges, OR a write-restricted file under `${INSTALL_ROOT}/audit_checkpoints/`
 **Testing**:

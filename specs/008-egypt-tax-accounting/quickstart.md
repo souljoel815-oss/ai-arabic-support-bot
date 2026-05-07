@@ -13,7 +13,7 @@ The quickest path through the codebase: install prerequisites, run database migr
 | --- | --- | --- |
 | Windows 10 21H2+ or Windows Server 2019+ | — | Target platform |
 | .NET 8 SDK | 8.0.x (LTS) | Build + run |
-| SQL Server (any edition) | 2019+ | Storage. LocalDB is acceptable for dev; the WiX installer ships SQL Server Express for production. |
+| SQL Server (any edition) | 2019+ | Storage. LocalDB is acceptable for dev (`Server=(localdb)\\MSSQLLocalDB;...`); a regular Express named instance also works for dev when reached via Shared Memory (`Server=lpc:.\\SQLEXPRESS;...`) — useful when LocalDB isn't installable. The WiX installer ships SQL Server Express for production. |
 | Node.js | 20.x | Required only for Playwright browser binaries; not used for app build |
 | Git | 2.40+ | |
 | WiX Toolset | 5.x | Building the MSI installer (only when packaging for release) |
@@ -61,6 +61,11 @@ Create `src/EgyptTax.Web/appsettings.Development.json` (gitignored):
   "ConnectionStrings": {
     "App": "Server=(localdb)\\MSSQLLocalDB;Database=EgyptTax_Dev;Trusted_Connection=Yes;TrustServerCertificate=Yes;",
     "Hangfire": "Server=(localdb)\\MSSQLLocalDB;Database=EgyptTax_Dev_Hangfire;Trusted_Connection=Yes;TrustServerCertificate=Yes;"
+    // ALTERNATIVE — if you have a regular SQL Express instance instead of LocalDB,
+    // use the Shared Memory (lpc:) protocol; this works without admin, without
+    // SQL Browser, and without TCP/IP enabled on the instance:
+    //   "App":      "Server=lpc:.\\SQLEXPRESS;Database=EgyptTax_Dev;Trusted_Connection=Yes;TrustServerCertificate=Yes;",
+    //   "Hangfire": "Server=lpc:.\\SQLEXPRESS;Database=EgyptTax_Dev_Hangfire;Trusted_Connection=Yes;TrustServerCertificate=Yes;"
   },
   "AuditCheckpoint": {
     "Mode": "File",
@@ -151,10 +156,16 @@ App listens on `https://localhost:5443`. The dev cert prompt is handled by `dotn
 9. Click **View ETA Submission**. Status: `Submitted` (mock). Inspect the JSON; it conforms to `contracts/eta-einvoice.schema.json`.
 10. Open the **ETA Compliance Dashboard**. The just-posted invoice appears with a green "Submitted" badge and zero risk findings.
 11. Scan the PDF's QR code with a phone, OR open `https://localhost:5443/api/v1/verify/{seal}` (substituting the QR contents). Result: `VALID`.
-12. Run the audit verifier (console verb on the Web host — no separate exe project):
+12. Run the audit verifier (console verb on the Web host — no separate exe project). Substitute your dev connection string — either form works:
     ```powershell
+    # Form A — LocalDB (if installed)
     dotnet run --project src\EgyptTax.Web -- verify-audit `
-      --connection "Server=(localdb)\MSSQLLocalDB;Database=EgyptTax_Dev;Trusted_Connection=Yes;" `
+      --connection "Server=(localdb)\MSSQLLocalDB;Database=EgyptTax_Dev;Trusted_Connection=Yes;TrustServerCertificate=Yes;" `
+      --checkpoint-file "C:\EgyptTax-Dev\audit_checkpoints\checkpoint.json"
+
+    # Form B — SQL Express via Shared Memory (no LocalDB required)
+    dotnet run --project src\EgyptTax.Web -- verify-audit `
+      --connection "Server=lpc:.\SQLEXPRESS;Database=EgyptTax_Dev;Trusted_Connection=Yes;TrustServerCertificate=Yes;" `
       --checkpoint-file "C:\EgyptTax-Dev\audit_checkpoints\checkpoint.json"
     ```
     Expected: `valid: true, findings: []`.
