@@ -50,11 +50,33 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
     {
         var assembly = typeof(QuestPdfInvoiceRenderer).Assembly;
         var resourceName = $"{assembly.GetName().Name}.{relativeName}";
-        using var stream = assembly.GetManifestResourceStream(resourceName)
+        using var resourceStream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException(
                 $"Embedded font resource '{resourceName}' was not found. Check the EmbeddedResource Link in EgyptTax.Infrastructure.csproj.");
-        FontManager.RegisterFont(stream);
+
+        // Buffer the resource into a byte array, then hand QuestPDF
+        // a non-disposable MemoryStream over those bytes. SkiaSharp's
+        // Typeface holds the stream by reference for lazy glyph
+        // lookup; if we let the manifest-resource stream go out of
+        // scope (the original `using var stream`), parallel tests
+        // see empty render output because the underlying buffer is
+        // gone. The static field keeps the bytes alive for the life
+        // of the process.
+        using var buffer = new MemoryStream();
+        resourceStream.CopyTo(buffer);
+        var bytes = buffer.ToArray();
+        var liveStream = new MemoryStream(bytes, writable: false);
+        FontManager.RegisterFont(liveStream);
+        _registeredFontBuffers.Add(bytes);
     }
+
+    /// <summary>
+    /// Holds onto the embedded-font bytes for the life of the
+    /// process so the streams handed to QuestPDF stay readable.
+    /// (Diagnosed against parallel test execution where short-lived
+    /// streams produced empty rendered text.)
+    /// </summary>
+    private static readonly List<byte[]> _registeredFontBuffers = new();
 
     public byte[] Render(InvoicePdfRequest request)
     {

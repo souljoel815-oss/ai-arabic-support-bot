@@ -33,6 +33,7 @@ namespace EgyptTax.ContractTests.Pdf;
 /// JSON consumer actually rely on, so that's where the regression
 /// signal lives.
 /// </summary>
+[Collection(PdfRenderingCollection.Name)]
 public class InvoicePdfGoldenTests
 {
     private const string GoldenFileName = "golden-invoice-b2bregistered.txt";

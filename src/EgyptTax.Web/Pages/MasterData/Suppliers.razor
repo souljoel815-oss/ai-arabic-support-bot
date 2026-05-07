@@ -1,0 +1,232 @@
+@page "/suppliers"
+@using System.ComponentModel.DataAnnotations
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Suppliers / الموردون</h1>
+
+@if (_savedFlash is not null)
+{
+    <div class="flash-success" role="status">@_savedFlash</div>
+}
+
+<section class="master-data-list">
+    <h2>Existing suppliers</h2>
+    @if (_suppliers is null)
+    {
+        <p>Loading…</p>
+    }
+    else if (_suppliers.Count == 0)
+    {
+        <p><em>No suppliers yet — add one below.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Name (English)</th>
+                    <th>Name (Arabic)</th>
+                    <th>Profile</th>
+                    <th>TIN</th>
+                    <th>Reverse charge</th>
+                    <th>Last TIN check (UTC)</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _suppliers)
+                {
+                    <tr class="@(s.Status == SupplierStatus.Inactive ? "row-muted" : "")">
+                        <td>@s.Code</td>
+                        <td>@s.Name.English</td>
+                        <td>@s.Name.Arabic</td>
+                        <td>@s.TaxProfile.ProfileType</td>
+                        <td>@(s.TaxProfile.TinValue ?? "—")</td>
+                        <td>@(s.TaxProfile.ReverseChargeFlag ? "yes" : "—")</td>
+                        <td>@(s.LastTinRevalidatedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "(never)")</td>
+                        <td>@s.Status</td>
+                        <td>
+                            @if (s.Status == SupplierStatus.Active)
+                            {
+                                <button type="button" @onclick="() => DeactivateAsync(s.Id)">Deactivate</button>
+                            }
+                            else
+                            {
+                                <button type="button" @onclick="() => ReactivateAsync(s.Id)">Reactivate</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section class="master-data-create">
+    <h2>Add a supplier</h2>
+    <EditForm Model="_form" OnValidSubmit="OnCreateAsync" FormName="supplier-create" class="form-grid">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <fieldset>
+            <legend>Identity</legend>
+            <label>
+                <span>Code</span>
+                <InputText @bind-Value="_form.Code" />
+            </label>
+            <label>
+                <span>Name (English)</span>
+                <InputText @bind-Value="_form.NameEnglish" />
+            </label>
+            <label>
+                <span>Name (Arabic)</span>
+                <InputText @bind-Value="_form.NameArabic" />
+            </label>
+            <label>
+                <span>Address (English)</span>
+                <InputText @bind-Value="_form.AddressEnglish" />
+            </label>
+            <label>
+                <span>Address (Arabic)</span>
+                <InputText @bind-Value="_form.AddressArabic" />
+            </label>
+            <label>
+                <span>Phone (optional)</span>
+                <InputText @bind-Value="_form.Phone" />
+            </label>
+            <label>
+                <span>Email (optional)</span>
+                <InputText @bind-Value="_form.Email" />
+            </label>
+        </fieldset>
+
+        <fieldset>
+            <legend>Tax profile (FR-041)</legend>
+            <label>
+                <span>Profile type</span>
+                <InputSelect @bind-Value="_form.ProfileType">
+                    <option value="@SupplierTaxProfileType.RegisteredTaxpayer">Registered taxpayer</option>
+                    <option value="@SupplierTaxProfileType.Unregistered">Unregistered</option>
+                    <option value="@SupplierTaxProfileType.ForeignSupplier">Foreign supplier (reverse charge)</option>
+                </InputSelect>
+            </label>
+            @if (_form.ProfileType == SupplierTaxProfileType.RegisteredTaxpayer)
+            {
+                <label>
+                    <span>TIN (9 digits) — required for Registered Taxpayer</span>
+                    <InputText @bind-Value="_form.Tin" />
+                </label>
+            }
+            <label>
+                <span>Default purchase VAT category</span>
+                <InputSelect @bind-Value="_form.DefaultVatCategoryId">
+                    <option value="@Guid.Empty">— none —</option>
+                    @if (_vatCategories is not null)
+                    {
+                        @foreach (var v in _vatCategories)
+                        {
+                            <option value="@v.Id">@v.Code (@v.RatePercent.ToString("0.##")%)</option>
+                        }
+                    }
+                </InputSelect>
+            </label>
+        </fieldset>
+
+        <button type="submit">Add supplier</button>
+    </EditForm>
+</section>
+
+@code {
+    private List<Supplier>? _suppliers;
+    private List<VatCategory>? _vatCategories;
+    private FormModel _form = new();
+    private string? _savedFlash;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _suppliers = await Db.Set<Supplier>().AsNoTracking().OrderBy(s => s.Code).ToListAsync();
+        _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
+    }
+
+    private async Task OnCreateAsync()
+    {
+        // FR-041 — TIN required iff RegisteredTaxpayer.
+        if (_form.ProfileType == SupplierTaxProfileType.RegisteredTaxpayer
+            && string.IsNullOrWhiteSpace(_form.Tin))
+        {
+            _savedFlash = "TIN is required for Registered Taxpayer suppliers.";
+            return;
+        }
+
+        var defaultVat = _form.DefaultVatCategoryId == Guid.Empty
+            ? (Guid?)null
+            : _form.DefaultVatCategoryId;
+
+        var taxProfile = _form.ProfileType switch
+        {
+            SupplierTaxProfileType.RegisteredTaxpayer =>
+                SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse(_form.Tin!), defaultVat),
+            SupplierTaxProfileType.Unregistered =>
+                SupplierTaxProfile.Unregistered(defaultVat),
+            _ =>
+                SupplierTaxProfile.ForeignSupplier(defaultVat),
+        };
+
+        var supplier = new Supplier(
+            code: _form.Code,
+            name: new ArabicEnglishText(_form.NameArabic, _form.NameEnglish),
+            address: new ArabicEnglishText(_form.AddressArabic, _form.AddressEnglish),
+            taxProfile: taxProfile,
+            phone: string.IsNullOrWhiteSpace(_form.Phone) ? null : _form.Phone,
+            email: string.IsNullOrWhiteSpace(_form.Email) ? null : _form.Email);
+        Db.Add(supplier);
+        await Db.SaveChangesAsync();
+
+        _form = new FormModel();
+        _savedFlash = $"Supplier {supplier.Code} added.";
+        await ReloadAsync();
+    }
+
+    private async Task DeactivateAsync(Guid id)
+    {
+        var s = await Db.Set<Supplier>().FirstAsync(x => x.Id == id);
+        s.Deactivate();
+        await Db.SaveChangesAsync();
+        _savedFlash = $"Supplier {s.Code} deactivated.";
+        await ReloadAsync();
+    }
+
+    private async Task ReactivateAsync(Guid id)
+    {
+        var s = await Db.Set<Supplier>().FirstAsync(x => x.Id == id);
+        s.Reactivate();
+        await Db.SaveChangesAsync();
+        _savedFlash = $"Supplier {s.Code} reactivated.";
+        await ReloadAsync();
+    }
+
+    private sealed class FormModel
+    {
+        [Required, StringLength(32)] public string Code { get; set; } = "";
+        [Required, StringLength(200)] public string NameEnglish { get; set; } = "";
+        [Required, StringLength(200)] public string NameArabic { get; set; } = "";
+        [Required, StringLength(500)] public string AddressEnglish { get; set; } = "";
+        [Required, StringLength(500)] public string AddressArabic { get; set; } = "";
+        [StringLength(32)] public string Phone { get; set; } = "";
+        [EmailAddress, StringLength(254)] public string Email { get; set; } = "";
+
+        public SupplierTaxProfileType ProfileType { get; set; } = SupplierTaxProfileType.RegisteredTaxpayer;
+        public string? Tin { get; set; }
+        public Guid DefaultVatCategoryId { get; set; }
+    }
+}

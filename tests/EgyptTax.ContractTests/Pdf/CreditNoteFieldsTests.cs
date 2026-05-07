@@ -20,6 +20,7 @@ namespace EgyptTax.ContractTests.Pdf;
 /// already validated by T079 also apply (issuer, receiver, lines,
 /// totals, QR seal, posted-by line).
 /// </summary>
+[Collection(PdfRenderingCollection.Name)]
 public class CreditNoteFieldsTests
 {
     private static readonly Regex LigatureFi = new("ﬁ", RegexOptions.Compiled); // ﬁ → fi

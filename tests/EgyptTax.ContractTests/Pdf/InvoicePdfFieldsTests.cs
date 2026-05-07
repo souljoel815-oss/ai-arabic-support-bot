@@ -32,6 +32,7 @@ namespace EgyptTax.ContractTests.Pdf;
 ///    from substring assertions; English / numeric strings are the
 ///    locale-neutral acceptance bar.
 /// </summary>
+[Collection(PdfRenderingCollection.Name)]
 public class InvoicePdfFieldsTests
 {
     private readonly QuestPdfInvoiceRenderer _renderer = new();

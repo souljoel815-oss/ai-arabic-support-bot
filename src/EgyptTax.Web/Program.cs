@@ -116,15 +116,15 @@ builder.Services.AddTransient<NtpHealthCheckJob>();
 builder.Services.AddTransient<AuditCheckpointJob>();
 builder.Services.AddTransient<EtaSubmissionRetryJob>();
 
-// T110 / R-13 — supplier-TIN revalidation cron. The MVP wires the
-// "always-valid" stub revalidator + the empty supplier source (no
-// Supplier aggregate yet); when US2 lands, the source registration
-// here flips to an EF-backed implementation, and the revalidator
-// flips to one that hits the published ETA list.
+// T110 / R-13 — supplier-TIN revalidation cron. The revalidator is
+// still the always-valid stub (the live registry feed is a Near-term
+// plug-in); US2 replaced the empty supplier source with the
+// EF-backed `SqlSupplierTinSource` so the cron now iterates the
+// real Supplier table. Source is scoped (consumes AppDbContext).
 builder.Services.AddSingleton<EgyptTax.Application.Compliance.TinRevalidation.ISupplierTinRevalidator,
     EgyptTax.Infrastructure.Compliance.AlwaysValidTinRevalidator>();
-builder.Services.AddSingleton<EgyptTax.Application.Compliance.TinRevalidation.ISupplierTinSource,
-    EgyptTax.Infrastructure.Compliance.EmptySupplierTinSource>();
+builder.Services.AddScoped<EgyptTax.Application.Compliance.TinRevalidation.ISupplierTinSource,
+    EgyptTax.Infrastructure.Compliance.SqlSupplierTinSource>();
 builder.Services.AddTransient<SupplierTinRevalidationJob>();
 
 // FR-028 / R-03 — Hangfire on its own SQL Server connection

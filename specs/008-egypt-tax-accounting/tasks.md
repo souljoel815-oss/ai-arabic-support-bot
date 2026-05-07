@@ -297,9 +297,9 @@ Per [plan.md](plan.md) §"Project Structure":
 
 ### Master data for US2
 
-- [ ] T131 [P] [US2] Implement `Supplier` + `SupplierTaxProfile` value object at `src/EgyptTax.Domain/MasterData/Supplier.cs` per data-model B3 + B3a; enforce TIN-required-iff-RegisteredTaxpayer
-- [ ] T132 [P] [US2] Implement `DeductibleExpenseCategory` entity at `src/EgyptTax.Domain/MasterData/DeductibleExpenseCategory.cs` per data-model B8
-- [ ] T133 [US2] Add EF Core migration for US2 master-data + document tables at `migrations/[seq]_Us2MasterDataAndDocuments.cs`
+- [X] T131 [P] [US2] `Supplier` + `SupplierTaxProfile` value object at `src/EgyptTax.Domain/MasterData/Supplier.cs` + `SupplierTaxProfile.cs` per B3 + B3a. Three factory methods (`RegisteredTaxpayer`, `Unregistered`, `ForeignSupplier`) enforce TIN-required-iff-RegisteredTaxpayer + reverse-charge-only-on-ForeignSupplier. Convenience `InputVatRecoverable` predicate (FR-020 / INV-011) for the deferred T143 rule. Aggregate carries `LastTinRevalidatedAtUtc` so the T110 cron's "stale or never checked" filter is index-friendly. EF config in `SupplierConfiguration.cs` with composite index on the freshness column. 5 GREEN unit tests in `SupplierTaxProfileTests` lock in the data-model invariants.
+- [X] T132 [P] [US2] `DeductibleExpenseCategory` at `src/EgyptTax.Domain/MasterData/DeductibleExpenseCategory.cs` per B8. Carries `default_deductible` flag + `default_account_id` (FK to ChartOfAccount, deferred — Guid travels forward without DB-enforced constraint until US4 lands the CoA seed). Status-only soft delete per FR-007 pattern.
+- [~] T133 [US2] First slice of the migration shipped as `20260507185420_SuppliersAndExpenseCategories` covering the two new master-data tables. PurchaseInvoice + Expense + Attachment document tables land in the next batch when those aggregates ship.
 
 ### Purchase invoice + expense + attachment
 
