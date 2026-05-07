@@ -1,8 +1,11 @@
 @page "/expenses"
+@using EgyptTax.Application.Compliance.RiskScoring
+@using EgyptTax.Domain.Documents
 @using EgyptTax.Domain.Expenses
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
@@ -41,6 +44,7 @@ else
                 <th>Category</th>
                 <th>Description</th>
                 <th>State</th>
+                <th>Risk</th>
                 <th>Deductible?</th>
                 <th class="num">Amount</th>
                 <th></th>
@@ -55,6 +59,7 @@ else
                     <td>@row.CategoryCode</td>
                     <td>@row.Expense.Description.English</td>
                     <td><StateBadge State="row.Expense.State" /></td>
+                    <td><TaxRiskScoreDot Findings="row.RiskFindings" /></td>
                     <td>@(row.Expense.DeductibleFlag ? "yes" : "—")</td>
                     <td class="num">@row.Expense.Amount.Amount.ToString("F2")</td>
                     <td>
@@ -93,7 +98,50 @@ else
             .Where(c => categoryIds.Contains(c.Id))
             .ToDictionaryAsync(c => c.Id, c => c.Code);
 
-        _rows = rows.Select(e => new Row(e, categories.GetValueOrDefault(e.CategoryId, "?"))).ToList();
+        // Bulk-load attachment counts for the visible rows so the
+        // FR-016 risk badge per row is constant-factor (no N+1).
+        var expenseIds = rows.Select(r => r.Id).ToArray();
+        var attachmentCounts = await Db.Set<Attachment>().AsNoTracking()
+            .Where(a => expenseIds.Contains(a.DocumentId)
+                && a.DocumentType == DocumentType.Expense)
+            .GroupBy(a => a.DocumentId)
+            .Select(g => new { DocumentId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.DocumentId, x => x.Count);
+
+        _rows = rows.Select(e =>
+        {
+            var attachmentCount = attachmentCounts.GetValueOrDefault(e.Id, 0);
+            return new Row(
+                e,
+                categories.GetValueOrDefault(e.CategoryId, "?"),
+                ScoreExpense(e, attachmentCount));
+        }).ToList();
+    }
+
+    /// <summary>
+    /// Inline FR-016 finding — same shape as ExpenseDetail's local
+    /// scorer. Lives here too rather than in a shared helper because
+    /// the dedicated ExpenseDocumentRiskRule family is deferred and
+    /// extracting one method while the rule context is still
+    /// undecided would be premature abstraction.
+    /// </summary>
+    private static IReadOnlyList<RiskFinding> ScoreExpense(Expense expense, int attachmentCount)
+    {
+        if (expense.DeductibleFlag && attachmentCount == 0 && expense.State == DocumentState.Draft)
+        {
+            return new[]
+            {
+                new RiskFinding(
+                    "EXPENSE.MISSING_ATTACHMENT",
+                    RiskSeverity.Blocker,
+                    new ArabicEnglishText("مرفقات مفقودة لخصم ضريبي", "Missing attachment for deductible expense"),
+                    new ArabicEnglishText(
+                        "مصروف قابل للخصم بدون مرفقات. لن يقبل النظام النشر.",
+                        "Deductible expense has no attachments. Post will be rejected per FR-016."),
+                    FixHint: "Upload the receipt before posting."),
+            };
+        }
+        return Array.Empty<RiskFinding>();
     }
 
     private IEnumerable<Row> Filtered => (_rows ?? Enumerable.Empty<Row>())
@@ -104,5 +152,5 @@ else
         .Where(r => string.IsNullOrEmpty(_stateFilter)
             || r.Expense.State.ToString() == _stateFilter);
 
-    private sealed record Row(Expense Expense, string CategoryCode);
+    private sealed record Row(Expense Expense, string CategoryCode, IReadOnlyList<RiskFinding> RiskFindings);
 }

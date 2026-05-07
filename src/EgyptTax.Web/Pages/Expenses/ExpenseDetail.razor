@@ -1,4 +1,5 @@
 @page "/expenses/{Id:guid}"
+@using EgyptTax.Application.Compliance.RiskScoring
 @using EgyptTax.Application.Expenses
 @using EgyptTax.Domain.Documents
 @using EgyptTax.Domain.Expenses
@@ -6,6 +7,7 @@
 @using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Expenses
 @using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -39,6 +41,7 @@
         <div><strong>Posted at (UTC):</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
         <div><strong>Posting mode:</strong> @_expense.PostingMode</div>
     }
+    <div><strong>Tax Risk Score:</strong> <TaxRiskScoreBadge Findings="_riskFindings" /></div>
 </section>
 
 <section>
@@ -95,6 +98,7 @@ else
     private Expense? _expense;
     private DeductibleExpenseCategory? _category;
     private List<Attachment> _attachments = new();
+    private IReadOnlyList<RiskFinding>? _riskFindings;
     private string? _flash;
     private string _flashClass = "flash-success";
     private bool _posting;
@@ -114,6 +118,36 @@ else
                 && a.DocumentType == DocumentType.Expense)
             .OrderBy(a => a.UploadedAtUtc)
             .ToListAsync();
+
+        _riskFindings = ScoreExpense(_expense, _attachments.Count);
+    }
+
+    /// <summary>
+    /// Inline FR-016 finding for Expense — the dedicated
+    /// `IExpenseDocumentRiskRule` family is deferred until more
+    /// expense-specific rules ship; for now the only risk that
+    /// needs surfacing is missing-attachment-on-deductible. Same
+    /// pattern Document360.razor uses.
+    /// </summary>
+    private static IReadOnlyList<RiskFinding> ScoreExpense(Expense expense, int attachmentCount)
+    {
+        if (expense.DeductibleFlag && attachmentCount == 0 && expense.State == DocumentState.Draft)
+        {
+            return new[]
+            {
+                new RiskFinding(
+                    "EXPENSE.MISSING_ATTACHMENT",
+                    RiskSeverity.Blocker,
+                    new ArabicEnglishText(
+                        "مرفقات مفقودة لخصم ضريبي",
+                        "Missing attachment for deductible expense"),
+                    new ArabicEnglishText(
+                        "مصروف قابل للخصم بدون مرفقات. لن يقبل النظام النشر.",
+                        "Deductible expense has no attachments. Post will be rejected per FR-016."),
+                    FixHint: "Upload the receipt before posting."),
+            };
+        }
+        return Array.Empty<RiskFinding>();
     }
 
     private async Task OnPostAsync()
