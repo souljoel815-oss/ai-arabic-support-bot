@@ -1,0 +1,117 @@
+@page "/reports/taxable-income"
+@using EgyptTax.Application.Reports
+@using EgyptTax.Domain.Workflow
+@using Microsoft.AspNetCore.Authorization
+@inject ITaxableIncomeReportQuery ReportQuery
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Taxable income report (FR-023) / تقرير الدخل الخاضع للضريبة</h1>
+
+<form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
+    <label>
+        <span>Period start</span>
+        <input type="date" @bind="_periodStart" />
+    </label>
+    <label>
+        <span>Period end</span>
+        <input type="date" @bind="_periodEnd" />
+    </label>
+    <button type="submit" class="btn-primary" disabled="@_loading">
+        @(_loading ? "Computing…" : "Run report")
+    </button>
+</form>
+
+@if (_report is null)
+{
+    @if (_loading)
+    {
+        <p>Loading…</p>
+    }
+    else
+    {
+        <p><em>Pick a period above and click "Run report".</em></p>
+    }
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>Period:</strong> @_report.PeriodStart.ToString("yyyy-MM-dd") to @_report.PeriodEnd.ToString("yyyy-MM-dd")</div>
+    <div><strong>Revenue:</strong> <span class="num">@_report.Revenue.Amount.ToString("F2") EGP</span></div>
+    <div><strong>Deductible expenses:</strong> <span class="num">(@_report.DeductibleExpenses.Amount.ToString("F2")) EGP</span></div>
+    <div><strong>Non-deductible adjustments (added back):</strong> <span class="num">+@_report.NonDeductibleAdjustments.Amount.ToString("F2") EGP</span></div>
+    <div><strong>Management P&amp;L:</strong> <span class="num">@_report.ManagementProfitLoss.Amount.ToString("F2") EGP</span></div>
+    <div class="grand">
+        <strong>Taxable income:</strong>
+        <span class="num">@_report.TaxableIncome.Amount.ToString("F2") EGP</span>
+    </div>
+    <p><em>Identity: TaxableIncome = ManagementP&amp;L + NonDeductibleAdjustments. Non-deductible items appear in P&amp;L but are added back when computing taxable profit (US2 acceptance scenario 2).</em></p>
+</section>
+
+<section>
+    <h2>Contributing documents (@_report.Rows.Count)</h2>
+    @if (_report.Rows.Count == 0)
+    {
+        <p><em>No posted documents in this period.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Bucket</th>
+                    <th>Type</th>
+                    <th>Document #</th>
+                    <th>Description</th>
+                    <th class="num">Amount</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _report.Rows)
+                {
+                    <tr>
+                        <td>@row.DocumentDate.ToString("yyyy-MM-dd")</td>
+                        <td>@row.Bucket</td>
+                        <td>@row.DocumentType</td>
+                        <td>@(row.DocumentNumber ?? "(draft)")</td>
+                        <td>@row.Description</td>
+                        <td class="num">@row.Amount.Amount.ToString("F2")</td>
+                        <td><a href="@DrillDownUrl(row)">Open</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    private DateTime _periodStart = new(DateTime.UtcNow.Year, 1, 1);
+    private DateTime _periodEnd = new(DateTime.UtcNow.Year, 12, 31);
+    private bool _loading;
+    private TaxableIncomeReport? _report;
+
+    private async Task OnRefresh()
+    {
+        _loading = true;
+        try
+        {
+            _report = await ReportQuery.RunAsync(
+                DateOnly.FromDateTime(_periodStart),
+                DateOnly.FromDateTime(_periodEnd));
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string DrillDownUrl(TaxableIncomeRow row) => row.DocumentType switch
+    {
+        DocumentType.SalesInvoice => $"/invoices/{row.DocumentId}",
+        DocumentType.CreditNote => $"/invoices/{row.DocumentId}",
+        DocumentType.PurchaseInvoice => $"/purchase-invoices/{row.DocumentId}",
+        DocumentType.Expense => $"/expenses/{row.DocumentId}",
+        _ => $"/document360/{row.DocumentType.ToString().ToLowerInvariant()}/{row.DocumentId}",
+    };
+}

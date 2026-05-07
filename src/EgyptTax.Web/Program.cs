@@ -96,6 +96,15 @@ builder.Services.AddScoped<EgyptTax.Application.Common.Guards.IMasterDataDeletio
 builder.Services.AddScoped<EgyptTax.Application.Reports.IVatMonthlyReportQuery,
     EgyptTax.Infrastructure.Reports.SqlVatMonthlyReportQuery>();
 
+// US5 / FR-023 — taxable income report (annual / period-scoped).
+builder.Services.AddScoped<EgyptTax.Application.Reports.ITaxableIncomeReportQuery,
+    EgyptTax.Infrastructure.Reports.SqlTaxableIncomeReportQuery>();
+
+// US5 / FR-024 — trial balance (sums journal-entry-line debits +
+// credits per chart-of-account code).
+builder.Services.AddScoped<EgyptTax.Application.Reports.ITrialBalanceReportQuery,
+    EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery>();
+
 // T139 / R-21 — attachment store lives on the filesystem under
 // EGYPTTAX_ATTACHMENT_ROOT (config key Attachments:Root). Defaults
 // to {ContentRootPath}/var/attachments for dev so a fresh clone
