@@ -1,0 +1,146 @@
+@page "/purchase-invoices"
+@using EgyptTax.Application.Compliance.RiskScoring
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Purchases
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject PurchaseDocumentRiskScorer RiskScorer
+@inject IPurchaseInvoiceFingerprintQuery FingerprintQuery
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Purchase invoices / فواتير الشراء</h1>
+
+<div class="invoice-toolbar">
+    <a class="btn-primary" href="/purchase-invoices/new">+ New purchase invoice</a>
+    <input type="search" placeholder="Search by document or supplier number…"
+           @bind="_search" @bind:event="oninput" />
+    <select @bind="_stateFilter">
+        <option value="">All states</option>
+        @foreach (var state in Enum.GetValues<DocumentState>())
+        {
+            <option value="@state">@state</option>
+        }
+    </select>
+</div>
+
+@if (_rows is null)
+{
+    <p>Loading…</p>
+}
+else if (_rows.Count == 0)
+{
+    <p><em>No purchase invoices match the current filters.</em></p>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>Document #</th>
+                <th>Supplier #</th>
+                <th>Supplier</th>
+                <th>Date received</th>
+                <th>State</th>
+                <th>Risk</th>
+                <th class="num">Subtotal</th>
+                <th class="num">VAT</th>
+                <th class="num">Grand total</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Filtered)
+            {
+                <tr>
+                    <td>@(row.Invoice.DocumentNumber ?? "(draft)")</td>
+                    <td>@row.Invoice.SupplierInvoiceNumber</td>
+                    <td>@row.SupplierName</td>
+                    <td>@row.Invoice.DateReceived.ToString("yyyy-MM-dd")</td>
+                    <td><StateBadge State="row.Invoice.State" /></td>
+                    <td><TaxRiskScoreDot Findings="row.RiskFindings" /></td>
+                    <td class="num">@row.Invoice.Subtotal.Amount.ToString("F2")</td>
+                    <td class="num">@row.Invoice.VatTotal.Amount.ToString("F2")</td>
+                    <td class="num">@row.Invoice.GrandTotal.Amount.ToString("F2")</td>
+                    <td>
+                        @if (row.Invoice.State == DocumentState.Draft)
+                        {
+                            <a href="/purchase-invoices/@row.Invoice.Id/edit">Edit</a>
+                        }
+                        else
+                        {
+                            <a href="/purchase-invoices/@row.Invoice.Id">View</a>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Row>? _rows;
+    private string _search = "";
+    private string _stateFilter = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var rows = await Db.Set<PurchaseInvoice>()
+            .AsNoTracking()
+            .Include(p => p.Lines)
+            .OrderByDescending(p => p.DateReceived)
+            .ThenByDescending(p => p.PostedAtUtc)
+            .Take(500)
+            .ToListAsync();
+
+        var supplierIds = rows.Select(r => r.SupplierId).Distinct().ToArray();
+        var suppliers = await Db.Set<Supplier>()
+            .AsNoTracking()
+            .Where(s => supplierIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id);
+
+        var invoiceIds = rows.Select(r => r.Id).ToArray();
+        var attachmentsByDoc = await Db.Set<Attachment>()
+            .AsNoTracking()
+            .Where(a => invoiceIds.Contains(a.DocumentId)
+                && a.DocumentType == DocumentType.PurchaseInvoice)
+            .ToListAsync();
+        var attachmentLookup = attachmentsByDoc
+            .GroupBy(a => a.DocumentId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Attachment>)g.ToList());
+
+        // Risk scoring per row. Skip the dedup probe in list mode —
+        // a per-row probe would be N+1 against the supplier dedup
+        // index. The dedup rule fires on detail/edit pages where it
+        // matters most; the list shows the cheaper rules
+        // (MissingAttachment + NonRecoverableInputVat) by passing an
+        // empty fingerprint set.
+        var nowUtc = DateTime.UtcNow;
+        _rows = rows.Select(p =>
+        {
+            var supplier = suppliers.GetValueOrDefault(p.SupplierId);
+            var attachments = attachmentLookup.GetValueOrDefault(p.Id, Array.Empty<Attachment>());
+            var ctx = new PurchaseDocumentRiskContext(
+                Invoice: p,
+                Supplier: supplier,
+                Attachments: attachments,
+                SupplierInvoiceFingerprints: Array.Empty<PurchaseInvoiceFingerprint>(),
+                NowUtc: nowUtc);
+            return new Row(p, supplier?.Name.English ?? p.SupplierId.ToString("D"), RiskScorer.Score(ctx));
+        }).ToList();
+    }
+
+    private IEnumerable<Row> Filtered => (_rows ?? Enumerable.Empty<Row>())
+        .Where(r => string.IsNullOrEmpty(_search)
+            || (r.Invoice.DocumentNumber?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false)
+            || r.Invoice.SupplierInvoiceNumber.Contains(_search, StringComparison.OrdinalIgnoreCase)
+            || r.SupplierName.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(r => string.IsNullOrEmpty(_stateFilter)
+            || r.Invoice.State.ToString() == _stateFilter);
+
+    private sealed record Row(PurchaseInvoice Invoice, string SupplierName, IReadOnlyList<RiskFinding> RiskFindings);
+}

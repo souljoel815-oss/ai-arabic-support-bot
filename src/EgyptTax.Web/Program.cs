@@ -83,6 +83,20 @@ builder.Services.AddScoped<EgyptTax.Application.Compliance.RiskScoring.IPurchase
 
 // US2 — purchase invoice post handler.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Purchases.PostPurchaseInvoiceHandler>();
+
+// T139 / R-21 — attachment store lives on the filesystem under
+// EGYPTTAX_ATTACHMENT_ROOT (config key Attachments:Root). Defaults
+// to {ContentRootPath}/var/attachments for dev so a fresh clone
+// "just works" without operator setup. Singleton because the store
+// is stateless beyond the configured root.
+var attachmentRoot = builder.Configuration["Attachments:Root"]
+    ?? Environment.GetEnvironmentVariable("EGYPTTAX_ATTACHMENT_ROOT")
+    ?? Path.Combine(builder.Environment.ContentRootPath, "var", "attachments");
+builder.Services.AddSingleton<EgyptTax.Application.FileStorage.IAttachmentStore>(sp =>
+    new EgyptTax.Infrastructure.FileStorage.FileSystemAttachmentStore(
+        attachmentRoot,
+        sp.GetRequiredService<EgyptTax.SharedKernel.Time.IClock>()));
+builder.Services.AddScoped<EgyptTax.Infrastructure.Attachments.UploadAttachmentHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceWithEtaSubmissionHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.IssueCreditNoteHandler>();

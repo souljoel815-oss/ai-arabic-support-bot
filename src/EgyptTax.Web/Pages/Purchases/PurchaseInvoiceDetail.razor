@@ -1,0 +1,208 @@
+@page "/purchase-invoices/{Id:guid}"
+@using EgyptTax.Application.Compliance.RiskScoring
+@using EgyptTax.Application.Purchases
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Purchases
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Purchases
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject PurchaseDocumentRiskScorer RiskScorer
+@inject IPurchaseInvoiceFingerprintQuery FingerprintQuery
+@inject PostPurchaseInvoiceHandler PostHandler
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Purchase invoice @(_invoice?.DocumentNumber ?? "(loading)")</h1>
+
+@if (_invoice is null)
+{
+    <p>Loading…</p>
+    return;
+}
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status">@_flash</div>
+}
+
+<section class="invoice-header">
+    <div><strong>Supplier #:</strong> @_invoice.SupplierInvoiceNumber</div>
+    <div><strong>Date received:</strong> @_invoice.DateReceived.ToString("yyyy-MM-dd")</div>
+    <div><strong>State:</strong> <StateBadge State="_invoice.State" /></div>
+    <div><strong>Supplier:</strong> @(_supplier?.Name.English ?? "—") (@(_invoice.SupplierTaxProfileSnapshot.ProfileType))</div>
+    @if (_invoice.PostedAtUtc is { } postedAt)
+    {
+        <div><strong>Posted at (UTC):</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+        <div><strong>Posting mode:</strong> @_invoice.PostingMode</div>
+    }
+    <div><strong>Tax Risk Score:</strong> <TaxRiskScoreBadge Findings="_riskFindings" /></div>
+</section>
+
+<section>
+    <h2>Lines</h2>
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Item / Expense category</th>
+                <th class="num">Qty</th>
+                <th class="num">Unit price</th>
+                <th class="num">Subtotal</th>
+                <th>VAT %</th>
+                <th class="num">VAT</th>
+                <th class="num">Line total</th>
+                <th>Deductible?</th>
+            </tr>
+        </thead>
+        <tbody>
+            @{ var idx = 1; }
+            @foreach (var line in _invoice.Lines)
+            {
+                <tr>
+                    <td>@idx</td>
+                    <td>@DescribeLine(line)</td>
+                    <td class="num">@line.Quantity.ToString("0.##")</td>
+                    <td class="num">@line.UnitPrice.Amount.ToString("F2")</td>
+                    <td class="num">@line.LineSubtotal.Amount.ToString("F2")</td>
+                    <td>@line.VatRatePercent.ToString("0.##")%</td>
+                    <td class="num">@line.LineVat.Amount.ToString("F2")</td>
+                    <td class="num">@line.LineTotal.Amount.ToString("F2")</td>
+                    <td>@(line.DeductibleFlag ? "yes" : "—")</td>
+                </tr>
+                idx++;
+            }
+        </tbody>
+    </table>
+</section>
+
+<section class="invoice-totals">
+    <div><strong>Subtotal:</strong> <span class="num">@_invoice.Subtotal.Amount.ToString("F2") EGP</span></div>
+    <div><strong>VAT total:</strong> <span class="num">@_invoice.VatTotal.Amount.ToString("F2") EGP</span></div>
+    <div class="grand"><strong>Grand total:</strong> <span class="num">@_invoice.GrandTotal.Amount.ToString("F2") EGP</span></div>
+</section>
+
+<section>
+    <h2>Attachments (@_attachments.Count)</h2>
+    @if (_attachments.Count == 0)
+    {
+        <p><em>No attachments uploaded.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr><th>Filename</th><th>MIME</th><th class="num">Size (bytes)</th><th>SHA-256 (first 16 hex)</th><th>Uploaded (UTC)</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var a in _attachments)
+                {
+                    <tr>
+                        <td>@a.FilenameOriginal</td>
+                        <td>@a.MimeType</td>
+                        <td class="num">@a.SizeBytes.ToString("N0")</td>
+                        <td><code>@Convert.ToHexString(a.Sha256).Substring(0, 16)…</code></td>
+                        <td>@a.UploadedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@if (_invoice.State == DocumentState.Draft)
+{
+    <section class="invoice-actions">
+        <a class="btn-primary" href="/purchase-invoices/@_invoice.Id/edit">Edit draft</a>
+        <button type="button" class="btn-primary" disabled="@_posting" @onclick="OnPostAsync">
+            @(_posting ? "Posting…" : "Post invoice")
+        </button>
+    </section>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private PurchaseInvoice? _invoice;
+    private Supplier? _supplier;
+    private List<Attachment> _attachments = new();
+    private IReadOnlyList<RiskFinding>? _riskFindings;
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private bool _posting;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _invoice = await Db.Set<PurchaseInvoice>()
+            .Include(p => p.Lines)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == Id);
+        if (_invoice is null) return;
+
+        _supplier = await Db.Set<Supplier>().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == _invoice.SupplierId);
+
+        _attachments = await Db.Set<Attachment>()
+            .AsNoTracking()
+            .Where(a => a.DocumentId == _invoice.Id
+                && a.DocumentType == DocumentType.PurchaseInvoice)
+            .OrderBy(a => a.UploadedAtUtc)
+            .ToListAsync();
+
+        var fingerprints = await FingerprintQuery
+            .FindOtherPurchaseInvoicesWithSameSupplierReferenceAsync(
+                _invoice.SupplierId,
+                _invoice.SupplierInvoiceNumber,
+                excludePurchaseInvoiceId: _invoice.Id);
+
+        _riskFindings = RiskScorer.Score(new PurchaseDocumentRiskContext(
+            Invoice: _invoice,
+            Supplier: _supplier,
+            Attachments: _attachments,
+            SupplierInvoiceFingerprints: fingerprints,
+            NowUtc: DateTime.UtcNow));
+    }
+
+    private async Task OnPostAsync()
+    {
+        if (_invoice is null) return;
+        _posting = true;
+        _flash = null;
+        try
+        {
+            var auth = await AuthState.GetAuthenticationStateAsync();
+            var sessionUser = auth.User;
+            var userIdClaim = sessionUser.FindFirst("sub")?.Value
+                ?? sessionUser.FindFirst("userId")?.Value;
+            var operatorUserId = Guid.TryParse(userIdClaim, out var u) ? u : Guid.Empty;
+
+            await PostHandler.HandleAsync(
+                new PostPurchaseInvoiceCommand(_invoice.Id, operatorUserId),
+                CancellationToken.None);
+            Nav.NavigateTo($"/purchase-invoices/{_invoice.Id}", forceLoad: true);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _posting = false;
+        }
+    }
+
+    private string DescribeLine(PurchaseInvoiceLine line) =>
+        line.ItemId is { } itemId
+            ? $"Item {itemId:D}"
+            : line.ExpenseCategoryId is { } catId
+                ? $"Expense category {catId:D}"
+                : "(unknown)";
+}

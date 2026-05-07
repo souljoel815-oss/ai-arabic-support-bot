@@ -1,0 +1,466 @@
+@page "/purchase-invoices/new"
+@page "/purchase-invoices/{Id:guid}/edit"
+@using System.ComponentModel.DataAnnotations
+@using EgyptTax.Application.Attachments
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Purchases
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Attachments
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject UploadAttachmentHandler UploadHandler
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>@(_isNew ? "New purchase invoice" : "Edit purchase invoice")</h1>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+    return;
+}
+
+@if (!_isNew && _invoice is null)
+{
+    <div class="flash-error">Purchase invoice not found.</div>
+    return;
+}
+
+@if (!_isNew && _invoice!.State != DocumentState.Draft)
+{
+    <div class="flash-error">
+        Invoice @_invoice.DocumentNumber is in state @_invoice.State; only drafts are editable (FR-027).
+    </div>
+    <a href="/purchase-invoices/@_invoice.Id">← View invoice</a>
+    return;
+}
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status">@_flash</div>
+}
+
+<EditForm Model="_form" OnValidSubmit="OnSaveDraftAsync" FormName="purchase-invoice-edit" class="form-grid">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <fieldset>
+        <legend>Header</legend>
+        <label>
+            <span>Supplier</span>
+            <InputSelect @bind-Value="_form.SupplierId">
+                <option value="@Guid.Empty">— select —</option>
+                @foreach (var s in _suppliers)
+                {
+                    <option value="@s.Id">@s.Code — @s.Name.English (@s.TaxProfile.ProfileType)</option>
+                }
+            </InputSelect>
+        </label>
+        <label>
+            <span>Supplier invoice number</span>
+            <InputText @bind-Value="_form.SupplierInvoiceNumber" />
+        </label>
+        <label>
+            <span>Date received</span>
+            <InputDate @bind-Value="_form.DateReceived" />
+        </label>
+    </fieldset>
+
+    <fieldset>
+        <legend>Lines</legend>
+        @if (_form.Lines.Count == 0)
+        {
+            <p><em>No lines yet — add one below.</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Item / Category</th>
+                        <th>VAT</th>
+                        <th class="num">Qty</th>
+                        <th class="num">Unit price</th>
+                        <th>Deductible</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < _form.Lines.Count; i++)
+                    {
+                        var idx = i;
+                        var line = _form.Lines[idx];
+                        <tr>
+                            <td>@(idx + 1)</td>
+                            <td>@DescribeLine(line)</td>
+                            <td>@DescribeVat(line.VatCategoryId)</td>
+                            <td class="num">@line.Quantity.ToString("0.##")</td>
+                            <td class="num">@line.UnitPrice.ToString("F2")</td>
+                            <td>@(line.DeductibleFlag ? "yes" : "no")</td>
+                            <td><button type="button" @onclick="() => _form.Lines.RemoveAt(idx)">Remove</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </fieldset>
+
+    <fieldset>
+        <legend>Add a line</legend>
+        <label>
+            <span>Line kind</span>
+            <InputSelect @bind-Value="_newLine.Kind">
+                <option value="@LineKind.Item">Item (inventory / trading goods)</option>
+                <option value="@LineKind.Expense">Expense category</option>
+            </InputSelect>
+        </label>
+        @if (_newLine.Kind == LineKind.Item)
+        {
+            <label>
+                <span>Item</span>
+                <InputSelect @bind-Value="_newLine.ItemId">
+                    <option value="@Guid.Empty">— select —</option>
+                    @foreach (var i in _items)
+                    {
+                        <option value="@i.Id">@i.Code — @i.Name.English</option>
+                    }
+                </InputSelect>
+            </label>
+        }
+        else
+        {
+            <label>
+                <span>Expense category</span>
+                <InputSelect @bind-Value="_newLine.ExpenseCategoryId">
+                    <option value="@Guid.Empty">— select —</option>
+                    @foreach (var c in _categories)
+                    {
+                        <option value="@c.Id">@c.Code — @c.Name.English (@(c.DefaultDeductible ? "deductible by default" : "non-deductible by default"))</option>
+                    }
+                </InputSelect>
+            </label>
+        }
+        <label>
+            <span>VAT category</span>
+            <InputSelect @bind-Value="_newLine.VatCategoryId">
+                <option value="@Guid.Empty">— select —</option>
+                @foreach (var v in _vatCategories)
+                {
+                    <option value="@v.Id">@v.Code (@v.RatePercent.ToString("0.##")%)</option>
+                }
+            </InputSelect>
+        </label>
+        <label>
+            <span>Quantity</span>
+            <InputNumber @bind-Value="_newLine.Quantity" step="0.01" />
+        </label>
+        <label>
+            <span>Unit price</span>
+            <InputNumber @bind-Value="_newLine.UnitPrice" step="0.01" />
+        </label>
+        <label>
+            <span>Deductible (input VAT recoverable)</span>
+            <InputCheckbox @bind-Value="_newLine.DeductibleFlag" />
+        </label>
+        <button type="button" @onclick="OnAddLine">Add line</button>
+    </fieldset>
+
+    <button type="submit">@(_isNew ? "Save draft" : "Update draft")</button>
+    <a href="/purchase-invoices">Cancel</a>
+</EditForm>
+
+@if (!_isNew && _invoice is not null)
+{
+    <section class="upload-section">
+        <h2>Attachments (FR-016 — required for deductible lines)</h2>
+        @if (_attachments.Count == 0)
+        {
+            <p><em>No attachments yet. Deductible lines require at least one supporting document before posting.</em></p>
+        }
+        else
+        {
+            <ul>
+                @foreach (var a in _attachments)
+                {
+                    <li>@a.FilenameOriginal — @a.MimeType — @a.SizeBytes.ToString("N0") bytes</li>
+                }
+            </ul>
+        }
+
+        <InputFile OnChange="OnUploadAsync" accept=".pdf,.jpg,.jpeg,.png" disabled="@_uploading" />
+        @if (_uploading)
+        {
+            <span> Uploading…</span>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool _isNew;
+    private bool _loading = true;
+    private PurchaseInvoice? _invoice;
+    private List<Supplier> _suppliers = new();
+    private List<Item> _items = new();
+    private List<DeductibleExpenseCategory> _categories = new();
+    private List<VatCategory> _vatCategories = new();
+    private List<Attachment> _attachments = new();
+    private FormModel _form = new();
+    private NewLineModel _newLine = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private bool _uploading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isNew = Id is null;
+
+        _suppliers = await Db.Set<Supplier>().AsNoTracking()
+            .Where(s => s.Status == SupplierStatus.Active)
+            .OrderBy(s => s.Code).ToListAsync();
+        _items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => i.Status == ItemStatus.Active)
+            .OrderBy(i => i.Code).ToListAsync();
+        _categories = await Db.Set<DeductibleExpenseCategory>().AsNoTracking()
+            .Where(c => c.Status == DeductibleExpenseCategoryStatus.Active)
+            .OrderBy(c => c.Code).ToListAsync();
+        _vatCategories = await Db.Set<VatCategory>().AsNoTracking()
+            .OrderBy(v => v.Code).ToListAsync();
+
+        if (!_isNew)
+        {
+            _invoice = await Db.Set<PurchaseInvoice>()
+                .Include(p => p.Lines)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == Id);
+            if (_invoice is not null && _invoice.State == DocumentState.Draft)
+            {
+                _form.SupplierId = _invoice.SupplierId;
+                _form.SupplierInvoiceNumber = _invoice.SupplierInvoiceNumber;
+                _form.DateReceived = _invoice.DateReceived.ToDateTime(TimeOnly.MinValue);
+                _form.Lines = _invoice.Lines
+                    .Select(l => new FormLine
+                    {
+                        ItemId = l.ItemId,
+                        ExpenseCategoryId = l.ExpenseCategoryId,
+                        VatCategoryId = l.VatCategoryId,
+                        Quantity = l.Quantity,
+                        UnitPrice = l.UnitPrice.Amount,
+                        VatRatePercent = l.VatRatePercent,
+                        DeductibleFlag = l.DeductibleFlag,
+                    }).ToList();
+                _attachments = await Db.Set<Attachment>()
+                    .AsNoTracking()
+                    .Where(a => a.DocumentId == _invoice.Id
+                        && a.DocumentType == DocumentType.PurchaseInvoice)
+                    .OrderBy(a => a.UploadedAtUtc)
+                    .ToListAsync();
+            }
+        }
+
+        if (_isNew)
+        {
+            _form.DateReceived = DateTime.UtcNow.Date;
+        }
+
+        _loading = false;
+    }
+
+    private void OnAddLine()
+    {
+        if (_newLine.VatCategoryId == Guid.Empty || _newLine.Quantity <= 0m)
+        {
+            _flash = "Select a VAT category and a positive quantity.";
+            _flashClass = "flash-error";
+            return;
+        }
+        if (_newLine.Kind == LineKind.Item && _newLine.ItemId == Guid.Empty)
+        {
+            _flash = "Select an item.";
+            _flashClass = "flash-error";
+            return;
+        }
+        if (_newLine.Kind == LineKind.Expense && _newLine.ExpenseCategoryId == Guid.Empty)
+        {
+            _flash = "Select an expense category.";
+            _flashClass = "flash-error";
+            return;
+        }
+
+        var vat = _vatCategories.First(v => v.Id == _newLine.VatCategoryId);
+        _form.Lines.Add(new FormLine
+        {
+            ItemId = _newLine.Kind == LineKind.Item ? _newLine.ItemId : null,
+            ExpenseCategoryId = _newLine.Kind == LineKind.Expense ? _newLine.ExpenseCategoryId : null,
+            VatCategoryId = vat.Id,
+            VatRatePercent = vat.RatePercent,
+            Quantity = _newLine.Quantity,
+            UnitPrice = _newLine.UnitPrice,
+            DeductibleFlag = _newLine.DeductibleFlag,
+        });
+        _newLine = new NewLineModel();
+        _flash = null;
+    }
+
+    private async Task OnSaveDraftAsync()
+    {
+        if (_form.SupplierId == Guid.Empty)
+        {
+            _flash = "Select a supplier.";
+            _flashClass = "flash-error";
+            return;
+        }
+        if (_form.Lines.Count == 0)
+        {
+            _flash = "Add at least one line.";
+            _flashClass = "flash-error";
+            return;
+        }
+
+        var supplier = _suppliers.First(s => s.Id == _form.SupplierId);
+        var dateReceived = DateOnly.FromDateTime(_form.DateReceived);
+
+        if (_isNew)
+        {
+            var draft = PurchaseInvoice.CreateDraft(
+                supplier.Id, supplier.TaxProfile, _form.SupplierInvoiceNumber, dateReceived);
+            foreach (var l in _form.Lines)
+            {
+                draft.AddLine(l.ItemId, l.ExpenseCategoryId, l.Quantity,
+                    MoneyEgp.From(l.UnitPrice), l.VatCategoryId, l.VatRatePercent, l.DeductibleFlag);
+            }
+            Db.Add(draft);
+            await Db.SaveChangesAsync();
+            Nav.NavigateTo($"/purchase-invoices/{draft.Id}/edit", forceLoad: true);
+            return;
+        }
+
+        // Edit existing draft: load + remove existing lines, replay
+        // current form lines, save. Aggregate-level state machine
+        // gates editing on Draft so we don't need a separate guard.
+        var live = await Db.Set<PurchaseInvoice>()
+            .Include(p => p.Lines)
+            .FirstAsync(p => p.Id == _invoice!.Id);
+        live.UpdateSupplierInvoiceNumber(_form.SupplierInvoiceNumber);
+        live.UpdateDateReceived(dateReceived);
+        foreach (var existing in live.Lines.Select(l => l.Id).ToList())
+        {
+            live.RemoveLine(existing);
+        }
+        foreach (var l in _form.Lines)
+        {
+            live.AddLine(l.ItemId, l.ExpenseCategoryId, l.Quantity,
+                MoneyEgp.From(l.UnitPrice), l.VatCategoryId, l.VatRatePercent, l.DeductibleFlag);
+        }
+        await Db.SaveChangesAsync();
+
+        _flash = "Draft saved.";
+        _flashClass = "flash-success";
+    }
+
+    private async Task OnUploadAsync(InputFileChangeEventArgs e)
+    {
+        if (_invoice is null) return;
+        var file = e.File;
+        if (file is null) return;
+
+        _uploading = true;
+        try
+        {
+            var auth = await AuthState.GetAuthenticationStateAsync();
+            var userIdClaim = auth.User.FindFirst("sub")?.Value
+                ?? auth.User.FindFirst("userId")?.Value;
+            var operatorUserId = Guid.TryParse(userIdClaim, out var u) ? u : Guid.Empty;
+
+            await using var content = file.OpenReadStream(maxAllowedSize: UploadAttachmentHandler.MaxBytes);
+            await UploadHandler.HandleAsync(new UploadAttachmentCommand(
+                DocumentId: _invoice.Id,
+                DocumentType: DocumentType.PurchaseInvoice,
+                FilenameOriginal: file.Name,
+                MimeType: file.ContentType,
+                ContentStream: content,
+                UploadedByUserId: operatorUserId), CancellationToken.None);
+
+            _attachments = await Db.Set<Attachment>()
+                .AsNoTracking()
+                .Where(a => a.DocumentId == _invoice.Id
+                    && a.DocumentType == DocumentType.PurchaseInvoice)
+                .OrderBy(a => a.UploadedAtUtc)
+                .ToListAsync();
+            _flash = $"Uploaded {file.Name}.";
+            _flashClass = "flash-success";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _uploading = false;
+        }
+    }
+
+    private string DescribeLine(FormLine line)
+    {
+        if (line.ItemId is { } itemId)
+        {
+            var item = _items.FirstOrDefault(i => i.Id == itemId);
+            return item is null ? itemId.ToString("D") : $"{item.Code} — {item.Name.English}";
+        }
+        if (line.ExpenseCategoryId is { } catId)
+        {
+            var cat = _categories.FirstOrDefault(c => c.Id == catId);
+            return cat is null ? catId.ToString("D") : $"{cat.Code} — {cat.Name.English}";
+        }
+        return "(unknown)";
+    }
+
+    private string DescribeVat(Guid vatId)
+    {
+        var v = _vatCategories.FirstOrDefault(x => x.Id == vatId);
+        return v is null ? vatId.ToString("D") : $"{v.Code} ({v.RatePercent:0.##}%)";
+    }
+
+    private enum LineKind { Item, Expense }
+
+    private sealed class FormModel
+    {
+        public Guid SupplierId { get; set; } = Guid.Empty;
+        [Required, StringLength(64)]
+        public string SupplierInvoiceNumber { get; set; } = "";
+        public DateTime DateReceived { get; set; } = DateTime.UtcNow.Date;
+        public List<FormLine> Lines { get; set; } = new();
+    }
+
+    private sealed class FormLine
+    {
+        public Guid? ItemId { get; set; }
+        public Guid? ExpenseCategoryId { get; set; }
+        public Guid VatCategoryId { get; set; }
+        public decimal VatRatePercent { get; set; }
+        public decimal Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public bool DeductibleFlag { get; set; }
+    }
+
+    private sealed class NewLineModel
+    {
+        public LineKind Kind { get; set; } = LineKind.Expense;
+        public Guid ItemId { get; set; } = Guid.Empty;
+        public Guid ExpenseCategoryId { get; set; } = Guid.Empty;
+        public Guid VatCategoryId { get; set; } = Guid.Empty;
+        public decimal Quantity { get; set; } = 1m;
+        public decimal UnitPrice { get; set; }
+        public bool DeductibleFlag { get; set; } = true;
+    }
+}
