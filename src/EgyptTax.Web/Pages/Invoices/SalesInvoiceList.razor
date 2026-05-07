@@ -1,0 +1,110 @@
+@page "/invoices"
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Sales invoices / فواتير المبيعات</h1>
+
+<div class="invoice-toolbar">
+    <a class="btn-primary" href="/invoices/new">+ New invoice</a>
+    <input type="search" placeholder="Search by document number or customer name…"
+           @bind="_search" @bind:event="oninput" />
+    <select @bind="_stateFilter">
+        <option value="">All states</option>
+        @foreach (var state in Enum.GetValues<DocumentState>())
+        {
+            <option value="@state">@state</option>
+        }
+    </select>
+</div>
+
+@if (_invoices is null)
+{
+    <p>Loading…</p>
+}
+else if (_invoices.Count == 0)
+{
+    <p><em>No invoices match the current filters.</em></p>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>Document #</th>
+                <th>Date</th>
+                <th>Customer</th>
+                <th>State</th>
+                <th class="num">Subtotal</th>
+                <th class="num">VAT</th>
+                <th class="num">Grand total</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Filtered)
+            {
+                <tr>
+                    <td>@(row.Invoice.DocumentNumber ?? "(draft)")</td>
+                    <td>@row.Invoice.DocumentDate.ToString("yyyy-MM-dd")</td>
+                    <td>@row.CustomerName</td>
+                    <td><StateBadge State="row.Invoice.State" /></td>
+                    <td class="num">@row.Invoice.Subtotal.Amount.ToString("F2")</td>
+                    <td class="num">@row.Invoice.VatTotal.Amount.ToString("F2")</td>
+                    <td class="num">@row.Invoice.GrandTotal.Amount.ToString("F2")</td>
+                    <td>
+                        @if (row.Invoice.State == DocumentState.Draft)
+                        {
+                            <a href="/invoices/@row.Invoice.Id/edit">Edit</a>
+                        }
+                        else
+                        {
+                            <a href="/invoices/@row.Invoice.Id">View</a>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Row>? _invoices;
+    private string _search = "";
+    private string _stateFilter = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var rows = await Db.Set<SalesInvoice>()
+            .AsNoTracking()
+            .OrderByDescending(i => i.DocumentDate)
+            .ThenByDescending(i => i.PostedAtUtc)
+            .Take(500)
+            .ToListAsync();
+
+        var customerIds = rows.Select(r => r.CustomerId).Distinct().ToArray();
+        var customers = await Db.Set<Customer>()
+            .AsNoTracking()
+            .Where(c => customerIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Name.English);
+
+        _invoices = rows
+            .Select(i => new Row(i, customers.GetValueOrDefault(i.CustomerId, i.CustomerId.ToString("D"))))
+            .ToList();
+    }
+
+    private IEnumerable<Row> Filtered => (_invoices ?? Enumerable.Empty<Row>())
+        .Where(r => string.IsNullOrEmpty(_search)
+            || (r.Invoice.DocumentNumber?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false)
+            || r.CustomerName.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(r => string.IsNullOrEmpty(_stateFilter)
+            || r.Invoice.State.ToString() == _stateFilter);
+
+    private sealed record Row(SalesInvoice Invoice, string CustomerName);
+}

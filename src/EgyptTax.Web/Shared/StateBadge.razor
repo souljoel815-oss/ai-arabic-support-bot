@@ -1,0 +1,7 @@
+@using EgyptTax.Domain.Workflow
+
+<span class="state-badge state-@State.ToString().ToLowerInvariant()">@State</span>
+
+@code {
+    [Parameter, EditorRequired] public DocumentState State { get; set; }
+}

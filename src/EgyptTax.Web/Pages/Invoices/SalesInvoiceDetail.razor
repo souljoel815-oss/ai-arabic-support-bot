@@ -1,0 +1,168 @@
+@page "/invoices/{Id:guid}"
+@using EgyptTax.Application.Verification
+@using EgyptTax.Domain.Eta
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Verification
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Sales invoice @(_invoice?.DocumentNumber ?? "(loading)")</h1>
+
+@if (_invoice is null)
+{
+    <p>Loading…</p>
+    return;
+}
+
+<section class="invoice-header">
+    <div><strong>Date:</strong> @_invoice.DocumentDate.ToString("yyyy-MM-dd")</div>
+    <div><strong>State:</strong> <StateBadge State="_invoice.State" /></div>
+    <div><strong>Customer:</strong> @(_customer?.Name.English ?? "—") (@(_invoice.CustomerTaxProfileSnapshot.ProfileType))</div>
+    @if (_invoice.PostedAtUtc is { } postedAt)
+    {
+        <div><strong>Posted at (UTC):</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+        <div><strong>Posting mode:</strong> @_invoice.PostingMode</div>
+    }
+</section>
+
+<section>
+    <h2>Lines</h2>
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Item</th>
+                <th class="num">Qty</th>
+                <th class="num">Unit price</th>
+                <th class="num">Subtotal</th>
+                <th class="num">Apportioned discount</th>
+                <th class="num">Net</th>
+                <th>VAT %</th>
+                <th class="num">VAT</th>
+                <th class="num">Line total</th>
+            </tr>
+        </thead>
+        <tbody>
+            @{
+                var idx = 1;
+            }
+            @foreach (var line in _invoice.Lines)
+            {
+                <tr>
+                    <td>@idx</td>
+                    <td>@(_items.GetValueOrDefault(line.ItemId)?.Code ?? "?")</td>
+                    <td class="num">@line.Quantity.ToString("0.##")</td>
+                    <td class="num">@line.UnitPrice.Amount.ToString("F2")</td>
+                    <td class="num">@line.LineSubtotal.Amount.ToString("F2")</td>
+                    <td class="num">@line.LineApportionedDiscount.Amount.ToString("F2")</td>
+                    <td class="num">@line.LineNetSubtotal.Amount.ToString("F2")</td>
+                    <td>@line.VatRatePercent.ToString("0.##")%</td>
+                    <td class="num">@line.LineVat.Amount.ToString("F2")</td>
+                    <td class="num">@line.LineTotal.Amount.ToString("F2")</td>
+                </tr>
+                idx++;
+            }
+        </tbody>
+    </table>
+</section>
+
+<section class="invoice-totals">
+    <div><strong>Subtotal:</strong> <span class="num">@_invoice.Subtotal.Amount.ToString("F2") EGP</span></div>
+    @if (_invoice.InvoiceLevelDiscountAmount.Amount > 0)
+    {
+        <div>
+            <strong>Discount@(_invoice.InvoiceLevelDiscountPercent > 0 ? $" ({_invoice.InvoiceLevelDiscountPercent:0.##}%)" : ""):</strong>
+            <span class="num">@_invoice.InvoiceLevelDiscountAmount.Amount.ToString("F2") EGP</span>
+        </div>
+    }
+    <div><strong>Net before VAT:</strong> <span class="num">@_invoice.NetBeforeVat.Amount.ToString("F2") EGP</span></div>
+    <div><strong>VAT total:</strong> <span class="num">@_invoice.VatTotal.Amount.ToString("F2") EGP</span></div>
+    <div class="grand"><strong>Grand total:</strong> <span class="num">@_invoice.GrandTotal.Amount.ToString("F2") EGP</span></div>
+</section>
+
+@if (_invoice.State == DocumentState.Posted)
+{
+    <section class="invoice-actions">
+        <a class="btn-primary" href="/invoices/@_invoice.Id/pdf" target="_blank">📄 Download PDF</a>
+        <a href="/invoices/@_invoice.Id/einvoice.json" target="_blank">View eInvoice JSON</a>
+        @if (_seal is not null)
+        {
+            <a href="/api/v1/verify/@_seal" target="_blank">Verify QR seal</a>
+        }
+    </section>
+
+    <section class="invoice-eta">
+        <h2>ETA submission</h2>
+        @if (_etaSubmission is null)
+        {
+            <p><em>No ETA submission row — this should not happen for a posted document. Check the post flow.</em></p>
+        }
+        else
+        {
+            <div><strong>Status:</strong> <span class="eta-badge eta-@_etaSubmission.Status.ToString().ToLowerInvariant()">@_etaSubmission.Status</span></div>
+            <div><strong>Window expires:</strong> @_etaSubmission.SubmissionWindowExpiresAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC</div>
+            <div><strong>Attempts:</strong> @_etaSubmission.AttemptCount</div>
+            @if (_etaSubmission.SubmissionUuid is { } uuid)
+            {
+                <div><strong>Submission UUID:</strong> @uuid</div>
+            }
+            @if (_etaSubmission.ErrorMessage is { } err)
+            {
+                <div class="flash-error"><strong>Last error:</strong> @err</div>
+            }
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private SalesInvoice? _invoice;
+    private Customer? _customer;
+    private Dictionary<Guid, Item> _items = new();
+    private EtaSubmission? _etaSubmission;
+    private string? _seal;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _invoice = await Db.Set<SalesInvoice>()
+            .Include(i => i.Lines)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == Id);
+        if (_invoice is null)
+        {
+            return;
+        }
+
+        _customer = await Db.Set<Customer>().AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == _invoice.CustomerId);
+
+        var itemIds = _invoice.Lines.Select(l => l.ItemId).Distinct().ToArray();
+        _items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
+
+        if (_invoice.State == DocumentState.Posted)
+        {
+            _etaSubmission = await Db.Set<EtaSubmission>().AsNoTracking()
+                .FirstOrDefaultAsync(s => s.SalesInvoiceId == _invoice.Id);
+
+            // Build a deterministic seal payload for the verify-link
+            // (matches the encode the PDF route emits; auditors who
+            // scan the QR off the PDF land on the same /verify URL).
+            _seal = DocumentSealCodec.Encode(new DocumentSealPayload(
+                DocumentType: SealedDocumentType.SalesInvoice,
+                DocumentNumber: _invoice.DocumentNumber!,
+                DocumentId: _invoice.Id,
+                GrandTotalPiastres: (long)(_invoice.GrandTotal.Amount * 100m),
+                AuditEntryHash: new byte[32],
+                AuditEntryIndex: 1L,
+                VerifyUrl: "/api/v1/verify",
+                IssuerTin: ""));
+        }
+    }
+}

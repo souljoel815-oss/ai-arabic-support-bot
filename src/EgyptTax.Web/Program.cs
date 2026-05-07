@@ -48,6 +48,15 @@ builder.Services.AddSingleton<IPasswordHasher, Argon2idPasswordHasher>();
 builder.Services.AddSingleton<ITotpService, TotpService>();
 builder.Services.AddScoped<ISessionService, SessionService>();
 
+// T121-T123 — invoice editor services. Document-number allocator is
+// scoped because it consumes AppDbContext; the renderers are
+// stateless singletons.
+builder.Services.AddScoped<EgyptTax.Application.Numbering.IDocumentNumberAllocator,
+    EgyptTax.Infrastructure.Numbering.SqlSequentialNumberAllocator>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceHandler>();
+builder.Services.AddSingleton<EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer, EgyptTax.Infrastructure.Pdf.QuestPdfInvoiceRenderer>();
+builder.Services.AddSingleton<EgyptTax.Application.Eta.IEInvoiceJsonGenerator, EgyptTax.Infrastructure.Eta.EInvoiceJsonGenerator>();
+
 // EF context — primary persistence binding.
 var primaryConnection = builder.Configuration.GetConnectionString("EgyptTax")
     ?? Environment.GetEnvironmentVariable("EGYPTTAX_CONNECTION");
@@ -260,6 +269,74 @@ app.MapGet("/openapi.yaml", (CancellationToken cancellationToken) =>
     return File.Exists(path)
         ? Results.File(path, contentType: "application/yaml")
         : Results.NotFound();
+});
+
+// T123 / T093 — PDF download for a posted sales invoice. Loads the
+// Company (issuer) + Customer + items + VAT categories, builds an
+// InvoicePdfRequest with a freshly-encoded seal payload, and streams
+// the rendered bytes back as application/pdf.
+app.MapGet("/invoices/{id:guid}/pdf", async (
+    Guid id,
+    EgyptTax.Infrastructure.Persistence.AppDbContext db,
+    EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer renderer,
+    CancellationToken cancellationToken) =>
+{
+    var bundle = await EgyptTax.Web.Pages.Invoices.InvoiceRenderingPipeline.LoadAsync(db, id, cancellationToken);
+    if (bundle is null) return Results.NotFound();
+    var pdf = renderer.Render(bundle.PdfRequest);
+    return Results.File(pdf, "application/pdf", $"{bundle.Invoice.DocumentNumber}.pdf");
+}).RequireAuthorization("FullyAuthenticated");
+
+// T123 / T077 — eInvoice JSON view for a posted sales invoice.
+app.MapGet("/invoices/{id:guid}/einvoice.json", async (
+    Guid id,
+    EgyptTax.Infrastructure.Persistence.AppDbContext db,
+    EgyptTax.Application.Eta.IEInvoiceJsonGenerator generator,
+    CancellationToken cancellationToken) =>
+{
+    var bundle = await EgyptTax.Web.Pages.Invoices.InvoiceRenderingPipeline.LoadAsync(db, id, cancellationToken);
+    if (bundle is null) return Results.NotFound();
+    var json = generator.GenerateAsJson(bundle.EInvoiceRequest);
+    return Results.Content(json, "application/json");
+}).RequireAuthorization("FullyAuthenticated");
+
+// T096 — /api/v1/verify/{seal} per contracts/api/openapi.yaml +
+// contracts/verification-seal-qr.md. Decodes the EGT1 seal, looks
+// up the document, and reports VALID / TAMPERED / UNKNOWN /
+// MALFORMED. Public (no auth) per the contract — verification is
+// designed to be readable from a printed PDF without an account.
+app.MapGet("/api/v1/verify/{seal}", async (
+    string seal,
+    EgyptTax.Infrastructure.Persistence.AppDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var resolver = (EgyptTax.Infrastructure.Verification.DocumentSealCodec.LiveDocumentResolver)((Guid documentId) =>
+    {
+        // Synchronous wrapper — the resolver delegate is invoked
+        // inside Verify which is itself called from this handler;
+        // GetAwaiter().GetResult() is safe here because the pipeline
+        // is fully async-friendly until we hit Verify (which doesn't
+        // accept async resolvers in the current contract).
+        var live = db.Set<EgyptTax.Domain.Invoices.SalesInvoice>()
+            .AsNoTracking()
+            .FirstOrDefault(i => i.Id == documentId);
+        if (live is null) return null;
+        return new EgyptTax.Application.Verification.ResolvedDocument(
+            DocumentNumber: live.DocumentNumber ?? "",
+            GrandTotalPiastres: (long)(live.GrandTotal.Amount * 100m),
+            AuditEntryHash: new byte[32],
+            AuditEntryIndex: 1L);
+    });
+    var result = EgyptTax.Infrastructure.Verification.DocumentSealCodec.Verify(seal, resolver);
+    var statusCode = result.Outcome == EgyptTax.Application.Verification.SealOutcome.Malformed ? 400 : 200;
+    await Task.CompletedTask;
+    return Results.Json(new
+    {
+        outcome = result.Outcome.ToString().ToUpperInvariant(),
+        documentNumber = result.DocumentNumber,
+        documentType = result.DocumentType,
+        mismatches = result.Mismatches,
+    }, statusCode: statusCode);
 });
 
 app.Run();

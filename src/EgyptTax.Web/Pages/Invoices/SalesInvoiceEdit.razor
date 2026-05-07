@@ -1,0 +1,409 @@
+@page "/invoices/new"
+@page "/invoices/{Id:guid}/edit"
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using EgyptTax.Application.Invoices
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Invoices
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject PostSalesInvoiceHandler PostHandler
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>@(_invoice is null ? "New" : "Edit") sales invoice</h1>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status">@_flash</div>
+}
+
+@if (_loading)
+{
+    <p>Loading…</p>
+    return;
+}
+
+@if (_invoice is not null && _invoice.State != DocumentState.Draft)
+{
+    <div class="flash-error">This invoice is @(_invoice.State); only Draft invoices can be edited.</div>
+    <a href="/invoices/@_invoice.Id">View posted detail →</a>
+    return;
+}
+
+<section class="form-grid">
+    <fieldset>
+        <legend>Header</legend>
+        <label>
+            <span>Customer</span>
+            <select @bind="_customerId">
+                <option value="@Guid.Empty">— choose —</option>
+                @foreach (var c in _customers)
+                {
+                    <option value="@c.Id">@c.Code — @c.Name.English</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>Document date</span>
+            <input type="date" @bind="_documentDate" />
+        </label>
+    </fieldset>
+
+    <fieldset>
+        <legend>Lines</legend>
+        @if (_lines.Count == 0)
+        {
+            <p><em>No lines yet — add at least one before posting.</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th class="num">Qty</th>
+                        <th class="num">Unit price</th>
+                        <th>VAT</th>
+                        <th class="num">Subtotal</th>
+                        <th class="num">VAT</th>
+                        <th class="num">Total</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (line, idx) in _lines.Select((l, i) => (l, i)))
+                    {
+                        var item = _items.FirstOrDefault(x => x.Id == line.ItemId);
+                        var vat = _vatCategories.FirstOrDefault(v => v.Id == line.VatCategoryId);
+                        <tr>
+                            <td>@(item?.Code ?? "?") — @(item?.Name.English ?? "")</td>
+                            <td class="num">@line.Quantity.ToString("0.##")</td>
+                            <td class="num">@line.UnitPrice.ToString("F2")</td>
+                            <td>@(vat?.Code ?? "?") (@(vat?.RatePercent.ToString("0.##") ?? "?")%)</td>
+                            <td class="num">@line.LineSubtotal.ToString("F2")</td>
+                            <td class="num">@line.LineVat.ToString("F2")</td>
+                            <td class="num">@line.LineTotal.ToString("F2")</td>
+                            <td><button type="button" @onclick="() => RemoveLine(idx)">Remove</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </fieldset>
+
+    <fieldset>
+        <legend>Add line</legend>
+        <label>
+            <span>Item</span>
+            <select @bind="_newLineItemId">
+                <option value="@Guid.Empty">— choose —</option>
+                @foreach (var i in _items.Where(x => x.Status == ItemStatus.Active))
+                {
+                    <option value="@i.Id">@i.Code — @i.Name.English</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>Quantity</span>
+            <input type="number" step="0.01" min="0.01" @bind="_newLineQty" />
+        </label>
+        <label>
+            <span>Unit price (EGP)</span>
+            <input type="number" step="0.01" min="0" @bind="_newLineUnitPrice" />
+        </label>
+        <label>
+            <span>VAT category</span>
+            <select @bind="_newLineVatId">
+                <option value="@Guid.Empty">— default from item —</option>
+                @foreach (var v in _vatCategories)
+                {
+                    <option value="@v.Id">@v.Code (@v.RatePercent.ToString("0.##")%)</option>
+                }
+            </select>
+        </label>
+        <button type="button" @onclick="AddLine">Add line</button>
+    </fieldset>
+
+    <fieldset>
+        <legend>Invoice-level discount (FR-008 expansion)</legend>
+        <label>
+            <span>Mode</span>
+            <select @bind="_discountMode">
+                <option value="none">No discount</option>
+                <option value="percent">Percent of subtotal</option>
+                <option value="amount">Fixed amount</option>
+            </select>
+        </label>
+        @if (_discountMode == "percent")
+        {
+            <label>
+                <span>Percent (0–100)</span>
+                <input type="number" step="0.01" min="0" max="100" @bind="_discountPercent" />
+            </label>
+        }
+        else if (_discountMode == "amount")
+        {
+            <label>
+                <span>Amount (EGP)</span>
+                <input type="number" step="0.01" min="0" @bind="_discountAmount" />
+            </label>
+        }
+    </fieldset>
+</section>
+
+<section class="invoice-totals">
+    <div><strong>Subtotal:</strong> <span class="num">@TotalSubtotal.ToString("F2") EGP</span></div>
+    <div><strong>Discount:</strong> <span class="num">@TotalDiscount.ToString("F2") EGP</span></div>
+    <div><strong>Net before VAT:</strong> <span class="num">@TotalNet.ToString("F2") EGP</span></div>
+    <div><strong>VAT total:</strong> <span class="num">@TotalVat.ToString("F2") EGP</span></div>
+    <div class="grand"><strong>Grand total:</strong> <span class="num">@TotalGrand.ToString("F2") EGP</span></div>
+</section>
+
+<div class="form-actions">
+    <button type="button" @onclick="SaveDraftAsync">Save draft</button>
+    <button type="button" @onclick="PostAsync" disabled="@(!CanPost)">Post</button>
+    <a href="/invoices">Cancel</a>
+</div>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool _loading = true;
+    private SalesInvoice? _invoice;
+    private List<Customer> _customers = new();
+    private List<Item> _items = new();
+    private List<VatCategory> _vatCategories = new();
+    private List<DraftLine> _lines = new();
+
+    private Guid _customerId;
+    private DateOnly _documentDate = DateOnly.FromDateTime(DateTime.UtcNow);
+
+    private Guid _newLineItemId;
+    private decimal _newLineQty = 1m;
+    private decimal _newLineUnitPrice;
+    private Guid _newLineVatId;
+
+    private string _discountMode = "none";
+    private decimal _discountPercent;
+    private decimal _discountAmount;
+
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => c.Status == CustomerStatus.Active).OrderBy(c => c.Code).ToListAsync();
+        _items = await Db.Set<Item>().AsNoTracking().OrderBy(i => i.Code).ToListAsync();
+        _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
+
+        if (Id is { } id)
+        {
+            _invoice = await Db.Set<SalesInvoice>().Include(i => i.Lines)
+                .FirstOrDefaultAsync(i => i.Id == id);
+            if (_invoice is not null)
+            {
+                _customerId = _invoice.CustomerId;
+                _documentDate = _invoice.DocumentDate;
+                _lines = _invoice.Lines
+                    .Select(l => new DraftLine(l.Id, l.ItemId, l.Quantity, l.UnitPrice.Amount, l.VatCategoryId, l.VatRatePercent,
+                        l.LineSubtotal.Amount, l.LineVat.Amount, l.LineTotal.Amount))
+                    .ToList();
+                if (_invoice.InvoiceLevelDiscountPercent > 0)
+                {
+                    _discountMode = "percent";
+                    _discountPercent = _invoice.InvoiceLevelDiscountPercent;
+                }
+                else if (_invoice.InvoiceLevelDiscountAmount.Amount > 0)
+                {
+                    _discountMode = "amount";
+                    _discountAmount = _invoice.InvoiceLevelDiscountAmount.Amount;
+                }
+            }
+        }
+
+        _loading = false;
+    }
+
+    private void AddLine()
+    {
+        if (_newLineItemId == Guid.Empty || _newLineQty <= 0)
+        {
+            ShowFlash("Pick an item and a positive quantity before adding the line.", error: true);
+            return;
+        }
+
+        var item = _items.FirstOrDefault(i => i.Id == _newLineItemId);
+        var vatId = _newLineVatId == Guid.Empty ? (item?.DefaultVatCategoryId ?? Guid.Empty) : _newLineVatId;
+        var vat = _vatCategories.FirstOrDefault(v => v.Id == vatId);
+        if (vat is null)
+        {
+            ShowFlash("Item has no default VAT category — pick one explicitly.", error: true);
+            return;
+        }
+
+        var subtotal = decimal.Round(_newLineQty * _newLineUnitPrice, 2, MidpointRounding.ToEven);
+        var lineVat = decimal.Round(subtotal * (vat.RatePercent / 100m), 2, MidpointRounding.ToEven);
+
+        _lines.Add(new DraftLine(
+            Id: Guid.NewGuid(),
+            ItemId: _newLineItemId,
+            Quantity: _newLineQty,
+            UnitPrice: _newLineUnitPrice,
+            VatCategoryId: vatId,
+            VatRatePercent: vat.RatePercent,
+            LineSubtotal: subtotal,
+            LineVat: lineVat,
+            LineTotal: subtotal + lineVat));
+
+        _newLineItemId = Guid.Empty;
+        _newLineQty = 1m;
+        _newLineUnitPrice = 0m;
+        _newLineVatId = Guid.Empty;
+    }
+
+    private void RemoveLine(int index) => _lines.RemoveAt(index);
+
+    private async Task SaveDraftAsync()
+    {
+        if (!await PrecheckAsync())
+        {
+            return;
+        }
+
+        var customer = _customers.First(c => c.Id == _customerId);
+
+        if (_invoice is null)
+        {
+            // Create a fresh draft.
+            _invoice = SalesInvoice.CreateDraft(_customerId, customer.TaxProfile, _documentDate);
+            foreach (var line in _lines)
+            {
+                _invoice.AddLine(line.ItemId, line.Quantity, MoneyEgp.From(line.UnitPrice),
+                    line.VatCategoryId, line.VatRatePercent);
+            }
+            ApplyDiscount(_invoice);
+            Db.Add(_invoice);
+        }
+        else
+        {
+            // Sync the existing draft's lines.
+            var existingIds = _invoice.Lines.Select(l => l.Id).ToHashSet();
+            var newIds = _lines.Select(l => l.Id).ToHashSet();
+            foreach (var lineId in existingIds.Where(id => !newIds.Contains(id)))
+            {
+                _invoice.RemoveLine(lineId);
+            }
+            foreach (var line in _lines.Where(l => !existingIds.Contains(l.Id)))
+            {
+                _invoice.AddLine(line.ItemId, line.Quantity, MoneyEgp.From(line.UnitPrice),
+                    line.VatCategoryId, line.VatRatePercent);
+            }
+            ApplyDiscount(_invoice);
+        }
+
+        await Db.SaveChangesAsync();
+        ShowFlash($"Saved draft (subtotal {_invoice.Subtotal.Amount:F2} → grand total {_invoice.GrandTotal.Amount:F2}).");
+        Nav.NavigateTo($"/invoices/{_invoice.Id}/edit", forceLoad: false);
+    }
+
+    private async Task PostAsync()
+    {
+        if (!CanPost)
+        {
+            ShowFlash("Nothing to post.", error: true);
+            return;
+        }
+        await SaveDraftAsync();
+        if (_invoice is null)
+        {
+            return;
+        }
+
+        var state = await Auth.GetAuthenticationStateAsync();
+        var userId = state.User.UserId() ?? Guid.Empty;
+        var posted = await PostHandler.HandleAsync(
+            new PostSalesInvoiceCommand(_invoice.Id, userId), CancellationToken.None);
+
+        Nav.NavigateTo($"/invoices/{posted.Id}", forceLoad: true);
+    }
+
+    private bool CanPost =>
+        _customerId != Guid.Empty
+        && _lines.Count > 0
+        && (_invoice?.State ?? DocumentState.Draft) == DocumentState.Draft;
+
+    private async Task<bool> PrecheckAsync()
+    {
+        if (_customerId == Guid.Empty)
+        {
+            ShowFlash("Pick a customer first.", error: true);
+            return false;
+        }
+        if (_lines.Count == 0)
+        {
+            ShowFlash("Add at least one line before saving.", error: true);
+            return false;
+        }
+        await Task.CompletedTask;
+        return true;
+    }
+
+    private void ApplyDiscount(SalesInvoice invoice)
+    {
+        switch (_discountMode)
+        {
+            case "percent" when _discountPercent > 0:
+                invoice.SetInvoiceLevelDiscount(amount: null, percent: _discountPercent);
+                break;
+            case "amount" when _discountAmount > 0:
+                invoice.SetInvoiceLevelDiscount(amount: MoneyEgp.From(_discountAmount), percent: null);
+                break;
+            default:
+                invoice.SetInvoiceLevelDiscount(amount: null, percent: null);
+                break;
+        }
+    }
+
+    private void ShowFlash(string message, bool error = false)
+    {
+        _flash = message;
+        _flashClass = error ? "flash-error" : "flash-success";
+    }
+
+    private decimal TotalSubtotal => _lines.Sum(l => l.LineSubtotal);
+    private decimal TotalDiscount => _discountMode switch
+    {
+        "percent" when _discountPercent > 0 => decimal.Round(TotalSubtotal * (_discountPercent / 100m), 2, MidpointRounding.ToEven),
+        "amount" => Math.Min(_discountAmount, TotalSubtotal),
+        _ => 0m,
+    };
+    private decimal TotalNet => TotalSubtotal - TotalDiscount;
+    private decimal TotalVat => _lines.Sum(l =>
+    {
+        var ratio = TotalSubtotal == 0 ? 0 : (l.LineSubtotal / TotalSubtotal);
+        var net = l.LineSubtotal - decimal.Round(TotalDiscount * ratio, 2, MidpointRounding.ToEven);
+        return decimal.Round(net * (l.VatRatePercent / 100m), 2, MidpointRounding.ToEven);
+    });
+    private decimal TotalGrand => TotalNet + TotalVat;
+
+    private sealed record DraftLine(
+        Guid Id,
+        Guid ItemId,
+        decimal Quantity,
+        decimal UnitPrice,
+        Guid VatCategoryId,
+        decimal VatRatePercent,
+        decimal LineSubtotal,
+        decimal LineVat,
+        decimal LineTotal);
+}

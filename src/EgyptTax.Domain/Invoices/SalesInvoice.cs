@@ -82,6 +82,31 @@ public sealed class SalesInvoice
     }
 
     /// <summary>
+    /// Remove a line from a Draft invoice and recompute totals. Throws
+    /// if the invoice is not Draft (consistent with AddLine) or if the
+    /// supplied line id is not on this invoice. Note that the
+    /// invoice-level discount apportionment automatically redistributes
+    /// across the remaining lines (the rounding remainder will land on
+    /// the new last line).
+    /// </summary>
+    public void RemoveLine(Guid lineId)
+    {
+        if (State != DocumentState.Draft)
+        {
+            throw new InvalidOperationException(
+                $"Cannot remove a line from sales invoice {Id}: current state {State} is not Draft.");
+        }
+        var line = _lines.FirstOrDefault(l => l.Id == lineId);
+        if (line is null)
+        {
+            throw new InvalidOperationException(
+                $"Line {lineId} is not on sales invoice {Id}.");
+        }
+        _lines.Remove(line);
+        Recompute();
+    }
+
+    /// <summary>
     /// FR-008 expansion — set or clear the invoice-level discount.
     /// Exactly one of <paramref name="amount"/> / <paramref name="percent"/>
     /// may be non-null; both null clears the discount; both non-null

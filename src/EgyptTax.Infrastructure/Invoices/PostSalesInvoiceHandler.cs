@@ -3,6 +3,7 @@ using EgyptTax.Application.Audit;
 using EgyptTax.Application.Invoices;
 using EgyptTax.Application.Numbering;
 using EgyptTax.Domain.Audit;
+using EgyptTax.Domain.Eta;
 using EgyptTax.Domain.Invoices;
 using EgyptTax.Domain.Workflow;
 using EgyptTax.Infrastructure.Persistence;
@@ -68,12 +69,25 @@ public sealed class PostSalesInvoiceHandler
             ? DocumentPostingMode.ApprovedThenPosted
             : DocumentPostingMode.UnapprovedDirect;
 
+        var nowUtc = _clock.UtcNow;
         invoice.MarkPosted(
             documentNumber: documentNumber,
             postedByUserId: command.PostedByUserId,
-            postedAtUtc: _clock.UtcNow,
+            postedAtUtc: nowUtc,
             postingMode: postingMode,
             approvalEnabled: approvalRequired);
+
+        // FR-035 — open the ETA submission row in Pending state with
+        // the regulator-imposed 7-day window so the dashboard (T083
+        // query) immediately surfaces it. Auto-submission to the mock
+        // ETA endpoint is owned by a follow-up batch; the row exists
+        // from post-time so the UI can show "Pending" before any
+        // submission attempt fires.
+        var etaSubmission = new EtaSubmission(
+            salesInvoiceId: invoice.Id,
+            postedAtUtc: nowUtc,
+            nowUtc: nowUtc);
+        _db.Add(etaSubmission);
 
         await _db.SaveChangesAsync(cancellationToken);
 
