@@ -28,10 +28,22 @@ public class MigrationSmokeTests(SqlServerFixture fixture)
         var triggerExists = await ScalarBoolAsync(
             db,
             "SELECT CASE WHEN OBJECT_ID('[audit].[trg_audit_log_append_only]', 'TR') IS NULL THEN 0 ELSE 1 END");
+        var usersTableExists = await ScalarBoolAsync(
+            db,
+            "SELECT CASE WHEN OBJECT_ID('[identity].[users]', 'U') IS NULL THEN 0 ELSE 1 END");
+        var rolesTableExists = await ScalarBoolAsync(
+            db,
+            "SELECT CASE WHEN OBJECT_ID('[identity].[roles]', 'U') IS NULL THEN 0 ELSE 1 END");
+        var permissionsTableExists = await ScalarBoolAsync(
+            db,
+            "SELECT CASE WHEN OBJECT_ID('[identity].[permissions]', 'U') IS NULL THEN 0 ELSE 1 END");
 
         auditTableExists.Should().BeTrue("audit.audit_log table must be created by the Initial migration");
         checkpointTableExists.Should().BeTrue("audit_meta.checkpoint must be created by the AuditCheckpoint migration");
         triggerExists.Should().BeTrue("audit.trg_audit_log_append_only must be created by the AuditAppendOnlyTrigger migration");
+        usersTableExists.Should().BeTrue("identity.users must be created by the IdentityCore migration");
+        rolesTableExists.Should().BeTrue("identity.roles must be created by the IdentityCore migration");
+        permissionsTableExists.Should().BeTrue("identity.permissions must be created by the IdentityCore migration");
     }
 
     private static async Task<bool> ScalarBoolAsync(DbContext db, string sql)

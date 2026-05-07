@@ -11,6 +11,7 @@
     <ProjectReference Include="..\..\src\EgyptTax.SharedKernel\EgyptTax.SharedKernel.csproj" />
     <ProjectReference Include="..\..\src\EgyptTax.Domain\EgyptTax.Domain.csproj" />
     <ProjectReference Include="..\..\src\EgyptTax.Application\EgyptTax.Application.csproj" />
+    <ProjectReference Include="..\..\src\EgyptTax.Infrastructure\EgyptTax.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
