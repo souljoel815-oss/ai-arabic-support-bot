@@ -1,0 +1,37 @@
+using EgyptTax.Domain.Invoices;
+using EgyptTax.Domain.MasterData;
+using EgyptTax.SharedKernel;
+
+namespace EgyptTax.Application.Pdf;
+
+/// <summary>
+/// FR-033 / SC-008 — port over the bilingual sales-invoice PDF
+/// renderer. The contract surface is governed by
+/// <c>contracts/legal-invoice-fields.md</c>: every legally required
+/// field MUST be emitted on every PDF, with a Document Verification
+/// Seal QR (FR-044) embedded bottom-right. The contract test (T079)
+/// asserts field presence by extracting text + images from the
+/// rendered byte[].
+/// </summary>
+public interface ISalesInvoicePdfRenderer
+{
+    /// <summary>
+    /// Render the full PDF for a posted sales invoice. Returns the
+    /// PDF as a byte array — callers persist it via the attachment
+    /// store under the document id.
+    /// </summary>
+    byte[] Render(InvoicePdfRequest request);
+}
+
+public sealed record InvoicePdfRequest(
+    SalesInvoice Invoice,
+    Company Issuer,
+    Customer Receiver,
+    IReadOnlyDictionary<Guid, ItemRenderInfo> Items,
+    IReadOnlyDictionary<Guid, VatCategoryRenderInfo> VatCategories,
+    string PostedByUserDisplayName,
+    string SealQrPayload);
+
+public sealed record ItemRenderInfo(string Code, ArabicEnglishText Name);
+
+public sealed record VatCategoryRenderInfo(string Code, ArabicEnglishText Name, decimal RatePercent);
