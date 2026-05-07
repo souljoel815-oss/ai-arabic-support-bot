@@ -40,6 +40,14 @@ builder.Services.AddDataProtection();
 builder.Services.AddSingleton<IMfaSecretProtector, DataProtectionMfaSecretProtector>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 
+// T117 — identity services consumed by the auth pages (Login,
+// ChangePassword, EnrollMfa, Logout). Singletons because they hold
+// no per-request state; SessionService is scoped because it owns
+// an AppDbContext.
+builder.Services.AddSingleton<IPasswordHasher, Argon2idPasswordHasher>();
+builder.Services.AddSingleton<ITotpService, TotpService>();
+builder.Services.AddScoped<ISessionService, SessionService>();
+
 // EF context — primary persistence binding.
 var primaryConnection = builder.Configuration.GetConnectionString("EgyptTax")
     ?? Environment.GetEnvironmentVariable("EGYPTTAX_CONNECTION");
@@ -120,6 +128,11 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddLocalization(options => options.ResourcesPath = "Localization");
 
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
 
 // T058 / R-11 — request-scoped culture so the Blazor + Razor Pages
 // rendering pipeline picks up the user's chosen language. Cookie-
