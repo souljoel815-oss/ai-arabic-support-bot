@@ -1,0 +1,182 @@
+@page "/settings/tax-periods"
+@using System.ComponentModel.DataAnnotations
+@using EgyptTax.Application.Periods
+@using EgyptTax.Domain.Periods
+@using EgyptTax.Infrastructure.Periods
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject LockTaxPeriodHandler PeriodHandler
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Tax periods (FR-037) / فترات الضريبة</h1>
+
+<p>
+    Lock a VAT month after filing the return so backdated posts into that period are rejected
+    automatically. Reopen only when a late supplier invoice or correction needs to land. Both
+    actions are recorded in the audit log.
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status">@_flash</div>
+}
+
+<section class="master-data-list">
+    <h2>Locked + recently-touched periods</h2>
+    @if (_periods is null)
+    {
+        <p>Loading…</p>
+    }
+    else if (_periods.Count == 0)
+    {
+        <p><em>No periods on record. Lock one below.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Kind</th>
+                    <th>Year</th>
+                    <th>Month / Quarter</th>
+                    <th>Status</th>
+                    <th>Locked at (UTC)</th>
+                    <th>Reason</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in _periods)
+                {
+                    <tr>
+                        <td>@p.PeriodKind</td>
+                        <td>@p.Year</td>
+                        <td>@(p.PeriodKind == TaxPeriodKind.IncomeFiscalYear ? "—" : p.MonthOrQuarter.ToString("D2"))</td>
+                        <td><strong>@p.Status</strong></td>
+                        <td>@(p.LockedAtUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
+                        <td>@(p.LockedReason ?? "—")</td>
+                        <td>
+                            @if (p.Status == TaxPeriodStatus.Locked)
+                            {
+                                <button type="button" @onclick="() => OnReopenAsync(p)">Reopen</button>
+                            }
+                            else
+                            {
+                                <em>Open</em>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section class="master-data-create">
+    <h2>Lock a VAT month</h2>
+    <EditForm Model="_form" OnValidSubmit="OnLockAsync" FormName="tax-period-lock" class="form-grid">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <label>
+            <span>Year</span>
+            <InputNumber @bind-Value="_form.Year" min="2000" max="9999" />
+        </label>
+        <label>
+            <span>Month</span>
+            <InputSelect @bind-Value="_form.Month">
+                @for (var m = 1; m <= 12; m++)
+                {
+                    <option value="@m">@System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m) (@m.ToString("D2"))</option>
+                }
+            </InputSelect>
+        </label>
+        <label>
+            <span>Reason (optional but recommended)</span>
+            <InputText @bind-Value="_form.Reason" placeholder="e.g. VAT return filed for May 2026" />
+        </label>
+
+        <button type="submit">Lock period</button>
+    </EditForm>
+</section>
+
+@code {
+    private List<TaxPeriod>? _periods;
+    private FormModel _form = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _periods = await Db.Set<TaxPeriod>()
+            .AsNoTracking()
+            .OrderByDescending(p => p.Year)
+            .ThenByDescending(p => p.MonthOrQuarter)
+            .Take(100)
+            .ToListAsync();
+    }
+
+    private async Task OnLockAsync()
+    {
+        try
+        {
+            var operatorUserId = await ResolveOperatorIdAsync();
+            await PeriodHandler.HandleAsync(new LockTaxPeriodCommand(
+                TaxPeriodKind.VatMonth, _form.Year, _form.Month,
+                operatorUserId, string.IsNullOrWhiteSpace(_form.Reason) ? null : _form.Reason),
+                CancellationToken.None);
+
+            _flash = $"Locked VAT period {_form.Year}-{_form.Month:D2}.";
+            _flashClass = "flash-success";
+            _form = new FormModel();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+    }
+
+    private async Task OnReopenAsync(TaxPeriod period)
+    {
+        try
+        {
+            var operatorUserId = await ResolveOperatorIdAsync();
+            await PeriodHandler.ReopenAsync(new ReopenTaxPeriodCommand(
+                period.PeriodKind, period.Year, period.MonthOrQuarter,
+                operatorUserId, "Reopened from settings UI"),
+                CancellationToken.None);
+
+            _flash = $"Reopened {period.PeriodKind} {period.Year}-{period.MonthOrQuarter:D2}.";
+            _flashClass = "flash-success";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+    }
+
+    private async Task<Guid> ResolveOperatorIdAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var claim = auth.User.FindFirst("sub")?.Value
+            ?? auth.User.FindFirst("userId")?.Value;
+        return Guid.TryParse(claim, out var u) ? u : Guid.Empty;
+    }
+
+    private sealed class FormModel
+    {
+        [Range(2000, 9999)] public int Year { get; set; } = DateTime.UtcNow.Year;
+        [Range(1, 12)] public int Month { get; set; } = DateTime.UtcNow.Month;
+        [StringLength(500)] public string Reason { get; set; } = "";
+    }
+}

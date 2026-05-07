@@ -2,6 +2,7 @@ using System.Globalization;
 using EgyptTax.Application.Audit;
 using EgyptTax.Application.Expenses;
 using EgyptTax.Application.Numbering;
+using EgyptTax.Application.Periods;
 using EgyptTax.Domain.Audit;
 using EgyptTax.Domain.Documents;
 using EgyptTax.Domain.Expenses;
@@ -25,17 +26,20 @@ public sealed class PostExpenseHandler
     private readonly IDocumentNumberAllocator _allocator;
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
+    private readonly ITaxPeriodLockGuard? _periodLockGuard;
 
     public PostExpenseHandler(
         AppDbContext db,
         IDocumentNumberAllocator allocator,
         IClock clock,
-        IAuditLogStore auditLog)
+        IAuditLogStore auditLog,
+        ITaxPeriodLockGuard? periodLockGuard = null)
     {
         _db = db;
         _allocator = allocator;
         _clock = clock;
         _auditLog = auditLog;
+        _periodLockGuard = periodLockGuard;
     }
 
     public async Task<Expense> HandleAsync(
@@ -48,6 +52,23 @@ public sealed class PostExpenseHandler
             .FirstOrDefaultAsync(e => e.Id == command.ExpenseId, cancellationToken)
             ?? throw new InvalidOperationException(
                 $"Expense {command.ExpenseId} not found.");
+
+        // FR-037 — reject backdated posts into a Locked VAT period.
+        if (_periodLockGuard is not null)
+        {
+            var lockCheck = await _periodLockGuard.CheckVatMonthAsync(
+                expense.DocumentDate, cancellationToken);
+            if (lockCheck.IsLocked)
+            {
+                await _auditLog.AppendAsync(new AuditLogPayload(
+                    Kind: "tax_period.post_rejected",
+                    ActorUserId: command.PostedByUserId, ActorFirmName: null, CompanyId: Guid.Empty,
+                    PayloadJson: $$"""{"expense_id":"{{expense.Id:D}}","document_type":"Expense","document_date":"{{expense.DocumentDate:yyyy-MM-dd}}","period_year":{{lockCheck.Year}},"period_month":{{lockCheck.MonthOrQuarter}}}"""),
+                    cancellationToken);
+                throw new InvalidOperationException(
+                    $"Cannot post expense {expense.Id}: document date {expense.DocumentDate:yyyy-MM-dd} falls inside Locked VAT period {lockCheck.Year}-{lockCheck.MonthOrQuarter:D2} (FR-037). An Administrator must reopen the period before backdated posts are allowed.");
+            }
+        }
 
         // FR-016 — deductible expenses require at least one attachment.
         if (expense.DeductibleFlag)

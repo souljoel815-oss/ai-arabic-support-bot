@@ -1,6 +1,7 @@
 using System.Globalization;
 using EgyptTax.Application.Audit;
 using EgyptTax.Application.Numbering;
+using EgyptTax.Application.Periods;
 using EgyptTax.Application.Purchases;
 using EgyptTax.Domain.Audit;
 using EgyptTax.Domain.Documents;
@@ -31,17 +32,20 @@ public sealed class PostPurchaseInvoiceHandler
     private readonly IDocumentNumberAllocator _allocator;
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
+    private readonly ITaxPeriodLockGuard? _periodLockGuard;
 
     public PostPurchaseInvoiceHandler(
         AppDbContext db,
         IDocumentNumberAllocator allocator,
         IClock clock,
-        IAuditLogStore auditLog)
+        IAuditLogStore auditLog,
+        ITaxPeriodLockGuard? periodLockGuard = null)
     {
         _db = db;
         _allocator = allocator;
         _clock = clock;
         _auditLog = auditLog;
+        _periodLockGuard = periodLockGuard;
     }
 
     public async Task<PurchaseInvoice> HandleAsync(
@@ -55,6 +59,24 @@ public sealed class PostPurchaseInvoiceHandler
             .FirstOrDefaultAsync(p => p.Id == command.PurchaseInvoiceId, cancellationToken)
             ?? throw new InvalidOperationException(
                 $"Purchase invoice {command.PurchaseInvoiceId} not found.");
+
+        // FR-037 — reject backdated posts into a Locked VAT period
+        // BEFORE numbering / FR-016 attachment check.
+        if (_periodLockGuard is not null)
+        {
+            var lockCheck = await _periodLockGuard.CheckVatMonthAsync(
+                invoice.DateReceived, cancellationToken);
+            if (lockCheck.IsLocked)
+            {
+                await _auditLog.AppendAsync(new AuditLogPayload(
+                    Kind: "tax_period.post_rejected",
+                    ActorUserId: command.PostedByUserId, ActorFirmName: null, CompanyId: Guid.Empty,
+                    PayloadJson: $$"""{"invoice_id":"{{invoice.Id:D}}","document_type":"PurchaseInvoice","document_date":"{{invoice.DateReceived:yyyy-MM-dd}}","period_year":{{lockCheck.Year}},"period_month":{{lockCheck.MonthOrQuarter}}}"""),
+                    cancellationToken);
+                throw new InvalidOperationException(
+                    $"Cannot post purchase invoice {invoice.Id}: date received {invoice.DateReceived:yyyy-MM-dd} falls inside Locked VAT period {lockCheck.Year}-{lockCheck.MonthOrQuarter:D2} (FR-037). An Administrator must reopen the period before backdated posts are allowed.");
+            }
+        }
 
         // FR-016 — deductible lines require at least one attachment.
         // Checked at post-time (NOT add-line-time) so the operator can

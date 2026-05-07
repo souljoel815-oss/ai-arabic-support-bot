@@ -105,6 +105,14 @@ builder.Services.AddScoped<EgyptTax.Application.Reports.ITaxableIncomeReportQuer
 builder.Services.AddScoped<EgyptTax.Application.Reports.ITrialBalanceReportQuery,
     EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery>();
 
+// US5 / FR-037 — tax period lock guard + lock/reopen handler. The
+// guard is consumed by the 3 document post handlers via the
+// optional ctor arg they declared in T246; the wiring here makes
+// the guard available so production posts actually consult it.
+builder.Services.AddScoped<EgyptTax.Application.Periods.ITaxPeriodLockGuard,
+    EgyptTax.Infrastructure.Periods.SqlTaxPeriodLockGuard>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Periods.LockTaxPeriodHandler>();
+
 // T139 / R-21 — attachment store lives on the filesystem under
 // EGYPTTAX_ATTACHMENT_ROOT (config key Attachments:Root). Defaults
 // to {ContentRootPath}/var/attachments for dev so a fresh clone

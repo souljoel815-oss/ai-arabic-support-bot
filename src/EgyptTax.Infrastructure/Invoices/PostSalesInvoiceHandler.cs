@@ -3,6 +3,7 @@ using EgyptTax.Application.Accounting;
 using EgyptTax.Application.Audit;
 using EgyptTax.Application.Invoices;
 using EgyptTax.Application.Numbering;
+using EgyptTax.Application.Periods;
 using EgyptTax.Domain.Audit;
 using EgyptTax.Domain.Eta;
 using EgyptTax.Domain.Invoices;
@@ -34,19 +35,22 @@ public sealed class PostSalesInvoiceHandler
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
     private readonly IJournalEntryEmitter? _journalEmitter;
+    private readonly ITaxPeriodLockGuard? _periodLockGuard;
 
     public PostSalesInvoiceHandler(
         AppDbContext db,
         IDocumentNumberAllocator allocator,
         IClock clock,
         IAuditLogStore auditLog,
-        IJournalEntryEmitter? journalEmitter = null)
+        IJournalEntryEmitter? journalEmitter = null,
+        ITaxPeriodLockGuard? periodLockGuard = null)
     {
         _db = db;
         _allocator = allocator;
         _clock = clock;
         _auditLog = auditLog;
         _journalEmitter = journalEmitter;
+        _periodLockGuard = periodLockGuard;
     }
 
     public async Task<SalesInvoice> HandleAsync(
@@ -60,6 +64,27 @@ public sealed class PostSalesInvoiceHandler
             .FirstOrDefaultAsync(i => i.Id == command.SalesInvoiceId, cancellationToken)
             ?? throw new InvalidOperationException(
                 $"Sales invoice {command.SalesInvoiceId} not found.");
+
+        // FR-037 — reject backdated posts into a Locked tax period
+        // BEFORE the document number is allocated. The audit chain
+        // captures the rejection via the post handler's caller (the
+        // Razor page surfaces the InvalidOperationException + writes
+        // a `tax_period.post_rejected` audit event).
+        if (_periodLockGuard is not null)
+        {
+            var lockCheck = await _periodLockGuard.CheckVatMonthAsync(
+                invoice.DocumentDate, cancellationToken);
+            if (lockCheck.IsLocked)
+            {
+                await _auditLog.AppendAsync(new AuditLogPayload(
+                    Kind: "tax_period.post_rejected",
+                    ActorUserId: command.PostedByUserId, ActorFirmName: null, CompanyId: Guid.Empty,
+                    PayloadJson: $$"""{"invoice_id":"{{invoice.Id:D}}","document_type":"SalesInvoice","document_date":"{{invoice.DocumentDate:yyyy-MM-dd}}","period_year":{{lockCheck.Year}},"period_month":{{lockCheck.MonthOrQuarter}}}"""),
+                    cancellationToken);
+                throw new InvalidOperationException(
+                    $"Cannot post sales invoice {invoice.Id}: document date {invoice.DocumentDate:yyyy-MM-dd} falls inside Locked VAT period {lockCheck.Year}-{lockCheck.MonthOrQuarter:D2} (FR-037). An Administrator must reopen the period before backdated posts are allowed.");
+            }
+        }
 
         // FR-013 — credit notes allocate from the CN series + use the
         // CreditNote approval setting; regular invoices use SalesInvoice.
