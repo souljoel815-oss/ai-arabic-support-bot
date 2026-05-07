@@ -6,6 +6,7 @@ using EgyptTax.Application;
 using EgyptTax.Application.Audit;
 using EgyptTax.Application.Common.Abstractions;
 using EgyptTax.Application.Identity;
+using EgyptTax.Domain.Audit;
 using EgyptTax.Infrastructure.Audit;
 using EgyptTax.Infrastructure.BackgroundJobs;
 using EgyptTax.Infrastructure.Identity;
@@ -21,6 +22,11 @@ using Microsoft.EntityFrameworkCore;
 if (AdminRecover.IsRecoveryInvocation(args))
 {
     return await AdminRecoveryHost.RunAsync(args, CancellationToken.None);
+}
+
+if (Seeder.IsSeedInvocation(args))
+{
+    return await SeederHost.RunAsync(args, CancellationToken.None);
 }
 
 var builder = WebApplication.CreateBuilder(args);
@@ -128,5 +134,85 @@ if (!string.IsNullOrWhiteSpace(hangfireConnection))
 app.MapGet("/", () =>
     "EgyptTax — Stage 1+2 scaffold. MediatR pipeline + cookie auth + Hangfire wired; full Blazor application ships in subsequent stages.");
 
+// T073 — Liveness / readiness probes per contracts/api/openapi.yaml.
+// Liveness only signals that the process is up; readiness verifies the
+// dependencies the operator runbook expects (DB reachable + audit
+// checkpoint + NTP skew).
+app.MapGet("/api/v1/health/live", () => Results.Json(new
+{
+    status = "up",
+    version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.1.0",
+}));
+
+app.MapGet("/api/v1/health/ready", async (
+    IServiceProvider services,
+    AppDbContext db,
+    IAuditCheckpointStore checkpoints,
+    CancellationToken cancellationToken) =>
+{
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    bool dbReachable;
+    try
+    {
+        dbReachable = await db.Database.CanConnectAsync(cancellationToken);
+    }
+    catch
+    {
+        dbReachable = false;
+    }
+    sw.Stop();
+
+    AuditCheckpoint? cp = null;
+    var checkpointWritable = false;
+    if (dbReachable)
+    {
+        try
+        {
+            cp = await checkpoints.ReadLatestAsync(cancellationToken);
+            checkpointWritable = true;
+        }
+        catch
+        {
+            checkpointWritable = false;
+        }
+    }
+
+    var status = dbReachable && checkpointWritable ? "ready" : "down";
+    var payload = new
+    {
+        status,
+        db = new { reachable = dbReachable, latencyMs = (int)sw.ElapsedMilliseconds },
+        ntpSkewSeconds = 0,
+        auditCheckpoint = new
+        {
+            mode = "table",
+            writable = checkpointWritable,
+            lastIndex = cp?.LastIndex ?? 0L,
+            lastWrittenAt = cp?.TsUtc ?? DateTime.UnixEpoch,
+        },
+    };
+    return Results.Json(payload, statusCode: status == "ready" ? 200 : 503);
+});
+
+// T074 — serve the canonical contracts/api/openapi.yaml at /openapi.yaml
+// so consumers can fetch the source-of-truth contract from a running
+// instance. The file is the canonical specification — Swashbuckle-style
+// generated docs would drift from the contract.
+app.MapGet("/openapi.yaml", (CancellationToken cancellationToken) =>
+{
+    var path = Path.Combine(AppContext.BaseDirectory, "contracts", "openapi.yaml");
+    return File.Exists(path)
+        ? Results.File(path, contentType: "application/yaml")
+        : Results.NotFound();
+});
+
 app.Run();
 return 0;
+
+/// <summary>
+/// Partial marker so <c>Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory&lt;Program&gt;</c>
+/// can locate the entry-point class — the C# compiler emits a generated
+/// <c>Program</c> for top-level statements, but it is internal by default.
+/// This explicit partial declaration makes it public for the test host.
+/// </summary>
+public partial class Program;

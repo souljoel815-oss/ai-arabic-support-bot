@@ -11,6 +11,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="..\..\specs\008-egypt-tax-accounting\contracts\api\openapi.yaml"
+             Link="contracts\openapi.yaml"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="MediatR" />
     <PackageReference Include="Hangfire.AspNetCore" />
     <PackageReference Include="Serilog.AspNetCore" />
