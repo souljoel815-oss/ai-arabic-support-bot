@@ -30,6 +30,9 @@ public sealed class SalesInvoice
     public DocumentPostingMode? PostingMode { get; private set; }
 
     public MoneyEgp Subtotal { get; private set; } = MoneyEgp.Zero;
+    public MoneyEgp InvoiceLevelDiscountAmount { get; private set; } = MoneyEgp.Zero;
+    public decimal InvoiceLevelDiscountPercent { get; private set; }
+    public MoneyEgp NetBeforeVat { get; private set; } = MoneyEgp.Zero;
     public MoneyEgp VatTotal { get; private set; } = MoneyEgp.Zero;
     public MoneyEgp GrandTotal { get; private set; } = MoneyEgp.Zero;
 
@@ -78,19 +81,110 @@ public sealed class SalesInvoice
         return line;
     }
 
+    /// <summary>
+    /// FR-008 expansion — set or clear the invoice-level discount.
+    /// Exactly one of <paramref name="amount"/> / <paramref name="percent"/>
+    /// may be non-null; both null clears the discount; both non-null
+    /// throws because the source-of-truth would be ambiguous. The
+    /// discount apportions across lines pro-rata in <see cref="Recompute"/>.
+    /// </summary>
+    public void SetInvoiceLevelDiscount(MoneyEgp? amount, decimal? percent)
+    {
+        if (State != DocumentState.Draft)
+        {
+            throw new InvalidOperationException(
+                $"Cannot change invoice-level discount on sales invoice {Id}: current state {State} is not Draft.");
+        }
+        if (amount is not null && percent is not null)
+        {
+            throw new ArgumentException(
+                "Exactly one of {amount, percent} must be supplied; the other must be null.", nameof(amount));
+        }
+        if (percent is { } pct && pct is < 0m or > 100m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(percent),
+                "Invoice-level discount percent must be in the range [0, 100].");
+        }
+        if (amount is { } amt && amt.Amount < 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(amount),
+                "Invoice-level discount amount cannot be negative.");
+        }
+
+        InvoiceLevelDiscountAmount = amount ?? MoneyEgp.Zero;
+        InvoiceLevelDiscountPercent = percent ?? 0m;
+        Recompute();
+    }
+
     public void Recompute()
     {
-        var subtotal = 0m;
-        var vat = 0m;
+        // Reset apportioned discounts so the pre-discount line subtotals
+        // are visible for the apportionment math.
         foreach (var line in _lines)
         {
-            line.Recompute();
-            subtotal += line.LineSubtotal.Amount;
-            vat += line.LineVat.Amount;
+            line.SetApportionedDiscount(MoneyEgp.Zero);
         }
+
+        var preDiscountSubtotal = _lines.Sum(l => l.LineSubtotal.Amount);
+
+        // Resolve effective invoice-level discount: percent takes
+        // precedence over amount when both are non-zero (the only way
+        // both end up non-zero is via direct field manipulation in
+        // tests; SetInvoiceLevelDiscount enforces XOR).
+        decimal effectiveDiscount;
+        if (InvoiceLevelDiscountPercent > 0m && preDiscountSubtotal > 0m)
+        {
+            effectiveDiscount = decimal.Round(
+                preDiscountSubtotal * (InvoiceLevelDiscountPercent / 100m), 2, MidpointRounding.ToEven);
+        }
+        else
+        {
+            effectiveDiscount = InvoiceLevelDiscountAmount.Amount;
+        }
+
+        if (effectiveDiscount > preDiscountSubtotal)
+        {
+            throw new InvalidOperationException(
+                $"Invoice-level discount {effectiveDiscount:F2} exceeds pre-discount subtotal {preDiscountSubtotal:F2}.");
+        }
+
+        // Apportion pro-rata. The last line absorbs the rounding
+        // remainder so sum(apportioned) == effectiveDiscount exactly.
+        if (effectiveDiscount > 0m && preDiscountSubtotal > 0m)
+        {
+            var allocated = 0m;
+            for (var i = 0; i < _lines.Count; i++)
+            {
+                var line = _lines[i];
+                decimal apportioned;
+                if (i == _lines.Count - 1)
+                {
+                    apportioned = effectiveDiscount - allocated;
+                }
+                else
+                {
+                    var ratio = line.LineSubtotal.Amount / preDiscountSubtotal;
+                    apportioned = decimal.Round(effectiveDiscount * ratio, 2, MidpointRounding.ToEven);
+                }
+                line.SetApportionedDiscount(MoneyEgp.From(apportioned));
+                allocated += apportioned;
+            }
+        }
+
+        // Header totals are sums of the now-discounted line totals.
+        var subtotal = _lines.Sum(l => l.LineSubtotal.Amount);
+        var netBeforeVat = _lines.Sum(l => l.LineNetSubtotal.Amount);
+        var vat = _lines.Sum(l => l.LineVat.Amount);
         Subtotal = MoneyEgp.From(decimal.Round(subtotal, 2, MidpointRounding.ToEven));
+        NetBeforeVat = MoneyEgp.From(decimal.Round(netBeforeVat, 2, MidpointRounding.ToEven));
         VatTotal = MoneyEgp.From(decimal.Round(vat, 2, MidpointRounding.ToEven));
-        GrandTotal = MoneyEgp.From(decimal.Round(subtotal + vat, 2, MidpointRounding.ToEven));
+        GrandTotal = MoneyEgp.From(decimal.Round(netBeforeVat + vat, 2, MidpointRounding.ToEven));
+
+        // The InvoiceLevelDiscountAmount field always reflects the
+        // computed effective discount so downstream consumers (eInvoice
+        // generator, PDF renderer) see one number whether the source
+        // was percent or fixed.
+        InvoiceLevelDiscountAmount = MoneyEgp.From(effectiveDiscount);
     }
 
     /// <summary>

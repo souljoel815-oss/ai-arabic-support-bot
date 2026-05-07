@@ -21,8 +21,10 @@ internal sealed class SalesInvoiceLineConfiguration : IEntityTypeConfiguration<S
         b.Property(l => l.VatCategoryId).HasColumnName("vat_category_id").IsRequired();
         b.Property(l => l.VatRatePercent).HasColumnName("vat_rate_percent").HasColumnType("decimal(5,2)").IsRequired();
 
-        b.ComplexProperty(l => l.LineSubtotal, p => p.Property(x => x.Amount).HasColumnName("line_subtotal").HasColumnType("decimal(19,2)").IsRequired());
-        b.ComplexProperty(l => l.LineVat,      p => p.Property(x => x.Amount).HasColumnName("line_vat").HasColumnType("decimal(19,2)").IsRequired());
-        b.ComplexProperty(l => l.LineTotal,    p => p.Property(x => x.Amount).HasColumnName("line_total").HasColumnType("decimal(19,2)").IsRequired());
+        b.ComplexProperty(l => l.LineSubtotal,             p => p.Property(x => x.Amount).HasColumnName("line_subtotal").HasColumnType("decimal(19,2)").IsRequired());
+        b.ComplexProperty(l => l.LineApportionedDiscount,  p => p.Property(x => x.Amount).HasColumnName("line_apportioned_discount").HasColumnType("decimal(19,2)").IsRequired());
+        b.ComplexProperty(l => l.LineNetSubtotal,          p => p.Property(x => x.Amount).HasColumnName("line_net_subtotal").HasColumnType("decimal(19,2)").IsRequired());
+        b.ComplexProperty(l => l.LineVat,                  p => p.Property(x => x.Amount).HasColumnName("line_vat").HasColumnType("decimal(19,2)").IsRequired());
+        b.ComplexProperty(l => l.LineTotal,                p => p.Property(x => x.Amount).HasColumnName("line_total").HasColumnType("decimal(19,2)").IsRequired());
     }
 }
