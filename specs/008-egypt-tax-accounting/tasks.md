@@ -64,19 +64,21 @@ Per [plan.md](plan.md) §"Project Structure":
 
 ### SharedKernel & domain primitives
 
-- [ ] T013 [P] Implement `Result<T>` discriminated-union type at `src/EgyptTax.SharedKernel/Result.cs`
-- [ ] T014 [P] Implement `MoneyEgp` value object at `src/EgyptTax.SharedKernel/MoneyEgp.cs` with banker's rounding (per spec edge case "Rounding")
-- [ ] T015 [P] Implement `ArabicEnglishText` value object at `src/EgyptTax.SharedKernel/ArabicEnglishText.cs` (two strings + display picker)
-- [ ] T016 [P] Implement `EgyptianTin` value object at `src/EgyptTax.SharedKernel/EgyptianTin.cs` enforcing 9-digit numeric per R-13 / FR-040 / FR-041
-- [ ] T017 [P] Implement `IClock` and `SystemClock` at `src/EgyptTax.SharedKernel/Time/` for deterministic test time per R-23
-- [ ] T018 [P] Implement `JsonCanonicalizer` (RFC 8785 JCS) at `src/EgyptTax.SharedKernel/Audit/JsonCanonicalizer.cs` per [contracts/audit-chain-verifier.md](contracts/audit-chain-verifier.md) §Canonicalization
+- [X] T013 [P] Implement `Result<T>` discriminated-union type at `src/EgyptTax.SharedKernel/Result.cs`
+- [X] T014 [P] Implement `MoneyEgp` value object at `src/EgyptTax.SharedKernel/MoneyEgp.cs` with banker's rounding (per spec edge case "Rounding")
+- [X] T015 [P] Implement `ArabicEnglishText` value object at `src/EgyptTax.SharedKernel/ArabicEnglishText.cs` (two strings + display picker; `Language` enum added at `src/EgyptTax.SharedKernel/Language.cs`)
+- [X] T016 [P] Implement `EgyptianTin` value object at `src/EgyptTax.SharedKernel/EgyptianTin.cs` enforcing 9-digit numeric per R-13 / FR-040 / FR-041
+- [X] T017 [P] Implement `IClock` and `SystemClock` at `src/EgyptTax.SharedKernel/Time/` for deterministic test time per R-23
+- [X] T018 [P] Implement `JsonCanonicalizer` (RFC 8785 JCS) at `src/EgyptTax.SharedKernel/Audit/JsonCanonicalizer.cs` per [contracts/audit-chain-verifier.md](contracts/audit-chain-verifier.md) §Canonicalization
 
 ### Foundational tests for primitives (Test-First per Constitution III)
 
-- [ ] T019 [P] Unit test for `MoneyEgp` (banker's rounding, equality, arithmetic) at `tests/EgyptTax.UnitTests/SharedKernel/MoneyEgpTests.cs` — MUST FAIL FIRST
-- [ ] T020 [P] Unit test for `EgyptianTin` (format pass/fail, equality) at `tests/EgyptTax.UnitTests/SharedKernel/EgyptianTinTests.cs` — MUST FAIL FIRST
-- [ ] T021 [P] Unit test for `JsonCanonicalizer` against RFC 8785 vectors at `tests/EgyptTax.UnitTests/SharedKernel/JsonCanonicalizerTests.cs` — MUST FAIL FIRST
-- [ ] T022 [P] Unit test for `ArabicEnglishText` display picker at `tests/EgyptTax.UnitTests/SharedKernel/ArabicEnglishTextTests.cs` — MUST FAIL FIRST
+- [X] T019 [P] Unit test for `MoneyEgp` (banker's rounding, equality, arithmetic) at `tests/EgyptTax.UnitTests/SharedKernel/MoneyEgpTests.cs` — observed RED (CS0234 missing-type) before implementations landed; now GREEN.
+- [X] T020 [P] Unit test for `EgyptianTin` (format pass/fail, equality) at `tests/EgyptTax.UnitTests/SharedKernel/EgyptianTinTests.cs` — observed RED before, now GREEN.
+- [X] T021 [P] Unit test for `JsonCanonicalizer` against RFC 8785 vectors at `tests/EgyptTax.UnitTests/SharedKernel/JsonCanonicalizerTests.cs` — observed RED before, now GREEN.
+- [X] T022 [P] Unit test for `ArabicEnglishText` display picker at `tests/EgyptTax.UnitTests/SharedKernel/ArabicEnglishTextTests.cs` — observed RED before, now GREEN.
+
+> **Stage 2 SharedKernel checkpoint (T013–T022 — 2026-05-07)**: Build clean (0 warnings, 0 errors); 57 unit tests pass in 28 ms. Test-First per Constitution III observed: 4 test files written before any of the 6 implementations; full RED state captured ("type or namespace name 'SharedKernel' does not exist"); then implementations landed; full GREEN. Stage 2 continues at T023 (EF Core / `AppDbContext`) once SQL Server LocalDB or a Testcontainers-managed instance is available.
 
 ### EF Core, persistence, and migrations baseline
 
