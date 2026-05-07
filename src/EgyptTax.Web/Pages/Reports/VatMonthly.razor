@@ -1,0 +1,120 @@
+@page "/reports/vat-monthly"
+@using EgyptTax.Application.Reports
+@using EgyptTax.Domain.Workflow
+@using Microsoft.AspNetCore.Authorization
+@inject IVatMonthlyReportQuery ReportQuery
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Monthly VAT report (FR-021) / تقرير ضريبة القيمة المضافة الشهري</h1>
+
+<form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
+    <label>
+        <span>Year</span>
+        <input type="number" min="1900" max="9999" @bind="_year" />
+    </label>
+    <label>
+        <span>Month</span>
+        <select @bind="_month">
+            @for (var m = 1; m <= 12; m++)
+            {
+                <option value="@m">@System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m)</option>
+            }
+        </select>
+    </label>
+    <button type="submit" class="btn-primary" disabled="@_loading">
+        @(_loading ? "Computing…" : "Run report")
+    </button>
+</form>
+
+@if (_report is null)
+{
+    @if (_loading)
+    {
+        <p>Loading…</p>
+    }
+    else
+    {
+        <p><em>Pick a period above and click "Run report".</em></p>
+    }
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>Period:</strong> @_report.PeriodStart.ToString("yyyy-MM-dd") to @_report.PeriodEnd.ToString("yyyy-MM-dd")</div>
+    <div><strong>Output VAT:</strong> <span class="num">@_report.OutputVat.Amount.ToString("F2") EGP</span></div>
+    <div><strong>Input VAT (recoverable):</strong> <span class="num">@_report.InputVatRecoverable.Amount.ToString("F2") EGP</span></div>
+    <div class="grand">
+        <strong>Net VAT @(_report.NetPayable.Amount >= 0 ? "payable to ETA" : "credit balance"):</strong>
+        <span class="num">@Math.Abs(_report.NetPayable.Amount).ToString("F2") EGP</span>
+    </div>
+</section>
+
+<section>
+    <h2>Contributing documents (@_report.Rows.Count)</h2>
+    @if (_report.Rows.Count == 0)
+    {
+        <p><em>No posted documents in this period contributed to the VAT computation.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Document #</th>
+                    <th>Counterparty</th>
+                    <th class="num">Net</th>
+                    <th class="num">VAT</th>
+                    <th>Direction</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _report.Rows)
+                {
+                    <tr>
+                        <td>@row.DocumentDate.ToString("yyyy-MM-dd")</td>
+                        <td>@row.DocumentType</td>
+                        <td>@(row.DocumentNumber ?? "(draft)")</td>
+                        <td>@row.CounterpartyName</td>
+                        <td class="num">@row.NetAmount.Amount.ToString("F2")</td>
+                        <td class="num">@row.VatAmount.Amount.ToString("F2")</td>
+                        <td>@(row.ContributesToOutput ? "output" : "input")</td>
+                        <td>
+                            <a href="@DrillDownUrl(row)">Open</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    private int _year = DateTime.UtcNow.Year;
+    private int _month = DateTime.UtcNow.Month;
+    private bool _loading;
+    private VatMonthlyReport? _report;
+
+    private async Task OnRefresh()
+    {
+        _loading = true;
+        try
+        {
+            _report = await ReportQuery.RunAsync(_year, _month);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string DrillDownUrl(VatMonthlyReportRow row) => row.DocumentType switch
+    {
+        DocumentType.SalesInvoice => $"/invoices/{row.DocumentId}",
+        DocumentType.CreditNote => $"/invoices/{row.DocumentId}",
+        DocumentType.PurchaseInvoice => $"/purchase-invoices/{row.DocumentId}",
+        _ => $"/document360/{row.DocumentType.ToString().ToLowerInvariant()}/{row.DocumentId}",
+    };
+}

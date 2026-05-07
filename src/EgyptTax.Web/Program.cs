@@ -92,6 +92,10 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Expenses.PostExpenseHandler>(
 builder.Services.AddScoped<EgyptTax.Application.Common.Guards.IMasterDataDeletionGuard,
     EgyptTax.Infrastructure.Common.Guards.SqlMasterDataDeletionGuard>();
 
+// US5 / FR-021 — monthly VAT report. Scoped per AppDbContext.
+builder.Services.AddScoped<EgyptTax.Application.Reports.IVatMonthlyReportQuery,
+    EgyptTax.Infrastructure.Reports.SqlVatMonthlyReportQuery>();
+
 // T139 / R-21 — attachment store lives on the filesystem under
 // EGYPTTAX_ATTACHMENT_ROOT (config key Attachments:Root). Defaults
 // to {ContentRootPath}/var/attachments for dev so a fresh clone
