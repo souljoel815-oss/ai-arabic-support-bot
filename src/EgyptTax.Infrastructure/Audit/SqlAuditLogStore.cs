@@ -1,3 +1,4 @@
+using EgyptTax.Application.Audit;
 using EgyptTax.Domain.Audit;
 using EgyptTax.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +15,7 @@ namespace EgyptTax.Infrastructure.Audit;
 /// concurrency without relying on SQL <c>IDENTITY</c> (which would consume
 /// indices on rollback).
 /// </summary>
-public sealed class SqlAuditLogStore(AppDbContext db)
+public sealed class SqlAuditLogStore(AppDbContext db) : IAuditLogStore
 {
     private readonly AppDbContext _db = db;
 

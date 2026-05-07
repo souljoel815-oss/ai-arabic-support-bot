@@ -102,13 +102,21 @@ Per [plan.md](plan.md) §"Project Structure":
 
 ### MediatR pipeline & cross-cutting behaviors
 
-- [ ] T037 Wire MediatR via `AddMediatR` in `src/EgyptTax.Web/Program.cs`; add behaviors registration in `src/EgyptTax.Application/DependencyInjection.cs`
-- [ ] T038 [P] Implement `ValidationBehavior<TRequest, TResponse>` at `src/EgyptTax.Application/Common/Behaviors/ValidationBehavior.cs` (FluentValidation)
-- [ ] T039 [P] Implement `TransactionBehavior<TRequest, TResponse>` at `src/EgyptTax.Application/Common/Behaviors/TransactionBehavior.cs` (one DbContext transaction per command, commit AFTER audit-emit per INV-001)
-- [ ] T040 [P] Implement `AuditEmitBehavior<TRequest, TResponse>` at `src/EgyptTax.Application/Common/Behaviors/AuditEmitBehavior.cs` writing to `SqlAuditLogStore` for every successful command
-- [ ] T041 [P] Implement `AuthorizationBehavior<TRequest, TResponse>` at `src/EgyptTax.Application/Common/Behaviors/AuthorizationBehavior.cs` enforcing FR-003 + FR-004
-- [ ] T042 [P] Implement `PerformanceBehavior<TRequest, TResponse>` at `src/EgyptTax.Application/Common/Behaviors/PerformanceBehavior.cs` (Serilog warning > 500 ms)
-- [ ] T043 [P] Unit test all 5 pipeline behaviors at `tests/EgyptTax.UnitTests/Application/Behaviors/` — MUST FAIL FIRST
+- [X] T037 Wire MediatR via `AddMediatR` in `src/EgyptTax.Web/Program.cs`; add behaviors registration in `src/EgyptTax.Application/DependencyInjection.cs`. Closed 2026-05-07. `AddApplication()` registers all 5 behaviours via `cfg.AddOpenBehavior` in canonical order: Performance → Authorization → Validation → Transaction → AuditEmit (outermost to innermost). Web `Program.cs` calls `AddApplication()` and registers a placeholder `AnonymousCurrentUser` until identity wiring lands in T044+.
+- [X] T038 [P] Implement `ValidationBehavior<TRequest, TResponse>` at `src/EgyptTax.Application/Common/Behaviors/ValidationBehavior.cs` (FluentValidation). Closed 2026-05-07. Aggregates failures from every registered `IValidator<TRequest>`; throws `Application.Common.Exceptions.ValidationException` (distinct from `FluentValidation.ValidationException`); no-ops when no validators are registered for the request type.
+- [X] T039 [P] Implement `TransactionBehavior<TRequest, TResponse>` at `src/EgyptTax.Application/Common/Behaviors/TransactionBehavior.cs` (one DbContext transaction per command, commit AFTER audit-emit per INV-001). Closed 2026-05-07. Only wraps requests implementing `ICommand<TResponse>`; queries pass through. Commits after `next()` returns (which means after `AuditEmitBehavior` has run, since it's registered as an inner behaviour).
+- [X] T040 [P] Implement `AuditEmitBehavior<TRequest, TResponse>` at `src/EgyptTax.Application/Common/Behaviors/AuditEmitBehavior.cs` writing to `IAuditLogStore` for every successful command implementing `IAuditableRequest`. Closed 2026-05-07. Skips emission when handler throws (exception propagates, no audit row), no-ops for non-auditable requests. Calls `IAuditableRequest.BuildAuditPayload(result, currentUser)` so audit content lives close to the command that produces it.
+- [X] T041 [P] Implement `AuthorizationBehavior<TRequest, TResponse>` at `src/EgyptTax.Application/Common/Behaviors/AuthorizationBehavior.cs` enforcing FR-003 + FR-004. Closed 2026-05-07. Baseline-only: rejects requests implementing `IAuthorizedRequest` when `ICurrentUser.IsAuthenticated` is false (throws `UnauthorizedException`). Per-permission FR-003 checks land per-handler in subsequent stages; FR-004 (no self-approval) is enforced inside the relevant approve handler, not at the cross-cutting layer.
+- [X] T042 [P] Implement `PerformanceBehavior<TRequest, TResponse>` at `src/EgyptTax.Application/Common/Behaviors/PerformanceBehavior.cs` (warning > 500 ms via `ILogger`; Serilog wires the actual logging in Stage 1's `serilog.json`). Closed 2026-05-07. Stops the timer in `finally` so failed handlers still log their full duration before re-throwing.
+- [X] T043 [P] Unit test all 5 pipeline behaviors at `tests/EgyptTax.UnitTests/Application/Behaviors/` — MUST FAIL FIRST. Closed 2026-05-07. **15 unit tests** (Validation 3, Transaction 3, AuditEmit 3, Authorization 3, Performance 3) using NSubstitute for IUnitOfWork / IAuditLogStore / ICurrentUser / ILogger fakes. Test-First per Constitution III: written before any behaviour or abstraction; observed RED with `CS0234 Common does not exist` for every test file; after impls landed, **all 15 GREEN**. Total unit-test count: 72 (57 SharedKernel + 15 behaviour). Full integration suite still 16/16 green (audit chain refactor: SqlAuditLogStore now implements IAuditLogStore — no test impact).
+
+### Supporting abstractions added in this batch (not separate tasks but worth recording)
+
+- `src/EgyptTax.Application/Common/Abstractions/`: `ICurrentUser`, `IUnitOfWork`, `ICommand<TResponse>` marker, `IAuditableRequest`, `IAuthorizedRequest`.
+- `src/EgyptTax.Application/Audit/IAuditLogStore.cs`: port; `SqlAuditLogStore` in Infrastructure now implements it.
+- `src/EgyptTax.Application/Common/Exceptions/`: `ValidationException`, `UnauthorizedException`.
+- `src/EgyptTax.Infrastructure/Persistence/EfUnitOfWork.cs`: EF-backed `IUnitOfWork` wrapping `DbContext.Database.BeginTransactionAsync`.
+- `src/EgyptTax.Web/AnonymousCurrentUser.cs`: placeholder `ICurrentUser` (replaced when identity ships in T044+).
 
 ### Identity, MFA, sessions (FR-001..FR-004, FR-038, FR-039)
 
