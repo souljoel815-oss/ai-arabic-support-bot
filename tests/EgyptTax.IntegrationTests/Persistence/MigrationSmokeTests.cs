@@ -54,6 +54,20 @@ public class MigrationSmokeTests(SqlServerFixture fixture)
 
         allocatorTableExists.Should().BeTrue("numbering.document_number_allocator must be created by the NumberingCore migration");
         seriesSeedCount.Should().Be(8, "the NumberingCore migration must seed one DocumentSeries per DocumentType");
+
+        var sessionsTableExists = await ScalarBoolAsync(
+            db,
+            "SELECT CASE WHEN OBJECT_ID('[identity].[sessions]', 'U') IS NULL THEN 0 ELSE 1 END");
+        var passwordResetTableExists = await ScalarBoolAsync(
+            db,
+            "SELECT CASE WHEN OBJECT_ID('[identity].[password_reset_tokens]', 'U') IS NULL THEN 0 ELSE 1 END");
+        var adminRecoveryTableExists = await ScalarBoolAsync(
+            db,
+            "SELECT CASE WHEN OBJECT_ID('[identity].[admin_recovery_log]', 'U') IS NULL THEN 0 ELSE 1 END");
+
+        sessionsTableExists.Should().BeTrue("identity.sessions must be created by the SessionsPasswordResetAndAdminRecovery migration");
+        passwordResetTableExists.Should().BeTrue("identity.password_reset_tokens must be created by the SessionsPasswordResetAndAdminRecovery migration");
+        adminRecoveryTableExists.Should().BeTrue("identity.admin_recovery_log must be created by the SessionsPasswordResetAndAdminRecovery migration");
     }
 
     private static async Task<bool> ScalarBoolAsync(DbContext db, string sql)
