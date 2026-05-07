@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>EgyptTax.Domain</RootNamespace>
+    <AssemblyName>EgyptTax.Domain</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EgyptTax.SharedKernel\EgyptTax.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

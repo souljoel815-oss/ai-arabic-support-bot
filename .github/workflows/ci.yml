@@ -1,0 +1,113 @@
+name: EgyptTax CI
+
+on:
+  push:
+    branches:
+      - "008-egypt-tax-accounting"
+      - "main"
+    paths:
+      - "src/EgyptTax.**"
+      - "tests/EgyptTax.**"
+      - "Directory.Packages.props"
+      - "src/Directory.Build.props"
+      - "EgyptTax.sln"
+      - ".config/dotnet-tools.json"
+      - "specs/008-egypt-tax-accounting/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "src/EgyptTax.**"
+      - "tests/EgyptTax.**"
+      - "Directory.Packages.props"
+      - "src/Directory.Build.props"
+      - "EgyptTax.sln"
+      - "specs/008-egypt-tax-accounting/**"
+      - ".github/workflows/ci.yml"
+
+jobs:
+  build-and-test:
+    name: Build + test (Windows / .NET 8)
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      - name: Restore
+        run: dotnet restore EgyptTax.sln
+
+      - name: Build (Release)
+        run: dotnet build EgyptTax.sln -c Release --no-restore /warnaserror
+
+      - name: Unit tests
+        run: dotnet test tests/EgyptTax.UnitTests/EgyptTax.UnitTests.csproj -c Release --no-build --logger "trx;LogFileName=unit.trx" --collect:"XPlat Code Coverage"
+
+      - name: Contract tests
+        run: dotnet test tests/EgyptTax.ContractTests/EgyptTax.ContractTests.csproj -c Release --no-build --logger "trx;LogFileName=contract.trx" --collect:"XPlat Code Coverage"
+
+      - name: Integration tests (Testcontainers requires Docker)
+        run: dotnet test tests/EgyptTax.IntegrationTests/EgyptTax.IntegrationTests.csproj -c Release --no-build --logger "trx;LogFileName=integration.trx" --collect:"XPlat Code Coverage"
+
+      - name: Install Playwright browsers
+        run: pwsh tests/EgyptTax.E2ETests/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
+
+      - name: E2E tests
+        run: dotnet test tests/EgyptTax.E2ETests/EgyptTax.E2ETests.csproj -c Release --no-build --logger "trx;LogFileName=e2e.trx"
+
+      - name: Upload TRX results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trx-results
+          path: "**/*.trx"
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: "**/coverage.cobertura.xml"
+
+  build-installer:
+    name: WiX MSI installer (release branch only)
+    runs-on: windows-2022
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install WiX 5
+        run: dotnet tool install --global wix --version 5.0.2
+
+      - name: Publish EgyptTax.Web
+        run: dotnet publish src/EgyptTax.Web/EgyptTax.Web.csproj -c Release -r win-x64 --self-contained false -o publish/
+
+      - name: Build MSI
+        run: wix build src/EgyptTax.Installer/Product.wxs -o EgyptTax-Setup.msi -arch x64
+        continue-on-error: true # Installer ships in T247; until then this step is informational
+
+      - name: Upload MSI artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EgyptTax-Setup-msi
+          path: EgyptTax-Setup.msi

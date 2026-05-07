@@ -22,3 +22,77 @@ Thumbs.db
 *.tmp
 .vscode/
 .idea/
+
+# Feature 003-crypto-trading-bot — local data dir and Streamlit secrets
+.crypto-trading-bot/
+.streamlit/secrets.toml
+
+# Python build / dist (added for trading_bot pyproject.toml)
+build/
+dist/
+*.egg
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# Feature 008-egypt-tax-accounting — .NET / C# build artifacts
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.VisualState.xml
+TestResult.xml
+*.coverage
+*.coveragexml
+.vs/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+!packages/build/
+!packages/repositories.config
+
+# JetBrains Rider
+.idea/
+
+# 008-egypt-tax-accounting — local dev/state outputs (per quickstart §3 + FR-028)
+EgyptTax-Dev/
+appsettings.Development.json
+appsettings.Local.json
+**/serilog.user.json
+
+# 008-egypt-tax-accounting — Playwright + E2E
+playwright-report/
+playwright/.cache/
+test-results/
+
+# Microsoft.Playwright auto-installed browsers
+**/bin/Debug/net*/playwright/
+**/bin/Release/net*/playwright/
+
+# WiX installer (T247) build outputs
+**/*.wixobj
+**/*.wixpdb
+**/*.msi
+**/*.wixproj.user

@@ -1,0 +1,65 @@
+{
+  "Serilog": {
+    "Using": [
+      "Serilog.Sinks.Console",
+      "Serilog.Sinks.File",
+      "Serilog.Sinks.MSSqlServer"
+    ],
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft": "Warning",
+        "Microsoft.AspNetCore.Components": "Warning",
+        "Microsoft.AspNetCore.SignalR": "Warning",
+        "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+        "System": "Warning",
+        "Hangfire": "Information"
+      }
+    },
+    "Enrich": [
+      "FromLogContext",
+      "WithMachineName",
+      "WithThreadId",
+      "WithProcessId"
+    ],
+    "Properties": {
+      "Application": "EgyptTax.Web",
+      "DeploymentMode": "OnPrem"
+    },
+    "WriteTo": [
+      {
+        "Name": "Console",
+        "Args": {
+          "outputTemplate": "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} :: {Message:lj} {Properties:j}{NewLine}{Exception}"
+        }
+      },
+      {
+        "Name": "File",
+        "Args": {
+          "path": "logs/egypttax-.log",
+          "rollingInterval": "Day",
+          "retainedFileCountLimit": 31,
+          "fileSizeLimitBytes": 104857600,
+          "rollOnFileSizeLimit": true,
+          "shared": true,
+          "outputTemplate": "{Timestamp:yyyy-MM-dd HH:mm:ss.fffzzz} [{Level:u3}] {SourceContext} {Properties:j} :: {Message:lj}{NewLine}{Exception}"
+        }
+      },
+      {
+        "Name": "MSSqlServer",
+        "Args": {
+          "connectionString": "App",
+          "sinkOptionsSection": {
+            "tableName": "application_log",
+            "schemaName": "ops",
+            "autoCreateSqlTable": true,
+            "batchPostingLimit": 100,
+            "period": "00:00:05"
+          },
+          "restrictedToMinimumLevel": "Information"
+        }
+      }
+    ]
+  },
+  "_comment": "Operational logging only (R-20). The FR-028 audit log is a separate entity stored in audit.audit_log via SqlAuditLogStore — it MUST NOT be written through Serilog."
+}
