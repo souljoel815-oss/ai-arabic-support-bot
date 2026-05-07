@@ -81,8 +81,10 @@ builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.Purcha
 builder.Services.AddScoped<EgyptTax.Application.Compliance.RiskScoring.IPurchaseInvoiceFingerprintQuery,
     EgyptTax.Infrastructure.Compliance.SqlPurchaseInvoiceFingerprintQuery>();
 
-// US2 — purchase invoice post handler.
+// US2 — purchase invoice + expense post handlers (FR-016 enforced
+// in both — deductible documents require an attachment).
 builder.Services.AddScoped<EgyptTax.Infrastructure.Purchases.PostPurchaseInvoiceHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Expenses.PostExpenseHandler>();
 
 // T139 / R-21 — attachment store lives on the filesystem under
 // EGYPTTAX_ATTACHMENT_ROOT (config key Attachments:Root). Defaults

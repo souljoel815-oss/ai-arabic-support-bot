@@ -1,0 +1,267 @@
+@page "/expenses/new"
+@page "/expenses/{Id:guid}/edit"
+@using System.ComponentModel.DataAnnotations
+@using EgyptTax.Application.Attachments
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Attachments
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject UploadAttachmentHandler UploadHandler
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>@(_isNew ? "New expense" : "Edit expense")</h1>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+    return;
+}
+
+@if (!_isNew && _expense is null)
+{
+    <div class="flash-error">Expense not found.</div>
+    return;
+}
+
+@if (!_isNew && _expense!.State != DocumentState.Draft)
+{
+    <div class="flash-error">
+        Expense @_expense.DocumentNumber is in state @_expense.State; only drafts are editable (FR-027).
+    </div>
+    <a href="/expenses/@_expense.Id">← View expense</a>
+    return;
+}
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status">@_flash</div>
+}
+
+<EditForm Model="_form" OnValidSubmit="OnSaveDraftAsync" FormName="expense-edit" class="form-grid">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <fieldset>
+        <legend>Expense</legend>
+        <label>
+            <span>Date</span>
+            <InputDate @bind-Value="_form.DocumentDate" />
+        </label>
+        <label>
+            <span>Category</span>
+            <InputSelect @bind-Value="_form.CategoryId" @bind-Value:after="OnCategoryChanged">
+                <option value="@Guid.Empty">— select —</option>
+                @foreach (var c in _categories)
+                {
+                    <option value="@c.Id">@c.Code — @c.Name.English (@(c.DefaultDeductible ? "deductible by default" : "non-deductible by default"))</option>
+                }
+            </InputSelect>
+        </label>
+        <label>
+            <span>Amount (EGP)</span>
+            <InputNumber @bind-Value="_form.Amount" step="0.01" />
+        </label>
+        <label>
+            <span>Deductible (input VAT recoverable per FR-015)</span>
+            <InputCheckbox @bind-Value="_form.DeductibleFlag" />
+        </label>
+        <label>
+            <span>Description (English)</span>
+            <InputTextArea @bind-Value="_form.DescriptionEnglish" rows="3" />
+        </label>
+        <label>
+            <span>Description (Arabic)</span>
+            <InputTextArea @bind-Value="_form.DescriptionArabic" rows="3" dir="rtl" />
+        </label>
+    </fieldset>
+
+    <button type="submit">@(_isNew ? "Save draft" : "Update draft")</button>
+    <a href="/expenses">Cancel</a>
+</EditForm>
+
+@if (!_isNew && _expense is not null)
+{
+    <section class="upload-section">
+        <h2>Attachments (FR-016 — required if deductible)</h2>
+        @if (_attachments.Count == 0)
+        {
+            <p><em>No attachments yet.</em></p>
+        }
+        else
+        {
+            <ul>
+                @foreach (var a in _attachments)
+                {
+                    <li>@a.FilenameOriginal — @a.MimeType — @a.SizeBytes.ToString("N0") bytes</li>
+                }
+            </ul>
+        }
+
+        <InputFile OnChange="OnUploadAsync" accept=".pdf,.jpg,.jpeg,.png" disabled="@_uploading" />
+        @if (_uploading)
+        {
+            <span> Uploading…</span>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool _isNew;
+    private bool _loading = true;
+    private Expense? _expense;
+    private List<DeductibleExpenseCategory> _categories = new();
+    private List<Attachment> _attachments = new();
+    private FormModel _form = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private bool _uploading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isNew = Id is null;
+        _categories = await Db.Set<DeductibleExpenseCategory>().AsNoTracking()
+            .Where(c => c.Status == DeductibleExpenseCategoryStatus.Active)
+            .OrderBy(c => c.Code).ToListAsync();
+
+        if (!_isNew)
+        {
+            _expense = await Db.Set<Expense>().AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Id == Id);
+            if (_expense is not null && _expense.State == DocumentState.Draft)
+            {
+                _form.DocumentDate = _expense.DocumentDate.ToDateTime(TimeOnly.MinValue);
+                _form.CategoryId = _expense.CategoryId;
+                _form.Amount = _expense.Amount.Amount;
+                _form.DeductibleFlag = _expense.DeductibleFlag;
+                _form.DescriptionEnglish = _expense.Description.English;
+                _form.DescriptionArabic = _expense.Description.Arabic;
+
+                _attachments = await Db.Set<Attachment>().AsNoTracking()
+                    .Where(a => a.DocumentId == _expense.Id
+                        && a.DocumentType == DocumentType.Expense)
+                    .OrderBy(a => a.UploadedAtUtc).ToListAsync();
+            }
+        }
+        else
+        {
+            _form.DocumentDate = DateTime.UtcNow.Date;
+        }
+
+        _loading = false;
+    }
+
+    private void OnCategoryChanged()
+    {
+        // Apply the category's default-deductible flag whenever the
+        // operator picks a category. They can still flip it but the
+        // default removes one click in the common case (FR-015).
+        var cat = _categories.FirstOrDefault(c => c.Id == _form.CategoryId);
+        if (cat is not null)
+        {
+            _form.DeductibleFlag = cat.DefaultDeductible;
+        }
+    }
+
+    private async Task OnSaveDraftAsync()
+    {
+        if (_form.CategoryId == Guid.Empty)
+        {
+            _flash = "Select an expense category.";
+            _flashClass = "flash-error";
+            return;
+        }
+        if (_form.Amount <= 0m)
+        {
+            _flash = "Amount must be positive.";
+            _flashClass = "flash-error";
+            return;
+        }
+
+        var date = DateOnly.FromDateTime(_form.DocumentDate);
+        var description = new ArabicEnglishText(_form.DescriptionArabic, _form.DescriptionEnglish);
+        var amount = MoneyEgp.From(_form.Amount);
+
+        if (_isNew)
+        {
+            var draft = Expense.CreateDraft(date, _form.CategoryId, amount, _form.DeductibleFlag, description);
+            Db.Add(draft);
+            await Db.SaveChangesAsync();
+            Nav.NavigateTo($"/expenses/{draft.Id}/edit", forceLoad: true);
+            return;
+        }
+
+        var live = await Db.Set<Expense>().FirstAsync(e => e.Id == _expense!.Id);
+        live.UpdateDocumentDate(date);
+        live.UpdateCategory(_form.CategoryId);
+        live.UpdateAmount(amount);
+        live.UpdateDeductibleFlag(_form.DeductibleFlag);
+        live.UpdateDescription(description);
+        await Db.SaveChangesAsync();
+
+        _flash = "Draft saved.";
+        _flashClass = "flash-success";
+    }
+
+    private async Task OnUploadAsync(InputFileChangeEventArgs e)
+    {
+        if (_expense is null) return;
+        var file = e.File;
+        if (file is null) return;
+
+        _uploading = true;
+        try
+        {
+            var auth = await AuthState.GetAuthenticationStateAsync();
+            var userIdClaim = auth.User.FindFirst("sub")?.Value
+                ?? auth.User.FindFirst("userId")?.Value;
+            var operatorUserId = Guid.TryParse(userIdClaim, out var u) ? u : Guid.Empty;
+
+            await using var content = file.OpenReadStream(maxAllowedSize: UploadAttachmentHandler.MaxBytes);
+            await UploadHandler.HandleAsync(new UploadAttachmentCommand(
+                DocumentId: _expense.Id,
+                DocumentType: DocumentType.Expense,
+                FilenameOriginal: file.Name,
+                MimeType: file.ContentType,
+                ContentStream: content,
+                UploadedByUserId: operatorUserId), CancellationToken.None);
+
+            _attachments = await Db.Set<Attachment>().AsNoTracking()
+                .Where(a => a.DocumentId == _expense.Id
+                    && a.DocumentType == DocumentType.Expense)
+                .OrderBy(a => a.UploadedAtUtc).ToListAsync();
+            _flash = $"Uploaded {file.Name}.";
+            _flashClass = "flash-success";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _uploading = false;
+        }
+    }
+
+    private sealed class FormModel
+    {
+        public DateTime DocumentDate { get; set; } = DateTime.UtcNow.Date;
+        public Guid CategoryId { get; set; } = Guid.Empty;
+        public decimal Amount { get; set; }
+        public bool DeductibleFlag { get; set; }
+        [Required, StringLength(2000)] public string DescriptionEnglish { get; set; } = "";
+        [Required, StringLength(2000)] public string DescriptionArabic { get; set; } = "";
+    }
+}

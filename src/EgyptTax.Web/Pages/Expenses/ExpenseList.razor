@@ -1,0 +1,108 @@
+@page "/expenses"
+@using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Expenses / المصروفات</h1>
+
+<div class="invoice-toolbar">
+    <a class="btn-primary" href="/expenses/new">+ New expense</a>
+    <input type="search" placeholder="Search by document number or description…"
+           @bind="_search" @bind:event="oninput" />
+    <select @bind="_stateFilter">
+        <option value="">All states</option>
+        @foreach (var state in Enum.GetValues<DocumentState>())
+        {
+            <option value="@state">@state</option>
+        }
+    </select>
+</div>
+
+@if (_rows is null)
+{
+    <p>Loading…</p>
+}
+else if (_rows.Count == 0)
+{
+    <p><em>No expenses match the current filters.</em></p>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>Document #</th>
+                <th>Date</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th>State</th>
+                <th>Deductible?</th>
+                <th class="num">Amount</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Filtered)
+            {
+                <tr>
+                    <td>@(row.Expense.DocumentNumber ?? "(draft)")</td>
+                    <td>@row.Expense.DocumentDate.ToString("yyyy-MM-dd")</td>
+                    <td>@row.CategoryCode</td>
+                    <td>@row.Expense.Description.English</td>
+                    <td><StateBadge State="row.Expense.State" /></td>
+                    <td>@(row.Expense.DeductibleFlag ? "yes" : "—")</td>
+                    <td class="num">@row.Expense.Amount.Amount.ToString("F2")</td>
+                    <td>
+                        @if (row.Expense.State == DocumentState.Draft)
+                        {
+                            <a href="/expenses/@row.Expense.Id/edit">Edit</a>
+                        }
+                        else
+                        {
+                            <a href="/expenses/@row.Expense.Id">View</a>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Row>? _rows;
+    private string _search = "";
+    private string _stateFilter = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var rows = await Db.Set<Expense>()
+            .AsNoTracking()
+            .OrderByDescending(e => e.DocumentDate)
+            .ThenByDescending(e => e.PostedAtUtc)
+            .Take(500)
+            .ToListAsync();
+
+        var categoryIds = rows.Select(r => r.CategoryId).Distinct().ToArray();
+        var categories = await Db.Set<DeductibleExpenseCategory>()
+            .AsNoTracking()
+            .Where(c => categoryIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Code);
+
+        _rows = rows.Select(e => new Row(e, categories.GetValueOrDefault(e.CategoryId, "?"))).ToList();
+    }
+
+    private IEnumerable<Row> Filtered => (_rows ?? Enumerable.Empty<Row>())
+        .Where(r => string.IsNullOrEmpty(_search)
+            || (r.Expense.DocumentNumber?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false)
+            || r.Expense.Description.English.Contains(_search, StringComparison.OrdinalIgnoreCase)
+            || r.Expense.Description.Arabic.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(r => string.IsNullOrEmpty(_stateFilter)
+            || r.Expense.State.ToString() == _stateFilter);
+
+    private sealed record Row(Expense Expense, string CategoryCode);
+}

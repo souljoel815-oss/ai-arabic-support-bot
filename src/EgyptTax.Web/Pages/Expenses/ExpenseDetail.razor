@@ -1,0 +1,139 @@
+@page "/expenses/{Id:guid}"
+@using EgyptTax.Application.Expenses
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Expenses
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject PostExpenseHandler PostHandler
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Expense @(_expense?.DocumentNumber ?? "(loading)")</h1>
+
+@if (_expense is null)
+{
+    <p>Loading…</p>
+    return;
+}
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status">@_flash</div>
+}
+
+<section class="invoice-header">
+    <div><strong>Date:</strong> @_expense.DocumentDate.ToString("yyyy-MM-dd")</div>
+    <div><strong>State:</strong> <StateBadge State="_expense.State" /></div>
+    <div><strong>Category:</strong> @(_category?.Code ?? "?") — @(_category?.Name.English ?? "")</div>
+    <div><strong>Deductible:</strong> @(_expense.DeductibleFlag ? "yes" : "no")</div>
+    <div><strong>Amount:</strong> <span class="num">@_expense.Amount.Amount.ToString("F2") EGP</span></div>
+    @if (_expense.PostedAtUtc is { } postedAt)
+    {
+        <div><strong>Posted at (UTC):</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+        <div><strong>Posting mode:</strong> @_expense.PostingMode</div>
+    }
+</section>
+
+<section>
+    <h2>Description</h2>
+    <p>@_expense.Description.English</p>
+    <p dir="rtl">@_expense.Description.Arabic</p>
+</section>
+
+<section>
+    <h2>Attachments (@_attachments.Count)</h2>
+    @if (_attachments.Count == 0)
+    {
+        <p><em>No attachments.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead><tr><th>Filename</th><th>MIME</th><th class="num">Size</th><th>Uploaded (UTC)</th></tr></thead>
+            <tbody>
+                @foreach (var a in _attachments)
+                {
+                    <tr>
+                        <td>@a.FilenameOriginal</td>
+                        <td>@a.MimeType</td>
+                        <td class="num">@a.SizeBytes.ToString("N0")</td>
+                        <td>@a.UploadedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@if (_expense.State == DocumentState.Draft)
+{
+    <section class="invoice-actions">
+        <a class="btn-primary" href="/expenses/@_expense.Id/edit">Edit draft</a>
+        <button type="button" class="btn-primary" disabled="@_posting" @onclick="OnPostAsync">
+            @(_posting ? "Posting…" : "Post expense")
+        </button>
+    </section>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private Expense? _expense;
+    private DeductibleExpenseCategory? _category;
+    private List<Attachment> _attachments = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private bool _posting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _expense = await Db.Set<Expense>().AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == Id);
+        if (_expense is null) return;
+
+        _category = await Db.Set<DeductibleExpenseCategory>().AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == _expense.CategoryId);
+
+        _attachments = await Db.Set<Attachment>()
+            .AsNoTracking()
+            .Where(a => a.DocumentId == _expense.Id
+                && a.DocumentType == DocumentType.Expense)
+            .OrderBy(a => a.UploadedAtUtc)
+            .ToListAsync();
+    }
+
+    private async Task OnPostAsync()
+    {
+        if (_expense is null) return;
+        _posting = true;
+        _flash = null;
+        try
+        {
+            var auth = await AuthState.GetAuthenticationStateAsync();
+            var userIdClaim = auth.User.FindFirst("sub")?.Value
+                ?? auth.User.FindFirst("userId")?.Value;
+            var operatorUserId = Guid.TryParse(userIdClaim, out var u) ? u : Guid.Empty;
+
+            await PostHandler.HandleAsync(
+                new PostExpenseCommand(_expense.Id, operatorUserId),
+                CancellationToken.None);
+            Nav.NavigateTo($"/expenses/{_expense.Id}", forceLoad: true);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _posting = false;
+        }
+    }
+}

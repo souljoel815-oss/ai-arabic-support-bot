@@ -1,0 +1,101 @@
+using System.Globalization;
+using EgyptTax.Application.Audit;
+using EgyptTax.Application.Expenses;
+using EgyptTax.Application.Numbering;
+using EgyptTax.Domain.Audit;
+using EgyptTax.Domain.Documents;
+using EgyptTax.Domain.Expenses;
+using EgyptTax.Domain.Workflow;
+using EgyptTax.Infrastructure.Persistence;
+using EgyptTax.SharedKernel.Time;
+using Microsoft.EntityFrameworkCore;
+
+namespace EgyptTax.Infrastructure.Expenses;
+
+/// <summary>
+/// US2 / FR-016 / FR-026 — expense posting handler. Mirrors
+/// PostPurchaseInvoiceHandler: allocates an `EXP-{year}-{n}` series
+/// number, transitions via <see cref="Expense.MarkPosted"/>,
+/// emits FR-028 audit. FR-016 enforced HERE: a deductible expense
+/// MUST have at least one Attachment row.
+/// </summary>
+public sealed class PostExpenseHandler
+{
+    private readonly AppDbContext _db;
+    private readonly IDocumentNumberAllocator _allocator;
+    private readonly IClock _clock;
+    private readonly IAuditLogStore _auditLog;
+
+    public PostExpenseHandler(
+        AppDbContext db,
+        IDocumentNumberAllocator allocator,
+        IClock clock,
+        IAuditLogStore auditLog)
+    {
+        _db = db;
+        _allocator = allocator;
+        _clock = clock;
+        _auditLog = auditLog;
+    }
+
+    public async Task<Expense> HandleAsync(
+        PostExpenseCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        var expense = await _db.Set<Expense>()
+            .FirstOrDefaultAsync(e => e.Id == command.ExpenseId, cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Expense {command.ExpenseId} not found.");
+
+        // FR-016 — deductible expenses require at least one attachment.
+        if (expense.DeductibleFlag)
+        {
+            var attachmentCount = await _db.Set<Attachment>()
+                .CountAsync(a => a.DocumentId == expense.Id
+                    && a.DocumentType == DocumentType.Expense, cancellationToken);
+            if (attachmentCount == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot post expense {expense.Id}: marked deductible but no attachment is on file. Per FR-016, deductible expenses require supporting documents.");
+            }
+        }
+
+        var approvalSetting = await _db.Set<DocumentTypeApprovalSetting>()
+            .FirstOrDefaultAsync(s => s.DocumentType == DocumentType.Expense, cancellationToken);
+        var approvalRequired = approvalSetting?.ApprovalRequired ?? true;
+
+        var fiscalYear = expense.DocumentDate.Year;
+        var documentNumber = await _allocator.AllocateAsync(
+            DocumentType.Expense, fiscalYear, cancellationToken);
+
+        var postingMode = approvalRequired
+            ? DocumentPostingMode.ApprovedThenPosted
+            : DocumentPostingMode.UnapprovedDirect;
+
+        var nowUtc = _clock.UtcNow;
+        expense.MarkPosted(
+            documentNumber: documentNumber,
+            postedByUserId: command.PostedByUserId,
+            postedAtUtc: nowUtc,
+            postingMode: postingMode,
+            approvalEnabled: approvalRequired);
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "expense.posted",
+                ActorUserId: command.PostedByUserId,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: BuildPayloadJson(expense, postingMode)),
+            cancellationToken);
+
+        return expense;
+    }
+
+    private static string BuildPayloadJson(Expense expense, DocumentPostingMode postingMode) =>
+        $$"""{"expense_id":"{{expense.Id:D}}","category_id":"{{expense.CategoryId:D}}","document_number":"{{expense.DocumentNumber}}","document_date":"{{expense.DocumentDate:yyyy-MM-dd}}","posted_at_utc":"{{expense.PostedAtUtc?.ToString("o", CultureInfo.InvariantCulture)}}","posting_mode":"{{postingMode}}","amount_egp":{{expense.Amount.Amount.ToString("F2", CultureInfo.InvariantCulture)}},"deductible":{{(expense.DeductibleFlag ? "true" : "false")}}}""";
+}
