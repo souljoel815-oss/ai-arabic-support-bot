@@ -1,0 +1,185 @@
+@page "/eta-dashboard"
+@using EgyptTax.Application.Eta
+@using EgyptTax.Domain.Eta
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel.Time
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject IEtaDashboardQuery Dashboard
+@inject IClock Clock
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>ETA Compliance Dashboard / لوحة الامتثال للضرائب الإلكترونية</h1>
+<p>Per FR-043, surface every posted invoice approaching or past its ETA submission deadline so the operator can intervene before the regulator-imposed cutoff.</p>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+    return;
+}
+
+<section class="eta-tiles">
+    <div class="eta-tile eta-tile-critical">
+        <div class="tile-label">Critical (&lt; 24h)</div>
+        <div class="tile-value">@_criticalCount</div>
+    </div>
+    <div class="eta-tile eta-tile-warning">
+        <div class="tile-label">Within 7 days</div>
+        <div class="tile-value">@_within7DaysCount</div>
+    </div>
+    <div class="eta-tile">
+        <div class="tile-label">Pending total</div>
+        <div class="tile-value">@_pendingTotal</div>
+    </div>
+    <div class="eta-tile eta-tile-failed">
+        <div class="tile-label">Failed</div>
+        <div class="tile-value">@_failedTotal</div>
+    </div>
+    <div class="eta-tile eta-tile-submitted">
+        <div class="tile-label">Submitted</div>
+        <div class="tile-value">@_submittedTotal</div>
+    </div>
+</section>
+
+<section class="eta-controls">
+    <label>
+        <span>Lookahead window</span>
+        <select @bind="_lookaheadHours" @bind:after="ReloadAsync">
+            <option value="24">Next 24 hours</option>
+            <option value="72">Next 72 hours</option>
+            <option value="168">Next 7 days</option>
+            <option value="336">Next 14 days</option>
+        </select>
+    </label>
+</section>
+
+@if (_rows.Count == 0)
+{
+    <p class="flash-success" role="status">
+        Nothing to do — no Pending or Failed submissions within the @_lookaheadHours-hour window.
+    </p>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>Document #</th>
+                <th>Customer</th>
+                <th>Status</th>
+                <th>Deadline (UTC)</th>
+                <th class="num">Hours left</th>
+                <th class="num">Attempts</th>
+                <th>Last error</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in _rows)
+            {
+                var hoursLeft = (row.Deadline - _now).TotalHours;
+                <tr class="@UrgencyRowClass(hoursLeft)">
+                    <td>@row.DocumentNumber</td>
+                    <td>@row.CustomerName</td>
+                    <td>
+                        <span class="eta-badge eta-@row.Status.ToString().ToLowerInvariant()">@row.Status</span>
+                    </td>
+                    <td>@row.Deadline.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td class="num">@hoursLeft.ToString("0.#")</td>
+                    <td class="num">@row.AttemptCount</td>
+                    <td>@(row.LastErrorCode ?? "—")</td>
+                    <td><a href="/invoices/@row.SalesInvoiceId">View</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private DateTime _now;
+    private int _lookaheadHours = 168;  // 7-day default — wider than the SC-012 24h critical window so the dashboard surfaces upcoming work, not just the on-fire subset.
+
+    private int _criticalCount;
+    private int _within7DaysCount;
+    private int _pendingTotal;
+    private int _failedTotal;
+    private int _submittedTotal;
+
+    private List<Row> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _now = Clock.UtcNow;
+
+        // Aggregate tiles — single grouped query.
+        var groups = await Db.Set<EtaSubmission>()
+            .AsNoTracking()
+            .GroupBy(s => s.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync();
+        _pendingTotal   = groups.FirstOrDefault(g => g.Status == EtaSubmissionStatus.Pending)?.Count ?? 0;
+        _failedTotal    = groups.FirstOrDefault(g => g.Status == EtaSubmissionStatus.Failed)?.Count ?? 0;
+        _submittedTotal = groups.FirstOrDefault(g => g.Status == EtaSubmissionStatus.Submitted)?.Count ?? 0;
+
+        var critical = await Dashboard.GetUpcomingDeadlinesAsync(TimeSpan.FromHours(24), _now);
+        _criticalCount = critical.Count;
+        var within7 = await Dashboard.GetUpcomingDeadlinesAsync(TimeSpan.FromDays(7), _now);
+        _within7DaysCount = within7.Count;
+
+        // Main list — driven by the user-chosen lookahead window.
+        var dashboardRows = await Dashboard.GetUpcomingDeadlinesAsync(
+            TimeSpan.FromHours(_lookaheadHours), _now);
+        var invoiceIds = dashboardRows.Select(r => r.SalesInvoiceId).ToArray();
+        var invoices = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => invoiceIds.Contains(i.Id))
+            .Select(i => new { i.Id, i.DocumentNumber, i.CustomerId })
+            .ToListAsync();
+        var customerIds = invoices.Select(i => i.CustomerId).Distinct().ToArray();
+        var customerNames = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => customerIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Name.English);
+
+        _rows = dashboardRows.Select(d =>
+        {
+            var inv = invoices.FirstOrDefault(i => i.Id == d.SalesInvoiceId);
+            var customerName = inv is null
+                ? "?"
+                : customerNames.GetValueOrDefault(inv.CustomerId, inv.CustomerId.ToString("D"));
+            return new Row(
+                d.SalesInvoiceId,
+                inv?.DocumentNumber ?? "(unknown)",
+                customerName,
+                d.Status,
+                d.SubmissionWindowExpiresAtUtc,
+                d.AttemptCount,
+                d.LastErrorCode);
+        }).ToList();
+    }
+
+    private static string UrgencyRowClass(double hoursLeft)
+    {
+        if (hoursLeft < 0) return "row-overdue";
+        if (hoursLeft < 24) return "row-critical";
+        if (hoursLeft < 72) return "row-warning";
+        return "";
+    }
+
+    private sealed record Row(
+        Guid SalesInvoiceId,
+        string DocumentNumber,
+        string CustomerName,
+        EtaSubmissionStatus Status,
+        DateTime Deadline,
+        int AttemptCount,
+        string? LastErrorCode);
+}
