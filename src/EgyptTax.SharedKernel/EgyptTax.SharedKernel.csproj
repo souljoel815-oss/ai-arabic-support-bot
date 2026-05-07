@@ -5,4 +5,9 @@
     <AssemblyName>EgyptTax.SharedKernel</AssemblyName>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Content Include="Localization\terminology.ar.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Localization\terminology.en.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

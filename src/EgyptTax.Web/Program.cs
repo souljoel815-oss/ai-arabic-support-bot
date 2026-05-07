@@ -1,7 +1,9 @@
 // Stage 1+2 entry point. MediatR pipeline (T037), FR-039 cookie auth
-// (T050), and Hangfire background-job host (T054) are wired here.
-// Full Blazor surface lands as Stage 2 continues (T058, T073-T076).
+// (T050), Hangfire background-job host (T054), Blazor Server +
+// bilingual localization (T058-T060) all wired here. Full UI
+// screens land as Phase 3 implementation tasks (T085+) ship.
 
+using System.Globalization;
 using EgyptTax.Application;
 using EgyptTax.Application.Audit;
 using EgyptTax.Application.Common.Abstractions;
@@ -105,7 +107,33 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+// T058 / R-11 — Blazor Server + Razor Pages host. The Razor Pages
+// runtime hosts the Blazor scaffold via /_Host (mapped as the
+// fallback page); the bilingual <html dir> attribute is set in
+// Pages/Shared/_Layout.cshtml from CultureInfo.CurrentCulture.
+builder.Services.AddRazorPages();
+builder.Services.AddServerSideBlazor();
+
+// T059 — IStringLocalizer wiring. The .resx files live in
+// EgyptTax.Web/Localization/SharedResources.{ar,en}.resx; the
+// marker class is EgyptTax.Web.Localization.SharedResources.
+builder.Services.AddLocalization(options => options.ResourcesPath = "Localization");
+
 var app = builder.Build();
+
+// T058 / R-11 — request-scoped culture so the Blazor + Razor Pages
+// rendering pipeline picks up the user's chosen language. Cookie-
+// driven so the choice survives across requests; the cookie is
+// flipped by the (future) language-switcher component.
+var supportedCultures = new[] { new CultureInfo("ar-EG"), new CultureInfo("en-US") };
+app.UseRequestLocalization(new RequestLocalizationOptions
+{
+    DefaultRequestCulture = new Microsoft.AspNetCore.Localization.RequestCulture("ar-EG"),
+    SupportedCultures = supportedCultures,
+    SupportedUICultures = supportedCultures,
+});
+
+app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -131,8 +159,13 @@ if (!string.IsNullOrWhiteSpace(hangfireConnection))
         cronExpression: "* * * * *");
 }
 
-app.MapGet("/", () =>
-    "EgyptTax — Stage 1+2 scaffold. MediatR pipeline + cookie auth + Hangfire wired; full Blazor application ships in subsequent stages.");
+// T058 — Blazor + Razor Pages routing. The Blazor hub serves the
+// SignalR pipe; MapFallbackToPage routes any unmatched HTTP request
+// (e.g. "/", "/invoices") to /_Host, which renders <App /> and lets
+// the Blazor router pick the right page component.
+app.MapBlazorHub();
+app.MapRazorPages();
+app.MapFallbackToPage("/_Host");
 
 // T073 — Liveness / readiness probes per contracts/api/openapi.yaml.
 // Liveness only signals that the process is up; readiness verifies the

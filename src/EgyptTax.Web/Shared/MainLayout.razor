@@ -1,0 +1,24 @@
+@*
+    R-11 — Shared layout. The dir/lang attributes live on <html> in
+    _Layout.cshtml so the entire DOM tree inherits the correct
+    direction; this layout is structural only (header / nav / main /
+    footer slots) and lets each page decide its own content.
+*@
+@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <header class="app-header">
+        <div class="brand">EgyptTax</div>
+        <nav class="app-nav">
+            <a href="/">Home</a>
+            <a href="/invoices">Invoices</a>
+            <a href="/eta-dashboard">ETA Dashboard</a>
+        </nav>
+    </header>
+    <main class="app-main">
+        @Body
+    </main>
+    <footer class="app-footer">
+        <small>EgyptTax — Phase 3 scaffold (US1 implementation in progress).</small>
+    </footer>
+</div>

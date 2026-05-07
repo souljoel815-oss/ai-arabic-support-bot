@@ -1,0 +1,85 @@
+/* EgyptTax base styles — Phase 3 scaffold. Design polish lands as
+   US1 implementation tasks (T085+) ship. */
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: "Segoe UI", "Tahoma", "Cairo", "Noto Sans Arabic", system-ui, sans-serif;
+    color: #1a1a1a;
+    background: #fafafa;
+}
+
+[dir="rtl"] body {
+    /* Arabic typically reads better at slightly larger weight */
+    font-weight: 450;
+}
+
+.app-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.app-header {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    padding: 12px 24px;
+    background: #0b3a64;
+    color: #ffffff;
+}
+
+.app-header .brand {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.app-nav {
+    display: flex;
+    gap: 16px;
+}
+
+.app-nav a {
+    color: #cfe5ff;
+    text-decoration: none;
+}
+
+.app-nav a:hover {
+    color: #ffffff;
+}
+
+.app-main {
+    flex: 1;
+    padding: 24px;
+    max-width: 1100px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.app-footer {
+    padding: 12px 24px;
+    background: #efefef;
+    color: #444;
+    text-align: center;
+}
+
+#blazor-error-ui {
+    background: #ffe066;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0,0,0,.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
