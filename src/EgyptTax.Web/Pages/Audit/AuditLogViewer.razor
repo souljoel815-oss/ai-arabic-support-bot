@@ -1,0 +1,194 @@
+@page "/audit-log"
+@using EgyptTax.Domain.Audit
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject HttpClient Http
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Audit log (FR-028)</h1>
+
+<form class="invoice-toolbar" @onsubmit="OnSearch" @onsubmit:preventDefault>
+    <label>
+        <span>Kind contains</span>
+        <input type="search" @bind="_kindFilter" placeholder="e.g. sales_invoice.posted" />
+    </label>
+    <label>
+        <span>Actor user id (optional)</span>
+        <input type="text" @bind="_actorFilter" placeholder="Guid" />
+    </label>
+    <label>
+        <span>Payload contains</span>
+        <input type="search" @bind="_payloadFilter" placeholder="document id, supplier number, etc." />
+    </label>
+    <label>
+        <span>Show last</span>
+        <select @bind="_takeLimit">
+            <option value="100">100</option>
+            <option value="500">500</option>
+            <option value="2000">2,000</option>
+        </select>
+    </label>
+    <button type="submit" class="btn-primary" disabled="@_loading">
+        @(_loading ? "Loading…" : "Search")
+    </button>
+    <button type="button" class="btn-primary" @onclick="OnVerifyAsync" disabled="@_verifying">
+        @(_verifying ? "Verifying…" : "Verify chain integrity")
+    </button>
+</form>
+
+@if (_verifyReport is not null)
+{
+    <section class="invoice-totals">
+        @if (_verifyReport.IsValid)
+        {
+            <div class="grand"><strong>Chain integrity: ✓ valid</strong> across @_verifyReport.EntriesScanned entries.</div>
+        }
+        else
+        {
+            <div class="flash-error">
+                <strong>Chain integrity: ✗ FAILED</strong> — @_verifyReport.Findings.Count finding(s) across @_verifyReport.EntriesScanned entries.
+            </div>
+            <table class="data-grid">
+                <thead><tr><th>Kind</th><th class="num">At index</th><th>Notes</th></tr></thead>
+                <tbody>
+                    @foreach (var f in _verifyReport.Findings)
+                    {
+                        <tr>
+                            <td><code>@f.Kind</code></td>
+                            <td class="num">@f.AtIndex</td>
+                            <td>@(f.Notes ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </section>
+}
+
+@if (_entries is null)
+{
+    <p>Loading…</p>
+    return;
+}
+
+@if (_entries.Count == 0)
+{
+    <p><em>No audit entries match the filters.</em></p>
+    return;
+}
+
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th class="num">Index</th>
+            <th>Timestamp (UTC)</th>
+            <th>Kind</th>
+            <th>Actor</th>
+            <th>Hash (first 16 hex)</th>
+            <th>Payload (first 120 chars)</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var e in _entries)
+        {
+            <tr>
+                <td class="num">@e.Index</td>
+                <td>@e.TsUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td><code>@e.Kind</code></td>
+                <td>@(e.ActorUserId?.ToString("D")[..8] ?? "system")</td>
+                <td><code>@Convert.ToHexString(e.ThisHash).Substring(0, 16)…</code></td>
+                <td><code>@(e.PayloadJson.Length > 120 ? e.PayloadJson.Substring(0, 120) + "…" : e.PayloadJson)</code></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@if (_entries.Count == _takeLimit)
+{
+    <p>
+        <em>Showing the most recent @_takeLimit entries. Increase the "Show last" filter or
+        use the <code>verify-audit</code> CLI for full-chain queries on large installations.</em>
+    </p>
+}
+
+@code {
+    private List<AuditLogEntry>? _entries;
+    private string _kindFilter = "";
+    private string _actorFilter = "";
+    private string _payloadFilter = "";
+    private int _takeLimit = 100;
+    private bool _loading;
+    private bool _verifying;
+    private VerifyChainResponse? _verifyReport;
+
+    protected override async Task OnInitializedAsync() => await OnSearch();
+
+    private async Task OnSearch()
+    {
+        _loading = true;
+        try
+        {
+            var query = Db.Set<AuditLogEntry>().AsNoTracking().AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(_kindFilter))
+            {
+                query = query.Where(e => e.Kind.Contains(_kindFilter));
+            }
+            if (Guid.TryParse(_actorFilter, out var actorGuid))
+            {
+                query = query.Where(e => e.ActorUserId == actorGuid);
+            }
+            if (!string.IsNullOrWhiteSpace(_payloadFilter))
+            {
+                query = query.Where(e => e.PayloadJson.Contains(_payloadFilter));
+            }
+
+            _entries = await query
+                .OrderByDescending(e => e.Index)
+                .Take(_takeLimit)
+                .ToListAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnVerifyAsync()
+    {
+        _verifying = true;
+        _verifyReport = null;
+        try
+        {
+            // Build absolute URL because Blazor Server's HttpClient
+            // doesn't have a BaseAddress configured by default.
+            var url = Nav.ToAbsoluteUri("/api/v1/audit/verify").ToString();
+            var resp = await Http.PostAsync(url, content: null);
+            _verifyReport = await resp.Content.ReadFromJsonAsync<VerifyChainResponse>();
+        }
+        catch (Exception ex)
+        {
+            _verifyReport = new VerifyChainResponse(
+                IsValid: false,
+                EntriesScanned: 0,
+                Findings: new[]
+                {
+                    new VerifyFinding("HttpError", 0, ex.Message),
+                });
+        }
+        finally
+        {
+            _verifying = false;
+        }
+    }
+
+    public sealed record VerifyChainResponse(
+        bool IsValid,
+        long EntriesScanned,
+        IReadOnlyList<VerifyFinding> Findings);
+
+    public sealed record VerifyFinding(string Kind, long AtIndex, string? Notes);
+}

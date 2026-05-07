@@ -513,6 +513,41 @@ app.MapGet("/api/v1/verify/{seal}", async (
     }, statusCode: statusCode);
 });
 
+// T162 / FR-028 — POST /api/v1/audit/verify. Walks the entire
+// audit chain (capped at 50k entries — for larger installations
+// the operator runs the verify-audit CLI from T163), recomputes
+// every entry's hash via the existing AuditChainVerifier, and
+// returns a JSON report. Auditor-runnable from the AuditLogViewer
+// page; CLI-runnable for the install-side smoke check.
+const int VerifyEntryCap = 50_000;
+app.MapPost("/api/v1/audit/verify", async (
+    EgyptTax.Infrastructure.Persistence.AppDbContext db,
+    EgyptTax.Application.Audit.IAuditCheckpointStore checkpointStore,
+    CancellationToken cancellationToken) =>
+{
+    var entries = await db.Set<EgyptTax.Domain.Audit.AuditLogEntry>()
+        .AsNoTracking()
+        .OrderBy(e => e.Index)
+        .Take(VerifyEntryCap)
+        .ToListAsync(cancellationToken);
+    var checkpoint = await checkpointStore.ReadLatestAsync(cancellationToken);
+
+    var report = EgyptTax.Domain.Audit.AuditChainVerifier.Verify(entries, checkpoint);
+
+    return Results.Json(new
+    {
+        isValid = report.IsValid,
+        entriesScanned = entries.Count,
+        truncated = entries.Count == VerifyEntryCap,
+        findings = report.Findings.Select(f => new
+        {
+            kind = f.Kind.ToString(),
+            atIndex = f.AtIndex,
+            notes = f.Notes,
+        }).ToList(),
+    });
+}).RequireAuthorization("FullyAuthenticated");
+
 app.Run();
 return 0;
 
