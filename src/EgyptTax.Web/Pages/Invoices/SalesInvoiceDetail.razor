@@ -101,6 +101,7 @@
         {
             <a href="/invoices/@_invoice.Id/credit-note/new">Issue credit note</a>
         }
+        <a href="/document360/@(_invoice.IsCreditNote ? "credit-note" : "sales-invoice")/@_invoice.Id">📂 Document 360</a>
     </section>
 
     <section class="invoice-eta">

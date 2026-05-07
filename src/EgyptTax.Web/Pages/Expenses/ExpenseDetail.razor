@@ -79,6 +79,13 @@
         <button type="button" class="btn-primary" disabled="@_posting" @onclick="OnPostAsync">
             @(_posting ? "Posting…" : "Post expense")
         </button>
+        <a href="/document360/expense/@_expense.Id">📂 Document 360</a>
+    </section>
+}
+else
+{
+    <section class="invoice-actions">
+        <a href="/document360/expense/@_expense.Id">📂 Document 360</a>
     </section>
 }
 

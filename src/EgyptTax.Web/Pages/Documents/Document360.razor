@@ -1,0 +1,332 @@
+@page "/document360/{Kind}/{Id:guid}"
+@using EgyptTax.Application.Compliance.RiskScoring
+@using EgyptTax.Domain.Audit
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Eta
+@using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Purchases
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject DocumentRiskScorer SalesRiskScorer
+@inject PurchaseDocumentRiskScorer PurchaseRiskScorer
+@inject IPurchaseInvoiceFingerprintQuery FingerprintQuery
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Document 360 — Evidence Vault</h1>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+    return;
+}
+
+@if (_notFound)
+{
+    <div class="flash-error">Document not found, or document type "@Kind" is not supported in the MVP slice (sales-invoice, purchase-invoice, expense).</div>
+    return;
+}
+
+<section class="invoice-header">
+    <div><strong>Type:</strong> @_documentType</div>
+    <div><strong>Document #:</strong> @(_documentNumber ?? "(draft)")</div>
+    <div><strong>Date:</strong> @_documentDate.ToString("yyyy-MM-dd")</div>
+    <div><strong>State:</strong> <StateBadge State="_state" /></div>
+    <div><strong>Counterparty:</strong> @_counterpartyName</div>
+    @if (_postedAtUtc is { } postedAt)
+    {
+        <div><strong>Posted at (UTC):</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+    }
+    <div><strong>Grand total:</strong> <span class="num">@_grandTotal.ToString("F2") EGP</span></div>
+</section>
+
+<section>
+    <h2>Tax Risk Score (Differentiator 1)</h2>
+    @if (_riskFindings is { Count: > 0 })
+    {
+        <TaxRiskScoreBadge Findings="_riskFindings" />
+    }
+    else
+    {
+        <p><em>No risk findings.</em></p>
+    }
+</section>
+
+<section>
+    <h2>Tax profile snapshot (FR-040 / FR-041)</h2>
+    @if (_partySnapshot is null)
+    {
+        <p><em>This document does not carry a counterparty tax profile (Expense surface is single-party).</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <tbody>
+                <tr><th>Profile type</th><td>@_partySnapshot.ProfileType</td></tr>
+                <tr><th>TIN at post-time</th><td>@(_partySnapshot.Tin ?? "—")</td></tr>
+                <tr><th>Notes</th><td>@_partySnapshot.Notes</td></tr>
+            </tbody>
+        </table>
+    }
+</section>
+
+<section>
+    <h2>Attachments (FR-032) — @_attachments.Count</h2>
+    @if (_attachments.Count == 0)
+    {
+        <p><em>No attachments.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead><tr><th>Filename</th><th>MIME</th><th class="num">Size</th><th>SHA-256 (first 16 hex)</th><th>Uploaded (UTC)</th></tr></thead>
+            <tbody>
+                @foreach (var a in _attachments)
+                {
+                    <tr>
+                        <td>@a.FilenameOriginal</td>
+                        <td>@a.MimeType</td>
+                        <td class="num">@a.SizeBytes.ToString("N0")</td>
+                        <td><code>@Convert.ToHexString(a.Sha256).Substring(0, 16)…</code></td>
+                        <td>@a.UploadedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@if (_etaSubmission is not null)
+{
+    <section>
+        <h2>ETA submission (FR-035)</h2>
+        <table class="data-grid">
+            <tbody>
+                <tr><th>Status</th><td><span class="eta-badge eta-@_etaSubmission.Status.ToString().ToLowerInvariant()">@_etaSubmission.Status</span></td></tr>
+                <tr><th>Submission UUID</th><td>@(_etaSubmission.SubmissionUuid ?? "—")</td></tr>
+                <tr><th>Window expires (UTC)</th><td>@_etaSubmission.SubmissionWindowExpiresAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
+                <tr><th>Attempts</th><td>@_etaSubmission.AttemptCount</td></tr>
+                @if (_etaSubmission.ErrorMessage is { } err)
+                {
+                    <tr><th>Last error</th><td class="flash-error">@err</td></tr>
+                }
+            </tbody>
+        </table>
+    </section>
+}
+
+<section>
+    <h2>Audit trail (FR-028) — @_auditEntries.Count entries</h2>
+    @if (_auditEntries.Count == 0)
+    {
+        <p><em>No audit entries reference this document. (Audit log payload search is a substring match — entries persisted before the FR-028 chain shipped will not surface here.)</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead><tr><th class="num">#</th><th>Timestamp (UTC)</th><th>Kind</th><th>Actor</th><th>Hash (first 16 hex)</th></tr></thead>
+            <tbody>
+                @foreach (var e in _auditEntries)
+                {
+                    <tr>
+                        <td class="num">@e.Index</td>
+                        <td>@e.TsUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        <td><code>@e.Kind</code></td>
+                        <td>@(e.ActorUserId?.ToString("D")[..8] ?? "system")</td>
+                        <td><code>@Convert.ToHexString(e.ThisHash).Substring(0, 16)…</code></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    [Parameter] public string Kind { get; set; } = "";
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private bool _notFound;
+
+    private DocumentType _documentType;
+    private string? _documentNumber;
+    private DateOnly _documentDate;
+    private DocumentState _state;
+    private DateTime? _postedAtUtc;
+    private string _counterpartyName = "";
+    private decimal _grandTotal;
+
+    private PartySnapshotView? _partySnapshot;
+    private List<Attachment> _attachments = new();
+    private List<AuditLogEntry> _auditEntries = new();
+    private EtaSubmission? _etaSubmission;
+    private IReadOnlyList<RiskFinding>? _riskFindings;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Resolve the document by kind. The MVP supports the three
+        // shipped aggregates; CreditNote routes through SalesInvoice
+        // because they share storage (IsCreditNote discriminator).
+        switch (Kind?.ToLowerInvariant())
+        {
+            case "sales-invoice":
+            case "credit-note":
+                await LoadSalesInvoiceAsync();
+                break;
+            case "purchase-invoice":
+                await LoadPurchaseInvoiceAsync();
+                break;
+            case "expense":
+                await LoadExpenseAsync();
+                break;
+            default:
+                _notFound = true;
+                _loading = false;
+                return;
+        }
+
+        if (!_notFound)
+        {
+            // FR-028 audit trail — payload is JSON; substring match
+            // on the document id surfaces every event keyed against
+            // it (sales_invoice.posted, eta_submission.submitted,
+            // attachment.uploaded, etc.). Slow on huge audit chains
+            // but acceptable for single-document drill-down.
+            var idString = Id.ToString("D");
+            _auditEntries = await Db.Set<AuditLogEntry>()
+                .AsNoTracking()
+                .Where(e => e.PayloadJson.Contains(idString))
+                .OrderBy(e => e.Index)
+                .Take(200)
+                .ToListAsync();
+        }
+
+        _loading = false;
+    }
+
+    private async Task LoadSalesInvoiceAsync()
+    {
+        var invoice = await Db.Set<SalesInvoice>()
+            .Include(i => i.Lines)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == Id);
+        if (invoice is null) { _notFound = true; return; }
+
+        _documentType = invoice.IsCreditNote ? DocumentType.CreditNote : DocumentType.SalesInvoice;
+        _documentNumber = invoice.DocumentNumber;
+        _documentDate = invoice.DocumentDate;
+        _state = invoice.State;
+        _postedAtUtc = invoice.PostedAtUtc;
+        _grandTotal = invoice.GrandTotal.Amount;
+
+        var customer = await Db.Set<Customer>().AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == invoice.CustomerId);
+        _counterpartyName = customer?.Name.English ?? invoice.CustomerId.ToString("D");
+        _partySnapshot = new PartySnapshotView(
+            ProfileType: invoice.CustomerTaxProfileSnapshot.ProfileType.ToString(),
+            Tin: invoice.CustomerTaxProfileSnapshot.TinValue,
+            Notes: invoice.CustomerTaxProfileSnapshot.VatExemption ? "VAT-exempt at post-time" : "");
+
+        _attachments = await LoadAttachmentsAsync(_documentType);
+
+        if (invoice.State == DocumentState.Posted)
+        {
+            _etaSubmission = await Db.Set<EtaSubmission>().AsNoTracking()
+                .FirstOrDefaultAsync(s => s.SalesInvoiceId == invoice.Id);
+        }
+
+        var itemIds = invoice.Lines.Select(l => l.ItemId).Distinct().ToArray();
+        var items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
+        _riskFindings = SalesRiskScorer.Score(new DocumentRiskContext(
+            invoice, items, _etaSubmission, DateTime.UtcNow));
+    }
+
+    private async Task LoadPurchaseInvoiceAsync()
+    {
+        var invoice = await Db.Set<PurchaseInvoice>()
+            .Include(p => p.Lines)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == Id);
+        if (invoice is null) { _notFound = true; return; }
+
+        _documentType = DocumentType.PurchaseInvoice;
+        _documentNumber = invoice.DocumentNumber;
+        _documentDate = invoice.DateReceived;
+        _state = invoice.State;
+        _postedAtUtc = invoice.PostedAtUtc;
+        _grandTotal = invoice.GrandTotal.Amount;
+
+        var supplier = await Db.Set<Supplier>().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == invoice.SupplierId);
+        _counterpartyName = $"{supplier?.Name.English ?? invoice.SupplierId.ToString("D")} (supplier ref: {invoice.SupplierInvoiceNumber})";
+        _partySnapshot = new PartySnapshotView(
+            ProfileType: invoice.SupplierTaxProfileSnapshot.ProfileType.ToString(),
+            Tin: invoice.SupplierTaxProfileSnapshot.TinValue,
+            Notes: invoice.SupplierTaxProfileSnapshot.ReverseChargeFlag
+                ? "Reverse-charge VAT applies (FR-041)"
+                : invoice.SupplierTaxProfileSnapshot.InputVatRecoverable
+                    ? "Input VAT recoverable (FR-020)"
+                    : "Input VAT NOT recoverable (FR-020)");
+
+        _attachments = await LoadAttachmentsAsync(DocumentType.PurchaseInvoice);
+
+        var fingerprints = await FingerprintQuery
+            .FindOtherPurchaseInvoicesWithSameSupplierReferenceAsync(
+                invoice.SupplierId, invoice.SupplierInvoiceNumber,
+                excludePurchaseInvoiceId: invoice.Id);
+        _riskFindings = PurchaseRiskScorer.Score(new PurchaseDocumentRiskContext(
+            invoice, supplier, _attachments, fingerprints, DateTime.UtcNow));
+    }
+
+    private async Task LoadExpenseAsync()
+    {
+        var expense = await Db.Set<Expense>().AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == Id);
+        if (expense is null) { _notFound = true; return; }
+
+        _documentType = DocumentType.Expense;
+        _documentNumber = expense.DocumentNumber;
+        _documentDate = expense.DocumentDate;
+        _state = expense.State;
+        _postedAtUtc = expense.PostedAtUtc;
+        _grandTotal = expense.Amount.Amount;
+
+        var category = await Db.Set<DeductibleExpenseCategory>().AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == expense.CategoryId);
+        _counterpartyName = $"{category?.Name.English ?? "?"} ({category?.Code ?? "?"})";
+        _partySnapshot = null; // Expense is single-party
+
+        _attachments = await LoadAttachmentsAsync(DocumentType.Expense);
+
+        // Risk scoring for expenses isn't wired to a context family
+        // yet; the per-document FR-016 enforcement happens at post-time.
+        _riskFindings = expense.DeductibleFlag && _attachments.Count == 0 && expense.State == DocumentState.Draft
+            ? new[]
+            {
+                new RiskFinding(
+                    "EXPENSE.MISSING_ATTACHMENT",
+                    RiskSeverity.Blocker,
+                    new EgyptTax.SharedKernel.ArabicEnglishText(
+                        "مرفقات مفقودة لخصم ضريبي",
+                        "Missing attachment for deductible expense"),
+                    new EgyptTax.SharedKernel.ArabicEnglishText(
+                        "مصروف قابل للخصم بدون مرفقات. لن يقبل النظام النشر.",
+                        "Deductible expense has no attachments. Post will be rejected per FR-016."),
+                    FixHint: "Upload the receipt before posting."),
+            }
+            : Array.Empty<RiskFinding>();
+    }
+
+    private async Task<List<Attachment>> LoadAttachmentsAsync(DocumentType type) =>
+        await Db.Set<Attachment>().AsNoTracking()
+            .Where(a => a.DocumentId == Id && a.DocumentType == type)
+            .OrderBy(a => a.UploadedAtUtc)
+            .ToListAsync();
+
+    private sealed record PartySnapshotView(string ProfileType, string? Tin, string Notes);
+}
