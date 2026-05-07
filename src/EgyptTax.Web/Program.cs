@@ -68,6 +68,17 @@ builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.IDocum
 builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.IDocumentRiskRule,
     EgyptTax.Application.Compliance.RiskScoring.Rules.EtaSubmissionFailedRule>();
 builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.DocumentRiskScorer>();
+
+// US2 — purchase-side risk rules. Same DI pattern; new rules ship by
+// adding a class plus one AddSingleton line.
+builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.IPurchaseDocumentRiskRule,
+    EgyptTax.Application.Compliance.RiskScoring.Rules.MissingAttachmentRule>();
+builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.IPurchaseDocumentRiskRule,
+    EgyptTax.Application.Compliance.RiskScoring.Rules.NonRecoverableInputVatRule>();
+builder.Services.AddSingleton<EgyptTax.Application.Compliance.RiskScoring.PurchaseDocumentRiskScorer>();
+
+// US2 — purchase invoice post handler.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Purchases.PostPurchaseInvoiceHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceWithEtaSubmissionHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.IssueCreditNoteHandler>();

@@ -303,20 +303,20 @@ Per [plan.md](plan.md) §"Project Structure":
 
 ### Purchase invoice + expense + attachment
 
-- [ ] T134 [US2] Implement `PurchaseInvoice` aggregate at `src/EgyptTax.Domain/Documents/PurchaseInvoice.cs` per data-model C2 with deductible-flag override audit (FR-015)
+- [X] T134 [US2] `PurchaseInvoice` aggregate at `src/EgyptTax.Domain/Purchases/PurchaseInvoice.cs` (path differs from spec — `Purchases/` not `Documents/` since the namespace tree mirrors `Invoices/` for SalesInvoice). C2 invariants enforced: `SupplierTaxProfile` snapshot at draft-creation; `PurchaseInvoiceLine` XOR'd `ItemId`/`ExpenseCategoryId`; line `DeductibleFlag` carries the per-line claim. State machine reused from SalesInvoice via `DocumentStateMachine`. EF configs ship the data-model C2 columns + a CHECK constraint on the line XOR + a covering index on `(supplier_id, supplier_invoice_number)` for the deferred T142 dedup probe.
 - [ ] T135 [US2] Implement `Expense` aggregate at `src/EgyptTax.Domain/Documents/Expense.cs` per data-model C3 (depreciation explicitly excluded — see FR-014 wording cleanup)
-- [ ] T136 [US2] Implement `Attachment` entity at `src/EgyptTax.Domain/Documents/Attachment.cs` per data-model J1
-- [ ] T137 [US2] Implement `CreateDraftPurchaseInvoice` + `EditDraftPurchaseInvoice` + `PostPurchaseInvoice` handlers at `src/EgyptTax.Application/Purchases/`
+- [X] T136 [US2] `Attachment` entity at `src/EgyptTax.Domain/Documents/Attachment.cs` per J1. Holds metadata + SHA-256; bytes live on the filesystem under R-21's path scheme. Constructor enforces 32-byte digest length + positive `SizeBytes`. EF config maps `sha256` as `binary(32)` and adds a `(document_id, document_type)` covering index for the T141 attachment-presence probe.
+- [~] T137 [US2] `PostPurchaseInvoiceCommand` + `PostPurchaseInvoiceHandler` shipped at `src/EgyptTax.Application/Purchases/PostPurchaseInvoiceCommand.cs` and `src/EgyptTax.Infrastructure/Purchases/PostPurchaseInvoiceHandler.cs`. Allocates `PI-{year}-{n}` from the FR-011 sequential allocator, transitions via `MarkPosted`, audits `purchase_invoice.posted` with deductible-line count. **FR-016 enforcement**: the handler counts attachments before allocating a number — if any line is deductible AND zero attachments are on file, the post throws with a clear message. CreateDraft / EditDraft will use the SalesInvoice pattern (Razor pages call factory + aggregate methods directly) when the editor lands in the next batch.
 - [ ] T138 [US2] Implement `CreateDraftExpense` + `EditDraftExpense` + `PostExpense` handlers at `src/EgyptTax.Application/Expenses/`
 - [ ] T139 [US2] Implement `UploadAttachment` handler enforcing FR-032 (file types: PDF/JPG/PNG, bounded size, SHA-256 + filesystem persistence) at `src/EgyptTax.Application/Attachments/UploadAttachment.cs`
 - [ ] T140 [US2] Implement `BlockDeleteOfReferencedMasterData` guard per FR-007 at `src/EgyptTax.Application/Common/Guards/`
 
 ### Additional Tax Risk Score rules
 
-- [ ] T141 [P] [US2] Implement `MissingAttachmentRule` (deductible without attachment) at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/MissingAttachmentRule.cs`
+- [X] T141 [P] [US2] `MissingAttachmentRule` at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/MissingAttachmentRule.cs`. Severity Blocker (the post handler will reject anyway — the badge surfaces it pre-emptively). Counts deductible lines + asserts attachments.Count > 0; mentions the deductible-line count in the description so the operator knows the scope.
 - [ ] T142 [P] [US2] Implement `DuplicateSupplierInvoiceRule` (supplier × supplier-invoice-number × date × amount fingerprint) at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/DuplicateSupplierInvoiceRule.cs`
-- [ ] T143 [P] [US2] Implement `NonRecoverableInputVatRule` (Unregistered supplier with deductible flag) at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/NonRecoverableInputVatRule.cs`
-- [ ] T144 [P] [US2] Unit tests for each new rule at `tests/EgyptTax.UnitTests/Application/Compliance/Rules/` — MUST FAIL FIRST
+- [X] T143 [P] [US2] `NonRecoverableInputVatRule` at `src/EgyptTax.Application/Compliance/RiskScoring/Rules/NonRecoverableInputVatRule.cs`. Reads the SUPPLIER PROFILE SNAPSHOT on the invoice (not the live supplier) so historical decisions stay stable when the supplier later registers. Severity MustFixBeforeFiling (operator may legitimately defer profile update; rule alerts but does not stop). FixHint branches on Unregistered (`obtain TIN + update profile`) vs ForeignSupplier (`use reverse-charge surface`).
+- [~] T144 [P] [US2] 9 GREEN unit tests across `MissingAttachmentRuleTests` (4) + `NonRecoverableInputVatRuleTests` (5) cover positive + negative cases including the snapshot-not-live-profile invariant. T142's tests land with the rule itself.
 
 ### Blazor pages for US2
 
