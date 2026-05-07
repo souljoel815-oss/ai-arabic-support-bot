@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specs.local/008-egypt-tax-accounting/inspection-bundle-manifest.schema.json",
+  "title": "Tax-Inspection Bundle Manifest (US9 / FR-048)",
+  "description": "MANIFEST.sha256 contents at the root of the inspection-bundle ZIP. Lists every file in the bundle with its SHA-256 hash, plus a top-level archive hash and an audit-chain extract reference. The bundled verifier script reads this manifest and re-validates the bundle on a clean machine without the application installed.",
+  "type": "object",
+  "required": [
+    "bundleVersion",
+    "company",
+    "period",
+    "generatedAt",
+    "generatedByUserId",
+    "files",
+    "auditChainExtract",
+    "topLevelArchiveSha256",
+    "draftsExcluded"
+  ],
+  "properties": {
+    "bundleVersion": { "type": "string", "const": "1.0" },
+    "company": {
+      "type": "object",
+      "required": ["companyId", "tin", "legalName"],
+      "properties": {
+        "companyId": { "type": "string", "format": "uuid" },
+        "tin": { "type": "string", "pattern": "^[0-9]{9}$" },
+        "legalName": {
+          "type": "object",
+          "required": ["ar", "en"],
+          "properties": { "ar": { "type": "string" }, "en": { "type": "string" } }
+        }
+      }
+    },
+    "period": {
+      "type": "object",
+      "required": ["fiscalYear", "kind", "start", "end"],
+      "properties": {
+        "fiscalYear": { "type": "integer" },
+        "kind": { "type": "string", "enum": ["Quarter", "FiscalYear", "Custom"] },
+        "quarter": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "start": { "type": "string", "format": "date" },
+        "end": { "type": "string", "format": "date" }
+      }
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "generatedByUserId": { "type": "string", "format": "uuid" },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["relativePath", "sha256", "sizeBytes", "category"],
+        "properties": {
+          "relativePath": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "sizeBytes": { "type": "integer", "minimum": 0 },
+          "category": {
+            "type": "string",
+            "enum": [
+              "SalesInvoiceRegister",
+              "PurchaseInvoiceAndExpenseRegister",
+              "CreditNoteAndReversalRegister",
+              "GeneralJournalListing",
+              "TrialBalance",
+              "VatMonthlyReport",
+              "Form41Filing",
+              "Attachment",
+              "AuditTrailExtract",
+              "AuditorVerificationReport",
+              "VerifierScript",
+              "ReadmeForInspector"
+            ]
+          },
+          "linkedDocumentId": { "type": "string", "format": "uuid", "description": "For Attachment files, references the source document" }
+        }
+      }
+    },
+    "auditChainExtract": {
+      "type": "object",
+      "required": ["startIndex", "endIndex", "extractSha256", "verifiedAtGeneration"],
+      "properties": {
+        "startIndex": { "type": "integer" },
+        "endIndex": { "type": "integer" },
+        "extractSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "verifiedAtGeneration": { "type": "boolean", "description": "True if the integrity check passed at generation time" }
+      }
+    },
+    "topLevelArchiveSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 over MANIFEST.sha256 itself (excluding this field), then signed-in-place; the verifier recomputes."
+    },
+    "draftsExcluded": { "type": "boolean", "description": "True when the user explicitly accepted a 'drafts excluded' bundle" },
+    "excludedDraftIds": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    }
+  }
+}

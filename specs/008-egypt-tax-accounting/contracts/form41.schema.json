@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specs.local/008-egypt-tax-accounting/form41.schema.json",
+  "title": "Egyptian Form 41 (نموذج 41) — Quarterly WHT Filing",
+  "description": "Structured machine-readable representation of a quarterly Form 41 filing. The PDF rendered for the regulator and the JSON exported for downstream tools both derive from this shape. The shape is internally documented; when ETA publishes an official structured shape, this document remaps to it without changing the application's domain model.",
+  "type": "object",
+  "required": [
+    "filingHeader",
+    "lines",
+    "totals",
+    "reconciliation",
+    "auditChainExtractRef"
+  ],
+  "properties": {
+    "filingHeader": {
+      "type": "object",
+      "required": ["companyTin", "companyName", "fiscalYear", "quarter", "preparedAt", "preparedByUserId", "fillingPeriodStart", "fillingPeriodEnd"],
+      "properties": {
+        "companyTin": { "type": "string", "pattern": "^[0-9]{9}$" },
+        "companyName": {
+          "type": "object",
+          "required": ["ar", "en"],
+          "properties": { "ar": { "type": "string" }, "en": { "type": "string" } }
+        },
+        "fiscalYear": { "type": "integer", "minimum": 2000, "maximum": 2099 },
+        "quarter": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "fillingPeriodStart": { "type": "string", "format": "date" },
+        "fillingPeriodEnd": { "type": "string", "format": "date" },
+        "preparedAt": { "type": "string", "format": "date-time" },
+        "preparedByUserId": { "type": "string", "format": "uuid" }
+      }
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "supplierTin",
+          "supplierName",
+          "whtCategoryCode",
+          "rateAppliedPercent",
+          "grossPaymentTotal",
+          "amountWithheld",
+          "supplierPaymentVoucherNumber",
+          "supplierPaymentVoucherDate",
+          "sourceInvoiceNumber"
+        ],
+        "properties": {
+          "supplierTin": { "type": "string", "pattern": "^[0-9]{9}$" },
+          "supplierName": {
+            "type": "object",
+            "required": ["ar", "en"],
+            "properties": { "ar": { "type": "string" }, "en": { "type": "string" } }
+          },
+          "whtCategoryCode": { "type": "string" },
+          "rateAppliedPercent": { "type": "number", "minimum": 0, "maximum": 100 },
+          "grossPaymentTotal": { "type": "number", "minimum": 0 },
+          "amountWithheld": { "type": "number", "minimum": 0 },
+          "supplierPaymentVoucherNumber": { "type": "string" },
+          "supplierPaymentVoucherDate": { "type": "string", "format": "date" },
+          "sourceInvoiceNumber": { "type": "string" },
+          "outboundCertificateNumber": { "type": "string" }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "required": ["lineCount", "totalGrossPayment", "totalAmountWithheld", "byCategory"],
+      "properties": {
+        "lineCount": { "type": "integer", "minimum": 0 },
+        "totalGrossPayment": { "type": "number", "minimum": 0 },
+        "totalAmountWithheld": { "type": "number", "minimum": 0 },
+        "byCategory": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["whtCategoryCode", "lineCount", "amountWithheld"],
+            "properties": {
+              "whtCategoryCode": { "type": "string" },
+              "lineCount": { "type": "integer" },
+              "amountWithheld": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "reconciliation": {
+      "type": "object",
+      "required": ["whtPayableAccountBalanceAtPeriodEnd", "matchesTotalAmountWithheld"],
+      "properties": {
+        "whtPayableAccountBalanceAtPeriodEnd": { "type": "number" },
+        "matchesTotalAmountWithheld": { "type": "boolean" },
+        "discrepancyAmount": { "type": "number", "description": "0 for a clean filing; non-zero blocks marking the filing as Filed" }
+      }
+    },
+    "auditChainExtractRef": {
+      "type": "object",
+      "required": ["startIndex", "endIndex", "extractSha256"],
+      "properties": {
+        "startIndex": { "type": "integer" },
+        "endIndex": { "type": "integer" },
+        "extractSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

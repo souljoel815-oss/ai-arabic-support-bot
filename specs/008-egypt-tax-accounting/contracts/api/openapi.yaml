@@ -1,0 +1,258 @@
+openapi: 3.0.3
+info:
+  title: Egyptian Tax Accounting MVP — Internal REST API
+  version: 0.1.0
+  description: |
+    Minimal API surface exposed by the Blazor Server application. The bulk of the
+    UX is server-rendered Blazor pages over SignalR; this REST surface exists for
+    cross-cutting use cases that need stateless HTTP:
+      - Mock ETA submission callback target (FR-035).
+      - Document Verification Seal QR verification (FR-044).
+      - Missing-Document Collection Flow upload links (Round 4 / Differentiator 8).
+      - Health and operator probes.
+    No public-internet API is exposed by the MVP. Every endpoint requires an
+    on-prem session token or a per-link single-use token.
+servers:
+  - url: https://{host}:{port}/api/v1
+    variables:
+      host: { default: localhost }
+      port: { default: '5443' }
+
+paths:
+  /health/live:
+    get:
+      summary: Liveness probe
+      security: []
+      responses:
+        '200':
+          description: Process is alive
+          content: { application/json: { schema: { $ref: '#/components/schemas/HealthLive' } } }
+
+  /health/ready:
+    get:
+      summary: Readiness probe (DB reachable, NTP within tolerance, audit checkpoint writable)
+      security: []
+      responses:
+        '200': { description: Ready, content: { application/json: { schema: { $ref: '#/components/schemas/HealthReady' } } } }
+        '503': { description: Not ready, content: { application/json: { schema: { $ref: '#/components/schemas/HealthReady' } } } }
+
+  /verify/{seal}:
+    get:
+      summary: Verify a Document Verification Seal (FR-044)
+      description: |
+        Decodes the QR payload, locates the document, recomputes the audit-chain
+        entry hash, and reports VALID / TAMPERED / UNKNOWN / MALFORMED.
+        Available offline within the on-prem deployment per SC-013.
+      security: []
+      parameters:
+        - in: path
+          name: seal
+          required: true
+          schema: { type: string }
+          description: base64url(EGT1.<cbor>) payload
+      responses:
+        '200':
+          description: Verification result
+          content: { application/json: { schema: { $ref: '#/components/schemas/SealVerificationResult' } } }
+        '400':
+          description: Malformed seal
+          content: { application/json: { schema: { $ref: '#/components/schemas/SealVerificationResult' } } }
+
+  /eta-mock/submit:
+    post:
+      summary: Mock ETA submission endpoint (FR-035)
+      description: |
+        Accepts an eInvoice JSON document conforming to eta-einvoice.schema.json,
+        validates against the schema, persists the submission, returns a
+        simulated UUID + status. For dev/test only; bound to localhost in
+        production deployment.
+      security: [ { OnPremSession: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'https://specs.local/008-egypt-tax-accounting/eta-einvoice.schema.json'
+      responses:
+        '202':
+          description: Submitted (mock)
+          content: { application/json: { schema: { $ref: '#/components/schemas/EtaSubmitResponse' } } }
+        '400':
+          description: Schema validation failed
+          content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } }
+
+  /missing-docs/{token}/upload:
+    post:
+      summary: Upload a file via a single-use missing-document collection link
+      description: |
+        Implements Differentiator 8 (Near-term post-MVP). The token scopes the
+        recipient to uploading only the document(s) requested. The uploaded file
+        is attached directly to the originating expense / purchase invoice. The
+        request and the upload are audit-logged.
+      security: []
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string, minLength: 32, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required: [file]
+      responses:
+        '201':
+          description: Attachment created
+          content: { application/json: { schema: { $ref: '#/components/schemas/AttachmentCreated' } } }
+        '404': { description: Token not found or expired }
+        '415': { description: Unsupported file type }
+        '413': { description: File too large }
+
+  /password-reset/{token}/redeem:
+    post:
+      summary: Redeem an admin-issued password reset token (FR-038)
+      security: []
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newPassword]
+              properties:
+                newPassword: { type: string, minLength: 12, maxLength: 128 }
+      responses:
+        '204': { description: Password set; user must log in (and re-enroll MFA if applicable) }
+        '404': { description: Token invalid or expired }
+        '422': { description: Password violates complexity rules, content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+
+  /audit/verify:
+    post:
+      summary: Run the audit chain verifier (FR-028)
+      description: Auditor-runnable verification per the audit-chain-verifier contract.
+      security: [ { OnPremSession: [Auditor, Administrator] } ]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                startIndex: { type: integer, minimum: 1 }
+                endIndex: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Verification result
+          content: { application/json: { schema: { $ref: '#/components/schemas/AuditVerificationResult' } } }
+
+components:
+  securitySchemes:
+    OnPremSession:
+      type: apiKey
+      in: cookie
+      name: egtsess
+      description: On-prem session cookie issued by the Blazor login flow.
+  schemas:
+    HealthLive:
+      type: object
+      required: [status, version]
+      properties:
+        status: { type: string, enum: [up] }
+        version: { type: string }
+    HealthReady:
+      type: object
+      required: [status, db, ntpSkewSeconds, auditCheckpoint]
+      properties:
+        status: { type: string, enum: [ready, degraded, down] }
+        db:
+          type: object
+          required: [reachable, latencyMs]
+          properties:
+            reachable: { type: boolean }
+            latencyMs: { type: integer }
+        ntpSkewSeconds: { type: integer }
+        auditCheckpoint:
+          type: object
+          required: [mode, writable, lastIndex, lastWrittenAt]
+          properties:
+            mode: { type: string, enum: [file, table] }
+            writable: { type: boolean }
+            lastIndex: { type: integer }
+            lastWrittenAt: { type: string, format: date-time }
+    SealVerificationResult:
+      type: object
+      required: [outcome]
+      properties:
+        outcome: { type: string, enum: [VALID, TAMPERED, UNKNOWN, MALFORMED] }
+        documentNumber: { type: string }
+        documentType: { type: string }
+        mismatches:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              expected: { type: string }
+              actual: { type: string }
+    EtaSubmitResponse:
+      type: object
+      required: [submissionUuid, status]
+      properties:
+        submissionUuid: { type: string, format: uuid }
+        status: { type: string, enum: [Pending, Submitted, Failed] }
+        errorCode: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true }
+    AttachmentCreated:
+      type: object
+      required: [attachmentId, sha256, sizeBytes]
+      properties:
+        attachmentId: { type: string, format: uuid }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        sizeBytes: { type: integer, minimum: 0 }
+    AuditVerificationResult:
+      type: object
+      required: [valid, findings, durationMs, entriesScanned]
+      properties:
+        valid: { type: boolean }
+        findings:
+          type: array
+          items:
+            type: object
+            required: [kind, atIndex]
+            properties:
+              kind:
+                type: string
+                enum:
+                  [
+                    MISSING_INDEX,
+                    PREV_HASH_MISMATCH,
+                    THIS_HASH_MISMATCH,
+                    TAIL_TRUNCATION,
+                    CHECKPOINT_MISMATCH
+                  ]
+              atIndex: { type: integer }
+              expected: { type: string }
+              actual: { type: string }
+              notes: { type: string }
+        durationMs: { type: integer, minimum: 0 }
+        entriesScanned: { type: integer, minimum: 0 }
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }

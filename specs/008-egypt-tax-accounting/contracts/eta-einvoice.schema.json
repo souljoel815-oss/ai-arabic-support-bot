@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specs.local/008-egypt-tax-accounting/eta-einvoice.schema.json",
+  "title": "Egyptian ETA eInvoice (mock-aligned, MVP)",
+  "description": "JSON shape submitted by the application to the mock ETA endpoint. Aligned with the publicly documented Egyptian Tax Authority eInvoice format. Live ETA integration is Future advanced; this contract governs the mock submission for the MVP and is the source of truth for SC-007 (100% schema-validated).",
+  "type": "object",
+  "required": [
+    "documentType",
+    "documentTypeVersion",
+    "dateTimeIssued",
+    "taxpayerActivityCode",
+    "internalID",
+    "issuer",
+    "receiver",
+    "invoiceLines",
+    "totalDiscountAmount",
+    "totalSalesAmount",
+    "netAmount",
+    "totalAmount",
+    "extraDiscountAmount",
+    "totalItemsDiscountAmount",
+    "taxTotals"
+  ],
+  "properties": {
+    "documentType": { "type": "string", "enum": ["I", "C", "D"], "description": "I = Invoice, C = Credit Note, D = Debit Note" },
+    "documentTypeVersion": { "type": "string", "const": "1.0" },
+    "dateTimeIssued": { "type": "string", "format": "date-time", "description": "ISO 8601 UTC; document_date converted to UTC at posting" },
+    "taxpayerActivityCode": { "type": "string", "minLength": 1 },
+    "internalID": { "type": "string", "description": "Application's canonical document number, e.g., INV-2026-000123" },
+    "purchaseOrderReference": { "type": "string" },
+    "purchaseOrderDescription": { "type": "string" },
+    "salesOrderReference": { "type": "string" },
+    "salesOrderDescription": { "type": "string" },
+    "proformaInvoiceNumber": { "type": "string" },
+    "issuer": { "$ref": "#/$defs/issuer" },
+    "receiver": { "$ref": "#/$defs/receiver" },
+    "invoiceLines": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/invoiceLine" } },
+    "totalDiscountAmount": { "$ref": "#/$defs/money" },
+    "totalSalesAmount": { "$ref": "#/$defs/money" },
+    "netAmount": { "$ref": "#/$defs/money" },
+    "totalAmount": { "$ref": "#/$defs/money" },
+    "extraDiscountAmount": { "$ref": "#/$defs/money" },
+    "totalItemsDiscountAmount": { "$ref": "#/$defs/money" },
+    "taxTotals": { "type": "array", "items": { "$ref": "#/$defs/taxTotal" } },
+    "payment": { "$ref": "#/$defs/payment" },
+    "delivery": { "$ref": "#/$defs/delivery" },
+    "signatures": { "type": "array", "items": { "$ref": "#/$defs/signature" } }
+  },
+  "$defs": {
+    "money": {
+      "type": "number",
+      "minimum": 0,
+      "description": "EGP amount, 2 dp; banker's rounding applied at render"
+    },
+    "issuer": {
+      "type": "object",
+      "required": ["address", "type", "id", "name"],
+      "properties": {
+        "address": { "$ref": "#/$defs/address" },
+        "type": { "type": "string", "enum": ["B"] },
+        "id": { "type": "string", "pattern": "^[0-9]{9}$", "description": "Issuer TIN" },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "receiver": {
+      "type": "object",
+      "required": ["address", "type", "name"],
+      "properties": {
+        "address": { "$ref": "#/$defs/address" },
+        "type": { "type": "string", "enum": ["B", "P", "F"], "description": "B = B2B Registered, P = Person/B2C, F = Foreign" },
+        "id": { "type": "string", "description": "TIN, required when type=B" },
+        "name": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "B" } }, "required": ["type"] },
+          "then": { "required": ["id"], "properties": { "id": { "pattern": "^[0-9]{9}$" } } }
+        }
+      ]
+    },
+    "address": {
+      "type": "object",
+      "required": ["country", "governate", "regionCity", "street", "buildingNumber"],
+      "properties": {
+        "country": { "type": "string", "const": "EG" },
+        "governate": { "type": "string", "minLength": 1 },
+        "regionCity": { "type": "string", "minLength": 1 },
+        "street": { "type": "string", "minLength": 1 },
+        "buildingNumber": { "type": "string", "minLength": 1 },
+        "postalCode": { "type": "string" },
+        "floor": { "type": "string" },
+        "room": { "type": "string" },
+        "landmark": { "type": "string" },
+        "additionalInformation": { "type": "string" }
+      }
+    },
+    "invoiceLine": {
+      "type": "object",
+      "required": [
+        "description",
+        "itemType",
+        "itemCode",
+        "unitType",
+        "quantity",
+        "internalCode",
+        "salesTotal",
+        "total",
+        "valueDifference",
+        "totalTaxableFees",
+        "netTotal",
+        "itemsDiscount",
+        "unitValue",
+        "discount",
+        "taxableItems"
+      ],
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "itemType": { "type": "string", "enum": ["GS1", "EGS"] },
+        "itemCode": { "type": "string", "minLength": 1 },
+        "unitType": { "type": "string" },
+        "quantity": { "type": "number", "minimum": 0 },
+        "internalCode": { "type": "string" },
+        "salesTotal": { "$ref": "#/$defs/money" },
+        "total": { "$ref": "#/$defs/money" },
+        "valueDifference": { "$ref": "#/$defs/money" },
+        "totalTaxableFees": { "$ref": "#/$defs/money" },
+        "netTotal": { "$ref": "#/$defs/money" },
+        "itemsDiscount": { "$ref": "#/$defs/money" },
+        "unitValue": {
+          "type": "object",
+          "required": ["currencySold", "amountEGP"],
+          "properties": {
+            "currencySold": { "type": "string", "const": "EGP" },
+            "amountEGP": { "$ref": "#/$defs/money" },
+            "currencyExchangeRate": { "type": "number" }
+          }
+        },
+        "discount": {
+          "type": "object",
+          "properties": {
+            "rate": { "type": "number", "minimum": 0, "maximum": 100 },
+            "amount": { "$ref": "#/$defs/money" }
+          }
+        },
+        "taxableItems": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["taxType", "amount", "subType", "rate"],
+            "properties": {
+              "taxType": { "type": "string", "enum": ["T1", "T2", "T3", "T4", "T5"] },
+              "amount": { "$ref": "#/$defs/money" },
+              "subType": { "type": "string" },
+              "rate": { "type": "number", "minimum": 0, "maximum": 100 }
+            }
+          }
+        }
+      }
+    },
+    "taxTotal": {
+      "type": "object",
+      "required": ["taxType", "amount"],
+      "properties": {
+        "taxType": { "type": "string", "enum": ["T1", "T2", "T3", "T4", "T5"] },
+        "amount": { "$ref": "#/$defs/money" }
+      }
+    },
+    "payment": {
+      "type": "object",
+      "properties": {
+        "bankName": { "type": "string" },
+        "bankAddress": { "type": "string" },
+        "bankAccountNo": { "type": "string" },
+        "bankAccountIBAN": { "type": "string" },
+        "swiftCode": { "type": "string" },
+        "terms": { "type": "string" }
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "properties": {
+        "approach": { "type": "string" },
+        "packaging": { "type": "string" },
+        "dateValidity": { "type": "string", "format": "date" },
+        "exportPort": { "type": "string" },
+        "grossWeight": { "type": "number", "minimum": 0 },
+        "netWeight": { "type": "number", "minimum": 0 },
+        "terms": { "type": "string" },
+        "countryOfOrigin": { "type": "string" }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "required": ["signatureType", "value"],
+      "properties": {
+        "signatureType": { "type": "string", "enum": ["I", "S"] },
+        "value": { "type": "string", "description": "Signature value placeholder; mock returns a synthetic value" }
+      }
+    }
+  }
+}
