@@ -149,6 +149,11 @@ builder.Services.AddScoped<EgyptTax.Application.Journals.IJournalLedgerQuery,
 // supporting attachment.
 builder.Services.AddScoped<EgyptTax.Infrastructure.FixedAssets.PutFixedAssetInServiceHandler>();
 
+// US6 / FR-017 / T185 — monthly depreciation Hangfire job.
+// RecurringJob schedule wired separately when Hangfire boots; the
+// job class itself is DI-resolved per-tick.
+builder.Services.AddScoped<EgyptTax.Infrastructure.BackgroundJobs.MonthlyDepreciationJob>();
+
 // US9 / FR-048 — period-scoped tax-inspection bundle builder.
 builder.Services.AddScoped<EgyptTax.Application.Inspection.IInspectionBundleBuilder,
     EgyptTax.Infrastructure.Inspection.InspectionBundleBuilder>();
