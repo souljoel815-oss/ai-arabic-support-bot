@@ -24,7 +24,19 @@
     <PackageReference Include="WireMock.Net" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
+    <PackageReference Include="JsonSchema.Net" />
     <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <!--
+    T227 — copy the inspection-bundle manifest schema to bin so the
+    contract-validation test can load it via AppContext.BaseDirectory.
+    Mirrors the ContractTests project's contracts/**/*.json glob.
+  -->
+  <ItemGroup>
+    <None Include="..\..\specs\008-egypt-tax-accounting\contracts\inspection-bundle-manifest.schema.json"
+          Link="contracts\inspection-bundle-manifest.schema.json"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

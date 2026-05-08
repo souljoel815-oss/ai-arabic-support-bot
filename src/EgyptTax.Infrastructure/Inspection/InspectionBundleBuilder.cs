@@ -104,6 +104,13 @@ public sealed class InspectionBundleBuilder : IInspectionBundleBuilder
             files.Add(await WriteEntryAsync(zip, "README-FOR-INSPECTOR.md",
                 "ReadmeForInspector", readmeBytes, cancellationToken));
 
+            // T232 — embedded verifier script so the inspector has a
+            // one-command integrity check on a clean Windows machine
+            // with no application install required.
+            var verifierBytes = LoadEmbeddedVerifierScript();
+            files.Add(await WriteEntryAsync(zip, "verify-bundle.ps1",
+                "VerifierScript", verifierBytes, cancellationToken));
+
             // Audit trail extract (JSONL — one entry per line, easy
             // for awk / grep / line-by-line forensic tools).
             files.Add(await WriteEntryAsync(zip, "audit-trail/audit-trail-extract.jsonl",
@@ -274,7 +281,11 @@ public sealed class InspectionBundleBuilder : IInspectionBundleBuilder
         sb.AppendLine("4. Replay `audit-trail/audit-trail-extract.jsonl` line-by-line: each entry's `thisHashHex` MUST equal");
         sb.AppendLine("   SHA-256(prevHash || canonicalised payloadJson).");
         sb.AppendLine();
-        sb.AppendLine("A scripted verifier (`verify-bundle.ps1`) ships in a follow-up release of this bundle format.");
+        sb.AppendLine("Or run the bundled verifier (Windows, PowerShell 5.1+; no install needed):");
+        sb.AppendLine("```powershell");
+        sb.AppendLine(".\\verify-bundle.ps1 -BundleDirectory \".\"");
+        sb.AppendLine("```");
+        sb.AppendLine("The script verifies per-file SHA-256 against the manifest. Top-level archive hash + audit-chain replay require the .NET-based verifier shipped with the application (`EgyptTax.Web verify-audit`).");
         sb.AppendLine();
         sb.AppendLine("## Bundle contents");
         sb.AppendLine();
@@ -354,4 +365,16 @@ public sealed class InspectionBundleBuilder : IInspectionBundleBuilder
     private static string HashHex(byte[] bytes) =>
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 #pragma warning restore CA1308
+
+    private static byte[] LoadEmbeddedVerifierScript()
+    {
+        var assembly = typeof(InspectionBundleBuilder).Assembly;
+        var resourceName = $"{assembly.GetName().Name}.Inspection.verify-bundle.ps1";
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException(
+                $"Embedded verifier script '{resourceName}' was not found. Check the EmbeddedResource Link in EgyptTax.Infrastructure.csproj.");
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        return ms.ToArray();
+    }
 }
