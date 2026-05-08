@@ -31,6 +31,11 @@ if (Seeder.IsSeedInvocation(args))
     return await SeederHost.RunAsync(args, CancellationToken.None);
 }
 
+if (VerifyAudit.IsVerifyAuditInvocation(args))
+{
+    return await VerifyAuditHost.RunAsync(args, CancellationToken.None);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddApplication();
