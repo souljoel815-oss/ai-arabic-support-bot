@@ -127,6 +127,10 @@ builder.Services.AddScoped<EgyptTax.Application.Compliance.IMonthlyTaxClosingCoc
 // eligible aggregates (SalesInvoice / PurchaseInvoice / Expense).
 builder.Services.AddScoped<EgyptTax.Infrastructure.Workflow.DocumentApprovalHandler>();
 
+// US9 / FR-048 — period-scoped tax-inspection bundle builder.
+builder.Services.AddScoped<EgyptTax.Application.Inspection.IInspectionBundleBuilder,
+    EgyptTax.Infrastructure.Inspection.InspectionBundleBuilder>();
+
 // T139 / R-21 — attachment store lives on the filesystem under
 // EGYPTTAX_ATTACHMENT_ROOT (config key Attachments:Root). Defaults
 // to {ContentRootPath}/var/attachments for dev so a fresh clone
