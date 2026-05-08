@@ -78,7 +78,8 @@ public class InspectionBundleBuilderTests(SqlServerFixture fixture) : IDisposabl
         await postHandler.HandleAsync(new PostPurchaseInvoiceCommand(draft.Id, user.Id), CancellationToken.None);
 
         // Build the bundle.
-        var builder = new InspectionBundleBuilder(db, store, clock);
+        var builder = new InspectionBundleBuilder(db, store, clock,
+            new EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery(db));
         var result = await builder.BuildAsync(new InspectionBundleRequest(
             PeriodStart: new DateOnly(2026, 5, 1),
             PeriodEnd: new DateOnly(2026, 5, 31),
@@ -155,7 +156,8 @@ public class InspectionBundleBuilderTests(SqlServerFixture fixture) : IDisposabl
 
         var builder = new InspectionBundleBuilder(db,
             new FileSystemAttachmentStore(_tempRoot, new TestClock(DateTime.UtcNow)),
-            new TestClock(DateTime.UtcNow));
+            new TestClock(DateTime.UtcNow),
+            new EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery(db));
 
         var act = async () => await builder.BuildAsync(new InspectionBundleRequest(
             PeriodStart: new DateOnly(2026, 6, 1),
@@ -186,7 +188,8 @@ public class InspectionBundleBuilderTests(SqlServerFixture fixture) : IDisposabl
 
         var builder = new InspectionBundleBuilder(db,
             new FileSystemAttachmentStore(_tempRoot, new TestClock(DateTime.UtcNow)),
-            new TestClock(DateTime.UtcNow));
+            new TestClock(DateTime.UtcNow),
+            new EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery(db));
         var result = await builder.BuildAsync(new InspectionBundleRequest(
             PeriodStart: new DateOnly(2026, 7, 1),
             PeriodEnd: new DateOnly(2026, 7, 31),

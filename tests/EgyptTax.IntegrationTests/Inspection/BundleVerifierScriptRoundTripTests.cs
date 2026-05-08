@@ -52,7 +52,8 @@ public class BundleVerifierScriptRoundTripTests(SqlServerFixture fixture) : IDis
 
         var clock = new TestClock(new DateTime(2026, 5, 7, 11, 0, 0, DateTimeKind.Utc));
         var store = new FileSystemAttachmentStore(_tempRoot, clock);
-        var builder = new InspectionBundleBuilder(db, store, clock);
+        var builder = new InspectionBundleBuilder(db, store, clock,
+            new EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery(db));
 
         var result = await builder.BuildAsync(new InspectionBundleRequest(
             PeriodStart: new DateOnly(2026, 5, 1),

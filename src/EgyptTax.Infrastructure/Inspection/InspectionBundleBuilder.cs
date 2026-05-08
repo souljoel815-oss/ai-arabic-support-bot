@@ -6,6 +6,8 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using EgyptTax.Application.FileStorage;
 using EgyptTax.Application.Inspection;
+using EgyptTax.Application.Reports;
+using EgyptTax.Domain.Accounting;
 using EgyptTax.Domain.Audit;
 using EgyptTax.Domain.Documents;
 using EgyptTax.Domain.Expenses;
@@ -13,6 +15,7 @@ using EgyptTax.Domain.Invoices;
 using EgyptTax.Domain.MasterData;
 using EgyptTax.Domain.Purchases;
 using EgyptTax.Domain.Workflow;
+using EgyptTax.Infrastructure.Pdf.Registers;
 using EgyptTax.Infrastructure.Persistence;
 using EgyptTax.SharedKernel.Time;
 using Microsoft.EntityFrameworkCore;
@@ -25,7 +28,13 @@ namespace EgyptTax.Infrastructure.Inspection;
 ///
 ///   MANIFEST.sha256
 ///   README-FOR-INSPECTOR.md
+///   verify-bundle.ps1
 ///   audit-trail/audit-trail-extract.jsonl
+///   registers/sales-invoice-register.pdf
+///   registers/purchase-and-expense-register.pdf
+///   registers/credit-note-and-reversal-register.pdf
+///   registers/general-journal-listing.pdf
+///   registers/trial-balance.pdf
 ///   attachments/{document_id}/{filename_storage}
 ///
 /// Per-file SHA-256 hashes are computed during the write; the
@@ -33,14 +42,9 @@ namespace EgyptTax.Infrastructure.Inspection;
 /// canonicalised manifest body (excluding that field) so the
 /// inspector can recompute it without parsing context.
 ///
-/// Register PDFs (T233 — sales / purchase / credit-note registers,
-/// general-journal listing, trial balance), the verifier script
-/// (T232 — verify-bundle.ps1 embedded resource), and the Form 41
-/// filing (US7) are all listed as Bundle file categories in the
-/// manifest schema; each lands in a follow-up batch. The MVP slice
-/// here ships the audit-trail extract + the attachments + the
-/// inspector readme + the manifest itself, which together prove the
-/// bundle's contract surface end-to-end.
+/// Form 41 filing (US7) and the auditor verification report
+/// (Hangfire-driven, T231) are listed as bundle categories in the
+/// manifest schema and land in follow-up batches.
 /// </summary>
 public sealed class InspectionBundleBuilder : IInspectionBundleBuilder
 {
@@ -54,12 +58,18 @@ public sealed class InspectionBundleBuilder : IInspectionBundleBuilder
     private readonly AppDbContext _db;
     private readonly IAttachmentStore _attachmentStore;
     private readonly IClock _clock;
+    private readonly ITrialBalanceReportQuery _trialBalanceQuery;
 
-    public InspectionBundleBuilder(AppDbContext db, IAttachmentStore attachmentStore, IClock clock)
+    public InspectionBundleBuilder(
+        AppDbContext db,
+        IAttachmentStore attachmentStore,
+        IClock clock,
+        ITrialBalanceReportQuery trialBalanceQuery)
     {
         _db = db;
         _attachmentStore = attachmentStore;
         _clock = clock;
+        _trialBalanceQuery = trialBalanceQuery;
     }
 
     public async Task<InspectionBundleResult> BuildAsync(
@@ -115,6 +125,35 @@ public sealed class InspectionBundleBuilder : IInspectionBundleBuilder
             // for awk / grep / line-by-line forensic tools).
             files.Add(await WriteEntryAsync(zip, "audit-trail/audit-trail-extract.jsonl",
                 "AuditTrailExtract", auditExtractBytes, cancellationToken));
+
+            // T233 — five register PDFs the inspector reads first.
+            // Generated synchronously in-process; QuestPDF render
+            // time for typical period sizes is well under a second
+            // each, so total bundle build stays interactive.
+            var salesRegisterBytes = await BuildSalesRegisterPdfAsync(
+                request, company, nowUtc, cancellationToken);
+            files.Add(await WriteEntryAsync(zip, "registers/sales-invoice-register.pdf",
+                "SalesInvoiceRegister", salesRegisterBytes, cancellationToken));
+
+            var purchaseExpenseRegisterBytes = await BuildPurchaseAndExpenseRegisterPdfAsync(
+                request, company, nowUtc, cancellationToken);
+            files.Add(await WriteEntryAsync(zip, "registers/purchase-and-expense-register.pdf",
+                "PurchaseInvoiceAndExpenseRegister", purchaseExpenseRegisterBytes, cancellationToken));
+
+            var creditNoteRegisterBytes = await BuildCreditNoteAndReversalRegisterPdfAsync(
+                request, company, nowUtc, cancellationToken);
+            files.Add(await WriteEntryAsync(zip, "registers/credit-note-and-reversal-register.pdf",
+                "CreditNoteAndReversalRegister", creditNoteRegisterBytes, cancellationToken));
+
+            var journalListingBytes = await BuildJournalListingPdfAsync(
+                request, company, nowUtc, cancellationToken);
+            files.Add(await WriteEntryAsync(zip, "registers/general-journal-listing.pdf",
+                "GeneralJournalListing", journalListingBytes, cancellationToken));
+
+            var trialBalanceBytes = await BuildTrialBalancePdfAsync(
+                request, company, nowUtc, cancellationToken);
+            files.Add(await WriteEntryAsync(zip, "registers/trial-balance.pdf",
+                "TrialBalance", trialBalanceBytes, cancellationToken));
 
             // Attachments — fetch from the filesystem store via the
             // existing port so the bundle works against any storage
@@ -213,6 +252,190 @@ public sealed class InspectionBundleBuilder : IInspectionBundleBuilder
             .Where(e => e.TsUtc >= startUtc && e.TsUtc < endExclusive)
             .OrderBy(e => e.Index)
             .ToListAsync(ct);
+    }
+
+    private async Task<byte[]> BuildSalesRegisterPdfAsync(
+        InspectionBundleRequest request, Company company, DateTime nowUtc, CancellationToken ct)
+    {
+        // Posted, non-credit-note sales invoices in period.
+        var invoices = await _db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted
+                && i.CreditNoteOfInvoiceId == null
+                && i.DocumentDate >= request.PeriodStart
+                && i.DocumentDate <= request.PeriodEnd)
+            .OrderBy(i => i.DocumentDate).ThenBy(i => i.DocumentNumber)
+            .ToListAsync(ct);
+
+        var customerIds = invoices.Select(i => i.CustomerId).Distinct().ToArray();
+        var customers = await _db.Set<Customer>().AsNoTracking()
+            .Where(c => customerIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, ct);
+
+        var rows = invoices.Select(i =>
+        {
+            customers.TryGetValue(i.CustomerId, out var c);
+            return new SalesInvoiceRegisterPdfRenderer.Row(
+                DocumentNumber: i.DocumentNumber ?? "",
+                DocumentDate: i.DocumentDate,
+                CustomerNameEn: c?.Name.English ?? "(unknown)",
+                CustomerNameAr: c?.Name.Arabic ?? "",
+                CustomerTin: i.CustomerTaxProfileSnapshot.TinValue,
+                Subtotal: i.Subtotal.Amount,
+                Vat: i.VatTotal.Amount,
+                Total: i.GrandTotal.Amount);
+        }).ToList();
+
+        return SalesInvoiceRegisterPdfRenderer.Render(
+            company, request.PeriodStart, request.PeriodEnd, nowUtc, rows);
+    }
+
+    private async Task<byte[]> BuildPurchaseAndExpenseRegisterPdfAsync(
+        InspectionBundleRequest request, Company company, DateTime nowUtc, CancellationToken ct)
+    {
+        var purchases = await _db.Set<PurchaseInvoice>().AsNoTracking()
+            .Where(p => p.State == DocumentState.Posted
+                && p.DateReceived >= request.PeriodStart
+                && p.DateReceived <= request.PeriodEnd)
+            .OrderBy(p => p.DateReceived).ThenBy(p => p.DocumentNumber)
+            .ToListAsync(ct);
+
+        var supplierIds = purchases.Select(p => p.SupplierId).Distinct().ToArray();
+        var suppliers = await _db.Set<Supplier>().AsNoTracking()
+            .Where(s => supplierIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, ct);
+
+        var expenses = await _db.Set<Expense>().AsNoTracking()
+            .Where(e => e.State == DocumentState.Posted
+                && e.DocumentDate >= request.PeriodStart
+                && e.DocumentDate <= request.PeriodEnd)
+            .OrderBy(e => e.DocumentDate).ThenBy(e => e.DocumentNumber)
+            .ToListAsync(ct);
+
+        var categoryIds = expenses.Select(e => e.CategoryId).Distinct().ToArray();
+        var categories = await _db.Set<DeductibleExpenseCategory>().AsNoTracking()
+            .Where(c => categoryIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, ct);
+
+        var rows = new List<PurchaseAndExpenseRegisterPdfRenderer.Row>();
+        rows.AddRange(purchases.Select(p =>
+        {
+            suppliers.TryGetValue(p.SupplierId, out var s);
+            // A purchase line is "deductible" when ANY of its lines
+            // is flagged deductible (purchase invoices can mix
+            // deductible + non-deductible lines; we surface the
+            // any-deductible flag for the at-a-glance scan).
+            var anyDeductible = p.Lines.Any(l => l.DeductibleFlag);
+            return new PurchaseAndExpenseRegisterPdfRenderer.Row(
+                Kind: PurchaseAndExpenseRegisterPdfRenderer.RowKind.PurchaseInvoice,
+                DocumentNumber: p.DocumentNumber ?? "",
+                DocumentDate: p.DateReceived,
+                CounterpartyEn: s?.Name.English ?? "(unknown)",
+                CounterpartyAr: s?.Name.Arabic ?? "",
+                SupplierTin: p.SupplierTaxProfileSnapshot.TinValue,
+                SupplierInvoiceNumber: p.SupplierInvoiceNumber,
+                Subtotal: p.Subtotal.Amount,
+                Vat: p.VatTotal.Amount,
+                Total: p.GrandTotal.Amount,
+                DeductibleFlag: anyDeductible);
+        }));
+        rows.AddRange(expenses.Select(e =>
+        {
+            categories.TryGetValue(e.CategoryId, out var cat);
+            return new PurchaseAndExpenseRegisterPdfRenderer.Row(
+                Kind: PurchaseAndExpenseRegisterPdfRenderer.RowKind.Expense,
+                DocumentNumber: e.DocumentNumber ?? "",
+                DocumentDate: e.DocumentDate,
+                CounterpartyEn: cat?.Name.English ?? "(unknown category)",
+                CounterpartyAr: cat?.Name.Arabic ?? "",
+                SupplierTin: null,
+                SupplierInvoiceNumber: null,
+                Subtotal: e.Amount.Amount,
+                Vat: 0m,
+                Total: e.Amount.Amount,
+                DeductibleFlag: e.DeductibleFlag);
+        }));
+
+        var ordered = rows.OrderBy(r => r.DocumentDate).ThenBy(r => r.DocumentNumber).ToList();
+        return PurchaseAndExpenseRegisterPdfRenderer.Render(
+            company, request.PeriodStart, request.PeriodEnd, nowUtc, ordered);
+    }
+
+    private async Task<byte[]> BuildCreditNoteAndReversalRegisterPdfAsync(
+        InspectionBundleRequest request, Company company, DateTime nowUtc, CancellationToken ct)
+    {
+        var creditNotes = await _db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted
+                && i.CreditNoteOfInvoiceId != null
+                && i.DocumentDate >= request.PeriodStart
+                && i.DocumentDate <= request.PeriodEnd)
+            .OrderBy(i => i.DocumentDate).ThenBy(i => i.DocumentNumber)
+            .ToListAsync(ct);
+
+        var origIds = creditNotes
+            .Where(c => c.CreditNoteOfInvoiceId.HasValue)
+            .Select(c => c.CreditNoteOfInvoiceId!.Value).Distinct().ToArray();
+        var origs = await _db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => origIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, ct);
+
+        var customerIds = creditNotes.Select(c => c.CustomerId).Distinct().ToArray();
+        var customers = await _db.Set<Customer>().AsNoTracking()
+            .Where(c => customerIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, ct);
+
+        var rows = creditNotes.Select(cn =>
+        {
+            customers.TryGetValue(cn.CustomerId, out var customer);
+            origs.TryGetValue(cn.CreditNoteOfInvoiceId!.Value, out var orig);
+            return new CreditNoteAndReversalRegisterPdfRenderer.Row(
+                DocumentNumber: cn.DocumentNumber ?? "",
+                DocumentDate: cn.DocumentDate,
+                CustomerNameEn: customer?.Name.English ?? "(unknown)",
+                CustomerNameAr: customer?.Name.Arabic ?? "",
+                OriginalDocumentNumber: orig?.DocumentNumber ?? "(unknown)",
+                OriginalDocumentDate: orig?.DocumentDate ?? DateOnly.MinValue,
+                Reason: cn.CreditNoteReason ?? "(no reason recorded)",
+                Subtotal: cn.Subtotal.Amount,
+                Vat: cn.VatTotal.Amount,
+                Total: cn.GrandTotal.Amount);
+        }).ToList();
+
+        return CreditNoteAndReversalRegisterPdfRenderer.Render(
+            company, request.PeriodStart, request.PeriodEnd, nowUtc, rows);
+    }
+
+    private async Task<byte[]> BuildJournalListingPdfAsync(
+        InspectionBundleRequest request, Company company, DateTime nowUtc, CancellationToken ct)
+    {
+        var startUtc = request.PeriodStart.ToDateTime(TimeOnly.MinValue);
+        var endExclusive = request.PeriodEnd.AddDays(1).ToDateTime(TimeOnly.MinValue);
+
+        var entries = await _db.Set<JournalEntry>().AsNoTracking()
+            .Include(e => e.Lines)
+            .Where(e => e.PostedAtUtc >= startUtc && e.PostedAtUtc < endExclusive)
+            .OrderBy(e => e.PostedAtUtc).ThenBy(e => e.SourceDocumentNumber)
+            .ToListAsync(ct);
+
+        var rows = entries.Select(e => new GeneralJournalListingPdfRenderer.EntryRow(
+            PostedAtUtc: e.PostedAtUtc,
+            SourceDocumentNumber: e.SourceDocumentNumber,
+            SourceDocumentType: e.SourceDocumentType,
+            Lines: e.Lines.Select(l => new GeneralJournalListingPdfRenderer.LineRow(
+                AccountCode: l.AccountCode,
+                Debit: l.Debit.Amount,
+                Credit: l.Credit.Amount,
+                Description: l.Description)).ToList())).ToList();
+
+        return GeneralJournalListingPdfRenderer.Render(
+            company, request.PeriodStart, request.PeriodEnd, nowUtc, rows);
+    }
+
+    private async Task<byte[]> BuildTrialBalancePdfAsync(
+        InspectionBundleRequest request, Company company, DateTime nowUtc, CancellationToken ct)
+    {
+        var report = await _trialBalanceQuery.RunAsync(
+            request.PeriodStart, request.PeriodEnd, ct);
+        return TrialBalancePdfRenderer.Render(company, nowUtc, report);
     }
 
     private static byte[] SerializeAuditAsJsonl(IReadOnlyList<AuditLogEntry> entries)

@@ -5,7 +5,6 @@ using EgyptTax.Domain.MasterData;
 using EgyptTax.Domain.Workflow;
 using EgyptTax.SharedKernel.Localization;
 using QRCoder;
-using QuestPDF.Drawing;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -26,57 +25,10 @@ namespace EgyptTax.Infrastructure.Pdf;
 /// </summary>
 public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
 {
-    /// <summary>
-    /// T102 — Cairo (Latin + Arabic) is the primary font; Amiri is
-    /// registered as a fallback for any glyphs Cairo lacks (legacy
-    /// presentation forms in the Arabic block QuestPDF picks for
-    /// shaped text). Fonts are embedded resources in this assembly
-    /// so the renderer is self-contained on stripped CI images that
-    /// have no system fonts installed — that gap was flagged in the
-    /// T102 closeout note and is closed here.
-    /// </summary>
-    private const string PrimaryFontFamily = "Cairo";
-    private const string ArabicFallbackFamily = "Amiri";
+    private const string PrimaryFontFamily = QuestPdfFontInitializer.PrimaryFontFamily;
+    private const string ArabicFallbackFamily = QuestPdfFontInitializer.ArabicFallbackFamily;
 
-    static QuestPdfInvoiceRenderer()
-    {
-        QuestPDF.Settings.License = LicenseType.Community;
-        RegisterEmbeddedFont("Pdf.Fonts.Cairo-Regular.ttf");
-        RegisterEmbeddedFont("Pdf.Fonts.Amiri-Regular.ttf");
-        RegisterEmbeddedFont("Pdf.Fonts.Amiri-Bold.ttf");
-    }
-
-    private static void RegisterEmbeddedFont(string relativeName)
-    {
-        var assembly = typeof(QuestPdfInvoiceRenderer).Assembly;
-        var resourceName = $"{assembly.GetName().Name}.{relativeName}";
-        using var resourceStream = assembly.GetManifestResourceStream(resourceName)
-            ?? throw new InvalidOperationException(
-                $"Embedded font resource '{resourceName}' was not found. Check the EmbeddedResource Link in EgyptTax.Infrastructure.csproj.");
-
-        // Buffer the resource into a byte array, then hand QuestPDF
-        // a non-disposable MemoryStream over those bytes. SkiaSharp's
-        // Typeface holds the stream by reference for lazy glyph
-        // lookup; if we let the manifest-resource stream go out of
-        // scope (the original `using var stream`), parallel tests
-        // see empty render output because the underlying buffer is
-        // gone. The static field keeps the bytes alive for the life
-        // of the process.
-        using var buffer = new MemoryStream();
-        resourceStream.CopyTo(buffer);
-        var bytes = buffer.ToArray();
-        var liveStream = new MemoryStream(bytes, writable: false);
-        FontManager.RegisterFont(liveStream);
-        _registeredFontBuffers.Add(bytes);
-    }
-
-    /// <summary>
-    /// Holds onto the embedded-font bytes for the life of the
-    /// process so the streams handed to QuestPDF stay readable.
-    /// (Diagnosed against parallel test execution where short-lived
-    /// streams produced empty rendered text.)
-    /// </summary>
-    private static readonly List<byte[]> _registeredFontBuffers = new();
+    static QuestPdfInvoiceRenderer() => QuestPdfFontInitializer.EnsureRegistered();
 
     public byte[] Render(InvoicePdfRequest request)
     {
