@@ -131,6 +131,10 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Workflow.DocumentApprovalHand
 // gated to Administrator + Accountant; Bookkeeper rejected.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Journals.CreateManualAdjustingJournalHandler>();
 
+// US4 / FR-012 — reversal-voucher handler. Same FR-031 role gate;
+// adds DB-side checks for already-reversed + reversal-of-reversal.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Journals.CreateReversalJournalHandler>();
+
 // US9 / FR-048 — period-scoped tax-inspection bundle builder.
 builder.Services.AddScoped<EgyptTax.Application.Inspection.IInspectionBundleBuilder,
     EgyptTax.Infrastructure.Inspection.InspectionBundleBuilder>();
