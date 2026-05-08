@@ -94,6 +94,11 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Wht.GenerateForm41Handler>();
 // can never appear in another filing (T200 immutability).
 builder.Services.AddScoped<EgyptTax.Infrastructure.Wht.MarkForm41FiledHandler>();
 
+// US7 / T211 / FR-047 — WHT lifecycle dashboard projection
+// (owed / expected / filings views with overdue derivation).
+builder.Services.AddScoped<EgyptTax.Application.Wht.IWhtLifecycleDashboardQuery,
+    EgyptTax.Infrastructure.Wht.SqlWhtLifecycleDashboardQuery>();
+
 // Differentiator 1 (Tax Risk Score) — rules registered as singletons
 // because they are stateless; the scorer fans out across every
 // registered rule. Adding a new rule = adding one AddSingleton line.
