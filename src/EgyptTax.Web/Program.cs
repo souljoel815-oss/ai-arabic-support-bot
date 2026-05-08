@@ -174,8 +174,20 @@ builder.Services.AddScoped<EgyptTax.Application.Periods.ITaxPeriodLockGuard,
 builder.Services.AddScoped<EgyptTax.Infrastructure.Periods.LockTaxPeriodHandler>();
 
 // Differentiator 2 — Monthly Tax Closing Cockpit projection.
-builder.Services.AddScoped<EgyptTax.Application.Compliance.IMonthlyTaxClosingCockpitQuery,
-    EgyptTax.Infrastructure.Compliance.SqlMonthlyTaxClosingCockpitQuery>();
+// T236a / Round-6 F13 — wrapped in CockpitCachingDecorator with a
+// 30-second sliding expiration. The same decorator instance is also
+// the ICockpitCacheInvalidator so post-handlers can bust the entry
+// for a month when a tax-impacting state change lands.
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Compliance.SqlMonthlyTaxClosingCockpitQuery>();
+builder.Services.AddScoped<EgyptTax.Application.Compliance.CockpitCachingDecorator>(sp =>
+    new EgyptTax.Application.Compliance.CockpitCachingDecorator(
+        sp.GetRequiredService<EgyptTax.Infrastructure.Compliance.SqlMonthlyTaxClosingCockpitQuery>(),
+        sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>()));
+builder.Services.AddScoped<EgyptTax.Application.Compliance.IMonthlyTaxClosingCockpitQuery>(sp =>
+    sp.GetRequiredService<EgyptTax.Application.Compliance.CockpitCachingDecorator>());
+builder.Services.AddScoped<EgyptTax.Application.Compliance.ICockpitCacheInvalidator>(sp =>
+    sp.GetRequiredService<EgyptTax.Application.Compliance.CockpitCachingDecorator>());
 
 // US3 / FR-026 — document approval workflow handler. Single class
 // covers Submit / Approve / Reject / Void across the 3 approval-
