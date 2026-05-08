@@ -74,6 +74,11 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Payments.PostCustomerReceiptV
 builder.Services.AddScoped<EgyptTax.Application.Payments.IPaymentVoucherQuery,
     EgyptTax.Infrastructure.Payments.SqlPaymentVoucherQuery>();
 
+// US7 / FR-045 / R-17 — WHT compute service. Selects the effective-
+// dated WhtCategory row in force on the payment date.
+builder.Services.AddScoped<EgyptTax.Application.Wht.IWhtComputeService,
+    EgyptTax.Infrastructure.Wht.SqlWhtComputeService>();
+
 // Differentiator 1 (Tax Risk Score) — rules registered as singletons
 // because they are stateless; the scorer fans out across every
 // registered rule. Adding a new rule = adding one AddSingleton line.
