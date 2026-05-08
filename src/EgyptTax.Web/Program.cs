@@ -60,6 +60,8 @@ builder.Services.AddScoped<EgyptTax.Application.Numbering.IDocumentNumberAllocat
     EgyptTax.Infrastructure.Numbering.SqlSequentialNumberAllocator>();
 builder.Services.AddScoped<EgyptTax.Application.Accounting.IJournalEntryEmitter,
     EgyptTax.Infrastructure.Accounting.SalesInvoiceJournalEmitter>();
+builder.Services.AddScoped<EgyptTax.Application.Accounting.IPurchaseInvoiceJournalEmitter,
+    EgyptTax.Infrastructure.Accounting.PurchaseInvoiceJournalEmitter>();
 
 // Differentiator 1 (Tax Risk Score) — rules registered as singletons
 // because they are stateless; the scorer fans out across every

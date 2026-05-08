@@ -1,4 +1,5 @@
 using System.Globalization;
+using EgyptTax.Application.Accounting;
 using EgyptTax.Application.Audit;
 using EgyptTax.Application.Numbering;
 using EgyptTax.Application.Periods;
@@ -32,6 +33,7 @@ public sealed class PostPurchaseInvoiceHandler
     private readonly IDocumentNumberAllocator _allocator;
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
+    private readonly IPurchaseInvoiceJournalEmitter? _journalEmitter;
     private readonly ITaxPeriodLockGuard? _periodLockGuard;
 
     public PostPurchaseInvoiceHandler(
@@ -39,12 +41,14 @@ public sealed class PostPurchaseInvoiceHandler
         IDocumentNumberAllocator allocator,
         IClock clock,
         IAuditLogStore auditLog,
+        IPurchaseInvoiceJournalEmitter? journalEmitter = null,
         ITaxPeriodLockGuard? periodLockGuard = null)
     {
         _db = db;
         _allocator = allocator;
         _clock = clock;
         _auditLog = auditLog;
+        _journalEmitter = journalEmitter;
         _periodLockGuard = periodLockGuard;
     }
 
@@ -122,6 +126,16 @@ public sealed class PostPurchaseInvoiceHandler
             postedAtUtc: nowUtc,
             postingMode: postingMode,
             approvalEnabled: approvalRequired);
+
+        // US4 / FR-016 / FR-020 — emit the balanced purchase journal
+        // IN THE SAME SaveChangesAsync as the post + numbering update
+        // so all three commit atomically. Optional like the sales-side
+        // emitter — legacy callers that don't supply one (existing
+        // FR-016 attachment-guard tests, perf seed) keep working.
+        if (_journalEmitter is not null)
+        {
+            await _journalEmitter.EmitForPurchaseInvoiceAsync(invoice, nowUtc, cancellationToken);
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 
