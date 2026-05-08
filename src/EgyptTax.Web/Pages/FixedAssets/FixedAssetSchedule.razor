@@ -1,0 +1,109 @@
+@page "/fixed-assets/{Id:guid}/schedule"
+@using EgyptTax.Application.FixedAssets
+@using EgyptTax.Domain.Documents
+@using Microsoft.AspNetCore.Authorization
+@inject IFixedAssetQuery Query
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<a href="/fixed-assets" class="btn-secondary">← Back to list</a>
+
+<h1>Depreciation schedule / جدول الإهلاك</h1>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+    return;
+}
+@if (_asset is null)
+{
+    <p class="flash-error">Fixed asset @Id not found.</p>
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>Code:</strong> <code>@_asset.Code</code></div>
+    <div><strong>Description:</strong> @_asset.Description.English (@_asset.Description.Arabic)</div>
+    <div><strong>Status:</strong> <span class="kind-badge kind-@_asset.Status.ToString().ToLowerInvariant()">@_asset.Status</span></div>
+    <div><strong>Cost:</strong> @_asset.Cost.Amount.ToString("F2") EGP</div>
+    <div><strong>Salvage:</strong> @_asset.SalvageValue.Amount.ToString("F2") EGP</div>
+    <div><strong>In service:</strong> @_asset.InServiceDate.ToString("yyyy-MM-dd")</div>
+    <div><strong>Useful life:</strong> @_asset.UsefulLifeMonths months</div>
+    <div><strong>Method / Convention:</strong> @_asset.DepreciationMethod / @_asset.Convention</div>
+    @if (_asset.DisposedOn is { } d)
+    {
+        <div><strong>Disposed on:</strong> @d.ToString("yyyy-MM-dd")</div>
+    }
+</section>
+
+@if (_schedule is null || _schedule.Count == 0)
+{
+    <p>
+        <em>
+            @(_asset.Status == FixedAssetStatus.Draft
+                ? "Draft assets aren't depreciable yet — put the asset in service first."
+                : "No depreciation lines for this asset (cost ≤ salvage, or already fully depreciated).")
+        </em>
+    </p>
+    return;
+}
+
+<section>
+    <h2>Schedule (@_schedule.Count periods)</h2>
+    <p>
+        Lifetime depreciation: <strong>@_schedule.Sum(l => l.Amount.Amount).ToString("F2") EGP</strong>
+        — equals cost − salvage exactly thanks to the rounding-remainder absorption.
+    </p>
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th class="num">#</th>
+                <th>Period (first of month)</th>
+                <th class="num">Depreciation (EGP)</th>
+                <th class="num">Cumulative (EGP)</th>
+                <th class="num">NBV after period (EGP)</th>
+            </tr>
+        </thead>
+        <tbody>
+            @{
+                var cumulative = 0m;
+            }
+            @for (var i = 0; i < _schedule.Count; i++)
+            {
+                var line = _schedule[i];
+                cumulative += line.Amount.Amount;
+                var nbvAfter = Math.Max(_asset.Cost.Amount - cumulative, _asset.SalvageValue.Amount);
+                <tr>
+                    <td class="num">@(i + 1)</td>
+                    <td>@line.Period.ToString("yyyy-MM")</td>
+                    <td class="num">@line.Amount.Amount.ToString("F2")</td>
+                    <td class="num">@cumulative.ToString("F2")</td>
+                    <td class="num">@nbvAfter.ToString("F2")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</section>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading;
+    private FixedAsset? _asset;
+    private IReadOnlyList<DepreciationEngine.DepreciationLine>? _schedule;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        try
+        {
+            _asset = await Query.GetAsync(Id);
+            _schedule = _asset is null
+                ? Array.Empty<DepreciationEngine.DepreciationLine>()
+                : DepreciationEngine.ComputeFullSchedule(_asset);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

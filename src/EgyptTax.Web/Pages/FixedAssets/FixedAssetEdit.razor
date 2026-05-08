@@ -1,0 +1,126 @@
+@page "/fixed-assets/new"
+@using EgyptTax.Application.FixedAssets
+@using EgyptTax.Domain.Documents
+@using EgyptTax.SharedKernel
+@using EgyptTax.Infrastructure.FixedAssets
+@using Microsoft.AspNetCore.Authorization
+@inject CreateFixedAssetHandler CreateHandler
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<a href="/fixed-assets" class="btn-secondary">← Back to list</a>
+
+<h1>New fixed asset / أصل ثابت جديد</h1>
+
+<form @onsubmit="OnSave" @onsubmit:preventDefault>
+    <div class="invoice-toolbar">
+        <label>
+            <span>Code</span>
+            <input type="text" @bind="_code" required />
+        </label>
+        <label>
+            <span>Asset category</span>
+            <input type="text" @bind="_category" required placeholder="Equipment / Vehicles / …" />
+        </label>
+    </div>
+    <div class="invoice-toolbar">
+        <label>
+            <span>Description (English)</span>
+            <input type="text" @bind="_descEn" required />
+        </label>
+        <label>
+            <span>Description (Arabic)</span>
+            <input type="text" @bind="_descAr" required dir="rtl" />
+        </label>
+    </div>
+    <div class="invoice-toolbar">
+        <label>
+            <span>Cost (EGP)</span>
+            <input type="number" step="0.01" min="0.01" @bind="_cost" required />
+        </label>
+        <label>
+            <span>Salvage value (EGP)</span>
+            <input type="number" step="0.01" min="0" @bind="_salvage" />
+        </label>
+    </div>
+    <div class="invoice-toolbar">
+        <label>
+            <span>In-service date</span>
+            <input type="date" @bind="_inServiceDate" required />
+        </label>
+        <label>
+            <span>Useful life (months)</span>
+            <input type="number" min="1" @bind="_usefulLifeMonths" required />
+        </label>
+        <label>
+            <span>Convention</span>
+            <select @bind="_convention">
+                <option value="@DepreciationConvention.FullMonth">Full month</option>
+                <option value="@DepreciationConvention.MidMonth">Mid-month (US6 sc 2)</option>
+            </select>
+        </label>
+    </div>
+    <p>
+        <button type="submit" class="btn-primary" disabled="@_saving">
+            @(_saving ? "Saving…" : "Create draft")
+        </button>
+    </p>
+</form>
+
+@if (_error is not null)
+{
+    <div class="flash-error"><strong>Error:</strong> @_error</div>
+}
+
+<p>
+    <em>The new asset starts in <strong>Draft</strong>. Attach supporting documentation (purchase
+    receipt / installation certificate / etc.) and then put it in service — the FR-016 mirror
+    requires at least one attachment before depreciation can begin.</em>
+</p>
+
+@code {
+    private string _code = "";
+    private string _category = "Equipment";
+    private string _descEn = "";
+    private string _descAr = "";
+    private decimal _cost = 0m;
+    private decimal _salvage = 0m;
+    private DateTime _inServiceDate = DateTime.UtcNow.Date;
+    private int _usefulLifeMonths = 60;
+    private DepreciationConvention _convention = DepreciationConvention.FullMonth;
+    private bool _saving;
+    private string? _error;
+
+    private async Task OnSave()
+    {
+        _error = null;
+        _saving = true;
+        try
+        {
+            // MVP: created-by-user-id is a placeholder until the
+            // session surface threads the current operator id into
+            // page injectors. Once that lands, swap for the real id.
+            var asset = await CreateHandler.HandleAsync(
+                new CreateFixedAssetCommand(
+                    Code: _code,
+                    Description: new ArabicEnglishText(_descAr, _descEn),
+                    AssetCategory: _category,
+                    Cost: MoneyEgp.From(_cost),
+                    InServiceDate: DateOnly.FromDateTime(_inServiceDate),
+                    UsefulLifeMonths: _usefulLifeMonths,
+                    DepreciationMethod: DepreciationMethod.StraightLine,
+                    SalvageValue: MoneyEgp.From(_salvage),
+                    Convention: _convention,
+                    CreatedByUserId: Guid.Empty));
+            Nav.NavigateTo($"/fixed-assets/{asset.Id:D}/schedule");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

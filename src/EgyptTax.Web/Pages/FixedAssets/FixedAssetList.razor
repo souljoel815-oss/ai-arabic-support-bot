@@ -1,0 +1,103 @@
+@page "/fixed-assets"
+@using EgyptTax.Application.FixedAssets
+@using EgyptTax.Domain.Documents
+@using Microsoft.AspNetCore.Authorization
+@inject IFixedAssetQuery Query
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Fixed assets (FR-017 / FR-018) / الأصول الثابتة</h1>
+
+<form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
+    <label>
+        <span>Net book value as of</span>
+        <input type="date" @bind="_asOf" />
+    </label>
+    <button type="submit" class="btn-primary" disabled="@_loading">
+        @(_loading ? "Loading…" : "Refresh")
+    </button>
+    <a href="/fixed-assets/new" class="btn-primary">+ New asset</a>
+</form>
+
+@if (_rows is null)
+{
+    <p>Loading…</p>
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>Assets:</strong> @_rows.Count</div>
+    <div><strong>InService:</strong> @_rows.Count(r => r.Status == FixedAssetStatus.InService)</div>
+    <div><strong>Draft:</strong> @_rows.Count(r => r.Status == FixedAssetStatus.Draft)</div>
+    <div><strong>Disposed/Written off:</strong> @_rows.Count(r => r.Status is FixedAssetStatus.Disposed or FixedAssetStatus.WrittenOff)</div>
+    <div><strong>Total cost:</strong> @_rows.Sum(r => r.Cost.Amount).ToString("F2") EGP</div>
+    <div><strong>Total NBV (as-of):</strong> @_rows.Sum(r => r.NetBookValue.Amount).ToString("F2") EGP</div>
+</section>
+
+@if (_rows.Count == 0)
+{
+    <p><em>No fixed assets yet. Click "+ New asset" to create one.</em></p>
+    return;
+}
+
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th>Code</th>
+            <th>Description</th>
+            <th>Category</th>
+            <th>Status</th>
+            <th>In-service</th>
+            <th class="num">Useful life (mo)</th>
+            <th class="num">Cost (EGP)</th>
+            <th class="num">Depreciated</th>
+            <th class="num">NBV</th>
+            <th class="num">Attachments</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var r in _rows)
+        {
+            <tr>
+                <td><code>@r.Code</code></td>
+                <td>
+                    <div>@r.Description.English</div>
+                    <div style="font-size: 0.85em">@r.Description.Arabic</div>
+                </td>
+                <td>@r.AssetCategory</td>
+                <td><span class="kind-badge kind-@r.Status.ToString().ToLowerInvariant()">@r.Status</span></td>
+                <td>@r.InServiceDate.ToString("yyyy-MM-dd")</td>
+                <td class="num">@r.UsefulLifeMonths</td>
+                <td class="num">@r.Cost.Amount.ToString("F2")</td>
+                <td class="num">@r.DepreciatedToDate.Amount.ToString("F2")</td>
+                <td class="num">@r.NetBookValue.Amount.ToString("F2")</td>
+                <td class="num">@r.AttachmentCount</td>
+                <td>
+                    <a href="@($"/fixed-assets/{r.Id:D}/schedule")" class="btn-secondary">Schedule</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private DateTime _asOf = DateTime.UtcNow.Date;
+    private bool _loading;
+    private IReadOnlyList<FixedAssetListRow>? _rows;
+
+    protected override async Task OnInitializedAsync() => await OnRefresh();
+
+    private async Task OnRefresh()
+    {
+        _loading = true;
+        try
+        {
+            _rows = await Query.ListAsync(DateOnly.FromDateTime(_asOf));
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

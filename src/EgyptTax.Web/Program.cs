@@ -154,6 +154,13 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.FixedAssets.PutFixedAssetInSe
 // job class itself is DI-resolved per-tick.
 builder.Services.AddScoped<EgyptTax.Infrastructure.BackgroundJobs.MonthlyDepreciationJob>();
 
+// US6 / FR-017 / FR-018 / T187 — fixed-asset query + create
+// handler behind /fixed-assets + /fixed-assets/new +
+// /fixed-assets/{id}/schedule.
+builder.Services.AddScoped<EgyptTax.Application.FixedAssets.IFixedAssetQuery,
+    EgyptTax.Infrastructure.FixedAssets.SqlFixedAssetQuery>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.FixedAssets.CreateFixedAssetHandler>();
+
 // US9 / FR-048 — period-scoped tax-inspection bundle builder.
 builder.Services.AddScoped<EgyptTax.Application.Inspection.IInspectionBundleBuilder,
     EgyptTax.Infrastructure.Inspection.InspectionBundleBuilder>();
