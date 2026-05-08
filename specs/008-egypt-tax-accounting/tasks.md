@@ -471,9 +471,14 @@ Per [plan.md](plan.md) §"Project Structure":
 
 ### Implementation
 
-- [ ] T191 Implement `SupplierPaymentVoucher` aggregate at `src/EgyptTax.Domain/Documents/SupplierPaymentVoucher.cs` per data-model C6
-- [ ] T192 Implement `CustomerReceiptVoucher` aggregate at `src/EgyptTax.Domain/Documents/CustomerReceiptVoucher.cs` per data-model C7
-- [ ] T193 Implement `PaymentAllocation` entity at `src/EgyptTax.Domain/Documents/PaymentAllocation.cs` per data-model C8
+- [X] T191 + T192 + T193 [Phase 9] Three mutually-referencing aggregates shipped together per the Round-6 F10 authoring note:
+  * `SupplierPaymentVoucher` (C6) at `src/EgyptTax.Domain/Documents/SupplierPaymentVoucher.cs` — header (supplier_id, payment_date, payment_method, payment_reference, note, gross_payment_amount, wht_payable_amount, net_cash_paid, generated_wht_certificate_id) + Allocations 1:N. Lifecycle Draft → Posted (terminal). `AddAllocation` enforces FR-053 voucher cap (sum ≤ gross); `MarkPosted` requires ≥1 allocation; `ApplyWhtSplit` is the US7 hook (sets WHT amount + back-pointer to certificate, recomputes net cash). Phase 9 callers leave WHT at zero — net cash equals gross.
+  * `CustomerReceiptVoucher` (C7) at `src/EgyptTax.Domain/Documents/CustomerReceiptVoucher.cs` — receipts-side mirror with the same lifecycle, allocation cap, and WHT hook (`ApplyCustomerWhtCertificate`).
+  * `PaymentAllocation` (C8) at `src/EgyptTax.Domain/Documents/PaymentAllocation.cs` — single shared entity with two nullable parent FKs (SupplierPaymentVoucherId / CustomerReceiptVoucherId, XOR enforced at construction). Symmetry guard: supplier-payment allocations MUST target PurchaseInvoice; customer-receipt allocations MUST target SalesInvoice or CreditNote. Positive-amount + parent-set invariants asserted in the constructor.
+  * `PaymentMethod` enum at `src/EgyptTax.Domain/Documents/PaymentMethod.cs` (Cash / BankTransfer — Round-5 carve-out scope; cheque + card land Near-term).
+  * `ChartOfAccountCodes` extended with `Cash = "1100"` (debited on receipts / credited on payments) + `WhtPayable = "2120"` (US7 supplier side) + `WhtReceivable = "1120"` (US7 customer side).
+  * Three EF configurations + migration `20260508043204_PaymentVouchers` creating `documents.supplier_payment_vouchers`, `documents.customer_receipt_vouchers`, `documents.payment_allocations` with the right indexes (per-parent FK filtered indexes, target_document_id, payment-date for period queries).
+  * 18 GREEN aggregate-invariant unit tests in `tests/EgyptTax.UnitTests/Domain/Documents/{SupplierPaymentVoucher,CustomerReceiptVoucher,PaymentAllocation}Tests.cs` covering Draft creation defaults, FR-053 voucher cap, post-time required-allocation check, post-time immutability, WHT split arithmetic + bounds (WHT ≤ gross), parent-target symmetry, XOR parent invariant, positive-amount.
 - [ ] T194 Implement `PostSupplierPaymentVoucher` + `PostCustomerReceiptVoucher` + `AllocatePayment` handlers at `src/EgyptTax.Application/Payments/`
 - [ ] T195 Implement `Pages/Payments/SupplierPaymentVoucherEdit.razor` + `CustomerReceiptVoucherEdit.razor` + `PaymentAllocationView.razor`
 

@@ -53,4 +53,23 @@ public static class ChartOfAccountCodes
     /// the GL nets it against the gross fixed-asset balance to
     /// produce the FR-018 net book value visible on reports.</summary>
     public const string AccumulatedDepreciation = "1290";
+
+    /// <summary>Phase 9 / Round 5 — operating cash account. Credited
+    /// when a SupplierPaymentVoucher posts (cash leg paid to the
+    /// supplier); debited when a CustomerReceiptVoucher posts (cash
+    /// received). Single seeded cash account at MVP scope; multi-
+    /// account cash management is Near-term.</summary>
+    public const string Cash = "1100";
+
+    /// <summary>FR-051 / US7 — withholding-tax payable to the tax
+    /// authority on supplier-services payments. Credited when a
+    /// SupplierPaymentVoucher with WHT is posted; cleared when the
+    /// company remits the WHT liability to ETA.</summary>
+    public const string WhtPayable = "2120";
+
+    /// <summary>FR-052 / US7 — withholding-tax receivable when a
+    /// customer withholds tax from a payment to the company.
+    /// Debited when the CustomerReceiptVoucher carries a customer-
+    /// issued WHT certificate; cleared when ETA refunds / offsets.</summary>
+    public const string WhtReceivable = "1120";
 }
