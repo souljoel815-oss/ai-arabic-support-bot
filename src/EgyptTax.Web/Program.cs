@@ -288,6 +288,20 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<EgyptTax.Application.Eta.IEtaStatusNotifier,
     EgyptTax.Web.Realtime.EtaStatusNotifier>();
 
+// T231 / US9 / FR-048 — inspection-bundle progress notifier +
+// Hangfire job. Singleton notifier so in-process Blazor subscribers
+// get a stable subscription target across page lifetimes; the
+// transient job picks up a fresh AppDbContext + builder per
+// activation.
+builder.Services.AddSingleton<EgyptTax.Application.Inspection.IInspectionBundleProgressNotifier,
+    EgyptTax.Web.Realtime.InspectionBundleProgressNotifier>();
+builder.Services.AddSingleton(new EgyptTax.Infrastructure.BackgroundJobs.InspectionBundleStorageOptions
+{
+    RootDirectory = builder.Configuration.GetValue<string>("InspectionBundles:RootDirectory")
+        ?? Path.Combine(builder.Environment.ContentRootPath, "inspection-bundles"),
+});
+builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.InspectionBundleJob>();
+
 // EF context — primary persistence binding.
 var primaryConnection = builder.Configuration.GetConnectionString("EgyptTax")
     ?? Environment.GetEnvironmentVariable("EGYPTTAX_CONNECTION");
@@ -473,6 +487,14 @@ app.MapFallbackToPage("/_Host");
 // event via IEtaStatusNotifier directly and don't traverse this
 // hub.
 app.MapHub<EgyptTax.Web.Realtime.EtaStatusHub>("/hubs/eta")
+    .RequireAuthorization("FullyAuthenticated");
+
+// T231 — inspection-bundle progress hub. Same auth posture as the
+// ETA hub: subscribers must be FullyAuthenticated to see bundle
+// progress events (the events themselves don't carry sensitive
+// payloads, just job ids + counts, but we keep the auth boundary
+// consistent with the rest of the surface).
+app.MapHub<EgyptTax.Web.Realtime.InspectionBundleHub>("/hubs/inspection-bundle")
     .RequireAuthorization("FullyAuthenticated");
 
 // T073 — Liveness / readiness probes per contracts/api/openapi.yaml.
