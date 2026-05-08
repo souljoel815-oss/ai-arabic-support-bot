@@ -121,33 +121,37 @@
               Source="$(var.ProjectDir)apply-config.ps1"
               KeyPath="yes" />
       </Component>
+      <Component Id="RegisterServiceScriptComponent"
+                 Guid="D4E5F6A7-B8C9-0123-4567-890ABCDEF123">
+        <File Id="RegisterServiceScript"
+              Source="$(var.ProjectDir)register-service.ps1"
+              KeyPath="yes" />
+      </Component>
     </ComponentGroup>
 
-    <!-- Windows service registration via sc.exe in custom actions
-         (CreateService / DeleteService below) instead of a WiX
-         ServiceInstall element. Rationale: ServiceInstall requires
-         the .exe to live in its own dedicated Component, but WiX 5's
-         <Files> harvest catch-all pattern claims the .exe along with
-         everything else — splitting it out hits dup-component
-         errors. The sc.exe path is operationally equivalent (auto-
-         start service registered against [INSTALLFOLDER]EgyptTax.Web.exe
-         under NT AUTHORITY\NetworkService).
+    <!-- Windows service registration via PowerShell wrapper
+         (register-service.ps1) instead of separate sc.exe-create
+         + sc.exe-start CAs. The wrapper handles the three
+         pre-existing-service states the simple sc.exe form trips on:
+           1. Service exists + running          → stop + reconfigure
+           2. Service exists + marked-for-delete → wait up to 30s
+                                                    for kernel cleanup
+           3. Service doesn't exist             → straight create
+         Without the wrapper, error 1072
+         "ERROR_SERVICE_MARKED_FOR_DELETE" fires when the operator
+         re-runs the MSI after a previous failed install (the
+         marked-for-delete state can persist for minutes if any
+         process holds an open handle).
 
          Operators using SQL Windows-auth against a remote DB should
          re-issue the service registration with a dedicated domain
          account post-install via:
            sc.exe config EgyptTax obj= "DOMAIN\acct" password= "..." -->
-    <CustomAction Id="CreateService"
+    <CustomAction Id="RegisterService"
                   Directory="INSTALLFOLDER"
-                  ExeCommand='sc.exe create EgyptTax binPath= "[INSTALLFOLDER]EgyptTax.Web.exe" start= auto DisplayName= "EgyptTax — Tax compliance service" obj= "NT AUTHORITY\NetworkService"'
+                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File [INSTALLFOLDER]register-service.ps1'
                   Execute="deferred"
-                  Impersonate="no"
-                  Return="check" />
-    <CustomAction Id="StartService"
-                  Directory="INSTALLFOLDER"
-                  ExeCommand='sc.exe start EgyptTax'
-                  Execute="deferred"
-                  Impersonate="no"
+                  Impersonate="yes"
                   Return="check" />
     <CustomAction Id="StopService"
                   Directory="INSTALLFOLDER"
@@ -233,25 +237,41 @@
     <!-- Custom action: invoke the EgyptTax.Web seed CLI after
          install to apply EF migrations + create the first
          Administrator. The action's exit code is checked; non-zero
-         rolls back the install. -->
+         rolls back the install.
+
+         Impersonate="yes": run as the installing user (already
+         elevated via UAC), NOT LocalSystem. Reason: most SQL
+         Server installs grant the interactive admin user a
+         sysadmin login, but NT AUTHORITY\SYSTEM may not have one
+         (especially on Express installs configured for
+         Windows-auth-with-specific-users). Running under the
+         installing user's context lets Trusted_Connection
+         authenticate against SQL the same way the operator's
+         own sqlcmd / SSMS sessions do. -->
     <CustomAction Id="ApplyMigrationsAndSeed"
                   Directory="INSTALLFOLDER"
                   ExeCommand="[INSTALLFOLDER]EgyptTax.Web.exe seed --apply-migrations"
                   Execute="deferred"
-                  Impersonate="no"
+                  Impersonate="yes"
                   Return="check" />
 
-    <!-- T257 — health-readiness probe gate. After the service starts,
-         the installer polls /api/v1/health/ready up to 10 times with
-         a 1s gap. Non-Healthy exit fails the install (rollback) so
-         the operator's "install complete" screen NEVER lies — it
-         only fires when the service is genuinely serving requests. -->
+    <!-- T257 — health-readiness probe. Informational, NOT install-
+         blocking: probes /api/v1/health/ready up to 10 times with
+         a 1s gap. Real-world install testing showed the probe is
+         too aggressive — many envs need Kestrel TLS cert
+         configured AFTER first install (operator-supplied cert),
+         so the probe times out even though the service is
+         healthy. Return="ignore" lets the install complete; the
+         operator verifies health post-install via Get-Service
+         EgyptTax + a browser check.
+         Impersonate="yes" so the script runs in the operator's
+         elevated context (TLS callback registration etc.). -->
     <CustomAction Id="VerifyHealthReady"
                   Directory="INSTALLFOLDER"
                   ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File [INSTALLFOLDER]verify-health.ps1"
                   Execute="deferred"
-                  Impersonate="no"
-                  Return="check" />
+                  Impersonate="yes"
+                  Return="ignore" />
 
     <!-- Sequence the custom actions:
          Install path (NOT REMOVE):
@@ -276,14 +296,11 @@
       <Custom Action="ApplyMigrationsAndSeed"
               After="ApplyConfig"
               Condition="NOT REMOVE" />
-      <Custom Action="CreateService"
+      <Custom Action="RegisterService"
               After="ApplyMigrationsAndSeed"
               Condition="NOT REMOVE" />
-      <Custom Action="StartService"
-              After="CreateService"
-              Condition="NOT REMOVE" />
       <Custom Action="VerifyHealthReady"
-              After="StartService"
+              After="RegisterService"
               Condition="NOT REMOVE" />
 
       <Custom Action="StopService"

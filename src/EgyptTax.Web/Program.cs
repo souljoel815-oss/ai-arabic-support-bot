@@ -39,6 +39,15 @@ if (VerifyAudit.IsVerifyAuditInvocation(args))
 
 var builder = WebApplication.CreateBuilder(args);
 
+// T247-fix — Windows Service lifecycle integration. Auto-detects
+// whether we're running as a Windows Service and, if so, wires
+// the host into SCM so it reports Started / Stopped / Stopping
+// transitions correctly. When launched interactively (e.g.
+// `dotnet run` during dev) this is a no-op. Without this, sc.exe
+// start fails with error 1053 because ASP.NET Core's default
+// host doesn't speak the Windows Service control protocol.
+builder.Host.UseWindowsService(opts => opts.ServiceName = "EgyptTax");
+
 // T256 / R-20 — Serilog host logger. Console + rolling file sinks for
 // the MVP; production deployments can layer on Serilog.Sinks.MSSqlServer
 // via appsettings if they want a queryable ops log on the same SQL

@@ -24,6 +24,12 @@
     <PackageReference Include="Serilog.Sinks.File" />
     <PackageReference Include="Swashbuckle.AspNetCore" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Cookies" />
+    <!-- T247-fix: lifecycle integration with Windows SCM so the
+         exe reports Started/Stopped to the Service Control Manager
+         when launched as a Windows Service. Without this, sc.exe
+         start times out with error 1053 because ASP.NET Core
+         doesn't talk to SCM by default. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
