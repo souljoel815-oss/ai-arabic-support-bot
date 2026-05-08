@@ -1,0 +1,70 @@
+name: Egyptian terminology parity check
+
+# T251 / R-19 — focused gate on the AR/EN terminology dictionaries.
+# The full CI (.github/workflows/ci.yml) already runs the same
+# tests as part of the unit-test suite; THIS workflow scopes its
+# trigger to terminology-only changes so a localization-only PR
+# gets fast feedback (~30 s vs the full ~10 min CI run) and surfaces
+# a standalone "required" gate that branch protection can pin
+# without dragging in build + integration latency.
+#
+# The underlying assertion is TerminologyKeyParityTests at
+# tests/EgyptTax.UnitTests/SharedKernel/Localization/. Three GREEN
+# tests pin: bilingual key parity (the symmetric-difference list is
+# in the failure message so a drift-by-one points at the exact
+# missing term); non-empty sanity (catches a regression where empty
+# JSON would pass parity ∅==∅); required-core-keys floor (catches
+# accidental deletion in addition to drift).
+
+on:
+  push:
+    branches:
+      - "008-egypt-tax-accounting"
+      - "main"
+    paths:
+      - "src/EgyptTax.SharedKernel/Localization/terminology.*.json"
+      - "tests/EgyptTax.UnitTests/SharedKernel/Localization/**"
+      - ".github/workflows/terminology-check.yml"
+  pull_request:
+    paths:
+      - "src/EgyptTax.SharedKernel/Localization/terminology.*.json"
+      - "tests/EgyptTax.UnitTests/SharedKernel/Localization/**"
+      - ".github/workflows/terminology-check.yml"
+
+jobs:
+  terminology-parity:
+    name: AR / EN terminology key parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore (SharedKernel + UnitTests only)
+        run: |
+          dotnet restore src/EgyptTax.SharedKernel/EgyptTax.SharedKernel.csproj
+          dotnet restore tests/EgyptTax.UnitTests/EgyptTax.UnitTests.csproj
+
+      - name: Build UnitTests (Release, no dep graph)
+        run: dotnet build tests/EgyptTax.UnitTests/EgyptTax.UnitTests.csproj -c Release --no-restore
+
+      - name: Run terminology parity tests
+        run: |
+          dotnet test tests/EgyptTax.UnitTests/EgyptTax.UnitTests.csproj \
+            -c Release --no-build \
+            --filter "FullyQualifiedName~TerminologyKeyParity" \
+            --logger "console;verbosity=normal" \
+            --logger "trx;LogFileName=terminology.trx"
+
+      - name: Upload TRX (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terminology-trx
+          path: "**/terminology.trx"
