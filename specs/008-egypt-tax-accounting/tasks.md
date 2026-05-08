@@ -409,8 +409,8 @@ Per [plan.md](plan.md) §"Project Structure":
 
 ### Tests for User Story 5
 
-- [ ] T173 [P] [US5] Integration test: VAT rate change with effective-from date applied per document date per FR-022 at `tests/EgyptTax.IntegrationTests/Configuration/VatEffectiveDatedRateTests.cs` — MUST FAIL FIRST
-- [ ] T174 [P] [US5] Integration test: deductible expense category change does not affect pre-existing posted expenses (US5 scenario 1) at `tests/EgyptTax.IntegrationTests/Configuration/CategoryRetroactivityTests.cs` — MUST FAIL FIRST
+- [X] T173 [P] [US5] `VatEffectiveDatedRateTests` shipped at `tests/EgyptTax.IntegrationTests/Configuration/VatEffectiveDatedRateTests.cs` (2 GREEN). Pins the FR-019 / FR-022 supersession model: two `Standard-T173` rows (14% Jan-Jun 2026, 15% Jul 2026 onward) — June lookup picks 14%, July lookup picks 15%, pre-2026 lookup returns null (no row effective). `ListByCodeAsync` returns rows ordered by EffectiveFromDate ascending regardless of insert order — used by the T175 settings page to surface the supersession history. Test depends on a new `IVatRateLookup` + `SqlVatRateLookup` shipped in `src/EgyptTax.{Application,Infrastructure}/Configuration/` mirroring the `IWhtComputeService` pattern.
+- [X] T174 [P] [US5] `CategoryRetroactivityTests` shipped at `tests/EgyptTax.IntegrationTests/Configuration/CategoryRetroactivityTests.cs` (2 GREEN). Pins US5 scenario 1: (a) `UpdateDefaults(deductible:false, accountId:new)` on a `DeductibleExpenseCategory` does NOT mutate pre-existing posted `Expense` rows — DeductibleFlag + Amount + State stay frozen at their post-time values (the FK back-pointer stays, only the parent row's data changed). (b) `Deactivate()` on the category doesn't break readability of posted expenses referencing it — Amount + State unchanged. The retroactivity safety lives in the Expense aggregate's snapshot semantics; these tests verify it end-to-end through EF round-trip.
 
 ### Implementation
 

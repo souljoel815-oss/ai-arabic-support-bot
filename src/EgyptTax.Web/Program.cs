@@ -99,6 +99,12 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Wht.MarkForm41FiledHandler>()
 builder.Services.AddScoped<EgyptTax.Application.Wht.IWhtLifecycleDashboardQuery,
     EgyptTax.Infrastructure.Wht.SqlWhtLifecycleDashboardQuery>();
 
+// US5 / FR-019 / FR-022 — date-driven VAT-rate lookup for the
+// settings page's overlap validation + future invoice-line
+// rate-pickers.
+builder.Services.AddScoped<EgyptTax.Application.Configuration.IVatRateLookup,
+    EgyptTax.Infrastructure.Configuration.SqlVatRateLookup>();
+
 // Differentiator 1 (Tax Risk Score) — rules registered as singletons
 // because they are stateless; the scorer fans out across every
 // registered rule. Adding a new rule = adding one AddSingleton line.
