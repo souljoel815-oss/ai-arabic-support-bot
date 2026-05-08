@@ -39,4 +39,18 @@ public static class ChartOfAccountCodes
     /// emit's job is just to keep the books balanced from minute
     /// one.</summary>
     public const string GenericExpense = "5200";
+
+    /// <summary>T186 / FR-017 / US6 — depreciation-expense account
+    /// debited by the monthly depreciation Hangfire job
+    /// (RunMonthlyDepreciation). Distinct from GenericExpense so the
+    /// trial balance + journal-listing surface depreciation
+    /// separately from operator-entered expenses.</summary>
+    public const string DepreciationExpense = "5100";
+
+    /// <summary>FR-017 / US6 — accumulated-depreciation contra-asset
+    /// account credited by the monthly depreciation job. Liability-
+    /// style sign convention even though it lives in the asset block;
+    /// the GL nets it against the gross fixed-asset balance to
+    /// produce the FR-018 net book value visible on reports.</summary>
+    public const string AccumulatedDepreciation = "1290";
 }

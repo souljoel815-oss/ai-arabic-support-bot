@@ -144,6 +144,11 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Journals.CreateReversalJourna
 builder.Services.AddScoped<EgyptTax.Application.Journals.IJournalLedgerQuery,
     EgyptTax.Infrastructure.Journals.SqlJournalLedgerQuery>();
 
+// US6 / FR-016 mirror / T182 — fixed-asset put-in-service handler.
+// Refuses Draft → InService transition without at least one
+// supporting attachment.
+builder.Services.AddScoped<EgyptTax.Infrastructure.FixedAssets.PutFixedAssetInServiceHandler>();
+
 // US9 / FR-048 — period-scoped tax-inspection bundle builder.
 builder.Services.AddScoped<EgyptTax.Application.Inspection.IInspectionBundleBuilder,
     EgyptTax.Infrastructure.Inspection.InspectionBundleBuilder>();
