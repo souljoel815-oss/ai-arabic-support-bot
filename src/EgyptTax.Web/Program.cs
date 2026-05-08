@@ -64,6 +64,13 @@ builder.Services.AddScoped<EgyptTax.Application.Accounting.IPurchaseInvoiceJourn
     EgyptTax.Infrastructure.Accounting.PurchaseInvoiceJournalEmitter>();
 builder.Services.AddScoped<EgyptTax.Application.Accounting.IExpenseJournalEmitter,
     EgyptTax.Infrastructure.Accounting.ExpenseJournalEmitter>();
+builder.Services.AddScoped<EgyptTax.Application.Accounting.ISupplierPaymentVoucherJournalEmitter,
+    EgyptTax.Infrastructure.Accounting.SupplierPaymentVoucherJournalEmitter>();
+builder.Services.AddScoped<EgyptTax.Application.Accounting.ICustomerReceiptVoucherJournalEmitter,
+    EgyptTax.Infrastructure.Accounting.CustomerReceiptVoucherJournalEmitter>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Payments.AllocatePaymentHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Payments.PostSupplierPaymentVoucherHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Payments.PostCustomerReceiptVoucherHandler>();
 
 // Differentiator 1 (Tax Risk Score) — rules registered as singletons
 // because they are stateless; the scorer fans out across every
