@@ -1,0 +1,111 @@
+@page "/journals"
+@using EgyptTax.Application.Journals
+@using Microsoft.AspNetCore.Authorization
+@inject IJournalLedgerQuery Query
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Journal ledger (FR-024 / FR-025) / دفتر اليومية</h1>
+
+<form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
+    <label>
+        <span>Period start</span>
+        <input type="date" @bind="_periodStart" />
+    </label>
+    <label>
+        <span>Period end</span>
+        <input type="date" @bind="_periodEnd" />
+    </label>
+    <button type="submit" class="btn-primary" disabled="@_loading">
+        @(_loading ? "Loading…" : "Show entries")
+    </button>
+</form>
+
+@if (_rows is null)
+{
+    @if (_loading)
+    {
+        <p>Loading…</p>
+    }
+    else
+    {
+        <p><em>Pick a period above and click "Show entries".</em></p>
+    }
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>Period:</strong> @_periodStart.ToString("yyyy-MM-dd") to @_periodEnd.ToString("yyyy-MM-dd")</div>
+    <div><strong>Entries:</strong> @_rows.Count</div>
+    <div><strong>Auto-emitted:</strong> @_rows.Count(r => r.Kind == JournalEntryKind.AutoEmitted)</div>
+    <div><strong>Manual:</strong> @_rows.Count(r => r.Kind == JournalEntryKind.ManualAdjusting)</div>
+    <div><strong>Reversals:</strong> @_rows.Count(r => r.Kind == JournalEntryKind.Reversal)</div>
+</section>
+
+@if (_rows.Count == 0)
+{
+    <p><em>No journal activity in this period.</em></p>
+    return;
+}
+
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th>Posted (UTC)</th>
+            <th>Kind</th>
+            <th>Source / Narration</th>
+            <th class="num">Lines</th>
+            <th class="num">Total debits (EGP)</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var row in _rows)
+        {
+            <tr>
+                <td>@row.PostedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td><span class="kind-badge kind-@row.Kind.ToString().ToLowerInvariant()">@KindLabel(row.Kind)</span></td>
+                <td>@row.SourceLabel</td>
+                <td class="num">@row.LineCount</td>
+                <td class="num">@row.TotalDebits.ToString("F2")</td>
+                <td>
+                    <a href="@DetailUrl(row)" class="btn-secondary">Open</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private DateTime _periodStart = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    private DateTime _periodEnd = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month,
+        DateTime.DaysInMonth(DateTime.UtcNow.Year, DateTime.UtcNow.Month));
+    private bool _loading;
+    private IReadOnlyList<JournalListRow>? _rows;
+
+    private async Task OnRefresh()
+    {
+        _loading = true;
+        try
+        {
+            _rows = await Query.ListAsync(
+                DateOnly.FromDateTime(_periodStart),
+                DateOnly.FromDateTime(_periodEnd));
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string KindLabel(JournalEntryKind kind) => kind switch
+    {
+        JournalEntryKind.AutoEmitted => "Auto",
+        JournalEntryKind.ManualAdjusting => "Manual",
+        JournalEntryKind.Reversal => "Reversal",
+        _ => kind.ToString(),
+    };
+
+    private static string DetailUrl(JournalListRow row) =>
+        $"/journals/{row.Id:D}?kind={row.Kind}";
+}

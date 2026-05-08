@@ -1,0 +1,154 @@
+@page "/journals/{Id:guid}"
+@using EgyptTax.Application.Journals
+@using EgyptTax.Domain.Workflow
+@using Microsoft.AspNetCore.Authorization
+@inject IJournalLedgerQuery Query
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<a href="/journals" class="btn-secondary">← Back to ledger</a>
+
+<h1>Journal entry / قيد يومية</h1>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+    return;
+}
+@if (_detail is null)
+{
+    <p class="flash-error">Journal entry @Id not found.</p>
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>Id:</strong> <code>@_detail.Id</code></div>
+    <div><strong>Kind:</strong> @KindLabel(_detail.Kind)</div>
+    <div><strong>Posted (UTC):</strong> @_detail.PostedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</div>
+    <div><strong>Narration:</strong> @_detail.Narration</div>
+    <div><strong>Total debits:</strong> <span class="num">@_detail.TotalDebits.ToString("F2") EGP</span></div>
+    <div><strong>Total credits:</strong> <span class="num">@_detail.TotalCredits.ToString("F2") EGP</span></div>
+    @if (_detail.TotalDebits == _detail.TotalCredits)
+    {
+        <div class="grand"><strong>Balanced ✓</strong></div>
+    }
+    else
+    {
+        <div class="flash-error"><strong>NOT BALANCED ✗</strong> — investigate immediately.</div>
+    }
+</section>
+
+@if (DrillBackUrl is { } drillUrl)
+{
+    <p>
+        <strong>FR-025 drill-back:</strong>
+        <a href="@drillUrl" class="btn-primary">
+            Open @DrillBackLabel
+        </a>
+    </p>
+}
+
+<section>
+    <h2>Lines (@_detail.Lines.Count)</h2>
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>Account code</th>
+                <th>Description</th>
+                <th class="num">Debit</th>
+                <th class="num">Credit</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var l in _detail.Lines)
+            {
+                <tr>
+                    <td><code>@l.AccountCode</code></td>
+                    <td>@l.Description</td>
+                    <td class="num">@(l.Debit > 0m ? l.Debit.ToString("F2") : "")</td>
+                    <td class="num">@(l.Credit > 0m ? l.Credit.ToString("F2") : "")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</section>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery] public string? Kind { get; set; }
+
+    private bool _loading;
+    private JournalDetailDto? _detail;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        try
+        {
+            // Default to AutoEmitted when the query string doesn't
+            // disambiguate (e.g., direct deep-link from an older bookmark).
+            // The ledger list always emits ?kind=… so the round-trip is
+            // unambiguous from the UI itself.
+            var kind = Enum.TryParse<JournalEntryKind>(Kind, ignoreCase: true, out var parsed)
+                ? parsed
+                : JournalEntryKind.AutoEmitted;
+            _detail = await Query.GetAsync(Id, kind);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string? DrillBackUrl
+    {
+        get
+        {
+            if (_detail is null) return null;
+
+            // FR-025 — drill-back to the originating document.
+            if (_detail.Kind == JournalEntryKind.Reversal && _detail.ReversesJournalVoucherId is { } origVoucherId)
+            {
+                // Reversal vouchers point at the original JournalVoucher (a manual one — no AutoEmitted JV).
+                return $"/journals/{origVoucherId:D}?kind={JournalEntryKind.ManualAdjusting}";
+            }
+
+            return _detail.SourceDocumentType switch
+            {
+                DocumentType.SalesInvoice or DocumentType.CreditNote
+                    => $"/invoices/{_detail.SourceDocumentId:D}",
+                DocumentType.PurchaseInvoice
+                    => $"/purchases/{_detail.SourceDocumentId:D}",
+                DocumentType.Expense
+                    => $"/expenses/{_detail.SourceDocumentId:D}",
+                _ => null,
+            };
+        }
+    }
+
+    private string DrillBackLabel
+    {
+        get
+        {
+            if (_detail is null) return "";
+            if (_detail.Kind == JournalEntryKind.Reversal) return "the original voucher";
+            return _detail.SourceDocumentType switch
+            {
+                DocumentType.SalesInvoice or DocumentType.CreditNote
+                    => $"sales doc {_detail.SourceDocumentNumber}",
+                DocumentType.PurchaseInvoice
+                    => $"purchase doc {_detail.SourceDocumentNumber}",
+                DocumentType.Expense
+                    => $"expense doc {_detail.SourceDocumentNumber}",
+                _ => "the source document",
+            };
+        }
+    }
+
+    private static string KindLabel(JournalEntryKind kind) => kind switch
+    {
+        JournalEntryKind.AutoEmitted => "Auto-emitted (post-time)",
+        JournalEntryKind.ManualAdjusting => "Manual adjusting voucher",
+        JournalEntryKind.Reversal => "Reversal voucher",
+        _ => kind.ToString(),
+    };
+}

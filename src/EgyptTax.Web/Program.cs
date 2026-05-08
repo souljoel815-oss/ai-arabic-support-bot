@@ -139,6 +139,11 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Journals.CreateManualAdjustin
 // adds DB-side checks for already-reversed + reversal-of-reversal.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Journals.CreateReversalJournalHandler>();
 
+// US4 / FR-024 / FR-025 / T171 — unified journal-ledger query
+// behind /journals + /journals/{id}.
+builder.Services.AddScoped<EgyptTax.Application.Journals.IJournalLedgerQuery,
+    EgyptTax.Infrastructure.Journals.SqlJournalLedgerQuery>();
+
 // US9 / FR-048 — period-scoped tax-inspection bundle builder.
 builder.Services.AddScoped<EgyptTax.Application.Inspection.IInspectionBundleBuilder,
     EgyptTax.Infrastructure.Inspection.InspectionBundleBuilder>();
