@@ -86,6 +86,9 @@ builder.Services.AddScoped<EgyptTax.Application.Wht.IWhtComputeService,
 builder.Services.AddScoped<EgyptTax.Application.Wht.IWhtCertificatePayloadBuilder,
     EgyptTax.Infrastructure.Wht.SqlWhtCertificatePayloadBuilder>();
 
+// US7 / T209 / FR-046 — Form 41 quarterly WHT filing generator.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Wht.GenerateForm41Handler>();
+
 // Differentiator 1 (Tax Risk Score) — rules registered as singletons
 // because they are stateless; the scorer fans out across every
 // registered rule. Adding a new rule = adding one AddSingleton line.
