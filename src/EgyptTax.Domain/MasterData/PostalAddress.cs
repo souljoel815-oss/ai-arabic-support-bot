@@ -23,7 +23,8 @@ public readonly record struct PostalAddress(
     string RegionCity,
     string Street,
     string BuildingNumber,
-    string? PostalCode)
+    string? PostalCode
+)
 {
     /// <summary>
     /// Convenience accessor for callers that already work with
@@ -37,7 +38,8 @@ public readonly record struct PostalAddress(
         string regionCity,
         string street,
         string buildingNumber,
-        string? postalCode = null)
+        string? postalCode = null
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(governorate);
         ArgumentException.ThrowIfNullOrWhiteSpace(regionCity);
@@ -52,6 +54,7 @@ public readonly record struct PostalAddress(
             RegionCity: regionCity,
             Street: street,
             BuildingNumber: buildingNumber,
-            PostalCode: postalCode);
+            PostalCode: postalCode
+        );
     }
 }

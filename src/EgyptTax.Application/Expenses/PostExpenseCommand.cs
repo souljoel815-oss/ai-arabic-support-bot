@@ -5,6 +5,4 @@ namespace EgyptTax.Application.Expenses;
 /// state. Mirrors the PurchaseInvoice command shape so the MediatR
 /// pipeline behaviours apply uniformly.
 /// </summary>
-public sealed record PostExpenseCommand(
-    Guid ExpenseId,
-    Guid PostedByUserId);
+public sealed record PostExpenseCommand(Guid ExpenseId, Guid PostedByUserId);

@@ -22,8 +22,12 @@ public class Form41SchemaTests
         var json = Form41JsonSerializer.Serialize(payload);
 
         var outcome = ValidateAgainstSchema(json);
-        outcome.IsValid.Should().BeTrue(
-            because: "Form 41 payload MUST be schema-valid. Errors: " + string.Join("; ", outcome.Errors));
+        outcome
+            .IsValid.Should()
+            .BeTrue(
+                because: "Form 41 payload MUST be schema-valid. Errors: "
+                    + string.Join("; ", outcome.Errors)
+            );
 
         // Spot-check the regulator's must-have fields.
         var node = JsonNode.Parse(json)!.AsObject();
@@ -48,17 +52,23 @@ public class Form41SchemaTests
                 LineCount: 0,
                 TotalGrossPayment: 0m,
                 TotalAmountWithheld: 0m,
-                ByCategory: Array.Empty<Form41ByCategoryRow>()),
+                ByCategory: Array.Empty<Form41ByCategoryRow>()
+            ),
             Reconciliation = new Form41Reconciliation(
                 WhtPayableAccountBalanceAtPeriodEnd: 0m,
                 MatchesTotalAmountWithheld: true,
-                DiscrepancyAmount: null),
+                DiscrepancyAmount: null
+            ),
         };
         var json = Form41JsonSerializer.Serialize(payload);
 
         var outcome = ValidateAgainstSchema(json);
-        outcome.IsValid.Should().BeTrue(
-            because: "empty-quarter payload MUST still validate (lines: minItems isn't enforced). Errors: " + string.Join("; ", outcome.Errors));
+        outcome
+            .IsValid.Should()
+            .BeTrue(
+                because: "empty-quarter payload MUST still validate (lines: minItems isn't enforced). Errors: "
+                    + string.Join("; ", outcome.Errors)
+            );
     }
 
     [Fact]
@@ -71,13 +81,18 @@ public class Form41SchemaTests
             Reconciliation = new Form41Reconciliation(
                 WhtPayableAccountBalanceAtPeriodEnd: 800m,
                 MatchesTotalAmountWithheld: false,
-                DiscrepancyAmount: 50m),
+                DiscrepancyAmount: 50m
+            ),
         };
         var json = Form41JsonSerializer.Serialize(payload);
 
         var outcome = ValidateAgainstSchema(json);
-        outcome.IsValid.Should().BeTrue(
-            because: "discrepancyAmount=50 + matchesTotalAmountWithheld=false MUST validate (the cleanliness check is FR-046 application logic, not a schema constraint). Errors: " + string.Join("; ", outcome.Errors));
+        outcome
+            .IsValid.Should()
+            .BeTrue(
+                because: "discrepancyAmount=50 + matchesTotalAmountWithheld=false MUST validate (the cleanliness check is FR-046 application logic, not a schema constraint). Errors: "
+                    + string.Join("; ", outcome.Errors)
+            );
 
         var node = JsonNode.Parse(json)!.AsObject();
         node["reconciliation"]!["matchesTotalAmountWithheld"]!.GetValue<bool>().Should().BeFalse();
@@ -88,15 +103,13 @@ public class Form41SchemaTests
     public void Payload_WithMalformedCompanyTin_FailsSchemaValidation()
     {
         var payload = SamplePayload();
-        var bad = payload with
-        {
-            FilingHeader = payload.FilingHeader with { CompanyTin = "BAD" },
-        };
+        var bad = payload with { FilingHeader = payload.FilingHeader with { CompanyTin = "BAD" } };
         var json = Form41JsonSerializer.Serialize(bad);
 
         var outcome = ValidateAgainstSchema(json);
-        outcome.IsValid.Should().BeFalse(
-            because: "schema TIN pattern ^[0-9]{9}$ MUST reject non-9-digit values");
+        outcome
+            .IsValid.Should()
+            .BeFalse(because: "schema TIN pattern ^[0-9]{9}$ MUST reject non-9-digit values");
     }
 
     private static Form41Payload SamplePayload() =>
@@ -109,7 +122,8 @@ public class Form41SchemaTests
                 FillingPeriodStart: new DateOnly(2026, 4, 1),
                 FillingPeriodEnd: new DateOnly(2026, 6, 30),
                 PreparedAt: new DateTime(2026, 7, 5, 10, 0, 0, DateTimeKind.Utc),
-                PreparedByUserId: Guid.NewGuid()),
+                PreparedByUserId: Guid.NewGuid()
+            ),
             Lines: new[]
             {
                 new Form41Line(
@@ -122,7 +136,8 @@ public class Form41SchemaTests
                     SupplierPaymentVoucherNumber: "SPV-2026-000001",
                     SupplierPaymentVoucherDate: new DateOnly(2026, 5, 10),
                     SourceInvoiceNumber: "PI-2026-000123",
-                    OutboundCertificateNumber: "WHT-SPV-2026-000001"),
+                    OutboundCertificateNumber: "WHT-SPV-2026-000001"
+                ),
                 new Form41Line(
                     SupplierTin: "987654322",
                     SupplierName: new BilingualText("مورد آخر", "Beta Suppliers LLC"),
@@ -133,7 +148,8 @@ public class Form41SchemaTests
                     SupplierPaymentVoucherNumber: "SPV-2026-000002",
                     SupplierPaymentVoucherDate: new DateOnly(2026, 6, 20),
                     SourceInvoiceNumber: "PI-2026-000200",
-                    OutboundCertificateNumber: "WHT-SPV-2026-000002"),
+                    OutboundCertificateNumber: "WHT-SPV-2026-000002"
+                ),
             },
             Totals: new Form41Totals(
                 LineCount: 2,
@@ -143,30 +159,37 @@ public class Form41SchemaTests
                 {
                     new Form41ByCategoryRow("Professional", 1, 250m),
                     new Form41ByCategoryRow("Services", 1, 500m),
-                }),
+                }
+            ),
             Reconciliation: new Form41Reconciliation(
                 WhtPayableAccountBalanceAtPeriodEnd: 750m,
                 MatchesTotalAmountWithheld: true,
-                DiscrepancyAmount: null),
+                DiscrepancyAmount: null
+            ),
             AuditChainExtractRef: new Form41AuditChainExtractRef(
                 StartIndex: 100,
                 EndIndex: 250,
-                ExtractSha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+                ExtractSha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            )
+        );
 
     private static SchemaValidationOutcome ValidateAgainstSchema(string json)
     {
         var node = JsonNode.Parse(json);
-        var results = Schema.Evaluate(node, new EvaluationOptions
-        {
-            OutputFormat = OutputFormat.List,
-            EvaluateAs = SpecVersion.Draft202012,
-        });
+        var results = Schema.Evaluate(
+            node,
+            new EvaluationOptions
+            {
+                OutputFormat = OutputFormat.List,
+                EvaluateAs = SpecVersion.Draft202012,
+            }
+        );
         if (results.IsValid)
         {
             return new SchemaValidationOutcome(true, Array.Empty<string>());
         }
-        var errors = results.Details
-            .Where(d => d.HasErrors)
+        var errors = results
+            .Details.Where(d => d.HasErrors)
             .SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation}: {e.Key}={e.Value}"))
             .ToArray();
         return new SchemaValidationOutcome(false, errors);
@@ -180,7 +203,8 @@ public class Form41SchemaTests
         if (!File.Exists(schemaPath))
         {
             throw new FileNotFoundException(
-                $"Contract schema not found at {schemaPath}. The .csproj must copy it via the contracts/**/*.json glob.");
+                $"Contract schema not found at {schemaPath}. The .csproj must copy it via the contracts/**/*.json glob."
+            );
         }
         return JsonSchema.FromFile(schemaPath);
     }

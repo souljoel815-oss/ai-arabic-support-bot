@@ -6,18 +6,13 @@ namespace EgyptTax.Application.Wht;
 /// quarter, computes the WHT-payable account balance from the
 /// general ledger, persists a Form41Filing row (status=Unfiled),
 /// and returns the payload for downstream serialization.</summary>
-public sealed record GenerateForm41Command(
-    int FiscalYear,
-    int Quarter,
-    Guid PreparedByUserId);
+public sealed record GenerateForm41Command(int FiscalYear, int Quarter, Guid PreparedByUserId);
 
 /// <summary>Combined return of GenerateForm41Handler — both the
 /// rich payload (for PDF rendering + JSON serialization) and the
 /// persisted Form41Filing row's id (so downstream callers can
 /// look it up for MarkFiled + the lifecycle dashboard).</summary>
-public sealed record GenerateForm41Result(
-    Guid Form41FilingId,
-    Form41Payload Payload);
+public sealed record GenerateForm41Result(Guid Form41FilingId, Form41Payload Payload);
 
 /// <summary>FR-046 / T210 / US7 scenario 3 — transition a
 /// generated Form 41 from Unfiled → Filed. Two guards fire:
@@ -30,6 +25,4 @@ public sealed record GenerateForm41Result(
 /// On success, every WhtCertificate in the filing's quarter is
 /// stamped with <c>IncludedInForm41FilingId</c> so it can never
 /// appear in another filing (T200 immutability).</summary>
-public sealed record MarkForm41FiledCommand(
-    Guid Form41FilingId,
-    Guid FiledByUserId);
+public sealed record MarkForm41FiledCommand(Guid Form41FilingId, Guid FiledByUserId);

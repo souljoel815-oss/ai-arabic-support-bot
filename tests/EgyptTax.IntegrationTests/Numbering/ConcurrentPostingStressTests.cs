@@ -30,16 +30,26 @@ public class ConcurrentPostingStressTests(SqlServerFixture fixture)
         const int Count = 500;
         const int FiscalYear = 2026;
 
-        var allocateTasks = Enumerable.Range(0, Count).Select(_ => Task.Run(async () =>
-        {
-            var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(connectionString).Options;
-            await using var localDb = new AppDbContext(options);
-            await using var tx = await localDb.Database.BeginTransactionAsync();
-            var allocator = new SqlSequentialNumberAllocator(localDb);
-            var number = await allocator.AllocateAsync(DocumentType.SalesInvoice, FiscalYear);
-            await tx.CommitAsync();
-            return number;
-        })).ToArray();
+        var allocateTasks = Enumerable
+            .Range(0, Count)
+            .Select(_ =>
+                Task.Run(async () =>
+                {
+                    var options = new DbContextOptionsBuilder<AppDbContext>()
+                        .UseSqlServer(connectionString)
+                        .Options;
+                    await using var localDb = new AppDbContext(options);
+                    await using var tx = await localDb.Database.BeginTransactionAsync();
+                    var allocator = new SqlSequentialNumberAllocator(localDb);
+                    var number = await allocator.AllocateAsync(
+                        DocumentType.SalesInvoice,
+                        FiscalYear
+                    );
+                    await tx.CommitAsync();
+                    return number;
+                })
+            )
+            .ToArray();
 
         var assigned = await Task.WhenAll(allocateTasks);
 
@@ -67,16 +77,23 @@ public class ConcurrentPostingStressTests(SqlServerFixture fixture)
 
         async Task<string[]> AllocateAsync(int year, int count)
         {
-            var tasks = Enumerable.Range(0, count).Select(_ => Task.Run(async () =>
-            {
-                var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(connectionString).Options;
-                await using var localDb = new AppDbContext(options);
-                await using var tx = await localDb.Database.BeginTransactionAsync();
-                var allocator = new SqlSequentialNumberAllocator(localDb);
-                var number = await allocator.AllocateAsync(DocumentType.SalesInvoice, year);
-                await tx.CommitAsync();
-                return number;
-            })).ToArray();
+            var tasks = Enumerable
+                .Range(0, count)
+                .Select(_ =>
+                    Task.Run(async () =>
+                    {
+                        var options = new DbContextOptionsBuilder<AppDbContext>()
+                            .UseSqlServer(connectionString)
+                            .Options;
+                        await using var localDb = new AppDbContext(options);
+                        await using var tx = await localDb.Database.BeginTransactionAsync();
+                        var allocator = new SqlSequentialNumberAllocator(localDb);
+                        var number = await allocator.AllocateAsync(DocumentType.SalesInvoice, year);
+                        await tx.CommitAsync();
+                        return number;
+                    })
+                )
+                .ToArray();
             return await Task.WhenAll(tasks);
         }
 
@@ -100,9 +117,17 @@ public class ConcurrentPostingStressTests(SqlServerFixture fixture)
             .OrderBy(n => n)
             .ToArray();
 
-        year2025Suffixes.Should().Equal(Enumerable.Range(1, CountPerYear),
-            because: "2025 fiscal-year numbering must be 1..N gap-free");
-        year2026Suffixes.Should().Equal(Enumerable.Range(1, CountPerYear),
-            because: "2026 fiscal-year numbering must be 1..N gap-free, independent of 2025");
+        year2025Suffixes
+            .Should()
+            .Equal(
+                Enumerable.Range(1, CountPerYear),
+                because: "2025 fiscal-year numbering must be 1..N gap-free"
+            );
+        year2026Suffixes
+            .Should()
+            .Equal(
+                Enumerable.Range(1, CountPerYear),
+                because: "2026 fiscal-year numbering must be 1..N gap-free, independent of 2025"
+            );
     }
 }

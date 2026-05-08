@@ -9,6 +9,4 @@ namespace EgyptTax.Application.FixedAssets;
 /// installation certificate, etc.) on file. Without it the
 /// inspector has no way to validate the cost basis.
 /// </summary>
-public sealed record PutFixedAssetInServiceCommand(
-    Guid FixedAssetId,
-    Guid PutInServiceByUserId);
+public sealed record PutFixedAssetInServiceCommand(Guid FixedAssetId, Guid PutInServiceByUserId);

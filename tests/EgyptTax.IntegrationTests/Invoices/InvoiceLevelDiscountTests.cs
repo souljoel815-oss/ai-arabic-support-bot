@@ -38,25 +38,32 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
         var (customer, item, vat) = await SeedMasterDataAsync(db);
 
         var invoice = SalesInvoice.CreateDraft(
-            customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         invoice.AddLine(item.Id, 1m, MoneyEgp.From(1_000m), vat.Id, vat.RatePercent);
 
         invoice.SetInvoiceLevelDiscount(amount: null, percent: 10m);
 
-        invoice.Subtotal.Amount.Should().Be(1_000m,
-            because: "the subtotal column carries pre-discount line-subtotal sum so audit can see the gross figure");
-        invoice.InvoiceLevelDiscountAmount.Amount.Should().Be(100m,
-            because: "10% of 1000 = 100");
+        invoice
+            .Subtotal.Amount.Should()
+            .Be(
+                1_000m,
+                because: "the subtotal column carries pre-discount line-subtotal sum so audit can see the gross figure"
+            );
+        invoice.InvoiceLevelDiscountAmount.Amount.Should().Be(100m, because: "10% of 1000 = 100");
         invoice.NetBeforeVat.Amount.Should().Be(900m);
-        invoice.VatTotal.Amount.Should().Be(126m,
-            because: "VAT recomputes against the discounted subtotal: 900 × 14% = 126");
+        invoice
+            .VatTotal.Amount.Should()
+            .Be(126m, because: "VAT recomputes against the discounted subtotal: 900 × 14% = 126");
         invoice.GrandTotal.Amount.Should().Be(1_026m);
 
         var line = invoice.Lines.Single();
-        line.LineSubtotal.Amount.Should().Be(1_000m,
-            because: "line carries the pre-discount subtotal");
-        line.LineApportionedDiscount.Amount.Should().Be(100m,
-            because: "with one line, all of the invoice-level discount apportions to it");
+        line.LineSubtotal.Amount.Should()
+            .Be(1_000m, because: "line carries the pre-discount subtotal");
+        line.LineApportionedDiscount.Amount.Should()
+            .Be(100m, because: "with one line, all of the invoice-level discount apportions to it");
         line.LineNetSubtotal.Amount.Should().Be(900m);
         line.LineVat.Amount.Should().Be(126m);
         line.LineTotal.Amount.Should().Be(1_026m);
@@ -69,7 +76,10 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
         var (customer, item, vat) = await SeedMasterDataAsync(db);
 
         var invoice = SalesInvoice.CreateDraft(
-            customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         invoice.AddLine(item.Id, 1m, MoneyEgp.From(1_000m), vat.Id, vat.RatePercent);
 
         invoice.SetInvoiceLevelDiscount(amount: MoneyEgp.From(100m), percent: null);
@@ -78,8 +88,12 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
         invoice.VatTotal.Amount.Should().Be(126m);
         invoice.GrandTotal.Amount.Should().Be(1_026m);
         invoice.InvoiceLevelDiscountAmount.Amount.Should().Be(100m);
-        invoice.InvoiceLevelDiscountPercent.Should().Be(0m,
-            because: "the fixed-amount path leaves the percent flag at 0 — exactly one of {amount, percent} carries the truth");
+        invoice
+            .InvoiceLevelDiscountPercent.Should()
+            .Be(
+                0m,
+                because: "the fixed-amount path leaves the percent flag at 0 — exactly one of {amount, percent} carries the truth"
+            );
     }
 
     [Fact]
@@ -94,13 +108,18 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
             ratePercent: 0m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            recoverableInputVat: true);
+            recoverableInputVat: true
+        );
         db.Add(zeroVat);
         await db.SaveChangesAsync();
 
-        var invoice = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+        var invoice = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         invoice.AddLine(item.Id, 1m, MoneyEgp.From(600m), standardVat.Id, standardVat.RatePercent);
-        invoice.AddLine(item.Id, 1m, MoneyEgp.From(400m), zeroVat.Id,    zeroVat.RatePercent);
+        invoice.AddLine(item.Id, 1m, MoneyEgp.From(400m), zeroVat.Id, zeroVat.RatePercent);
 
         invoice.SetInvoiceLevelDiscount(amount: null, percent: 10m);
 
@@ -122,8 +141,12 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
         var zeroLine = invoice.Lines.Skip(1).First();
         zeroLine.LineApportionedDiscount.Amount.Should().Be(40m);
         zeroLine.LineNetSubtotal.Amount.Should().Be(360m);
-        zeroLine.LineVat.Amount.Should().Be(0m,
-            because: "a zero-rated line absorbs its apportioned discount but contributes no VAT");
+        zeroLine
+            .LineVat.Amount.Should()
+            .Be(
+                0m,
+                because: "a zero-rated line absorbs its apportioned discount but contributes no VAT"
+            );
     }
 
     [Fact]
@@ -136,15 +159,23 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var (customer, item, vat) = await SeedMasterDataAsync(db);
 
-        var invoice = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+        var invoice = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         invoice.AddLine(item.Id, 1m, MoneyEgp.From(333.33m), vat.Id, vat.RatePercent);
         invoice.AddLine(item.Id, 1m, MoneyEgp.From(333.33m), vat.Id, vat.RatePercent);
         invoice.AddLine(item.Id, 1m, MoneyEgp.From(333.34m), vat.Id, vat.RatePercent);
         invoice.SetInvoiceLevelDiscount(amount: null, percent: 7m);
 
         var sumOfApportioned = invoice.Lines.Sum(l => l.LineApportionedDiscount.Amount);
-        sumOfApportioned.Should().Be(invoice.InvoiceLevelDiscountAmount.Amount,
-            because: "FR-008 invariant — apportioned line discounts MUST sum exactly to the invoice-level discount; the rounding remainder lands on the last line");
+        sumOfApportioned
+            .Should()
+            .Be(
+                invoice.InvoiceLevelDiscountAmount.Amount,
+                because: "FR-008 invariant — apportioned line discounts MUST sum exactly to the invoice-level discount; the rounding remainder lands on the last line"
+            );
     }
 
     [Fact]
@@ -152,12 +183,18 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
     {
         await using var db = await _fixture.CreateContextAsync();
         var (customer, item, vat) = await SeedMasterDataAsync(db);
-        var invoice = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+        var invoice = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         invoice.AddLine(item.Id, 1m, MoneyEgp.From(100m), vat.Id, vat.RatePercent);
 
         var act = () => invoice.SetInvoiceLevelDiscount(amount: MoneyEgp.From(10m), percent: 10m);
-        act.Should().Throw<ArgumentException>(
-            because: "exactly one of {amount, percent} carries the discount; both is ambiguous");
+        act.Should()
+            .Throw<ArgumentException>(
+                because: "exactly one of {amount, percent} carries the discount; both is ambiguous"
+            );
     }
 
     [Fact]
@@ -165,7 +202,11 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
     {
         await using var db = await _fixture.CreateContextAsync();
         var (customer, item, vat) = await SeedMasterDataAsync(db);
-        var invoice = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+        var invoice = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         invoice.AddLine(item.Id, 1m, MoneyEgp.From(100m), vat.Id, vat.RatePercent);
 
         var act = () => invoice.SetInvoiceLevelDiscount(amount: null, percent: 101m);
@@ -177,12 +218,18 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
     {
         await using var db = await _fixture.CreateContextAsync();
         var (customer, item, vat) = await SeedMasterDataAsync(db);
-        var invoice = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+        var invoice = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         invoice.AddLine(item.Id, 1m, MoneyEgp.From(100m), vat.Id, vat.RatePercent);
 
         var act = () => invoice.SetInvoiceLevelDiscount(amount: MoneyEgp.From(200m), percent: null);
-        act.Should().Throw<InvalidOperationException>(
-            because: "discount amount cannot exceed the pre-discount subtotal — that would be a credit, not a discount");
+        act.Should()
+            .Throw<InvalidOperationException>(
+                because: "discount amount cannot exceed the pre-discount subtotal — that would be a credit, not a discount"
+            );
     }
 
     [Fact]
@@ -192,7 +239,11 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
         var (customer, item, vat) = await SeedMasterDataAsync(db);
         var operatorUser = await SeedOperatorUserAsync(db);
 
-        var draft = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+        var draft = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         draft.AddLine(item.Id, 2m, MoneyEgp.From(500m), vat.Id, vat.RatePercent);
         draft.SetInvoiceLevelDiscount(amount: null, percent: 10m);
         db.Add(draft);
@@ -205,7 +256,8 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
 
         var posted = await handler.HandleAsync(
             new PostSalesInvoiceCommand(draft.Id, operatorUser.Id),
-            CancellationToken.None);
+            CancellationToken.None
+        );
 
         // 2 × 500 = 1000 subtotal; 10% discount = 100; net 900; VAT 126; grand 1026.
         posted.Subtotal.Amount.Should().Be(1_000m);
@@ -230,7 +282,9 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
         reloaded.Lines.Single().LineNetSubtotal.Amount.Should().Be(900m);
     }
 
-    private static async Task<(Customer customer, Item item, VatCategory vat)> SeedMasterDataAsync(AppDbContext db)
+    private static async Task<(Customer customer, Item item, VatCategory vat)> SeedMasterDataAsync(
+        AppDbContext db
+    )
     {
         var vat = new VatCategory(
             code: "Standard",
@@ -238,7 +292,8 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
             ratePercent: 14m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            recoverableInputVat: true);
+            recoverableInputVat: true
+        );
 
         var customer = new Customer(
             code: "CUST-001",
@@ -248,16 +303,20 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
                 governorate: "Cairo",
                 regionCity: "Downtown",
                 street: "Tahrir",
-                buildingNumber: "1"),
+                buildingNumber: "1"
+            ),
             taxProfile: CustomerTaxProfile.B2BRegistered(
                 tin: EgyptianTin.Parse("987654321"),
                 vatExemption: false,
-                defaultSalesVatCategoryId: vat.Id));
+                defaultSalesVatCategoryId: vat.Id
+            )
+        );
 
         var item = new Item(
             code: "ITEM-001",
             name: new ArabicEnglishText("ساعة استشارة", "Consulting Hour"),
-            defaultVatCategoryId: vat.Id);
+            defaultVatCategoryId: vat.Id
+        );
 
         db.Add(vat);
         db.Add(customer);
@@ -273,7 +332,8 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
             displayName: new ArabicEnglishText("مشغل", "Operator"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
         db.Add(user);
         await db.SaveChangesAsync();
         return user;
@@ -288,7 +348,10 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
     {
         public List<AuditLogPayload> Captured { get; } = [];
 
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
@@ -301,7 +364,8 @@ public class InvoiceLevelDiscountTests(SqlServerFixture fixture)
                 kind: payload.Kind,
                 payloadJson: payload.PayloadJson,
                 prevHash: new byte[32],
-                thisHash: new byte[32]);
+                thisHash: new byte[32]
+            );
             return Task.FromResult(entry);
         }
     }

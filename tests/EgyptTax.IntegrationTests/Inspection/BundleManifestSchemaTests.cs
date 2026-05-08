@@ -28,7 +28,9 @@ public class BundleManifestSchemaTests(SqlServerFixture fixture) : IDisposable
 
     private readonly SqlServerFixture _fixture = fixture;
     private readonly string _tempRoot = Path.Combine(
-        Path.GetTempPath(), $"egypttax-bundle-schema-{Guid.NewGuid():N}");
+        Path.GetTempPath(),
+        $"egypttax-bundle-schema-{Guid.NewGuid():N}"
+    );
 
     [Fact]
     public async Task GeneratedManifest_Validates_AgainstContractSchema()
@@ -40,20 +42,29 @@ public class BundleManifestSchemaTests(SqlServerFixture fixture) : IDisposable
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
         db.Add(user);
         await db.SaveChangesAsync();
 
         var clock = new TestClock(new DateTime(2026, 5, 7, 11, 0, 0, DateTimeKind.Utc));
         var store = new FileSystemAttachmentStore(_tempRoot, clock);
-        var builder = new InspectionBundleBuilder(db, store, clock,
-            new EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery(db));
+        var builder = new InspectionBundleBuilder(
+            db,
+            store,
+            clock,
+            new EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery(db)
+        );
 
-        var result = await builder.BuildAsync(new InspectionBundleRequest(
-            PeriodStart: new DateOnly(2026, 5, 1),
-            PeriodEnd: new DateOnly(2026, 5, 31),
-            GeneratedByUserId: user.Id,
-            AllowDrafts: false), CancellationToken.None);
+        var result = await builder.BuildAsync(
+            new InspectionBundleRequest(
+                PeriodStart: new DateOnly(2026, 5, 1),
+                PeriodEnd: new DateOnly(2026, 5, 31),
+                GeneratedByUserId: user.Id,
+                AllowDrafts: false
+            ),
+            CancellationToken.None
+        );
 
         // Pull MANIFEST.sha256 out of the produced ZIP — that's
         // the bytes the inspector + the contract schema validate
@@ -66,16 +77,19 @@ public class BundleManifestSchemaTests(SqlServerFixture fixture) : IDisposable
         var manifestJson = await reader.ReadToEndAsync();
 
         var node = JsonNode.Parse(manifestJson);
-        var validation = Schema.Evaluate(node, new EvaluationOptions
-        {
-            OutputFormat = OutputFormat.List,
-            EvaluateAs = SpecVersion.Draft202012,
-        });
+        var validation = Schema.Evaluate(
+            node,
+            new EvaluationOptions
+            {
+                OutputFormat = OutputFormat.List,
+                EvaluateAs = SpecVersion.Draft202012,
+            }
+        );
 
         if (!validation.IsValid)
         {
-            var errors = validation.Details
-                .Where(d => d.HasErrors)
+            var errors = validation
+                .Details.Where(d => d.HasErrors)
                 .SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation}: {e.Key}={e.Value}"))
                 .ToArray();
             Assert.Fail("Manifest failed schema validation: " + string.Join("; ", errors));
@@ -86,7 +100,10 @@ public class BundleManifestSchemaTests(SqlServerFixture fixture) : IDisposable
         node!["bundleVersion"]!.GetValue<string>().Should().Be("1.0");
         node["files"]!.AsArray().Count.Should().BeGreaterThan(0);
         node["topLevelArchiveSha256"]!.GetValue<string>().Should().MatchRegex("^[a-f0-9]{64}$");
-        node["auditChainExtract"]!["extractSha256"]!.GetValue<string>().Should().MatchRegex("^[a-f0-9]{64}$");
+        node["auditChainExtract"]!["extractSha256"]!
+            .GetValue<string>()
+            .Should()
+            .MatchRegex("^[a-f0-9]{64}$");
     }
 
     [Fact]
@@ -98,38 +115,67 @@ public class BundleManifestSchemaTests(SqlServerFixture fixture) : IDisposable
         await EnsureCompanyAsync(db);
 
         var vat = new VatCategory(
-            code: "Standard", name: new ArabicEnglishText("قياسي", "Standard"),
-            ratePercent: 14m, effectiveFromDate: new DateOnly(2026, 1, 1),
-            effectiveToDate: null, recoverableInputVat: true);
+            code: "Standard",
+            name: new ArabicEnglishText("قياسي", "Standard"),
+            ratePercent: 14m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: true
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
         var supplier = new Supplier(
             code: $"SUP-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("مورد", "Supplier"),
             address: new ArabicEnglishText("القاهرة", "Cairo"),
-            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("123456789"), vat.Id));
+            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(
+                EgyptianTin.Parse("123456789"),
+                vat.Id
+            )
+        );
         var draft = EgyptTax.Domain.Purchases.PurchaseInvoice.CreateDraft(
-            supplier.Id, supplier.TaxProfile, "SUP-DRAFT", new DateOnly(2026, 5, 10));
-        draft.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 1m, unitPrice: MoneyEgp.From(50m),
-            vatCategoryId: vat.Id, vatRatePercent: vat.RatePercent,
-            deductibleFlag: false);
-        db.Add(vat); db.Add(user); db.Add(supplier); db.Add(draft);
+            supplier.Id,
+            supplier.TaxProfile,
+            "SUP-DRAFT",
+            new DateOnly(2026, 5, 10)
+        );
+        draft.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(50m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: vat.RatePercent,
+            deductibleFlag: false
+        );
+        db.Add(vat);
+        db.Add(user);
+        db.Add(supplier);
+        db.Add(draft);
         await db.SaveChangesAsync();
 
         var clock = new TestClock(new DateTime(2026, 5, 7, 11, 0, 0, DateTimeKind.Utc));
         var store = new FileSystemAttachmentStore(_tempRoot, clock);
-        var builder = new InspectionBundleBuilder(db, store, clock,
-            new EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery(db));
-        var result = await builder.BuildAsync(new InspectionBundleRequest(
-            PeriodStart: new DateOnly(2026, 5, 1),
-            PeriodEnd: new DateOnly(2026, 5, 31),
-            GeneratedByUserId: user.Id,
-            AllowDrafts: true), CancellationToken.None);
+        var builder = new InspectionBundleBuilder(
+            db,
+            store,
+            clock,
+            new EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery(db)
+        );
+        var result = await builder.BuildAsync(
+            new InspectionBundleRequest(
+                PeriodStart: new DateOnly(2026, 5, 1),
+                PeriodEnd: new DateOnly(2026, 5, 31),
+                GeneratedByUserId: user.Id,
+                AllowDrafts: true
+            ),
+            CancellationToken.None
+        );
 
         await using var zipStream = new MemoryStream(result.ZipBytes);
         using var zip = new ZipArchive(zipStream, ZipArchiveMode.Read);
@@ -139,40 +185,59 @@ public class BundleManifestSchemaTests(SqlServerFixture fixture) : IDisposable
         var manifestJson = await reader.ReadToEndAsync();
 
         var node = JsonNode.Parse(manifestJson);
-        var validation = Schema.Evaluate(node, new EvaluationOptions
-        {
-            OutputFormat = OutputFormat.List,
-            EvaluateAs = SpecVersion.Draft202012,
-        });
+        var validation = Schema.Evaluate(
+            node,
+            new EvaluationOptions
+            {
+                OutputFormat = OutputFormat.List,
+                EvaluateAs = SpecVersion.Draft202012,
+            }
+        );
 
-        validation.IsValid.Should().BeTrue(
-            because: "the drafts-excluded branch (with excludedDraftIds populated) MUST also satisfy the schema");
+        validation
+            .IsValid.Should()
+            .BeTrue(
+                because: "the drafts-excluded branch (with excludedDraftIds populated) MUST also satisfy the schema"
+            );
         node!["draftsExcluded"]!.GetValue<bool>().Should().BeTrue();
         node["excludedDraftIds"]!.AsArray().Count.Should().BeGreaterThanOrEqualTo(1);
     }
 
     private static async Task EnsureCompanyAsync(AppDbContext db)
     {
-        if (await db.Set<Company>().AnyAsync()) return;
-        db.Add(new Company(
-            legalName: new ArabicEnglishText("شركة", "Test Company SAE"),
-            taxRegistrationNumber: EgyptianTin.Parse("123456789"),
-            commercialRegistrationNumber: "CR-1",
-            address: PostalAddress.Create(
-                new ArabicEnglishText("القاهرة", "Cairo"),
-                "Cairo", "Downtown", "Tahrir", "12", postalCode: "11511"),
-            taxpayerActivityCode: "0001"));
+        if (await db.Set<Company>().AnyAsync())
+            return;
+        db.Add(
+            new Company(
+                legalName: new ArabicEnglishText("شركة", "Test Company SAE"),
+                taxRegistrationNumber: EgyptianTin.Parse("123456789"),
+                commercialRegistrationNumber: "CR-1",
+                address: PostalAddress.Create(
+                    new ArabicEnglishText("القاهرة", "Cairo"),
+                    "Cairo",
+                    "Downtown",
+                    "Tahrir",
+                    "12",
+                    postalCode: "11511"
+                ),
+                taxpayerActivityCode: "0001"
+            )
+        );
         await db.SaveChangesAsync();
     }
 
     private static JsonSchema LoadSchema()
     {
-        var schemaPath = Path.Combine(AppContext.BaseDirectory,
-            "contracts", "inspection-bundle-manifest.schema.json");
+        var schemaPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "contracts",
+            "inspection-bundle-manifest.schema.json"
+        );
         if (!File.Exists(schemaPath))
         {
             throw new FileNotFoundException(
-                $"Bundle manifest schema not found at {schemaPath}. The .csproj must copy it via the contracts/ glob.");
+                $"Bundle manifest schema not found at {schemaPath}. The .csproj must copy it via the contracts/ glob."
+            );
         }
         return JsonSchema.FromFile(schemaPath);
     }

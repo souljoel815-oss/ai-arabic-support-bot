@@ -10,7 +10,5 @@ namespace EgyptTax.Application.Common.Exceptions;
 public sealed class UnauthorizedException : Exception
 {
     public UnauthorizedException(string? message = null)
-        : base(message ?? "An authenticated user is required for this request.")
-    {
-    }
+        : base(message ?? "An authenticated user is required for this request.") { }
 }

@@ -33,14 +33,17 @@ public sealed class Company
         PostalAddress address,
         string taxpayerActivityCode,
         int fiscalYearStartMonth = 1,
-        Language defaultLanguage = Language.Ar)
+        Language defaultLanguage = Language.Ar
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(commercialRegistrationNumber);
         ArgumentException.ThrowIfNullOrWhiteSpace(taxpayerActivityCode);
         if (fiscalYearStartMonth is < 1 or > 12)
         {
-            throw new ArgumentOutOfRangeException(nameof(fiscalYearStartMonth),
-                "Fiscal-year start month must be between 1 and 12.");
+            throw new ArgumentOutOfRangeException(
+                nameof(fiscalYearStartMonth),
+                "Fiscal-year start month must be between 1 and 12."
+            );
         }
 
         LegalName = legalName;
@@ -53,7 +56,9 @@ public sealed class Company
     }
 
     public void UpdateAddress(PostalAddress address) => Address = address;
+
     public void UpdateLogo(string? logoPath) => LogoPath = logoPath;
+
     public void UpdateTaxpayerActivityCode(string code)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);

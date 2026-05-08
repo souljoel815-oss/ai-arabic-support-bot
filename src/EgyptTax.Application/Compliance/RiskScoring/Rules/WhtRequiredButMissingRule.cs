@@ -33,7 +33,8 @@ public sealed class WhtRequiredButMissingRule : IPurchaseDocumentRiskRule
 
         // Only deductible purchases from registered taxpayers.
         var hasDeductible = context.Invoice.Lines.Any(l => l.DeductibleFlag);
-        if (!hasDeductible) return Array.Empty<RiskFinding>();
+        if (!hasDeductible)
+            return Array.Empty<RiskFinding>();
 
         var supplierProfile = context.Invoice.SupplierTaxProfileSnapshot;
         if (supplierProfile.ProfileType != SupplierTaxProfileType.RegisteredTaxpayer)
@@ -41,15 +42,18 @@ public sealed class WhtRequiredButMissingRule : IPurchaseDocumentRiskRule
             return Array.Empty<RiskFinding>();
         }
 
-        return [new RiskFinding(
-            RuleId,
-            RiskSeverity.Info,
-            new ArabicEnglishText(
-                "قد تستحق ضريبة الخصم",
-                "Withholding tax may apply"),
-            new ArabicEnglishText(
-                "هذه الفاتورة من مورد مسجل وتحتوي على بنود قابلة للخصم — تحقق من فئة الخصم المعتمدة قبل سداد المورد (FR-045).",
-                "This is a deductible purchase from a registered taxpayer; per FR-045, WHT may apply when you settle the payment. Verify the WHT-category configuration is in place before posting the supplier-payment voucher."),
-            FixHint: "Configure or confirm a WHT category in Settings → WHT Categories effective on the payment date, then apply it on the supplier-payment voucher.")];
+        return
+        [
+            new RiskFinding(
+                RuleId,
+                RiskSeverity.Info,
+                new ArabicEnglishText("قد تستحق ضريبة الخصم", "Withholding tax may apply"),
+                new ArabicEnglishText(
+                    "هذه الفاتورة من مورد مسجل وتحتوي على بنود قابلة للخصم — تحقق من فئة الخصم المعتمدة قبل سداد المورد (FR-045).",
+                    "This is a deductible purchase from a registered taxpayer; per FR-045, WHT may apply when you settle the payment. Verify the WHT-category configuration is in place before posting the supplier-payment voucher."
+                ),
+                FixHint: "Configure or confirm a WHT category in Settings → WHT Categories effective on the payment date, then apply it on the supplier-payment voucher."
+            ),
+        ];
     }
 }

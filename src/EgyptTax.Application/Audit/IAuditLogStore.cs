@@ -10,5 +10,8 @@ namespace EgyptTax.Application.Audit;
 /// </summary>
 public interface IAuditLogStore
 {
-    Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default);
+    Task<AuditLogEntry> AppendAsync(
+        AuditLogPayload payload,
+        CancellationToken cancellationToken = default
+    );
 }

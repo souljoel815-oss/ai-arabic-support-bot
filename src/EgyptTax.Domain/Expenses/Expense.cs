@@ -43,7 +43,8 @@ public sealed class Expense
         Guid categoryId,
         MoneyEgp amount,
         bool deductibleFlag,
-        ArabicEnglishText description)
+        ArabicEnglishText description
+    )
     {
         DocumentDate = documentDate;
         CategoryId = categoryId;
@@ -57,7 +58,8 @@ public sealed class Expense
         Guid categoryId,
         MoneyEgp amount,
         bool deductibleFlag,
-        ArabicEnglishText description)
+        ArabicEnglishText description
+    )
     {
         if (categoryId == Guid.Empty)
         {
@@ -65,8 +67,10 @@ public sealed class Expense
         }
         if (amount.Amount <= 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(amount),
-                "Expense amount must be positive.");
+            throw new ArgumentOutOfRangeException(
+                nameof(amount),
+                "Expense amount must be positive."
+            );
         }
         return new Expense(documentDate, categoryId, amount, deductibleFlag, description);
     }
@@ -86,8 +90,10 @@ public sealed class Expense
         ThrowIfNotDraft(nameof(UpdateAmount));
         if (amount.Amount <= 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(amount),
-                "Expense amount must be positive.");
+            throw new ArgumentOutOfRangeException(
+                nameof(amount),
+                "Expense amount must be positive."
+            );
         }
         Amount = amount;
     }
@@ -112,10 +118,18 @@ public sealed class Expense
 
     /// <summary>FR-026 transitions for the approval workflow.</summary>
     public void MarkSubmitted() =>
-        State = DocumentStateMachine.Transition(State, DocumentState.Submitted, approvalEnabled: true);
+        State = DocumentStateMachine.Transition(
+            State,
+            DocumentState.Submitted,
+            approvalEnabled: true
+        );
 
     public void MarkApproved() =>
-        State = DocumentStateMachine.Transition(State, DocumentState.Approved, approvalEnabled: true);
+        State = DocumentStateMachine.Transition(
+            State,
+            DocumentState.Approved,
+            approvalEnabled: true
+        );
 
     public void MarkRejected() =>
         State = DocumentStateMachine.Transition(State, DocumentState.Draft, approvalEnabled: true);
@@ -128,10 +142,15 @@ public sealed class Expense
         Guid postedByUserId,
         DateTime postedAtUtc,
         DocumentPostingMode postingMode,
-        bool approvalEnabled)
+        bool approvalEnabled
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(documentNumber);
-        var nextState = DocumentStateMachine.Transition(State, DocumentState.Posted, approvalEnabled);
+        var nextState = DocumentStateMachine.Transition(
+            State,
+            DocumentState.Posted,
+            approvalEnabled
+        );
         DocumentNumber = documentNumber;
         PostedByUserId = postedByUserId;
         PostedAtUtc = postedAtUtc;
@@ -144,7 +163,8 @@ public sealed class Expense
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot {operation} on expense {Id}: current state {State} is not Draft.");
+                $"Cannot {operation} on expense {Id}: current state {State} is not Draft."
+            );
         }
     }
 }

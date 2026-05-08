@@ -15,11 +15,22 @@ internal sealed class SessionConfiguration : IEntityTypeConfiguration<Session>
         b.Property(s => s.UserId).HasColumnName("user_id").IsRequired();
         b.HasIndex(s => s.UserId).HasDatabaseName("ix_sessions_user_id");
 
-        b.Property(s => s.IssuedAtUtc).HasColumnName("issued_at_utc").HasColumnType("datetime2(3)").IsRequired();
-        b.Property(s => s.LastActivityAtUtc).HasColumnName("last_activity_at_utc").HasColumnType("datetime2(3)").IsRequired();
-        b.Property(s => s.AbsoluteExpiresAtUtc).HasColumnName("absolute_expires_at_utc").HasColumnType("datetime2(3)").IsRequired();
+        b.Property(s => s.IssuedAtUtc)
+            .HasColumnName("issued_at_utc")
+            .HasColumnType("datetime2(3)")
+            .IsRequired();
+        b.Property(s => s.LastActivityAtUtc)
+            .HasColumnName("last_activity_at_utc")
+            .HasColumnType("datetime2(3)")
+            .IsRequired();
+        b.Property(s => s.AbsoluteExpiresAtUtc)
+            .HasColumnName("absolute_expires_at_utc")
+            .HasColumnType("datetime2(3)")
+            .IsRequired();
 
-        b.Property(s => s.RevokedAtUtc).HasColumnName("revoked_at_utc").HasColumnType("datetime2(3)");
+        b.Property(s => s.RevokedAtUtc)
+            .HasColumnName("revoked_at_utc")
+            .HasColumnType("datetime2(3)");
         b.Property(s => s.RevocationReason)
             .HasColumnName("revocation_reason")
             .HasConversion<string>()

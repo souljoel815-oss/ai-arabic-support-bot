@@ -23,14 +23,16 @@ public static class SalesInvoiceRegisterPdfRenderer
         string? CustomerTin,
         decimal Subtotal,
         decimal Vat,
-        decimal Total);
+        decimal Total
+    );
 
     public static byte[] Render(
         Company company,
         DateOnly periodStart,
         DateOnly periodEnd,
         DateTime generatedAtUtc,
-        IReadOnlyList<Row> rows)
+        IReadOnlyList<Row> rows
+    )
     {
         ArgumentNullException.ThrowIfNull(rows);
         return RegisterPageShell.Render(
@@ -40,7 +42,8 @@ public static class SalesInvoiceRegisterPdfRenderer
             periodStart: periodStart,
             periodEnd: periodEnd,
             generatedAtUtc: generatedAtUtc,
-            renderBody: c => RenderBody(c, rows));
+            renderBody: c => RenderBody(c, rows)
+        );
     }
 
     private static void RenderBody(IContainer container, IReadOnlyList<Row> rows)
@@ -64,14 +67,14 @@ public static class SalesInvoiceRegisterPdfRenderer
         {
             table.ColumnsDefinition(c =>
             {
-                c.ConstantColumn(28);  // #
-                c.ConstantColumn(80);  // doc no
-                c.ConstantColumn(70);  // date
-                c.RelativeColumn();    // customer
-                c.ConstantColumn(70);  // TIN
-                c.ConstantColumn(70);  // subtotal
-                c.ConstantColumn(60);  // VAT
-                c.ConstantColumn(70);  // total
+                c.ConstantColumn(28); // #
+                c.ConstantColumn(80); // doc no
+                c.ConstantColumn(70); // date
+                c.RelativeColumn(); // customer
+                c.ConstantColumn(70); // TIN
+                c.ConstantColumn(70); // subtotal
+                c.ConstantColumn(60); // VAT
+                c.ConstantColumn(70); // total
             });
 
             table.Header(h =>
@@ -92,11 +95,13 @@ public static class SalesInvoiceRegisterPdfRenderer
                 table.Cell().Text(i.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 table.Cell().Text(r.DocumentNumber);
                 table.Cell().Text(RegisterPageShell.Date(r.DocumentDate));
-                table.Cell().Column(cc =>
-                {
-                    cc.Item().Text(r.CustomerNameEn);
-                    cc.Item().Text(r.CustomerNameAr).FontSize(8);
-                });
+                table
+                    .Cell()
+                    .Column(cc =>
+                    {
+                        cc.Item().Text(r.CustomerNameEn);
+                        cc.Item().Text(r.CustomerNameAr).FontSize(8);
+                    });
                 table.Cell().Text(r.CustomerTin ?? "—");
                 table.Cell().AlignRight().Text(RegisterPageShell.Money(r.Subtotal));
                 table.Cell().AlignRight().Text(RegisterPageShell.Money(r.Vat));
@@ -111,12 +116,24 @@ public static class SalesInvoiceRegisterPdfRenderer
         var subtotal = rows.Sum(r => r.Subtotal);
         var vat = rows.Sum(r => r.Vat);
         var total = rows.Sum(r => r.Total);
-        container.AlignRight().Column(col =>
-        {
-            col.Item().AlignRight().Text($"Subtotal: {RegisterPageShell.Money(subtotal)} EGP").Bold();
-            col.Item().AlignRight().Text($"VAT total: {RegisterPageShell.Money(vat)} EGP").Bold();
-            col.Item().AlignRight().Text($"Grand total: {RegisterPageShell.Money(total)} EGP").Bold().FontSize(11);
-            col.Item().AlignRight().Text($"Invoices: {rows.Count}").FontSize(9);
-        });
+        container
+            .AlignRight()
+            .Column(col =>
+            {
+                col.Item()
+                    .AlignRight()
+                    .Text($"Subtotal: {RegisterPageShell.Money(subtotal)} EGP")
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text($"VAT total: {RegisterPageShell.Money(vat)} EGP")
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text($"Grand total: {RegisterPageShell.Money(total)} EGP")
+                    .Bold()
+                    .FontSize(11);
+                col.Item().AlignRight().Text($"Invoices: {rows.Count}").FontSize(9);
+            });
     }
 }

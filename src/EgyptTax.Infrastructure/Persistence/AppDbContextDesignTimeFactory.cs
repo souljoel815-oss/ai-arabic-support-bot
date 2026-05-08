@@ -19,11 +19,14 @@ public sealed class AppDbContextDesignTimeFactory : IDesignTimeDbContextFactory<
 
     public AppDbContext CreateDbContext(string[] args)
     {
-        var connection = Environment.GetEnvironmentVariable("EGYPTTAX_EF_CONNECTION")
-            ?? DefaultConnection;
+        var connection =
+            Environment.GetEnvironmentVariable("EGYPTTAX_EF_CONNECTION") ?? DefaultConnection;
 
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(connection, sql => sql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName))
+            .UseSqlServer(
+                connection,
+                sql => sql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)
+            )
             .Options;
 
         return new AppDbContext(options);

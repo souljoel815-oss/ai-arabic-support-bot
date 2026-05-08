@@ -39,7 +39,8 @@ public sealed class IssueCreditNoteHandler
 
     public async Task<SalesInvoice> HandleAsync(
         IssueCreditNoteCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentException.ThrowIfNullOrWhiteSpace(command.Reason);
@@ -47,14 +48,17 @@ public sealed class IssueCreditNoteHandler
         {
             throw new ArgumentException(
                 "A credit note MUST carry at least one line — there's nothing to credit otherwise.",
-                nameof(command));
+                nameof(command)
+            );
         }
 
-        var original = await _db.Set<SalesInvoice>()
-            .Include(i => i.Lines)
-            .FirstOrDefaultAsync(i => i.Id == command.OriginalSalesInvoiceId, cancellationToken)
+        var original =
+            await _db.Set<SalesInvoice>()
+                .Include(i => i.Lines)
+                .FirstOrDefaultAsync(i => i.Id == command.OriginalSalesInvoiceId, cancellationToken)
             ?? throw new InvalidOperationException(
-                $"Source sales invoice {command.OriginalSalesInvoiceId} not found.");
+                $"Source sales invoice {command.OriginalSalesInvoiceId} not found."
+            );
 
         // The factory enforces (a) source is Posted, (b) source isn't
         // already a credit note. Belt-and-braces: any other rule
@@ -62,7 +66,8 @@ public sealed class IssueCreditNoteHandler
         var creditNote = SalesInvoice.CreateCreditNoteFor(
             originalInvoice: original,
             reason: command.Reason,
-            documentDate: command.DocumentDate);
+            documentDate: command.DocumentDate
+        );
 
         foreach (var line in command.Lines)
         {
@@ -71,19 +76,23 @@ public sealed class IssueCreditNoteHandler
                 quantity: line.Quantity,
                 unitPrice: line.UnitPrice,
                 vatCategoryId: line.VatCategoryId,
-                vatRatePercent: line.VatRatePercent);
+                vatRatePercent: line.VatRatePercent
+            );
         }
 
         _db.Add(creditNote);
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "credit_note.issued",
-            ActorUserId: null,
-            ActorFirmName: null,
-            CompanyId: Guid.Empty,
-            PayloadJson: BuildAuditPayload(creditNote, original)),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "credit_note.issued",
+                ActorUserId: null,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: BuildAuditPayload(creditNote, original)
+            ),
+            cancellationToken
+        );
 
         return creditNote;
     }
@@ -94,6 +103,9 @@ public sealed class IssueCreditNoteHandler
     private static string Quote(string? value) =>
         value is null
             ? "null"
-            : "\"" + value.Replace("\\", "\\\\", StringComparison.Ordinal)
-                          .Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+            : "\""
+                + value
+                    .Replace("\\", "\\\\", StringComparison.Ordinal)
+                    .Replace("\"", "\\\"", StringComparison.Ordinal)
+                + "\"";
 }

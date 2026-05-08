@@ -83,8 +83,10 @@ public class ArabicWordsConverterTests
     public void FromInteger_Negative_Throws()
     {
         var act = () => ArabicWordsConverter.FromInteger(-1L);
-        act.Should().Throw<ArgumentOutOfRangeException>(
-            because: "FR-014 amount-in-words is only meaningful for non-negative monetary quantities");
+        act.Should()
+            .Throw<ArgumentOutOfRangeException>(
+                because: "FR-014 amount-in-words is only meaningful for non-negative monetary quantities"
+            );
     }
 
     [Theory]
@@ -108,13 +110,17 @@ public class ArabicWordsConverterTests
         // 0.005 banker-rounds to 0.00 (nearest even); 0.015 banker-rounds
         // to 0.02. These are the cases that distinguish banker's from
         // traditional half-up rounding.
-        var halfDownEven = decimal.Parse("0.005", System.Globalization.CultureInfo.InvariantCulture);
-        ArabicWordsConverter.FromEgyptianPounds(halfDownEven)
-            .Should().Be("صفر جنيه مصري فقط لا غير");
+        var halfDownEven = decimal.Parse(
+            "0.005",
+            System.Globalization.CultureInfo.InvariantCulture
+        );
+        ArabicWordsConverter
+            .FromEgyptianPounds(halfDownEven)
+            .Should()
+            .Be("صفر جنيه مصري فقط لا غير");
 
         var halfUpEven = decimal.Parse("0.015", System.Globalization.CultureInfo.InvariantCulture);
-        ArabicWordsConverter.FromEgyptianPounds(halfUpEven)
-            .Should().Be("قرشان فقط لا غير");
+        ArabicWordsConverter.FromEgyptianPounds(halfUpEven).Should().Be("قرشان فقط لا غير");
     }
 
     [Fact]

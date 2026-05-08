@@ -32,23 +32,30 @@ public class AuditVerifyEndpointPathTests(SqlServerFixture fixture)
         // produces real hashes the verifier can re-compute.
         for (var i = 1; i <= 3; i++)
         {
-            await store.AppendAsync(new AuditLogPayload(
-                Kind: $"test.event_{i}",
-                ActorUserId: Guid.NewGuid(),
-                ActorFirmName: null,
-                CompanyId: Guid.NewGuid(),
-                PayloadJson: $$"""{"i":{{i}}}"""));
+            await store.AppendAsync(
+                new AuditLogPayload(
+                    Kind: $"test.event_{i}",
+                    ActorUserId: Guid.NewGuid(),
+                    ActorFirmName: null,
+                    CompanyId: Guid.NewGuid(),
+                    PayloadJson: $$"""{"i":{{i}}}"""
+                )
+            );
         }
 
         // Same composition the endpoint runs.
-        var entries = await db.Set<AuditLogEntry>().AsNoTracking()
+        var entries = await db.Set<AuditLogEntry>()
+            .AsNoTracking()
             .OrderBy(e => e.Index)
             .Take(50_000)
             .ToListAsync();
         var report = AuditChainVerifier.Verify(entries, checkpoint: null);
 
-        report.IsValid.Should().BeTrue(
-            because: "the chain produced by SqlAuditLogStore MUST verify clean — that's the FR-028 invariant");
+        report
+            .IsValid.Should()
+            .BeTrue(
+                because: "the chain produced by SqlAuditLogStore MUST verify clean — that's the FR-028 invariant"
+            );
         report.Findings.Should().BeEmpty();
         entries.Count.Should().Be(3);
     }
@@ -59,32 +66,48 @@ public class AuditVerifyEndpointPathTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var store = new SqlAuditLogStore(db);
 
-        await store.AppendAsync(new AuditLogPayload(
-            Kind: "test.original",
-            ActorUserId: null, ActorFirmName: null, CompanyId: Guid.Empty,
-            PayloadJson: """{"original":true}"""));
-        await store.AppendAsync(new AuditLogPayload(
-            Kind: "test.next",
-            ActorUserId: null, ActorFirmName: null, CompanyId: Guid.Empty,
-            PayloadJson: """{"next":true}"""));
+        await store.AppendAsync(
+            new AuditLogPayload(
+                Kind: "test.original",
+                ActorUserId: null,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: """{"original":true}"""
+            )
+        );
+        await store.AppendAsync(
+            new AuditLogPayload(
+                Kind: "test.next",
+                ActorUserId: null,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: """{"next":true}"""
+            )
+        );
 
         // Tamper the first entry's payload via raw SQL. Use
         // ExecuteSqlInterpolatedAsync so the JSON braces don't get
         // mistaken for string.Format placeholders, and pass the new
         // payload as a parameter (also avoids any quoting drama).
         await db.Database.ExecuteSqlInterpolatedAsync(
-            $"UPDATE [audit].[audit_log] SET payload_json = {"{\"tampered\":true}"} WHERE [index] = 1");
+            $"UPDATE [audit].[audit_log] SET payload_json = {"{\"tampered\":true}"} WHERE [index] = 1"
+        );
 
-        var entries = await db.Set<AuditLogEntry>().AsNoTracking()
+        var entries = await db.Set<AuditLogEntry>()
+            .AsNoTracking()
             .OrderBy(e => e.Index)
             .Take(50_000)
             .ToListAsync();
         var report = AuditChainVerifier.Verify(entries, checkpoint: null);
 
-        report.IsValid.Should().BeFalse(
-            because: "tampered payload no longer hashes to the stored ThisHash — verifier MUST surface the discrepancy");
-        report.Findings.Should().Contain(f => f.Kind == AuditChainFindingKind.ThisHashMismatch
-            && f.AtIndex == 1);
+        report
+            .IsValid.Should()
+            .BeFalse(
+                because: "tampered payload no longer hashes to the stored ThisHash — verifier MUST surface the discrepancy"
+            );
+        report
+            .Findings.Should()
+            .Contain(f => f.Kind == AuditChainFindingKind.ThisHashMismatch && f.AtIndex == 1);
         // The tamper at index 1 also breaks index 2's prev-hash linkage
         // because the verifier walks expected-prev-hash forward from
         // genesis using ENTRY's PrevHash; index 2's PrevHash is still

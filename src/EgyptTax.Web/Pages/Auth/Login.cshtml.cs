@@ -59,7 +59,8 @@ public sealed class LoginModel : PageModel
         ITotpService totp,
         IMfaSecretProtector protector,
         ISessionService sessions,
-        IClock clock)
+        IClock clock
+    )
     {
         _db = db;
         _hasher = hasher;
@@ -69,7 +70,8 @@ public sealed class LoginModel : PageModel
         _clock = clock;
     }
 
-    [BindProperty] public InputModel Input { get; set; } = new();
+    [BindProperty]
+    public InputModel Input { get; set; } = new();
     public string? ErrorMessage { get; private set; }
     public bool ShowMfaPrompt { get; private set; }
     public string? ReturnUrl { get; private set; }
@@ -92,7 +94,10 @@ public sealed class LoginModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync(string? returnUrl = null, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> OnPostAsync(
+        string? returnUrl = null,
+        CancellationToken cancellationToken = default
+    )
     {
         ReturnUrl = returnUrl;
 
@@ -106,10 +111,12 @@ public sealed class LoginModel : PageModel
             .Include(u => u.Roles)
             .FirstOrDefaultAsync(u => u.Email == canonicalEmail, cancellationToken);
 
-        if (user is null
+        if (
+            user is null
             || !_hasher.Verify(Input.Password, user.PasswordHash)
             || user.Status != UserStatus.Active
-            || user.IsCurrentlyLockedOut(_clock.UtcNow))
+            || user.IsCurrentlyLockedOut(_clock.UtcNow)
+        )
         {
             // Record the failed attempt on the located user (if any) but
             // surface a uniform error message so an attacker can't
@@ -124,7 +131,12 @@ public sealed class LoginModel : PageModel
         // `password-verified` stage and route to force-change.
         if (user.PasswordMustChange)
         {
-            await SignInAsync(user, AuthClaims.StagePasswordVerified, sessionId: null, cancellationToken);
+            await SignInAsync(
+                user,
+                AuthClaims.StagePasswordVerified,
+                sessionId: null,
+                cancellationToken
+            );
             return RedirectToPage("/Auth/ChangePassword", new { returnUrl });
         }
 
@@ -132,7 +144,12 @@ public sealed class LoginModel : PageModel
         // stage, route to enrolment.
         if (user.RequiresMfa() && user.MfaSecretEncrypted is null)
         {
-            await SignInAsync(user, AuthClaims.StagePasswordVerified, sessionId: null, cancellationToken);
+            await SignInAsync(
+                user,
+                AuthClaims.StagePasswordVerified,
+                sessionId: null,
+                cancellationToken
+            );
             return RedirectToPage("/Auth/EnrollMfa", new { returnUrl });
         }
 
@@ -160,7 +177,8 @@ public sealed class LoginModel : PageModel
             user.Id,
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(),
-            cancellationToken);
+            cancellationToken
+        );
         await SignInAsync(user, AuthClaims.StageFullyAuthenticated, session.Id, cancellationToken);
         user.RecordLogin(succeeded: true, _clock.UtcNow);
         await _db.SaveChangesAsync(cancellationToken);
@@ -168,7 +186,12 @@ public sealed class LoginModel : PageModel
         return SafeRedirect(returnUrl);
     }
 
-    private async Task SignInAsync(User user, string stage, Guid? sessionId, CancellationToken cancellationToken)
+    private async Task SignInAsync(
+        User user,
+        string stage,
+        Guid? sessionId,
+        CancellationToken cancellationToken
+    )
     {
         var claims = new List<Claim>
         {
@@ -186,7 +209,10 @@ public sealed class LoginModel : PageModel
             claims.Add(new Claim(ClaimTypes.Role, role.Code));
         }
 
-        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        var identity = new ClaimsIdentity(
+            claims,
+            CookieAuthenticationDefaults.AuthenticationScheme
+        );
         var principal = new ClaimsPrincipal(identity);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
     }

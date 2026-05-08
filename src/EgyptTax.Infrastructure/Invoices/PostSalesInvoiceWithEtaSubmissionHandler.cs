@@ -43,7 +43,8 @@ public sealed class PostSalesInvoiceWithEtaSubmissionHandler
         IEInvoiceJsonGenerator jsonGenerator,
         IAuditLogStore auditLog,
         IClock clock,
-        IEtaStatusNotifier? notifier = null)
+        IEtaStatusNotifier? notifier = null
+    )
     {
         _innerHandler = innerHandler;
         _db = db;
@@ -56,12 +57,12 @@ public sealed class PostSalesInvoiceWithEtaSubmissionHandler
 
     public async Task<SalesInvoice> HandleAsync(
         PostSalesInvoiceCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         var invoice = await _innerHandler.HandleAsync(command, cancellationToken);
 
-        var bundle = await InvoiceRenderingPipeline.LoadAsync(
-            _db, invoice.Id, cancellationToken);
+        var bundle = await InvoiceRenderingPipeline.LoadAsync(_db, invoice.Id, cancellationToken);
         var etaRow = await _db.Set<EtaSubmission>()
             .FirstOrDefaultAsync(s => s.SalesInvoiceId == invoice.Id, cancellationToken);
 
@@ -83,7 +84,8 @@ public sealed class PostSalesInvoiceWithEtaSubmissionHandler
             submissionUuid: attempt.SubmissionUuid,
             errorCode: attempt.ErrorCode,
             errorMessage: attempt.ErrorMessage,
-            nowUtc: _clock.UtcNow);
+            nowUtc: _clock.UtcNow
+        );
         await _db.SaveChangesAsync(cancellationToken);
 
 #pragma warning disable CA1308 // Audit-event kind names use lowercase by convention; CA1308's uppercase guidance does not apply to opaque event identifiers.
@@ -96,8 +98,10 @@ public sealed class PostSalesInvoiceWithEtaSubmissionHandler
                 ActorUserId: command.PostedByUserId,
                 ActorFirmName: null,
                 CompanyId: Guid.Empty,
-                PayloadJson: BuildAuditPayload(invoice, etaRow, attempt)),
-            cancellationToken);
+                PayloadJson: BuildAuditPayload(invoice, etaRow, attempt)
+            ),
+            cancellationToken
+        );
 
         // T125 — broadcast the status change so the dashboard can
         // refresh live without polling. Notifier is optional (the
@@ -106,19 +110,27 @@ public sealed class PostSalesInvoiceWithEtaSubmissionHandler
         // both SignalR clients + in-process Blazor subscribers.
         if (_notifier is not null)
         {
-            await _notifier.NotifyAsync(new EtaStatusChangedEvent(
-                SalesInvoiceId: invoice.Id,
-                EtaSubmissionId: etaRow.Id,
-                DocumentNumber: invoice.DocumentNumber!,
-                PreviousStatus: EtaSubmissionStatus.Pending,
-                NewStatus: attempt.OutcomeStatus,
-                AttemptCount: etaRow.AttemptCount,
-                AtUtc: _clock.UtcNow), cancellationToken);
+            await _notifier.NotifyAsync(
+                new EtaStatusChangedEvent(
+                    SalesInvoiceId: invoice.Id,
+                    EtaSubmissionId: etaRow.Id,
+                    DocumentNumber: invoice.DocumentNumber!,
+                    PreviousStatus: EtaSubmissionStatus.Pending,
+                    NewStatus: attempt.OutcomeStatus,
+                    AttemptCount: etaRow.AttemptCount,
+                    AtUtc: _clock.UtcNow
+                ),
+                cancellationToken
+            );
         }
 
         return invoice;
     }
 
-    private static string BuildAuditPayload(SalesInvoice invoice, EtaSubmission row, EtaSubmissionAttemptResult attempt) =>
+    private static string BuildAuditPayload(
+        SalesInvoice invoice,
+        EtaSubmission row,
+        EtaSubmissionAttemptResult attempt
+    ) =>
         $$"""{"invoice_id":"{{invoice.Id:D}}","eta_submission_id":"{{row.Id:D}}","document_number":"{{invoice.DocumentNumber}}","outcome":"{{attempt.OutcomeStatus}}","submission_uuid":{{(attempt.SubmissionUuid is null ? "null" : "\"" + attempt.SubmissionUuid + "\"")}},"error_code":{{(attempt.ErrorCode is null ? "null" : "\"" + attempt.ErrorCode + "\"")}},"attempt_count":{{row.AttemptCount.ToString(CultureInfo.InvariantCulture)}}}""";
 }

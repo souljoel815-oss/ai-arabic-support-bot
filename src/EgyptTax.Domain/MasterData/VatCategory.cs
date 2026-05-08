@@ -28,18 +28,23 @@ public sealed class VatCategory
         decimal ratePercent,
         DateOnly effectiveFromDate,
         DateOnly? effectiveToDate,
-        bool recoverableInputVat)
+        bool recoverableInputVat
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         if (ratePercent < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(ratePercent),
-                "VAT rate cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(ratePercent),
+                "VAT rate cannot be negative."
+            );
         }
         if (effectiveToDate is { } end && end <= effectiveFromDate)
         {
             throw new ArgumentException(
-                "EffectiveToDate must be strictly after EffectiveFromDate.", nameof(effectiveToDate));
+                "EffectiveToDate must be strictly after EffectiveFromDate.",
+                nameof(effectiveToDate)
+            );
         }
 
         Code = code;

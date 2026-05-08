@@ -20,18 +20,24 @@ internal static class SeederHost
         var configuration = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
             .AddJsonFile("appsettings.json", optional: true)
-            .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json", optional: true)
+            .AddJsonFile(
+                $"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json",
+                optional: true
+            )
             .AddEnvironmentVariables()
             .AddUserSecrets(typeof(SeederHost).Assembly, optional: true)
             .Build();
 
-        var connectionString = configuration.GetConnectionString("EgyptTax")
+        var connectionString =
+            configuration.GetConnectionString("EgyptTax")
             ?? configuration["ConnectionStrings:EgyptTax"]
             ?? Environment.GetEnvironmentVariable("EGYPTTAX_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            await Console.Error.WriteLineAsync(
-                "[seed] No connection string found. Set ConnectionStrings:EgyptTax in appsettings or EGYPTTAX_CONNECTION env var.")
+            await Console
+                .Error.WriteLineAsync(
+                    "[seed] No connection string found. Set ConnectionStrings:EgyptTax in appsettings or EGYPTTAX_CONNECTION env var."
+                )
                 .WaitAsync(cancellationToken);
             return 4;
         }
@@ -47,6 +53,7 @@ internal static class SeederHost
             new Argon2idPasswordHasher(),
             Console.Out,
             Console.Error,
-            cancellationToken);
+            cancellationToken
+        );
     }
 }

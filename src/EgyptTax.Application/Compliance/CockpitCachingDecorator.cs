@@ -22,7 +22,9 @@ namespace EgyptTax.Application.Compliance;
 /// Cache key shape: <c>"cockpit:{year}-{month:D2}"</c>. Single-tenant
 /// MVP — when multi-tenant lands, the company_id is prefixed.
 /// </summary>
-public sealed class CockpitCachingDecorator : IMonthlyTaxClosingCockpitQuery, ICockpitCacheInvalidator
+public sealed class CockpitCachingDecorator
+    : IMonthlyTaxClosingCockpitQuery,
+        ICockpitCacheInvalidator
 {
     private static readonly TimeSpan SlidingExpiration = TimeSpan.FromSeconds(30);
 
@@ -36,7 +38,10 @@ public sealed class CockpitCachingDecorator : IMonthlyTaxClosingCockpitQuery, IC
     }
 
     public async Task<MonthlyTaxClosingCockpit> RunAsync(
-        int year, int month, CancellationToken cancellationToken = default)
+        int year,
+        int month,
+        CancellationToken cancellationToken = default
+    )
     {
         var key = BuildKey(year, month);
         if (_cache.TryGetValue(key, out MonthlyTaxClosingCockpit? cached) && cached is not null)
@@ -45,10 +50,11 @@ public sealed class CockpitCachingDecorator : IMonthlyTaxClosingCockpitQuery, IC
         }
 
         var result = await _inner.RunAsync(year, month, cancellationToken);
-        _cache.Set(key, result, new MemoryCacheEntryOptions
-        {
-            SlidingExpiration = SlidingExpiration,
-        });
+        _cache.Set(
+            key,
+            result,
+            new MemoryCacheEntryOptions { SlidingExpiration = SlidingExpiration }
+        );
         return result;
     }
 
@@ -63,8 +69,7 @@ public sealed class CockpitCachingDecorator : IMonthlyTaxClosingCockpitQuery, IC
         // on sliding expiration to drain entries within 30 s.
     }
 
-    private static string BuildKey(int year, int month) =>
-        $"cockpit:{year}-{month:D2}";
+    private static string BuildKey(int year, int month) => $"cockpit:{year}-{month:D2}";
 }
 
 /// <summary>

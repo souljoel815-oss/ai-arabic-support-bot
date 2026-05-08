@@ -23,8 +23,12 @@ public class WhtCertificateSchemaTests
         var json = WhtCertificateJsonSerializer.Serialize(payload);
 
         var outcome = ValidateAgainstSchema(json);
-        outcome.IsValid.Should().BeTrue(
-            because: "Outbound-to-supplier payload MUST be schema-valid. Errors: " + string.Join("; ", outcome.Errors));
+        outcome
+            .IsValid.Should()
+            .BeTrue(
+                because: "Outbound-to-supplier payload MUST be schema-valid. Errors: "
+                    + string.Join("; ", outcome.Errors)
+            );
 
         // Spot-check a couple of must-have fields.
         var node = JsonNode.Parse(json)!.AsObject();
@@ -42,8 +46,12 @@ public class WhtCertificateSchemaTests
         var json = WhtCertificateJsonSerializer.Serialize(payload);
 
         var outcome = ValidateAgainstSchema(json);
-        outcome.IsValid.Should().BeTrue(
-            because: "Inbound-from-customer payload MUST be schema-valid. Errors: " + string.Join("; ", outcome.Errors));
+        outcome
+            .IsValid.Should()
+            .BeTrue(
+                because: "Inbound-from-customer payload MUST be schema-valid. Errors: "
+                    + string.Join("; ", outcome.Errors)
+            );
 
         var node = JsonNode.Parse(json)!.AsObject();
         node["direction"]!.GetValue<string>().Should().Be("InboundFromCustomer");
@@ -64,8 +72,12 @@ public class WhtCertificateSchemaTests
         var json = WhtCertificateJsonSerializer.Serialize(payload);
 
         var outcome = ValidateAgainstSchema(json);
-        outcome.IsValid.Should().BeTrue(
-            because: "grossPayment + netPayment are optional. Errors: " + string.Join("; ", outcome.Errors));
+        outcome
+            .IsValid.Should()
+            .BeTrue(
+                because: "grossPayment + netPayment are optional. Errors: "
+                    + string.Join("; ", outcome.Errors)
+            );
 
         // Make sure the optional fields actually got OMITTED (not
         // serialised as null) — the schema would reject a null on
@@ -88,8 +100,9 @@ public class WhtCertificateSchemaTests
         var json = WhtCertificateJsonSerializer.Serialize(payload);
 
         var outcome = ValidateAgainstSchema(json);
-        outcome.IsValid.Should().BeFalse(
-            because: "the schema's TIN pattern MUST reject non-9-digit values");
+        outcome
+            .IsValid.Should()
+            .BeFalse(because: "the schema's TIN pattern MUST reject non-9-digit values");
     }
 
     private static WhtCertificatePayload SamplePayload(string direction) =>
@@ -119,22 +132,26 @@ public class WhtCertificateSchemaTests
             NetPayment: 9_500m,
             Currency: "EGP",
             Language: "ar+en",
-            AuditChainHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+            AuditChainHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        );
 
     private static SchemaValidationOutcome ValidateAgainstSchema(string json)
     {
         var node = JsonNode.Parse(json);
-        var results = Schema.Evaluate(node, new EvaluationOptions
-        {
-            OutputFormat = OutputFormat.List,
-            EvaluateAs = SpecVersion.Draft202012,
-        });
+        var results = Schema.Evaluate(
+            node,
+            new EvaluationOptions
+            {
+                OutputFormat = OutputFormat.List,
+                EvaluateAs = SpecVersion.Draft202012,
+            }
+        );
         if (results.IsValid)
         {
             return new SchemaValidationOutcome(true, Array.Empty<string>());
         }
-        var errors = results.Details
-            .Where(d => d.HasErrors)
+        var errors = results
+            .Details.Where(d => d.HasErrors)
             .SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation}: {e.Key}={e.Value}"))
             .ToArray();
         return new SchemaValidationOutcome(false, errors);
@@ -144,11 +161,16 @@ public class WhtCertificateSchemaTests
 
     private static JsonSchema LoadSchema()
     {
-        var schemaPath = Path.Combine(AppContext.BaseDirectory, "contracts", "wht-certificate.schema.json");
+        var schemaPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "contracts",
+            "wht-certificate.schema.json"
+        );
         if (!File.Exists(schemaPath))
         {
             throw new FileNotFoundException(
-                $"Contract schema not found at {schemaPath}. The .csproj must copy it via the contracts/**/*.json glob.");
+                $"Contract schema not found at {schemaPath}. The .csproj must copy it via the contracts/**/*.json glob."
+            );
         }
         return JsonSchema.FromFile(schemaPath);
     }

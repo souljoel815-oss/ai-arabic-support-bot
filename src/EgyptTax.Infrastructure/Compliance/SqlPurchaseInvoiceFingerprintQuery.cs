@@ -22,19 +22,22 @@ public sealed class SqlPurchaseInvoiceFingerprintQuery : IPurchaseInvoiceFingerp
         _db = db;
     }
 
-    public async Task<IReadOnlyList<PurchaseInvoiceFingerprint>>
-        FindOtherPurchaseInvoicesWithSameSupplierReferenceAsync(
-            Guid supplierId,
-            string supplierInvoiceNumber,
-            Guid? excludePurchaseInvoiceId,
-            CancellationToken cancellationToken = default)
+    public async Task<
+        IReadOnlyList<PurchaseInvoiceFingerprint>
+    > FindOtherPurchaseInvoicesWithSameSupplierReferenceAsync(
+        Guid supplierId,
+        string supplierInvoiceNumber,
+        Guid? excludePurchaseInvoiceId,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(supplierInvoiceNumber);
 
         var query = _db.Set<PurchaseInvoice>()
             .AsNoTracking()
-            .Where(p => p.SupplierId == supplierId
-                && p.SupplierInvoiceNumber == supplierInvoiceNumber);
+            .Where(p =>
+                p.SupplierId == supplierId && p.SupplierInvoiceNumber == supplierInvoiceNumber
+            );
 
         if (excludePurchaseInvoiceId is { } excludeId)
         {
@@ -52,10 +55,13 @@ public sealed class SqlPurchaseInvoiceFingerprintQuery : IPurchaseInvoiceFingerp
             })
             .ToListAsync(cancellationToken);
 
-        return rows
-            .Select(r => new PurchaseInvoiceFingerprint(
-                r.Id, r.DocumentNumber, r.SupplierInvoiceNumber,
-                r.DateReceived, MoneyEgp.From(r.GrandTotalAmount)))
+        return rows.Select(r => new PurchaseInvoiceFingerprint(
+                r.Id,
+                r.DocumentNumber,
+                r.SupplierInvoiceNumber,
+                r.DateReceived,
+                MoneyEgp.From(r.GrandTotalAmount)
+            ))
             .ToList();
     }
 }

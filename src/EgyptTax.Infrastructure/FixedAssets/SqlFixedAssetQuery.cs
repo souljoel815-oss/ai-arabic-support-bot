@@ -24,41 +24,54 @@ public sealed class SqlFixedAssetQuery : IFixedAssetQuery
     }
 
     public async Task<IReadOnlyList<FixedAssetListRow>> ListAsync(
-        DateOnly asOf, CancellationToken cancellationToken = default)
+        DateOnly asOf,
+        CancellationToken cancellationToken = default
+    )
     {
-        var assets = await _db.Set<FixedAsset>().AsNoTracking()
-            .OrderBy(a => a.InServiceDate).ThenBy(a => a.Code)
+        var assets = await _db.Set<FixedAsset>()
+            .AsNoTracking()
+            .OrderBy(a => a.InServiceDate)
+            .ThenBy(a => a.Code)
             .ToListAsync(cancellationToken);
 
         var assetIds = assets.Select(a => a.Id).ToArray();
-        var attachmentCounts = await _db.Set<Attachment>().AsNoTracking()
-            .Where(at => at.DocumentType == DocumentType.FixedAsset
-                && assetIds.Contains(at.DocumentId))
+        var attachmentCounts = await _db.Set<Attachment>()
+            .AsNoTracking()
+            .Where(at =>
+                at.DocumentType == DocumentType.FixedAsset && assetIds.Contains(at.DocumentId)
+            )
             .GroupBy(at => at.DocumentId)
             .Select(g => new { DocumentId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.DocumentId, x => x.Count, cancellationToken);
 
-        return assets.Select(a =>
-        {
-            var nbv = DepreciationEngine.NetBookValueAt(a, asOf);
-            var depToDate = MoneyEgp.From(a.Cost.Amount - nbv.Amount);
-            return new FixedAssetListRow(
-                Id: a.Id,
-                Code: a.Code,
-                Description: a.Description,
-                AssetCategory: a.AssetCategory,
-                Status: a.Status,
-                Cost: a.Cost,
-                InServiceDate: a.InServiceDate,
-                UsefulLifeMonths: a.UsefulLifeMonths,
-                Convention: a.Convention,
-                NetBookValue: nbv,
-                DepreciatedToDate: depToDate,
-                AttachmentCount: attachmentCounts.GetValueOrDefault(a.Id, 0));
-        }).ToList();
+        return assets
+            .Select(a =>
+            {
+                var nbv = DepreciationEngine.NetBookValueAt(a, asOf);
+                var depToDate = MoneyEgp.From(a.Cost.Amount - nbv.Amount);
+                return new FixedAssetListRow(
+                    Id: a.Id,
+                    Code: a.Code,
+                    Description: a.Description,
+                    AssetCategory: a.AssetCategory,
+                    Status: a.Status,
+                    Cost: a.Cost,
+                    InServiceDate: a.InServiceDate,
+                    UsefulLifeMonths: a.UsefulLifeMonths,
+                    Convention: a.Convention,
+                    NetBookValue: nbv,
+                    DepreciatedToDate: depToDate,
+                    AttachmentCount: attachmentCounts.GetValueOrDefault(a.Id, 0)
+                );
+            })
+            .ToList();
     }
 
-    public async Task<FixedAsset?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>
-        await _db.Set<FixedAsset>().AsNoTracking()
+    public async Task<FixedAsset?> GetAsync(
+        Guid id,
+        CancellationToken cancellationToken = default
+    ) =>
+        await _db.Set<FixedAsset>()
+            .AsNoTracking()
             .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
 }

@@ -15,5 +15,6 @@ public interface IExpenseJournalEmitter
     Task EmitForExpenseAsync(
         Expense expense,
         DateTime postedAtUtc,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }

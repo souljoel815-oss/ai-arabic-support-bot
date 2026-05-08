@@ -48,7 +48,11 @@ public class MockEtaSilentFailureGuardTests(SqlServerFixture fixture)
         await SeedCompanyAsync(db);
         var operatorUser = await SeedOperatorUserAsync(db);
 
-        var draft = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+        var draft = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         draft.AddLine(item.Id, 1m, MoneyEgp.From(1_000m), vat.Id, vat.RatePercent);
         db.Add(draft);
         await db.SaveChangesAsync();
@@ -60,50 +64,89 @@ public class MockEtaSilentFailureGuardTests(SqlServerFixture fixture)
         var inner = new PostSalesInvoiceHandler(db, allocator, clock, auditCapture);
         var failingSubmitter = new MockEtaSubmitter(failureRate: 1.0);
         var wrapper = new PostSalesInvoiceWithEtaSubmissionHandler(
-            inner, db, failingSubmitter, new EInvoiceJsonGenerator(), auditCapture, clock);
+            inner,
+            db,
+            failingSubmitter,
+            new EInvoiceJsonGenerator(),
+            auditCapture,
+            clock
+        );
 
         var posted = await wrapper.HandleAsync(
-            new PostSalesInvoiceCommand(draft.Id, operatorUser.Id), CancellationToken.None);
+            new PostSalesInvoiceCommand(draft.Id, operatorUser.Id),
+            CancellationToken.None
+        );
 
         // 1 — invoice survives. The post commits regardless of the
         //     downstream ETA round-trip; rolling back here would lose
         //     work for the operator and create a "phantom invoice"
         //     state mismatch.
-        posted.State.Should().Be(DocumentState.Posted,
-            because: "the post itself MUST commit even when the regulator endpoint fails");
-        posted.DocumentNumber.Should().NotBeNullOrWhiteSpace(
-            because: "the FR-011 sequential number was already allocated and persisted");
+        posted
+            .State.Should()
+            .Be(
+                DocumentState.Posted,
+                because: "the post itself MUST commit even when the regulator endpoint fails"
+            );
+        posted
+            .DocumentNumber.Should()
+            .NotBeNullOrWhiteSpace(
+                because: "the FR-011 sequential number was already allocated and persisted"
+            );
 
         // 2 — ETA row reflects the failure verbatim and is retry-eligible.
-        var etaRow = await db.Set<EtaSubmission>().AsNoTracking()
+        var etaRow = await db.Set<EtaSubmission>()
+            .AsNoTracking()
             .FirstAsync(s => s.SalesInvoiceId == posted.Id);
         etaRow.Status.Should().Be(EtaSubmissionStatus.Failed);
         etaRow.AttemptCount.Should().Be(1);
         etaRow.ErrorCode.Should().Be("ETA_MOCK_500");
-        etaRow.SubmissionWindowExpiresAtUtc.Should().BeAfter(nowUtc,
-            because: "the 7-day submission window is still open at t=post — the row is retry-eligible by the recurring job");
+        etaRow
+            .SubmissionWindowExpiresAtUtc.Should()
+            .BeAfter(
+                nowUtc,
+                because: "the 7-day submission window is still open at t=post — the row is retry-eligible by the recurring job"
+            );
 
         // 3 — retry job picks it up on the next tick. Couples T099
         //     to T084a so the closed loop is observably correct.
-        var retryJob = new EtaSubmissionRetryJob(db, failingSubmitter,
-            new EInvoiceJsonGenerator(), auditCapture, clock);
+        var retryJob = new EtaSubmissionRetryJob(
+            db,
+            failingSubmitter,
+            new EInvoiceJsonGenerator(),
+            auditCapture,
+            clock
+        );
         var retryResult = await retryJob.RunOnceAsync();
-        retryResult.TotalCandidates.Should().BeGreaterThanOrEqualTo(1,
-            because: "the retry job's candidate query MUST surface this row");
-        var refreshed = await db.Set<EtaSubmission>().AsNoTracking()
+        retryResult
+            .TotalCandidates.Should()
+            .BeGreaterThanOrEqualTo(
+                1,
+                because: "the retry job's candidate query MUST surface this row"
+            );
+        var refreshed = await db.Set<EtaSubmission>()
+            .AsNoTracking()
             .FirstAsync(s => s.SalesInvoiceId == posted.Id);
-        refreshed.AttemptCount.Should().Be(2,
-            because: "the retry tick incremented the attempt counter — proof the row was actually picked up");
+        refreshed
+            .AttemptCount.Should()
+            .Be(
+                2,
+                because: "the retry tick incremented the attempt counter — proof the row was actually picked up"
+            );
 
         // 4 — Tax Risk Score surfaces the failure to the user. This is
         //     the user-facing channel that closes the "silently fails"
         //     gap: an operator who never opens the dashboard still
         //     sees the warning on the invoice detail page.
         var scorer = new DocumentRiskScorer([new EtaSubmissionFailedRule()]);
-        var findings = scorer.Score(new DocumentRiskContext(
-            posted, new Dictionary<Guid, Item>(), refreshed, nowUtc));
-        findings.Should().ContainSingle(f => f.RuleId == "ETA.SUBMISSION_FAILED",
-            because: "the Tax Risk Score badge MUST surface ETA failures so the operator notices without opening the dashboard");
+        var findings = scorer.Score(
+            new DocumentRiskContext(posted, new Dictionary<Guid, Item>(), refreshed, nowUtc)
+        );
+        findings
+            .Should()
+            .ContainSingle(
+                f => f.RuleId == "ETA.SUBMISSION_FAILED",
+                because: "the Tax Risk Score badge MUST surface ETA failures so the operator notices without opening the dashboard"
+            );
 
         // 5 — Audit log carries both the post AND the failed submission.
         //     Either missing would constitute a silent failure per
@@ -114,7 +157,9 @@ public class MockEtaSilentFailureGuardTests(SqlServerFixture fixture)
         auditCapture.Captured.Should().Contain(e => e.Kind == "eta_submission.retry_failed");
     }
 
-    private static async Task<(Customer customer, Item item, VatCategory vat)> SeedMasterDataAsync(AppDbContext db)
+    private static async Task<(Customer customer, Item item, VatCategory vat)> SeedMasterDataAsync(
+        AppDbContext db
+    )
     {
         var vat = new VatCategory(
             code: "Standard",
@@ -122,36 +167,56 @@ public class MockEtaSilentFailureGuardTests(SqlServerFixture fixture)
             ratePercent: 14m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            recoverableInputVat: true);
+            recoverableInputVat: true
+        );
         var customer = new Customer(
             code: "CUST-001",
             name: new ArabicEnglishText("عميل", "Customer"),
             address: PostalAddress.Create(
                 display: new ArabicEnglishText("القاهرة", "Cairo"),
-                governorate: "Cairo", regionCity: "Downtown", street: "Tahrir", buildingNumber: "1"),
+                governorate: "Cairo",
+                regionCity: "Downtown",
+                street: "Tahrir",
+                buildingNumber: "1"
+            ),
             taxProfile: CustomerTaxProfile.B2BRegistered(
-                tin: EgyptianTin.Parse("987654321"), vatExemption: false, defaultSalesVatCategoryId: vat.Id));
+                tin: EgyptianTin.Parse("987654321"),
+                vatExemption: false,
+                defaultSalesVatCategoryId: vat.Id
+            )
+        );
         var item = new Item(
             code: "ITEM-001",
             name: new ArabicEnglishText("ساعة", "Hour"),
-            defaultVatCategoryId: vat.Id);
-        db.Add(vat); db.Add(customer); db.Add(item);
+            defaultVatCategoryId: vat.Id
+        );
+        db.Add(vat);
+        db.Add(customer);
+        db.Add(item);
         await db.SaveChangesAsync();
         return (customer, item, vat);
     }
 
     private static async Task SeedCompanyAsync(AppDbContext db)
     {
-        if (await db.Set<Company>().AnyAsync()) return;
-        db.Add(new Company(
-            legalName: new ArabicEnglishText("شركة", "Company"),
-            taxRegistrationNumber: EgyptianTin.Parse("123456789"),
-            commercialRegistrationNumber: "CR-001234",
-            address: PostalAddress.Create(
-                display: new ArabicEnglishText("القاهرة", "Cairo"),
-                governorate: "Cairo", regionCity: "Downtown", street: "Tahrir", buildingNumber: "12",
-                postalCode: "11511"),
-            taxpayerActivityCode: "0001"));
+        if (await db.Set<Company>().AnyAsync())
+            return;
+        db.Add(
+            new Company(
+                legalName: new ArabicEnglishText("شركة", "Company"),
+                taxRegistrationNumber: EgyptianTin.Parse("123456789"),
+                commercialRegistrationNumber: "CR-001234",
+                address: PostalAddress.Create(
+                    display: new ArabicEnglishText("القاهرة", "Cairo"),
+                    governorate: "Cairo",
+                    regionCity: "Downtown",
+                    street: "Tahrir",
+                    buildingNumber: "12",
+                    postalCode: "11511"
+                ),
+                taxpayerActivityCode: "0001"
+            )
+        );
         await db.SaveChangesAsync();
     }
 
@@ -162,7 +227,8 @@ public class MockEtaSilentFailureGuardTests(SqlServerFixture fixture)
             displayName: new ArabicEnglishText("مشغل", "Operator"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
         db.Add(user);
         await db.SaveChangesAsync();
         return user;
@@ -176,15 +242,27 @@ public class MockEtaSilentFailureGuardTests(SqlServerFixture fixture)
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
         public List<AuditLogPayload> Captured { get; } = [];
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
-            return Task.FromResult(new AuditLogEntry(
-                index: Captured.Count, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]));
+            return Task.FromResult(
+                new AuditLogEntry(
+                    index: Captured.Count,
+                    tsUtc: DateTime.UtcNow,
+                    actorUserId: payload.ActorUserId,
+                    actorFirmName: payload.ActorFirmName,
+                    companyId: payload.CompanyId,
+                    kind: payload.Kind,
+                    payloadJson: payload.PayloadJson,
+                    prevHash: new byte[32],
+                    thisHash: new byte[32]
+                )
+            );
         }
     }
 }

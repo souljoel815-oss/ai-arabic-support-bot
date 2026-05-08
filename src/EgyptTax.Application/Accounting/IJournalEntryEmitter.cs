@@ -18,5 +18,9 @@ public interface IJournalEntryEmitter
     /// if the invoice is not Posted (defence-in-depth — the post
     /// handler only calls this after MarkPosted succeeds).
     /// </summary>
-    Task EmitForSalesInvoiceAsync(SalesInvoice invoice, DateTime postedAtUtc, CancellationToken cancellationToken = default);
+    Task EmitForSalesInvoiceAsync(
+        SalesInvoice invoice,
+        DateTime postedAtUtc,
+        CancellationToken cancellationToken = default
+    );
 }

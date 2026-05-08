@@ -87,22 +87,22 @@ public class NightlyPerfSuite
     {
         var nightlyClasses = new[]
         {
-            typeof(EgyptTax.IntegrationTests.Reports.ReportPerformanceTests),                  // SC-002
-            typeof(EgyptTax.IntegrationTests.Numbering.ConcurrentPostingStressTests),          // SC-006
-            typeof(EgyptTax.IntegrationTests.Audit.AuditChainPerformanceTests),                // SC-010
-            typeof(EgyptTax.IntegrationTests.Compliance.EtaDashboardPerfTests),                // SC-012
-            typeof(EgyptTax.IntegrationTests.Inspection.BundleEndToEndTests),                  // SC-014 (bundle half)
+            typeof(EgyptTax.IntegrationTests.Reports.ReportPerformanceTests), // SC-002
+            typeof(EgyptTax.IntegrationTests.Numbering.ConcurrentPostingStressTests), // SC-006
+            typeof(EgyptTax.IntegrationTests.Audit.AuditChainPerformanceTests), // SC-010
+            typeof(EgyptTax.IntegrationTests.Compliance.EtaDashboardPerfTests), // SC-012
+            typeof(EgyptTax.IntegrationTests.Inspection.BundleEndToEndTests), // SC-014 (bundle half)
         };
 
-        var missing = nightlyClasses
-            .Where(t => !HasSlowTrait(t))
-            .Select(t => t.FullName!)
-            .ToList();
+        var missing = nightlyClasses.Where(t => !HasSlowTrait(t)).Select(t => t.FullName!).ToList();
 
-        missing.Should().BeEmpty(
-            because: "every nightly perf class MUST carry [Trait(\"Category\",\"Slow\")] so the "
-                + "`dotnet test --filter \"Category=Slow\"` nightly invocation catches it; "
-                + "missing classes would silently disappear from the perf signal");
+        missing
+            .Should()
+            .BeEmpty(
+                because: "every nightly perf class MUST carry [Trait(\"Category\",\"Slow\")] so the "
+                    + "`dotnet test --filter \"Category=Slow\"` nightly invocation catches it; "
+                    + "missing classes would silently disappear from the perf signal"
+            );
     }
 
     private static bool HasSlowTrait(Type t)
@@ -112,8 +112,10 @@ public class NightlyPerfSuite
         // instead of the runtime instance.
         return t.GetCustomAttributesData()
             .Where(a => a.AttributeType == typeof(TraitAttribute))
-            .Any(a => a.ConstructorArguments.Count == 2
+            .Any(a =>
+                a.ConstructorArguments.Count == 2
                 && a.ConstructorArguments[0].Value as string == "Category"
-                && a.ConstructorArguments[1].Value as string == "Slow");
+                && a.ConstructorArguments[1].Value as string == "Slow"
+            );
     }
 }

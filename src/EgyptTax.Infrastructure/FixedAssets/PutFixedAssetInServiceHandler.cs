@@ -26,8 +26,7 @@ public sealed class PutFixedAssetInServiceHandler
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
 
-    public PutFixedAssetInServiceHandler(
-        AppDbContext db, IClock clock, IAuditLogStore auditLog)
+    public PutFixedAssetInServiceHandler(AppDbContext db, IClock clock, IAuditLogStore auditLog)
     {
         _db = db;
         _clock = clock;
@@ -36,46 +35,60 @@ public sealed class PutFixedAssetInServiceHandler
 
     public async Task<FixedAsset> HandleAsync(
         PutFixedAssetInServiceCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var asset = await _db.Set<FixedAsset>()
-            .FirstOrDefaultAsync(a => a.Id == command.FixedAssetId, cancellationToken)
+        var asset =
+            await _db.Set<FixedAsset>()
+                .FirstOrDefaultAsync(a => a.Id == command.FixedAssetId, cancellationToken)
             ?? throw new InvalidOperationException(
-                $"Fixed asset {command.FixedAssetId} not found.");
+                $"Fixed asset {command.FixedAssetId} not found."
+            );
 
         // FR-016 mirror — capital expenditures require at least one
         // attachment on file before they can be put in service. The
         // operator can attach in any order during draft editing; the
         // gate fires only at the InService transition.
         var attachmentCount = await _db.Set<Attachment>()
-            .CountAsync(a => a.DocumentId == asset.Id
-                && a.DocumentType == DocumentType.FixedAsset, cancellationToken);
+            .CountAsync(
+                a => a.DocumentId == asset.Id && a.DocumentType == DocumentType.FixedAsset,
+                cancellationToken
+            );
         if (attachmentCount == 0)
         {
-            await _auditLog.AppendAsync(new AuditLogPayload(
-                Kind: "fixed_asset.put_in_service.rejected_missing_attachment",
-                ActorUserId: command.PutInServiceByUserId,
-                ActorFirmName: null, CompanyId: Guid.Empty,
-                PayloadJson: $$"""{"fixed_asset_id":"{{asset.Id:D}}","code":"{{asset.Code}}"}"""),
-                cancellationToken);
+            await _auditLog.AppendAsync(
+                new AuditLogPayload(
+                    Kind: "fixed_asset.put_in_service.rejected_missing_attachment",
+                    ActorUserId: command.PutInServiceByUserId,
+                    ActorFirmName: null,
+                    CompanyId: Guid.Empty,
+                    PayloadJson: $$"""{"fixed_asset_id":"{{asset.Id:D}}","code":"{{asset.Code}}"}"""
+                ),
+                cancellationToken
+            );
 
             throw new InvalidOperationException(
-                $"Cannot put fixed asset {asset.Id} ({asset.Code}) in service: at least one attachment is required (FR-016 mirror). " +
-                "Attach the supporting documentation (purchase receipt / installation certificate / etc.) and retry.");
+                $"Cannot put fixed asset {asset.Id} ({asset.Code}) in service: at least one attachment is required (FR-016 mirror). "
+                    + "Attach the supporting documentation (purchase receipt / installation certificate / etc.) and retry."
+            );
         }
 
         var nowUtc = _clock.UtcNow;
         asset.PutInService();
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "fixed_asset.put_in_service",
-            ActorUserId: command.PutInServiceByUserId,
-            ActorFirmName: null, CompanyId: Guid.Empty,
-            PayloadJson: BuildPayloadJson(asset, nowUtc)),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "fixed_asset.put_in_service",
+                ActorUserId: command.PutInServiceByUserId,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: BuildPayloadJson(asset, nowUtc)
+            ),
+            cancellationToken
+        );
 
         return asset;
     }

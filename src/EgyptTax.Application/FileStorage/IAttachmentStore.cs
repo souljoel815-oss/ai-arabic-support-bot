@@ -23,7 +23,8 @@ public interface IAttachmentStore
         Guid attachmentId,
         string fileExtension,
         Stream content,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     /// <summary>Open the attachment for reading. Throws when missing.</summary>
     Task<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default);
@@ -37,7 +38,4 @@ public interface IAttachmentStore
 /// <summary>
 /// What the store returns from <see cref="IAttachmentStore.SaveAsync"/>.
 /// </summary>
-public sealed record AttachmentSavedInfo(
-    string RelativePath,
-    long SizeBytes,
-    byte[] ContentSha256);
+public sealed record AttachmentSavedInfo(string RelativePath, long SizeBytes, byte[] ContentSha256);

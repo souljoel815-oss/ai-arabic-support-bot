@@ -49,10 +49,15 @@ public class CorrelationContextMiddlewareTests : IDisposable
 
         await sut.InvokeAsync(ctx, AnonymousUser(), EmptyResolver());
 
-        var echoed = ctx.Response.Headers[CorrelationContextMiddleware.CorrelationIdHeader].ToString();
+        var echoed = ctx
+            .Response.Headers[CorrelationContextMiddleware.CorrelationIdHeader]
+            .ToString();
         echoed.Should().NotBeNullOrWhiteSpace();
-        Guid.TryParse(echoed, out var parsed).Should().BeTrue(
-            because: "the echoed header MUST be a parseable Guid so clients can store + replay it");
+        Guid.TryParse(echoed, out var parsed)
+            .Should()
+            .BeTrue(
+                because: "the echoed header MUST be a parseable Guid so clients can store + replay it"
+            );
         parsed.Should().NotBe(Guid.Empty);
     }
 
@@ -61,14 +66,20 @@ public class CorrelationContextMiddlewareTests : IDisposable
     {
         var incoming = Guid.NewGuid();
         var ctx = new DefaultHttpContext();
-        ctx.Request.Headers[CorrelationContextMiddleware.CorrelationIdHeader] = incoming.ToString("D");
+        ctx.Request.Headers[CorrelationContextMiddleware.CorrelationIdHeader] = incoming.ToString(
+            "D"
+        );
 
         var sut = BuildMiddleware();
         await sut.InvokeAsync(ctx, AnonymousUser(), EmptyResolver());
 
-        ctx.Response.Headers[CorrelationContextMiddleware.CorrelationIdHeader].ToString()
-            .Should().Be(incoming.ToString("D"),
-                because: "a valid Guid header from the client MUST be preserved so frontend + backend logs share one id");
+        ctx.Response.Headers[CorrelationContextMiddleware.CorrelationIdHeader]
+            .ToString()
+            .Should()
+            .Be(
+                incoming.ToString("D"),
+                because: "a valid Guid header from the client MUST be preserved so frontend + backend logs share one id"
+            );
     }
 
     [Fact]
@@ -83,9 +94,12 @@ public class CorrelationContextMiddlewareTests : IDisposable
         var sut = BuildMiddleware();
         await sut.InvokeAsync(ctx, AnonymousUser(), EmptyResolver());
 
-        var echoed = ctx.Response.Headers[CorrelationContextMiddleware.CorrelationIdHeader].ToString();
-        Guid.TryParse(echoed, out _).Should().BeTrue(
-            because: "non-Guid header MUST be replaced with a fresh server-generated Guid");
+        var echoed = ctx
+            .Response.Headers[CorrelationContextMiddleware.CorrelationIdHeader]
+            .ToString();
+        Guid.TryParse(echoed, out _)
+            .Should()
+            .BeTrue(because: "non-Guid header MUST be replaced with a fresh server-generated Guid");
     }
 
     [Fact]
@@ -93,10 +107,12 @@ public class CorrelationContextMiddlewareTests : IDisposable
     {
         var actorId = Guid.NewGuid();
         var ctx = new DefaultHttpContext();
-        ctx.Request.Headers[CorrelationContextMiddleware.CorrelationIdHeader] = "11111111-1111-1111-1111-111111111111";
+        ctx.Request.Headers[CorrelationContextMiddleware.CorrelationIdHeader] =
+            "11111111-1111-1111-1111-111111111111";
 
         var resolver = Substitute.For<IFirmContextResolver>();
-        resolver.ResolveFirmNameAsync(actorId, Arg.Any<CancellationToken>())
+        resolver
+            .ResolveFirmNameAsync(actorId, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<string?>("Nile Accounting LLC"));
 
         var sut = new CorrelationContextMiddleware(_ =>
@@ -112,14 +128,16 @@ public class CorrelationContextMiddlewareTests : IDisposable
         _sink.Events.Should().ContainSingle(e => e.MessageTemplate.Text == "inside-handler");
         var captured = _sink.Events.Single(e => e.MessageTemplate.Text == "inside-handler");
         captured.Properties.Should().ContainKey("CorrelationId");
-        captured.Properties["CorrelationId"].ToString().Trim('"')
-            .Should().Be("11111111-1111-1111-1111-111111111111");
+        captured
+            .Properties["CorrelationId"]
+            .ToString()
+            .Trim('"')
+            .Should()
+            .Be("11111111-1111-1111-1111-111111111111");
         captured.Properties.Should().ContainKey("UserId");
-        captured.Properties["UserId"].ToString().Trim('"')
-            .Should().Be(actorId.ToString("D"));
+        captured.Properties["UserId"].ToString().Trim('"').Should().Be(actorId.ToString("D"));
         captured.Properties.Should().ContainKey("FirmName");
-        captured.Properties["FirmName"].ToString().Trim('"')
-            .Should().Be("Nile Accounting LLC");
+        captured.Properties["FirmName"].ToString().Trim('"').Should().Be("Nile Accounting LLC");
     }
 
     [Fact]
@@ -135,12 +153,15 @@ public class CorrelationContextMiddlewareTests : IDisposable
         Log.Information("after-handler");
 
         var afterEvent = _sink.Events.Single(e => e.MessageTemplate.Text == "after-handler");
-        afterEvent.Properties.Should().NotContainKey("CorrelationId",
-            because: "LogContext.PushProperty disposes when the using-block exits — context is request-scoped");
+        afterEvent
+            .Properties.Should()
+            .NotContainKey(
+                "CorrelationId",
+                because: "LogContext.PushProperty disposes when the using-block exits — context is request-scoped"
+            );
     }
 
-    private static CorrelationContextMiddleware BuildMiddleware() =>
-        new(_ => Task.CompletedTask);
+    private static CorrelationContextMiddleware BuildMiddleware() => new(_ => Task.CompletedTask);
 
     private static ICurrentUser AnonymousUser()
     {
@@ -167,6 +188,7 @@ public class CorrelationContextMiddlewareTests : IDisposable
     private sealed class CapturingSink : ILogEventSink
     {
         public List<LogEvent> Events { get; } = new();
+
         public void Emit(LogEvent logEvent) => Events.Add(logEvent);
     }
 }

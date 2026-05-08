@@ -36,7 +36,10 @@ public sealed class FixedAsset
     public FixedAssetStatus Status { get; private set; } = FixedAssetStatus.Draft;
     public DateOnly? DisposedOn { get; private set; }
 
-    private FixedAsset() { Description = new ArabicEnglishText("", ""); }
+    private FixedAsset()
+    {
+        Description = new ArabicEnglishText("", "");
+    }
 
     private FixedAsset(
         string code,
@@ -47,7 +50,8 @@ public sealed class FixedAsset
         int usefulLifeMonths,
         DepreciationMethod depreciationMethod,
         MoneyEgp salvageValue,
-        DepreciationConvention convention)
+        DepreciationConvention convention
+    )
     {
         Code = code;
         Description = description;
@@ -76,29 +80,50 @@ public sealed class FixedAsset
         int usefulLifeMonths,
         DepreciationMethod depreciationMethod,
         MoneyEgp salvageValue,
-        DepreciationConvention convention)
+        DepreciationConvention convention
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         ArgumentException.ThrowIfNullOrWhiteSpace(assetCategory);
         if (cost.Amount <= 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(cost), "Fixed-asset cost must be positive.");
+            throw new ArgumentOutOfRangeException(
+                nameof(cost),
+                "Fixed-asset cost must be positive."
+            );
         }
         if (usefulLifeMonths <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(usefulLifeMonths), "Useful life must be at least 1 month.");
+            throw new ArgumentOutOfRangeException(
+                nameof(usefulLifeMonths),
+                "Useful life must be at least 1 month."
+            );
         }
         if (salvageValue.Amount < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(salvageValue), "Salvage value cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(salvageValue),
+                "Salvage value cannot be negative."
+            );
         }
         if (salvageValue.Amount > cost.Amount)
         {
-            throw new ArgumentOutOfRangeException(nameof(salvageValue),
-                $"Salvage value {salvageValue.Amount:F2} cannot exceed cost {cost.Amount:F2}.");
+            throw new ArgumentOutOfRangeException(
+                nameof(salvageValue),
+                $"Salvage value {salvageValue.Amount:F2} cannot exceed cost {cost.Amount:F2}."
+            );
         }
-        return new FixedAsset(code, description, assetCategory, cost, inServiceDate,
-            usefulLifeMonths, depreciationMethod, salvageValue, convention);
+        return new FixedAsset(
+            code,
+            description,
+            assetCategory,
+            cost,
+            inServiceDate,
+            usefulLifeMonths,
+            depreciationMethod,
+            salvageValue,
+            convention
+        );
     }
 
     /// <summary>FR-017 / US6 — transitions Draft → InService. The
@@ -110,7 +135,8 @@ public sealed class FixedAsset
         if (Status != FixedAssetStatus.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot put fixed asset {Id} in service: current status is {Status}, not Draft.");
+                $"Cannot put fixed asset {Id} in service: current status is {Status}, not Draft."
+            );
         }
         Status = FixedAssetStatus.InService;
     }
@@ -124,13 +150,15 @@ public sealed class FixedAsset
         if (Status != FixedAssetStatus.InService)
         {
             throw new InvalidOperationException(
-                $"Cannot dispose fixed asset {Id}: current status is {Status}, not InService.");
+                $"Cannot dispose fixed asset {Id}: current status is {Status}, not InService."
+            );
         }
         if (disposalDate < InServiceDate)
         {
             throw new ArgumentException(
                 $"Disposal date {disposalDate:yyyy-MM-dd} cannot precede in-service date {InServiceDate:yyyy-MM-dd}.",
-                nameof(disposalDate));
+                nameof(disposalDate)
+            );
         }
         Status = FixedAssetStatus.Disposed;
         DisposedOn = disposalDate;
@@ -143,13 +171,15 @@ public sealed class FixedAsset
         if (Status != FixedAssetStatus.InService)
         {
             throw new InvalidOperationException(
-                $"Cannot write off fixed asset {Id}: current status is {Status}, not InService.");
+                $"Cannot write off fixed asset {Id}: current status is {Status}, not InService."
+            );
         }
         if (writeOffDate < InServiceDate)
         {
             throw new ArgumentException(
                 $"Write-off date {writeOffDate:yyyy-MM-dd} cannot precede in-service date {InServiceDate:yyyy-MM-dd}.",
-                nameof(writeOffDate));
+                nameof(writeOffDate)
+            );
         }
         Status = FixedAssetStatus.WrittenOff;
         DisposedOn = writeOffDate;

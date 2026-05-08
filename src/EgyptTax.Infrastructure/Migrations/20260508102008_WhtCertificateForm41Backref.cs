@@ -16,14 +16,16 @@ namespace EgyptTax.Infrastructure.Migrations
                 schema: "tax",
                 table: "wht_certificates",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "ix_wht_certificates_included_in_form41_filing_id",
                 schema: "tax",
                 table: "wht_certificates",
                 column: "included_in_form41_filing_id",
-                filter: "[included_in_form41_filing_id] IS NOT NULL");
+                filter: "[included_in_form41_filing_id] IS NOT NULL"
+            );
         }
 
         /// <inheritdoc />
@@ -32,12 +34,14 @@ namespace EgyptTax.Infrastructure.Migrations
             migrationBuilder.DropIndex(
                 name: "ix_wht_certificates_included_in_form41_filing_id",
                 schema: "tax",
-                table: "wht_certificates");
+                table: "wht_certificates"
+            );
 
             migrationBuilder.DropColumn(
                 name: "included_in_form41_filing_id",
                 schema: "tax",
-                table: "wht_certificates");
+                table: "wht_certificates"
+            );
         }
     }
 }

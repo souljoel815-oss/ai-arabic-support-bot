@@ -37,18 +37,21 @@ public sealed class PurchaseInvoiceJournalEmitter : IPurchaseInvoiceJournalEmitt
     public Task EmitForPurchaseInvoiceAsync(
         PurchaseInvoice invoice,
         DateTime postedAtUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(invoice);
         if (invoice.State != DocumentState.Posted)
         {
             throw new InvalidOperationException(
-                $"Cannot emit journal for purchase invoice {invoice.Id}: state is {invoice.State}, not Posted.");
+                $"Cannot emit journal for purchase invoice {invoice.Id}: state is {invoice.State}, not Posted."
+            );
         }
         if (string.IsNullOrWhiteSpace(invoice.DocumentNumber))
         {
             throw new InvalidOperationException(
-                $"Cannot emit journal for purchase invoice {invoice.Id}: document number is empty.");
+                $"Cannot emit journal for purchase invoice {invoice.Id}: document number is empty."
+            );
         }
 
         // Aggregate per-account so the emitted journal stays compact
@@ -76,33 +79,49 @@ public sealed class PurchaseInvoiceJournalEmitter : IPurchaseInvoiceJournalEmitt
         // entire invoice is non-deductible — emitting a zero-amount
         // line would violate the JournalEntryLine "debit XOR credit
         // both non-zero" invariant.
-        var lines = new List<(string AccountCode, MoneyEgp Debit, MoneyEgp Credit, string Description)>(3)
+        var lines = new List<(
+            string AccountCode,
+            MoneyEgp Debit,
+            MoneyEgp Credit,
+            string Description
+        )>(3)
         {
-            (ChartOfAccountCodes.GenericExpense,
+            (
+                ChartOfAccountCodes.GenericExpense,
                 MoneyEgp.From(decimal.Round(expenseDebit, 2, MidpointRounding.ToEven)),
                 MoneyEgp.Zero,
-                $"Purchase {invoice.DocumentNumber} — book expense"),
+                $"Purchase {invoice.DocumentNumber} — book expense"
+            ),
         };
 
         if (inputVatDebit > 0m)
         {
-            lines.Add((ChartOfAccountCodes.InputVatRecoverable,
-                MoneyEgp.From(decimal.Round(inputVatDebit, 2, MidpointRounding.ToEven)),
-                MoneyEgp.Zero,
-                $"Purchase {invoice.DocumentNumber} — recoverable input VAT"));
+            lines.Add(
+                (
+                    ChartOfAccountCodes.InputVatRecoverable,
+                    MoneyEgp.From(decimal.Round(inputVatDebit, 2, MidpointRounding.ToEven)),
+                    MoneyEgp.Zero,
+                    $"Purchase {invoice.DocumentNumber} — recoverable input VAT"
+                )
+            );
         }
 
-        lines.Add((ChartOfAccountCodes.AccountsPayable,
-            MoneyEgp.Zero,
-            MoneyEgp.From(decimal.Round(apCredit, 2, MidpointRounding.ToEven)),
-            $"Purchase {invoice.DocumentNumber} — accrue payable to supplier"));
+        lines.Add(
+            (
+                ChartOfAccountCodes.AccountsPayable,
+                MoneyEgp.Zero,
+                MoneyEgp.From(decimal.Round(apCredit, 2, MidpointRounding.ToEven)),
+                $"Purchase {invoice.DocumentNumber} — accrue payable to supplier"
+            )
+        );
 
         var entry = JournalEntry.Create(
             sourceDocumentId: invoice.Id,
             sourceDocumentNumber: invoice.DocumentNumber!,
             sourceDocumentType: DocumentType.PurchaseInvoice,
             postedAtUtc: postedAtUtc,
-            lines: lines);
+            lines: lines
+        );
 
         _db.Add(entry);
         return Task.CompletedTask;

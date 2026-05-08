@@ -20,7 +20,9 @@ public sealed class FileSystemCheckpointStore(string filePath) : IAuditCheckpoin
         WriteIndented = false,
     };
 
-    public async Task<AuditCheckpoint?> ReadLatestAsync(CancellationToken cancellationToken = default)
+    public async Task<AuditCheckpoint?> ReadLatestAsync(
+        CancellationToken cancellationToken = default
+    )
     {
         if (!File.Exists(_filePath))
         {
@@ -28,16 +30,27 @@ public sealed class FileSystemCheckpointStore(string filePath) : IAuditCheckpoin
         }
 
         await using var stream = File.OpenRead(_filePath);
-        var dto = await JsonSerializer.DeserializeAsync<CheckpointDto>(stream, SerializerOptions, cancellationToken);
+        var dto = await JsonSerializer.DeserializeAsync<CheckpointDto>(
+            stream,
+            SerializerOptions,
+            cancellationToken
+        );
         if (dto is null)
         {
             return null;
         }
 
-        return new AuditCheckpoint(dto.LastIndex, Convert.FromHexString(dto.LastHashHex), dto.TsUtc);
+        return new AuditCheckpoint(
+            dto.LastIndex,
+            Convert.FromHexString(dto.LastHashHex),
+            dto.TsUtc
+        );
     }
 
-    public async Task WriteAsync(AuditCheckpoint checkpoint, CancellationToken cancellationToken = default)
+    public async Task WriteAsync(
+        AuditCheckpoint checkpoint,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(checkpoint);
 
@@ -50,7 +63,8 @@ public sealed class FileSystemCheckpointStore(string filePath) : IAuditCheckpoin
         var dto = new CheckpointDto(
             LastIndex: checkpoint.LastIndex,
             LastHashHex: Convert.ToHexString(checkpoint.LastHash),
-            TsUtc: checkpoint.TsUtc);
+            TsUtc: checkpoint.TsUtc
+        );
 
         var tempPath = _filePath + ".tmp";
         await using (var stream = File.Create(tempPath))

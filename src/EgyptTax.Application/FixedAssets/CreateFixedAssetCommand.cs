@@ -20,4 +20,5 @@ public sealed record CreateFixedAssetCommand(
     DepreciationMethod DepreciationMethod,
     MoneyEgp SalvageValue,
     DepreciationConvention Convention,
-    Guid CreatedByUserId);
+    Guid CreatedByUserId
+);

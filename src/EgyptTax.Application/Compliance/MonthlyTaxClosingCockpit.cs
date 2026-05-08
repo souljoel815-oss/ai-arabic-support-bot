@@ -44,7 +44,8 @@ public sealed record MonthlyTaxClosingCockpit(
     MoneyEgp FailedEtaSubmissionTotalGrand,
     int DraftsInPeriodCount,
     MoneyEgp NonRecoverableInputVat,
-    IReadOnlyList<PeriodLockChecklistItem> PeriodLockChecklist);
+    IReadOnlyList<PeriodLockChecklistItem> PeriodLockChecklist
+);
 
 /// <summary>
 /// One named bucket of "missing-something" documents. Counts +
@@ -54,14 +55,16 @@ public sealed record MonthlyTaxClosingCockpit(
 public sealed record MissingDocumentBucket(
     string Name,
     int Count,
-    IReadOnlyList<MissingDocumentExample> Examples);
+    IReadOnlyList<MissingDocumentExample> Examples
+);
 
 public sealed record MissingDocumentExample(
     Guid DocumentId,
     string Kind,
     string? DocumentNumber,
     DateOnly DocumentDate,
-    string Description);
+    string Description
+);
 
 /// <summary>
 /// One row in the "what must clear before I can lock" checklist.
@@ -71,4 +74,5 @@ public sealed record MissingDocumentExample(
 public sealed record PeriodLockChecklistItem(
     string Description,
     bool Cleared,
-    int? RelatedCount = null);
+    int? RelatedCount = null
+);

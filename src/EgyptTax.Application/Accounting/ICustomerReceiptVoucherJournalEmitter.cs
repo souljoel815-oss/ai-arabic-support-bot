@@ -19,5 +19,6 @@ public interface ICustomerReceiptVoucherJournalEmitter
     Task EmitForCustomerReceiptAsync(
         CustomerReceiptVoucher voucher,
         DateTime postedAtUtc,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }

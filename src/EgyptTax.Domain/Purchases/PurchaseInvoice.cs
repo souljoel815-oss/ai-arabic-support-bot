@@ -54,7 +54,8 @@ public sealed class PurchaseInvoice
         Guid supplierId,
         SupplierTaxProfile supplierTaxProfileSnapshot,
         string supplierInvoiceNumber,
-        DateOnly dateReceived)
+        DateOnly dateReceived
+    )
     {
         SupplierId = supplierId;
         SupplierTaxProfileSnapshot = supplierTaxProfileSnapshot;
@@ -66,14 +67,20 @@ public sealed class PurchaseInvoice
         Guid supplierId,
         SupplierTaxProfile supplierTaxProfileSnapshot,
         string supplierInvoiceNumber,
-        DateOnly dateReceived)
+        DateOnly dateReceived
+    )
     {
         if (supplierId == Guid.Empty)
         {
             throw new ArgumentException("SupplierId is required.", nameof(supplierId));
         }
         ArgumentException.ThrowIfNullOrWhiteSpace(supplierInvoiceNumber);
-        return new PurchaseInvoice(supplierId, supplierTaxProfileSnapshot, supplierInvoiceNumber, dateReceived);
+        return new PurchaseInvoice(
+            supplierId,
+            supplierTaxProfileSnapshot,
+            supplierInvoiceNumber,
+            dateReceived
+        );
     }
 
     public PurchaseInvoiceLine AddLine(
@@ -83,16 +90,25 @@ public sealed class PurchaseInvoice
         MoneyEgp unitPrice,
         Guid vatCategoryId,
         decimal vatRatePercent,
-        bool deductibleFlag)
+        bool deductibleFlag
+    )
     {
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot add a line to purchase invoice {Id}: current state {State} is not Draft.");
+                $"Cannot add a line to purchase invoice {Id}: current state {State} is not Draft."
+            );
         }
         var line = new PurchaseInvoiceLine(
-            Id, itemId, expenseCategoryId, quantity, unitPrice,
-            vatCategoryId, vatRatePercent, deductibleFlag);
+            Id,
+            itemId,
+            expenseCategoryId,
+            quantity,
+            unitPrice,
+            vatCategoryId,
+            vatRatePercent,
+            deductibleFlag
+        );
         _lines.Add(line);
         Recompute();
         return line;
@@ -103,10 +119,14 @@ public sealed class PurchaseInvoice
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot remove a line from purchase invoice {Id}: current state {State} is not Draft.");
+                $"Cannot remove a line from purchase invoice {Id}: current state {State} is not Draft."
+            );
         }
-        var line = _lines.FirstOrDefault(l => l.Id == lineId)
-            ?? throw new InvalidOperationException($"Line {lineId} is not on purchase invoice {Id}.");
+        var line =
+            _lines.FirstOrDefault(l => l.Id == lineId)
+            ?? throw new InvalidOperationException(
+                $"Line {lineId} is not on purchase invoice {Id}."
+            );
         _lines.Remove(line);
         Recompute();
     }
@@ -116,7 +136,8 @@ public sealed class PurchaseInvoice
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot edit supplier invoice number on purchase invoice {Id}: state {State} is not Draft.");
+                $"Cannot edit supplier invoice number on purchase invoice {Id}: state {State} is not Draft."
+            );
         }
         ArgumentException.ThrowIfNullOrWhiteSpace(supplierInvoiceNumber);
         SupplierInvoiceNumber = supplierInvoiceNumber;
@@ -127,7 +148,8 @@ public sealed class PurchaseInvoice
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot edit date received on purchase invoice {Id}: state {State} is not Draft.");
+                $"Cannot edit date received on purchase invoice {Id}: state {State} is not Draft."
+            );
         }
         DateReceived = dateReceived;
     }
@@ -143,10 +165,18 @@ public sealed class PurchaseInvoice
 
     /// <summary>FR-026 transitions for the approval workflow.</summary>
     public void MarkSubmitted() =>
-        State = DocumentStateMachine.Transition(State, DocumentState.Submitted, approvalEnabled: true);
+        State = DocumentStateMachine.Transition(
+            State,
+            DocumentState.Submitted,
+            approvalEnabled: true
+        );
 
     public void MarkApproved() =>
-        State = DocumentStateMachine.Transition(State, DocumentState.Approved, approvalEnabled: true);
+        State = DocumentStateMachine.Transition(
+            State,
+            DocumentState.Approved,
+            approvalEnabled: true
+        );
 
     public void MarkRejected() =>
         State = DocumentStateMachine.Transition(State, DocumentState.Draft, approvalEnabled: true);
@@ -159,14 +189,20 @@ public sealed class PurchaseInvoice
         Guid postedByUserId,
         DateTime postedAtUtc,
         DocumentPostingMode postingMode,
-        bool approvalEnabled)
+        bool approvalEnabled
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(documentNumber);
-        var nextState = DocumentStateMachine.Transition(State, DocumentState.Posted, approvalEnabled);
+        var nextState = DocumentStateMachine.Transition(
+            State,
+            DocumentState.Posted,
+            approvalEnabled
+        );
         if (_lines.Count == 0)
         {
             throw new InvalidOperationException(
-                $"Cannot post purchase invoice {Id}: at least one line is required.");
+                $"Cannot post purchase invoice {Id}: at least one line is required."
+            );
         }
         Recompute();
         DocumentNumber = documentNumber;

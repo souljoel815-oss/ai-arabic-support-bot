@@ -51,17 +51,23 @@ public sealed class NonRecoverableInputVatRule : IPurchaseDocumentRiskRule
             _ => snapshot.ProfileType.ToString(),
         };
 
-        return [new RiskFinding(
-            RuleId,
-            RiskSeverity.MustFixBeforeFiling,
-            new ArabicEnglishText(
-                "ضريبة المدخلات غير قابلة للاسترداد",
-                $"Input VAT not recoverable — supplier is {profileLabel}"),
-            new ArabicEnglishText(
-                $"تم وضع علامة على {deductibleLines} سطر(أسطر) كقابل للخصم رغم أن المورد ليس مسجلاً كدافع ضريبة. لن تقبل مصلحة الضرائب استرداد ضريبة المدخلات.",
-                $"{deductibleLines} line(s) are marked deductible but the supplier's tax profile is {profileLabel} (input-VAT recoverable only against RegisteredTaxpayer per FR-020). The claim will be disallowed at filing."),
-            FixHint: snapshot.ProfileType == SupplierTaxProfileType.ForeignSupplier
-                ? "Use the reverse-charge surface instead of the deductible-input-VAT surface."
-                : "Either obtain the supplier's TIN and update their profile to RegisteredTaxpayer, or unmark the deductible flag.")];
+        return
+        [
+            new RiskFinding(
+                RuleId,
+                RiskSeverity.MustFixBeforeFiling,
+                new ArabicEnglishText(
+                    "ضريبة المدخلات غير قابلة للاسترداد",
+                    $"Input VAT not recoverable — supplier is {profileLabel}"
+                ),
+                new ArabicEnglishText(
+                    $"تم وضع علامة على {deductibleLines} سطر(أسطر) كقابل للخصم رغم أن المورد ليس مسجلاً كدافع ضريبة. لن تقبل مصلحة الضرائب استرداد ضريبة المدخلات.",
+                    $"{deductibleLines} line(s) are marked deductible but the supplier's tax profile is {profileLabel} (input-VAT recoverable only against RegisteredTaxpayer per FR-020). The claim will be disallowed at filing."
+                ),
+                FixHint: snapshot.ProfileType == SupplierTaxProfileType.ForeignSupplier
+                    ? "Use the reverse-charge surface instead of the deductible-input-VAT surface."
+                    : "Either obtain the supplier's TIN and update their profile to RegisteredTaxpayer, or unmark the deductible flag."
+            ),
+        ];
     }
 }

@@ -10,13 +10,15 @@ namespace EgyptTax.Application.Payments;
 public sealed record AllocateSupplierPaymentCommand(
     Guid SupplierPaymentVoucherId,
     Guid TargetPurchaseInvoiceId,
-    MoneyEgp AllocatedAmount);
+    MoneyEgp AllocatedAmount
+);
 
 /// <summary>Mirror on the receipts side.</summary>
 public sealed record AllocateCustomerReceiptCommand(
     Guid CustomerReceiptVoucherId,
     Guid TargetSalesInvoiceId,
-    MoneyEgp AllocatedAmount);
+    MoneyEgp AllocatedAmount
+);
 
 /// <summary>Phase 9 / FR-051 — transition a Draft supplier-payment
 /// voucher to Posted. Allocates a `SPV-{year}-{n}` document number,
@@ -35,7 +37,8 @@ public sealed record PostSupplierPaymentVoucherCommand(
     Guid SupplierPaymentVoucherId,
     Guid PostedByUserId,
     string? WhtCategoryCode = null,
-    Guid? WhtSourceInvoiceId = null);
+    Guid? WhtSourceInvoiceId = null
+);
 
 /// <summary>Mirror on the receipts side.
 ///
@@ -51,4 +54,5 @@ public sealed record PostCustomerReceiptVoucherCommand(
     string? CustomerWhtCertificateNumber = null,
     decimal? CustomerWhtAmount = null,
     string? WhtCategoryCode = null,
-    Guid? WhtSourceInvoiceId = null);
+    Guid? WhtSourceInvoiceId = null
+);

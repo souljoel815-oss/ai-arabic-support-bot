@@ -28,7 +28,8 @@ public static class Seeder
         IPasswordHasher hasher,
         TextWriter stdout,
         TextWriter stderr,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(db);
@@ -39,68 +40,88 @@ public static class Seeder
         var profile = ExtractFlag(args, "--profile") ?? "us1-minimum";
         if (!string.Equals(profile, "us1-minimum", StringComparison.OrdinalIgnoreCase))
         {
-            await stderr.WriteLineAsync($"[seed] Unknown profile '{profile}'. Supported: us1-minimum.")
+            await stderr
+                .WriteLineAsync($"[seed] Unknown profile '{profile}'. Supported: us1-minimum.")
                 .WaitAsync(cancellationToken);
             return 2;
         }
 
-        await stdout.WriteLineAsync("[seed] Profile: us1-minimum")
-            .WaitAsync(cancellationToken);
+        await stdout.WriteLineAsync("[seed] Profile: us1-minimum").WaitAsync(cancellationToken);
 
-        var adminRole = await db.Set<Role>().FirstOrDefaultAsync(r => r.Code == "ADMIN", cancellationToken);
+        var adminRole = await db.Set<Role>()
+            .FirstOrDefaultAsync(r => r.Code == "ADMIN", cancellationToken);
         if (adminRole is null)
         {
             adminRole = new Role(
                 code: "ADMIN",
                 name: new ArabicEnglishText("مسؤول النظام", "Administrator"),
-                requiresMfa: true);
+                requiresMfa: true
+            );
             db.Add(adminRole);
-            await stdout.WriteLineAsync("[seed] Created role: ADMIN (Administrator, MFA required)")
+            await stdout
+                .WriteLineAsync("[seed] Created role: ADMIN (Administrator, MFA required)")
                 .WaitAsync(cancellationToken);
         }
         else
         {
-            await stdout.WriteLineAsync("[seed] Role ADMIN already present — skipping.")
+            await stdout
+                .WriteLineAsync("[seed] Role ADMIN already present — skipping.")
                 .WaitAsync(cancellationToken);
         }
 
 #pragma warning disable CA1308 // Email canonical form is lowercase per RFC 5321 §2.3.11; CA1308's uppercase guidance does not apply.
-        var adminEmail = ExtractFlag(args, "--admin-email")?.Trim().ToLowerInvariant() ?? "admin@test.local";
+        var adminEmail =
+            ExtractFlag(args, "--admin-email")?.Trim().ToLowerInvariant() ?? "admin@test.local";
 #pragma warning restore CA1308
-        var adminUser = await db.Set<User>().Include(u => u.Roles)
+        var adminUser = await db.Set<User>()
+            .Include(u => u.Roles)
             .FirstOrDefaultAsync(u => u.Email == adminEmail, cancellationToken);
         if (adminUser is null)
         {
-            var bootstrapPassword = ExtractFlag(args, "--bootstrap-password") ?? "TempP@ssw0rd!2026";
+            var bootstrapPassword =
+                ExtractFlag(args, "--bootstrap-password") ?? "TempP@ssw0rd!2026";
             adminUser = new User(
                 email: adminEmail,
                 displayName: new ArabicEnglishText("مسؤول النظام", "System Administrator"),
                 passwordHash: hasher.Hash(bootstrapPassword),
                 preferredLanguage: Language.Ar,
-                passwordMustChange: true);
+                passwordMustChange: true
+            );
             adminUser.Roles.Add(adminRole);
             db.Add(adminUser);
 
             await db.SaveChangesAsync(cancellationToken);
 
-            await stdout.WriteLineAsync($"[seed] Created Administrator user: {adminEmail}")
+            await stdout
+                .WriteLineAsync($"[seed] Created Administrator user: {adminEmail}")
                 .WaitAsync(cancellationToken);
-            await stdout.WriteLineAsync($"[seed]   Initial password (must change at first login): {bootstrapPassword}")
+            await stdout
+                .WriteLineAsync(
+                    $"[seed]   Initial password (must change at first login): {bootstrapPassword}"
+                )
                 .WaitAsync(cancellationToken);
-            await stdout.WriteLineAsync("[seed]   MFA enrolment is performed on first login per FR-002.")
+            await stdout
+                .WriteLineAsync("[seed]   MFA enrolment is performed on first login per FR-002.")
                 .WaitAsync(cancellationToken);
         }
         else
         {
-            await stdout.WriteLineAsync($"[seed] Administrator user {adminEmail} already present — skipping.")
+            await stdout
+                .WriteLineAsync(
+                    $"[seed] Administrator user {adminEmail} already present — skipping."
+                )
                 .WaitAsync(cancellationToken);
         }
 
         await db.SaveChangesAsync(cancellationToken);
 
-        await stdout.WriteLineAsync("[seed] DONE — Stage 2 identity bootstrap ready.")
+        await stdout
+            .WriteLineAsync("[seed] DONE — Stage 2 identity bootstrap ready.")
             .WaitAsync(cancellationToken);
-        await stdout.WriteLineAsync("[seed] (VAT category / customer / item / chart-of-accounts seeding lands with US1.)")
+        await stdout
+            .WriteLineAsync(
+                "[seed] (VAT category / customer / item / chart-of-accounts seeding lands with US1.)"
+            )
             .WaitAsync(cancellationToken);
 
         return 0;

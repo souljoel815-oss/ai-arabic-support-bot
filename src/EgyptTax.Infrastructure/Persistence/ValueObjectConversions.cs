@@ -17,12 +17,16 @@ public static class ValueObjectConversions
     public const string MoneyEgpColumnType = "decimal(19,4)";
 
     /// <summary>Converter: <see cref="MoneyEgp"/> &lt;-&gt; <see cref="decimal"/>.</summary>
-    public static readonly ValueConverter<MoneyEgp, decimal> MoneyEgpConverter =
-        new(v => v.Amount, v => MoneyEgp.From(v));
+    public static readonly ValueConverter<MoneyEgp, decimal> MoneyEgpConverter = new(
+        v => v.Amount,
+        v => MoneyEgp.From(v)
+    );
 
     /// <summary>Converter: <see cref="EgyptianTin"/> &lt;-&gt; <see cref="string"/>.</summary>
-    public static readonly ValueConverter<EgyptianTin, string> EgyptianTinConverter =
-        new(v => v.Value, v => EgyptianTin.Parse(v));
+    public static readonly ValueConverter<EgyptianTin, string> EgyptianTinConverter = new(
+        v => v.Value,
+        v => EgyptianTin.Parse(v)
+    );
 
     /// <summary>
     /// Apply default conversions and column types globally for the registered

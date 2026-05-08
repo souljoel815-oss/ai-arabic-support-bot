@@ -13,5 +13,9 @@ namespace EgyptTax.Application.Numbering;
 /// </summary>
 public interface IDocumentNumberAllocator
 {
-    Task<string> AllocateAsync(DocumentType type, int fiscalYear, CancellationToken cancellationToken = default);
+    Task<string> AllocateAsync(
+        DocumentType type,
+        int fiscalYear,
+        CancellationToken cancellationToken = default
+    );
 }

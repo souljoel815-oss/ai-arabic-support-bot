@@ -11,8 +11,7 @@ namespace EgyptTax.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.EnsureSchema(
-                name: "identity");
+            migrationBuilder.EnsureSchema(name: "identity");
 
             migrationBuilder.CreateTable(
                 name: "permissions",
@@ -20,14 +19,28 @@ namespace EgyptTax.Infrastructure.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    code = table.Column<string>(type: "varchar(64)", unicode: false, maxLength: 64, nullable: false),
-                    description_ar = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    description_en = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false)
+                    code = table.Column<string>(
+                        type: "varchar(64)",
+                        unicode: false,
+                        maxLength: 64,
+                        nullable: false
+                    ),
+                    description_ar = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: false
+                    ),
+                    description_en = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: false
+                    ),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_permissions", x => x.id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "roles",
@@ -35,15 +48,29 @@ namespace EgyptTax.Infrastructure.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    code = table.Column<string>(type: "varchar(32)", unicode: false, maxLength: 32, nullable: false),
+                    code = table.Column<string>(
+                        type: "varchar(32)",
+                        unicode: false,
+                        maxLength: 32,
+                        nullable: false
+                    ),
                     requires_mfa = table.Column<bool>(type: "bit", nullable: false),
-                    name_ar = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    name_en = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false)
+                    name_ar = table.Column<string>(
+                        type: "nvarchar(100)",
+                        maxLength: 100,
+                        nullable: false
+                    ),
+                    name_en = table.Column<string>(
+                        type: "nvarchar(100)",
+                        maxLength: 100,
+                        nullable: false
+                    ),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_roles", x => x.id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "users",
@@ -51,25 +78,67 @@ namespace EgyptTax.Infrastructure.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    email = table.Column<string>(type: "varchar(254)", unicode: false, maxLength: 254, nullable: false),
-                    password_hash = table.Column<string>(type: "varchar(512)", unicode: false, maxLength: 512, nullable: false),
+                    email = table.Column<string>(
+                        type: "varchar(254)",
+                        unicode: false,
+                        maxLength: 254,
+                        nullable: false
+                    ),
+                    password_hash = table.Column<string>(
+                        type: "varchar(512)",
+                        unicode: false,
+                        maxLength: 512,
+                        nullable: false
+                    ),
                     password_must_change = table.Column<bool>(type: "bit", nullable: false),
-                    password_changed_at_utc = table.Column<DateTime>(type: "datetime2(3)", nullable: true),
-                    mfa_secret_encrypted = table.Column<byte[]>(type: "varbinary(512)", nullable: true),
-                    mfa_enrolled_at_utc = table.Column<DateTime>(type: "datetime2(3)", nullable: true),
-                    preferred_language = table.Column<string>(type: "nvarchar(2)", maxLength: 2, nullable: false),
-                    status = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
-                    last_login_at_utc = table.Column<DateTime>(type: "datetime2(3)", nullable: true),
+                    password_changed_at_utc = table.Column<DateTime>(
+                        type: "datetime2(3)",
+                        nullable: true
+                    ),
+                    mfa_secret_encrypted = table.Column<byte[]>(
+                        type: "varbinary(512)",
+                        nullable: true
+                    ),
+                    mfa_enrolled_at_utc = table.Column<DateTime>(
+                        type: "datetime2(3)",
+                        nullable: true
+                    ),
+                    preferred_language = table.Column<string>(
+                        type: "nvarchar(2)",
+                        maxLength: 2,
+                        nullable: false
+                    ),
+                    status = table.Column<string>(
+                        type: "nvarchar(16)",
+                        maxLength: 16,
+                        nullable: false
+                    ),
+                    last_login_at_utc = table.Column<DateTime>(
+                        type: "datetime2(3)",
+                        nullable: true
+                    ),
                     last_login_succeeded = table.Column<bool>(type: "bit", nullable: false),
                     failed_login_count = table.Column<int>(type: "int", nullable: false),
-                    lockout_until_utc = table.Column<DateTime>(type: "datetime2(3)", nullable: true),
-                    display_name_ar = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    display_name_en = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false)
+                    lockout_until_utc = table.Column<DateTime>(
+                        type: "datetime2(3)",
+                        nullable: true
+                    ),
+                    display_name_ar = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: false
+                    ),
+                    display_name_en = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: false
+                    ),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_users", x => x.id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "role_permissions",
@@ -77,7 +146,7 @@ namespace EgyptTax.Infrastructure.Migrations
                 columns: table => new
                 {
                     PermissionsId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    RoleId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    RoleId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -88,15 +157,18 @@ namespace EgyptTax.Infrastructure.Migrations
                         principalSchema: "identity",
                         principalTable: "permissions",
                         principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Cascade
+                    );
                     table.ForeignKey(
                         name: "FK_role_permissions_roles_RoleId",
                         column: x => x.RoleId,
                         principalSchema: "identity",
                         principalTable: "roles",
                         principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "user_roles",
@@ -104,7 +176,7 @@ namespace EgyptTax.Infrastructure.Migrations
                 columns: table => new
                 {
                     RolesId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -115,72 +187,70 @@ namespace EgyptTax.Infrastructure.Migrations
                         principalSchema: "identity",
                         principalTable: "roles",
                         principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Cascade
+                    );
                     table.ForeignKey(
                         name: "FK_user_roles_users_UserId",
                         column: x => x.UserId,
                         principalSchema: "identity",
                         principalTable: "users",
                         principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "ux_permissions_code",
                 schema: "identity",
                 table: "permissions",
                 column: "code",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_role_permissions_RoleId",
                 schema: "identity",
                 table: "role_permissions",
-                column: "RoleId");
+                column: "RoleId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "ux_roles_code",
                 schema: "identity",
                 table: "roles",
                 column: "code",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_user_roles_UserId",
                 schema: "identity",
                 table: "user_roles",
-                column: "UserId");
+                column: "UserId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "ux_users_email",
                 schema: "identity",
                 table: "users",
                 column: "email",
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "role_permissions",
-                schema: "identity");
+            migrationBuilder.DropTable(name: "role_permissions", schema: "identity");
 
-            migrationBuilder.DropTable(
-                name: "user_roles",
-                schema: "identity");
+            migrationBuilder.DropTable(name: "user_roles", schema: "identity");
 
-            migrationBuilder.DropTable(
-                name: "permissions",
-                schema: "identity");
+            migrationBuilder.DropTable(name: "permissions", schema: "identity");
 
-            migrationBuilder.DropTable(
-                name: "roles",
-                schema: "identity");
+            migrationBuilder.DropTable(name: "roles", schema: "identity");
 
-            migrationBuilder.DropTable(
-                name: "users",
-                schema: "identity");
+            migrationBuilder.DropTable(name: "users", schema: "identity");
         }
     }
 }

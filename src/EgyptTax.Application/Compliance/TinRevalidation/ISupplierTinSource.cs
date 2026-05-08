@@ -10,7 +10,9 @@ namespace EgyptTax.Application.Compliance.TinRevalidation;
 /// </summary>
 public interface ISupplierTinSource
 {
-    Task<IReadOnlyList<SupplierTinRow>> GetSuppliersToRevalidateAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<SupplierTinRow>> GetSuppliersToRevalidateAsync(
+        CancellationToken cancellationToken = default
+    );
 }
 
 /// <summary>

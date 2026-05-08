@@ -19,7 +19,8 @@ public sealed class TransactionBehavior<TRequest, TResponse>(IUnitOfWork unitOfW
     public async Task<TResponse> Handle(
         TRequest request,
         RequestHandlerDelegate<TResponse> next,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         ArgumentNullException.ThrowIfNull(next);
 

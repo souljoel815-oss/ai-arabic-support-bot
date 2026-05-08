@@ -46,10 +46,10 @@ namespace EgyptTax.E2ETests.Stories;
 public class US1_SalesInvoiceQuickstartTests : IAsyncLifetime
 {
     private const string SkipReason =
-        "Blocked: requires US1 implementation tasks T085+ (login/MFA pages, " +
-        "invoice editor, ETA mock submission, dashboard page, verify route, " +
-        "audit-verify CLI). Remove the Skip on each [Fact] as the corresponding " +
-        "implementation task lands.";
+        "Blocked: requires US1 implementation tasks T085+ (login/MFA pages, "
+        + "invoice editor, ETA mock submission, dashboard page, verify route, "
+        + "audit-verify CLI). Remove the Skip on each [Fact] as the corresponding "
+        + "implementation task lands.";
 
     private IPlaywright? _playwright;
     private IBrowser? _browser;
@@ -64,7 +64,8 @@ public class US1_SalesInvoiceQuickstartTests : IAsyncLifetime
         {
             _playwright = await Playwright.CreateAsync();
             _browser = await _playwright.Chromium.LaunchAsync(
-                new BrowserTypeLaunchOptions { Headless = true });
+                new BrowserTypeLaunchOptions { Headless = true }
+            );
         }
         catch
         {

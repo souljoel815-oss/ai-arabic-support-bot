@@ -11,8 +11,9 @@ namespace EgyptTax.Application.Common.Behaviors;
 /// unaffected; the timer is stopped before re-throwing so the warning
 /// log includes the full failed duration.
 /// </summary>
-public sealed class PerformanceBehavior<TRequest, TResponse>(ILogger<PerformanceBehavior<TRequest, TResponse>> logger)
-    : IPipelineBehavior<TRequest, TResponse>
+public sealed class PerformanceBehavior<TRequest, TResponse>(
+    ILogger<PerformanceBehavior<TRequest, TResponse>> logger
+) : IPipelineBehavior<TRequest, TResponse>
     where TRequest : notnull
 {
     public static readonly TimeSpan SlowThreshold = TimeSpan.FromMilliseconds(500);
@@ -22,7 +23,8 @@ public sealed class PerformanceBehavior<TRequest, TResponse>(ILogger<Performance
     public async Task<TResponse> Handle(
         TRequest request,
         RequestHandlerDelegate<TResponse> next,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         ArgumentNullException.ThrowIfNull(next);
 
@@ -40,7 +42,8 @@ public sealed class PerformanceBehavior<TRequest, TResponse>(ILogger<Performance
                     "Slow handler: {RequestType} took {ElapsedMs} ms (threshold {ThresholdMs} ms)",
                     typeof(TRequest).Name,
                     stopwatch.ElapsedMilliseconds,
-                    (int)SlowThreshold.TotalMilliseconds);
+                    (int)SlowThreshold.TotalMilliseconds
+                );
             }
         }
     }

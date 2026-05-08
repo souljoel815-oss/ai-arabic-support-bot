@@ -36,7 +36,8 @@ public readonly partial record struct EgyptianTin
         TryParse(raw, out var tin)
             ? tin.Value
             : throw new FormatException(
-                $"'{raw}' is not a valid Egyptian TIN (must be exactly 9 numeric digits).");
+                $"'{raw}' is not a valid Egyptian TIN (must be exactly 9 numeric digits)."
+            );
 
     public override string ToString() => Value;
 

@@ -39,7 +39,8 @@ public sealed class ApprovalRequest
         Guid documentId,
         DocumentType documentType,
         Guid submittedByUserId,
-        DateTime submittedAtUtc)
+        DateTime submittedAtUtc
+    )
     {
         if (documentId == Guid.Empty)
         {
@@ -47,7 +48,10 @@ public sealed class ApprovalRequest
         }
         if (submittedByUserId == Guid.Empty)
         {
-            throw new ArgumentException("SubmittedByUserId is required.", nameof(submittedByUserId));
+            throw new ArgumentException(
+                "SubmittedByUserId is required.",
+                nameof(submittedByUserId)
+            );
         }
         DocumentId = documentId;
         DocumentType = documentType;
@@ -60,12 +64,14 @@ public sealed class ApprovalRequest
         if (Status != ApprovalRequestStatus.Pending)
         {
             throw new InvalidOperationException(
-                $"Approval request {Id} is already {Status}; cannot approve.");
+                $"Approval request {Id} is already {Status}; cannot approve."
+            );
         }
         if (approverUserId == SubmittedByUserId)
         {
             throw new InvalidOperationException(
-                "FR-004: a user cannot approve their own submission.");
+                "FR-004: a user cannot approve their own submission."
+            );
         }
         ApprovedByUserId = approverUserId;
         ApprovedAtUtc = utcNow;
@@ -76,12 +82,14 @@ public sealed class ApprovalRequest
         if (Status != ApprovalRequestStatus.Pending)
         {
             throw new InvalidOperationException(
-                $"Approval request {Id} is already {Status}; cannot reject.");
+                $"Approval request {Id} is already {Status}; cannot reject."
+            );
         }
         if (rejecterUserId == SubmittedByUserId)
         {
             throw new InvalidOperationException(
-                "FR-004: a user cannot reject their own submission.");
+                "FR-004: a user cannot reject their own submission."
+            );
         }
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         RejectedByUserId = rejecterUserId;

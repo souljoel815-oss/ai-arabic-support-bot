@@ -26,14 +26,16 @@ public class MfaInvariantTests(SqlServerFixture fixture)
         var adminRole = new Role(
             code: "ADMIN",
             name: new ArabicEnglishText("مسؤول النظام", "Administrator"),
-            requiresMfa: true);
+            requiresMfa: true
+        );
 
         var user = new User(
             email: "admin@firm.eg",
             displayName: new ArabicEnglishText("مسؤول النظام", "System Administrator"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
 
         user.Roles.Add(adminRole);
         user.EnrollMfa(new byte[] { 0x01, 0x02, 0x03, 0x04 });
@@ -44,15 +46,16 @@ public class MfaInvariantTests(SqlServerFixture fixture)
 
         // Reload to verify the invariant survives the EF round-trip.
         db.ChangeTracker.Clear();
-        var reloaded = await db.Set<User>()
-            .Include(u => u.Roles)
-            .FirstAsync(u => u.Id == user.Id);
+        var reloaded = await db.Set<User>().Include(u => u.Roles).FirstAsync(u => u.Id == user.Id);
 
         var act = () => reloaded.DisableMfa();
 
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*role that requires it*",
-               because: "FR-002 forbids disabling MFA on Administrator-style roles");
+        act.Should()
+            .Throw<InvalidOperationException>()
+            .WithMessage(
+                "*role that requires it*",
+                because: "FR-002 forbids disabling MFA on Administrator-style roles"
+            );
     }
 
     [Fact]
@@ -63,14 +66,16 @@ public class MfaInvariantTests(SqlServerFixture fixture)
         var adminRole = new Role(
             code: "ADMIN",
             name: new ArabicEnglishText("مسؤول النظام", "Administrator"),
-            requiresMfa: true);
+            requiresMfa: true
+        );
 
         var user = new User(
             email: "demoted@firm.eg",
             displayName: new ArabicEnglishText("مستخدم", "User"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.En,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
 
         user.Roles.Add(adminRole);
         user.EnrollMfa(new byte[] { 0x09, 0x08, 0x07 });
@@ -85,9 +90,7 @@ public class MfaInvariantTests(SqlServerFixture fixture)
         await db.SaveChangesAsync();
 
         db.ChangeTracker.Clear();
-        var reloaded = await db.Set<User>()
-            .Include(u => u.Roles)
-            .FirstAsync(u => u.Id == user.Id);
+        var reloaded = await db.Set<User>().Include(u => u.Roles).FirstAsync(u => u.Id == user.Id);
         reloaded.MfaSecretEncrypted.Should().BeNull();
         reloaded.MfaEnrolledAtUtc.Should().BeNull();
     }

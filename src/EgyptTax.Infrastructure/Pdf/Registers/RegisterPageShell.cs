@@ -24,7 +24,8 @@ internal static class RegisterPageShell
         DateOnly periodStart,
         DateOnly periodEnd,
         DateTime generatedAtUtc,
-        Action<IContainer> renderBody)
+        Action<IContainer> renderBody
+    )
     {
         QuestPdfFontInitializer.EnsureRegistered();
 
@@ -34,45 +35,68 @@ internal static class RegisterPageShell
             {
                 page.Size(PageSizes.A4);
                 page.Margin(36);
-                page.DefaultTextStyle(t => t
-                    .FontSize(9)
-                    .FontFamily(QuestPdfFontInitializer.PrimaryFontFamily,
-                                QuestPdfFontInitializer.ArabicFallbackFamily));
+                page.DefaultTextStyle(t =>
+                    t.FontSize(9)
+                        .FontFamily(
+                            QuestPdfFontInitializer.PrimaryFontFamily,
+                            QuestPdfFontInitializer.ArabicFallbackFamily
+                        )
+                );
 
-                page.Header().Column(col =>
-                {
-                    col.Item().Row(row =>
+                page.Header()
+                    .Column(col =>
                     {
-                        row.RelativeItem().Column(left =>
-                        {
-                            left.Item().Text(company.LegalName.English).Bold().FontSize(13);
-                            left.Item().Text(company.LegalName.Arabic).FontSize(11);
-                            left.Item().Text($"TIN: {company.TaxRegistrationNumber}").FontSize(9);
-                        });
-                        row.RelativeItem().AlignRight().Column(right =>
-                        {
-                            right.Item().AlignRight().Text(titleEn).Bold().FontSize(13);
-                            right.Item().AlignRight().Text(titleAr).FontSize(11);
-                            right.Item().AlignRight().Text(
-                                $"Period: {periodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)} → {periodEnd.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}")
-                                .FontSize(9);
-                            right.Item().AlignRight().Text(
-                                $"Generated (UTC): {generatedAtUtc.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)}")
-                                .FontSize(8);
-                        });
+                        col.Item()
+                            .Row(row =>
+                            {
+                                row.RelativeItem()
+                                    .Column(left =>
+                                    {
+                                        left.Item()
+                                            .Text(company.LegalName.English)
+                                            .Bold()
+                                            .FontSize(13);
+                                        left.Item().Text(company.LegalName.Arabic).FontSize(11);
+                                        left.Item()
+                                            .Text($"TIN: {company.TaxRegistrationNumber}")
+                                            .FontSize(9);
+                                    });
+                                row.RelativeItem()
+                                    .AlignRight()
+                                    .Column(right =>
+                                    {
+                                        right.Item().AlignRight().Text(titleEn).Bold().FontSize(13);
+                                        right.Item().AlignRight().Text(titleAr).FontSize(11);
+                                        right
+                                            .Item()
+                                            .AlignRight()
+                                            .Text(
+                                                $"Period: {periodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)} → {periodEnd.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"
+                                            )
+                                            .FontSize(9);
+                                        right
+                                            .Item()
+                                            .AlignRight()
+                                            .Text(
+                                                $"Generated (UTC): {generatedAtUtc.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)}"
+                                            )
+                                            .FontSize(8);
+                                    });
+                            });
+                        col.Item().PaddingTop(6).LineHorizontal(0.5f);
                     });
-                    col.Item().PaddingTop(6).LineHorizontal(0.5f);
-                });
 
                 page.Content().PaddingVertical(10).Element(renderBody);
 
-                page.Footer().AlignCenter().Text(t =>
-                {
-                    t.Span("Page ").FontSize(8);
-                    t.CurrentPageNumber().FontSize(8);
-                    t.Span(" of ").FontSize(8);
-                    t.TotalPages().FontSize(8);
-                });
+                page.Footer()
+                    .AlignCenter()
+                    .Text(t =>
+                    {
+                        t.Span("Page ").FontSize(8);
+                        t.CurrentPageNumber().FontSize(8);
+                        t.Span(" of ").FontSize(8);
+                        t.TotalPages().FontSize(8);
+                    });
             });
         });
 
@@ -82,6 +106,5 @@ internal static class RegisterPageShell
     public static string Money(decimal amount) =>
         amount.ToString("F2", CultureInfo.InvariantCulture);
 
-    public static string Date(DateOnly d) =>
-        d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    public static string Date(DateOnly d) => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 }

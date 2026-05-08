@@ -20,7 +20,8 @@ public sealed class PasswordResetService(
     AppDbContext db,
     IPasswordHasher hasher,
     IClock clock,
-    IAuditLogStore auditLog) : IPasswordResetService
+    IAuditLogStore auditLog
+) : IPasswordResetService
 {
     private readonly AppDbContext _db = db;
     private readonly IPasswordHasher _hasher = hasher;
@@ -30,9 +31,11 @@ public sealed class PasswordResetService(
     public async Task<PasswordResetIssued> IssueAsync(
         Guid targetUserId,
         Guid issuingAdminUserId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
-        var user = await _db.Set<User>().FirstOrDefaultAsync(u => u.Id == targetUserId, cancellationToken)
+        var user =
+            await _db.Set<User>().FirstOrDefaultAsync(u => u.Id == targetUserId, cancellationToken)
             ?? throw new InvalidOperationException($"Target user {targetUserId} not found.");
 
         var plaintext = PasswordResetTokenHasher.GeneratePlaintext();
@@ -47,8 +50,10 @@ public sealed class PasswordResetService(
                 ActorUserId: issuingAdminUserId,
                 ActorFirmName: null,
                 CompanyId: Guid.Empty,
-                PayloadJson: $$"""{"target_user_id":"{{user.Id:D}}","token_id":"{{token.Id:D}}","expires_at_utc":"{{token.ExpiresAtUtc:o}}"}"""),
-            cancellationToken);
+                PayloadJson: $$"""{"target_user_id":"{{user.Id:D}}","token_id":"{{token.Id:D}}","expires_at_utc":"{{token.ExpiresAtUtc:o}}"}"""
+            ),
+            cancellationToken
+        );
 
         return new PasswordResetIssued(plaintext, token.ExpiresAtUtc);
     }
@@ -56,7 +61,8 @@ public sealed class PasswordResetService(
     public async Task<PasswordResetRedeemResult> RedeemAsync(
         string plaintextToken,
         string newPassword,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(plaintextToken);
         ArgumentException.ThrowIfNullOrWhiteSpace(newPassword);
@@ -72,14 +78,17 @@ public sealed class PasswordResetService(
         var nowUtc = _clock.UtcNow;
         if (!token.IsActive(nowUtc))
         {
-            return new PasswordResetRedeemResult(false,
-                token.RedeemedAtUtc is not null
-                    ? "Token already redeemed."
-                    : "Token expired.");
+            return new PasswordResetRedeemResult(
+                false,
+                token.RedeemedAtUtc is not null ? "Token already redeemed." : "Token expired."
+            );
         }
 
-        var user = await _db.Set<User>().FirstOrDefaultAsync(u => u.Id == token.UserId, cancellationToken)
-            ?? throw new InvalidOperationException($"User {token.UserId} for redeemed token not found.");
+        var user =
+            await _db.Set<User>().FirstOrDefaultAsync(u => u.Id == token.UserId, cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"User {token.UserId} for redeemed token not found."
+            );
 
         user.SetPassword(_hasher.Hash(newPassword), mustChange: false);
         token.Redeem(nowUtc);
@@ -91,8 +100,10 @@ public sealed class PasswordResetService(
                 ActorUserId: user.Id,
                 ActorFirmName: null,
                 CompanyId: Guid.Empty,
-                PayloadJson: $$"""{"target_user_id":"{{user.Id:D}}","token_id":"{{token.Id:D}}","redeemed_at_utc":"{{nowUtc:o}}"}"""),
-            cancellationToken);
+                PayloadJson: $$"""{"target_user_id":"{{user.Id:D}}","token_id":"{{token.Id:D}}","redeemed_at_utc":"{{nowUtc:o}}"}"""
+            ),
+            cancellationToken
+        );
 
         return new PasswordResetRedeemResult(true, null);
     }

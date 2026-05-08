@@ -24,7 +24,10 @@ public static class AuditChainHasher
         ArgumentNullException.ThrowIfNull(prevHash);
         if (prevHash.Length != 32)
         {
-            throw new ArgumentException("prevHash must be exactly 32 bytes (SHA-256).", nameof(prevHash));
+            throw new ArgumentException(
+                "prevHash must be exactly 32 bytes (SHA-256).",
+                nameof(prevHash)
+            );
         }
 
         var canonical = JsonCanonicalizer.Canonicalize(payloadJson);

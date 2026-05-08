@@ -20,4 +20,5 @@ public sealed record CreateReversalJournalCommand(
     Guid OriginalJournalVoucherId,
     DateOnly ReversalDate,
     ArabicEnglishText ReversalNarration,
-    Guid CreatedByUserId);
+    Guid CreatedByUserId
+);

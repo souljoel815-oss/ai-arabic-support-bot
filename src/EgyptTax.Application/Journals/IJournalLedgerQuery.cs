@@ -19,14 +19,25 @@ namespace EgyptTax.Application.Journals;
 public interface IJournalLedgerQuery
 {
     Task<IReadOnlyList<JournalListRow>> ListAsync(
-        DateOnly periodStart, DateOnly periodEnd, CancellationToken cancellationToken = default);
+        DateOnly periodStart,
+        DateOnly periodEnd,
+        CancellationToken cancellationToken = default
+    );
 
     Task<JournalDetailDto?> GetAsync(
-        Guid id, JournalEntryKind kind, CancellationToken cancellationToken = default);
+        Guid id,
+        JournalEntryKind kind,
+        CancellationToken cancellationToken = default
+    );
 }
 
 /// <summary>Whether the row originated from a Post auto-emit or an operator-created voucher.</summary>
-public enum JournalEntryKind { AutoEmitted, ManualAdjusting, Reversal }
+public enum JournalEntryKind
+{
+    AutoEmitted,
+    ManualAdjusting,
+    Reversal,
+}
 
 public sealed record JournalListRow(
     Guid Id,
@@ -37,7 +48,8 @@ public sealed record JournalListRow(
     Guid? SourceDocumentId,
     string? SourceDocumentNumber,
     decimal TotalDebits,
-    int LineCount);
+    int LineCount
+);
 
 public sealed record JournalDetailDto(
     Guid Id,
@@ -50,10 +62,12 @@ public sealed record JournalDetailDto(
     Guid? ReversesJournalVoucherId,
     decimal TotalDebits,
     decimal TotalCredits,
-    IReadOnlyList<JournalDetailLineDto> Lines);
+    IReadOnlyList<JournalDetailLineDto> Lines
+);
 
 public sealed record JournalDetailLineDto(
     string AccountCode,
     decimal Debit,
     decimal Credit,
-    string Description);
+    string Description
+);

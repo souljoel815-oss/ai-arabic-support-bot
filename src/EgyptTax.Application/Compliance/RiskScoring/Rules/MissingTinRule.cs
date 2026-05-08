@@ -23,29 +23,44 @@ public sealed class MissingTinRule : IDocumentRiskRule
         ArgumentNullException.ThrowIfNull(context);
         var snapshot = context.Invoice.CustomerTaxProfileSnapshot;
 
-        if (snapshot.ProfileType == CustomerTaxProfileType.B2BRegistered
-            && string.IsNullOrWhiteSpace(snapshot.TinValue))
+        if (
+            snapshot.ProfileType == CustomerTaxProfileType.B2BRegistered
+            && string.IsNullOrWhiteSpace(snapshot.TinValue)
+        )
         {
-            return [new RiskFinding(
-                RuleId,
-                RiskSeverity.Blocker,
-                new ArabicEnglishText("الرقم الضريبي مفقود", "Tax registration number missing"),
-                new ArabicEnglishText(
-                    "العميل مسجل (B2B) ولكن لا يحمل رقمًا ضريبيًا — يجب تصحيح بيانات العميل قبل الإرسال إلى مصلحة الضرائب.",
-                    "Customer is marked B2B-Registered but has no Tax Registration Number. ETA submission will reject this document. Fix the customer master record before posting."),
-                FixHint: "Open the customer record and supply a 9-digit Egyptian TIN.")];
+            return
+            [
+                new RiskFinding(
+                    RuleId,
+                    RiskSeverity.Blocker,
+                    new ArabicEnglishText("الرقم الضريبي مفقود", "Tax registration number missing"),
+                    new ArabicEnglishText(
+                        "العميل مسجل (B2B) ولكن لا يحمل رقمًا ضريبيًا — يجب تصحيح بيانات العميل قبل الإرسال إلى مصلحة الضرائب.",
+                        "Customer is marked B2B-Registered but has no Tax Registration Number. ETA submission will reject this document. Fix the customer master record before posting."
+                    ),
+                    FixHint: "Open the customer record and supply a 9-digit Egyptian TIN."
+                ),
+            ];
         }
 
         if (snapshot.ProfileType == CustomerTaxProfileType.B2BUnregistered)
         {
-            return [new RiskFinding(
-                RuleId,
-                RiskSeverity.MustFixBeforeFiling,
-                new ArabicEnglishText("معاملة B2B بدون رقم ضريبي", "B2B transaction without TIN"),
-                new ArabicEnglishText(
-                    "العميل من نوع B2B-Unregistered؛ مصلحة الضرائب قد ترفض الفاتورة لأن المعاملة بين شركتين دون رقم ضريبي مسجل.",
-                    "Customer profile is B2B-Unregistered. ETA may reject the document because a registered TIN is expected on B2B traffic. Confirm the customer is genuinely unregistered."),
-                FixHint: "If the customer recently registered with ETA, update their profile to B2B-Registered and supply the TIN.")];
+            return
+            [
+                new RiskFinding(
+                    RuleId,
+                    RiskSeverity.MustFixBeforeFiling,
+                    new ArabicEnglishText(
+                        "معاملة B2B بدون رقم ضريبي",
+                        "B2B transaction without TIN"
+                    ),
+                    new ArabicEnglishText(
+                        "العميل من نوع B2B-Unregistered؛ مصلحة الضرائب قد ترفض الفاتورة لأن المعاملة بين شركتين دون رقم ضريبي مسجل.",
+                        "Customer profile is B2B-Unregistered. ETA may reject the document because a registered TIN is expected on B2B traffic. Confirm the customer is genuinely unregistered."
+                    ),
+                    FixHint: "If the customer recently registered with ETA, update their profile to B2B-Registered and supply the TIN."
+                ),
+            ];
         }
 
         return Array.Empty<RiskFinding>();

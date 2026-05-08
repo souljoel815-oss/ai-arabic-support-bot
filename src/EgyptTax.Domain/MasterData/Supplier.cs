@@ -44,7 +44,8 @@ public sealed class Supplier
         ArabicEnglishText address,
         SupplierTaxProfile taxProfile,
         string? phone = null,
-        string? email = null)
+        string? email = null
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         Code = code;
@@ -58,6 +59,7 @@ public sealed class Supplier
     public void UpdateAddress(ArabicEnglishText address) => Address = address;
 
     public void Deactivate() => Status = SupplierStatus.Inactive;
+
     public void Reactivate() => Status = SupplierStatus.Active;
 
     public void UpdateContact(string? phone, string? email)

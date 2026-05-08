@@ -30,12 +30,20 @@ public sealed class Item
 
     private Item() { }
 
-    public Item(string code, ArabicEnglishText name, Guid defaultVatCategoryId, string? etaItemCode = null)
+    public Item(
+        string code,
+        ArabicEnglishText name,
+        Guid defaultVatCategoryId,
+        string? etaItemCode = null
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         if (defaultVatCategoryId == Guid.Empty)
         {
-            throw new ArgumentException("Item must reference a default VAT category.", nameof(defaultVatCategoryId));
+            throw new ArgumentException(
+                "Item must reference a default VAT category.",
+                nameof(defaultVatCategoryId)
+            );
         }
         Code = code;
         Name = name;
@@ -44,8 +52,12 @@ public sealed class Item
     }
 
     public void Deactivate() => Status = ItemStatus.Inactive;
+
     public void Reactivate() => Status = ItemStatus.Active;
-    public void UpdateDefaultVatCategory(Guid vatCategoryId) => DefaultVatCategoryId = vatCategoryId;
+
+    public void UpdateDefaultVatCategory(Guid vatCategoryId) =>
+        DefaultVatCategoryId = vatCategoryId;
+
     public void SetEtaItemCode(string? etaItemCode) =>
         EtaItemCode = string.IsNullOrWhiteSpace(etaItemCode) ? null : etaItemCode;
 }

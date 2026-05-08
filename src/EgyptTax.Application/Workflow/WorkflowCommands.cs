@@ -12,13 +12,15 @@ namespace EgyptTax.Application.Workflow;
 public sealed record SubmitDocumentCommand(
     Guid DocumentId,
     DocumentType DocumentType,
-    Guid SubmittedByUserId);
+    Guid SubmittedByUserId
+);
 
 /// <summary>FR-026 — Approver moves Submitted → Approved.</summary>
 public sealed record ApproveDocumentCommand(
     Guid DocumentId,
     DocumentType DocumentType,
-    Guid ApprovedByUserId);
+    Guid ApprovedByUserId
+);
 
 /// <summary>
 /// FR-026 — Approver rejects: state returns to Draft + the
@@ -29,7 +31,8 @@ public sealed record RejectDocumentCommand(
     Guid DocumentId,
     DocumentType DocumentType,
     Guid RejectedByUserId,
-    string Reason);
+    string Reason
+);
 
 /// <summary>
 /// FR-026 / FR-027 — void a non-Posted document. Posted documents
@@ -40,4 +43,5 @@ public sealed record VoidDocumentCommand(
     Guid DocumentId,
     DocumentType DocumentType,
     Guid VoidedByUserId,
-    string? Reason);
+    string? Reason
+);

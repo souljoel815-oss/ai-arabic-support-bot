@@ -7,6 +7,4 @@ namespace EgyptTax.Application.Common.Abstractions;
 /// commands in a DB transaction; queries (<see cref="IRequest{TResponse}"/>
 /// without this marker) skip the transaction overhead.
 /// </summary>
-public interface ICommand<out TResponse> : IRequest<TResponse>
-{
-}
+public interface ICommand<out TResponse> : IRequest<TResponse> { }

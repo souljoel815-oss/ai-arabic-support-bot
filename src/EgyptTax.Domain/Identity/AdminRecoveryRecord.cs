@@ -27,7 +27,8 @@ public sealed class AdminRecoveryRecord
         string targetEmail,
         DateTime recoveredAtUtc,
         string machineName,
-        string? operatorIdentity)
+        string? operatorIdentity
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetEmail);
         ArgumentException.ThrowIfNullOrWhiteSpace(machineName);

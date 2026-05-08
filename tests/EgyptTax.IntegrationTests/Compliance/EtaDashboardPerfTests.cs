@@ -44,31 +44,47 @@ public class EtaDashboardPerfTests(SqlServerFixture fixture)
         // Warm up the connection pool / plan cache so the timed run
         // measures the steady-state query, not the first-hit overhead.
         _ = await queryUnderTest.GetUpcomingDeadlinesAsync(
-            TimeSpan.FromHours(24), nowUtc, CancellationToken.None);
+            TimeSpan.FromHours(24),
+            nowUtc,
+            CancellationToken.None
+        );
 
         var sw = Stopwatch.StartNew();
         var rows = await queryUnderTest.GetUpcomingDeadlinesAsync(
-            TimeSpan.FromHours(24), nowUtc, CancellationToken.None);
+            TimeSpan.FromHours(24),
+            nowUtc,
+            CancellationToken.None
+        );
         sw.Stop();
 
         // Correctness: only Pending + Failed rows whose deadline is in
         // [nowUtc, nowUtc + 24h). Submitted rows (terminal) are
         // excluded; rows with deadlines beyond the window are excluded.
-        rows.Count.Should().Be(expectedHits,
-            because: "the dashboard MUST return exactly the rows whose status is non-terminal and whose deadline is within the 24h lookahead");
+        rows.Count.Should()
+            .Be(
+                expectedHits,
+                because: "the dashboard MUST return exactly the rows whose status is non-terminal and whose deadline is within the 24h lookahead"
+            );
 
-        rows.Should().OnlyContain(r =>
-            r.Status == EtaSubmissionStatus.Pending || r.Status == EtaSubmissionStatus.Failed);
-        rows.Should().OnlyContain(r =>
-            r.SubmissionWindowExpiresAtUtc >= nowUtc
-            && r.SubmissionWindowExpiresAtUtc < nowUtc.AddHours(24));
+        rows.Should()
+            .OnlyContain(r =>
+                r.Status == EtaSubmissionStatus.Pending || r.Status == EtaSubmissionStatus.Failed
+            );
+        rows.Should()
+            .OnlyContain(r =>
+                r.SubmissionWindowExpiresAtUtc >= nowUtc
+                && r.SubmissionWindowExpiresAtUtc < nowUtc.AddHours(24)
+            );
 
         // Ordering: dashboard surfaces "most-urgent first" — ascending deadline.
         rows.Should().BeInAscendingOrder(r => r.SubmissionWindowExpiresAtUtc);
 
         // SC-012 perf bar.
-        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2),
-            because: $"SC-012 — dashboard MUST complete in < 2 s on 50k docs; observed {sw.ElapsedMilliseconds} ms");
+        sw.Elapsed.Should()
+            .BeLessThan(
+                TimeSpan.FromSeconds(2),
+                because: $"SC-012 — dashboard MUST complete in < 2 s on 50k docs; observed {sw.ElapsedMilliseconds} ms"
+            );
     }
 
     [Fact]
@@ -79,12 +95,18 @@ public class EtaDashboardPerfTests(SqlServerFixture fixture)
 
         var sw = Stopwatch.StartNew();
         var rows = await query.GetUpcomingDeadlinesAsync(
-            TimeSpan.FromHours(24), DateTime.UtcNow, CancellationToken.None);
+            TimeSpan.FromHours(24),
+            DateTime.UtcNow,
+            CancellationToken.None
+        );
         sw.Stop();
 
         rows.Should().BeEmpty();
-        sw.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(500),
-            because: "an empty table query MUST return promptly via the index seek");
+        sw.Elapsed.Should()
+            .BeLessThan(
+                TimeSpan.FromMilliseconds(500),
+                because: "an empty table query MUST return promptly via the index seek"
+            );
     }
 
     [Fact]
@@ -93,7 +115,8 @@ public class EtaDashboardPerfTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var query = new SqlEtaDashboardQuery(db);
 
-        var act = () => query.GetUpcomingDeadlinesAsync(TimeSpan.Zero, DateTime.UtcNow, CancellationToken.None);
+        var act = () =>
+            query.GetUpcomingDeadlinesAsync(TimeSpan.Zero, DateTime.UtcNow, CancellationToken.None);
 
         await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
     }
@@ -158,9 +181,10 @@ public class EtaDashboardPerfTests(SqlServerFixture fixture)
             {
                 // Either past or beyond the window. Past is also excluded
                 // because the dashboard's lower bound is nowUtc.
-                deadline = (i & 2) == 0
-                    ? nowUtc.AddDays(-1).AddSeconds(random.Next(60, 60 * 60))
-                    : nowUtc.AddDays(2).AddSeconds(random.Next(60, 23 * 60 * 60));
+                deadline =
+                    (i & 2) == 0
+                        ? nowUtc.AddDays(-1).AddSeconds(random.Next(60, 60 * 60))
+                        : nowUtc.AddDays(2).AddSeconds(random.Next(60, 23 * 60 * 60));
             }
 
             if (inWindow && status != EtaSubmissionStatus.Submitted)
@@ -169,7 +193,14 @@ public class EtaDashboardPerfTests(SqlServerFixture fixture)
             }
 
             AppendSalesInvoiceRow(invoiceTable, invoiceId, nowUtc);
-            AppendEtaSubmissionRow(submissionTable, submissionId, invoiceId, status, deadline, nowUtc);
+            AppendEtaSubmissionRow(
+                submissionTable,
+                submissionId,
+                invoiceId,
+                status,
+                deadline,
+                nowUtc
+            );
         }
 
         await using var conn = new SqlConnection(connectionString);
@@ -179,13 +210,25 @@ public class EtaDashboardPerfTests(SqlServerFixture fixture)
         // 1:1 unique index has matching parent ids; FK is not declared
         // at SQL level so insert order is purely logical, but keeping it
         // ordered makes the seed easier to reason about.
-        using (var bulk = new SqlBulkCopy(conn) { DestinationTableName = "documents.sales_invoices", BulkCopyTimeout = 120 })
+        using (
+            var bulk = new SqlBulkCopy(conn)
+            {
+                DestinationTableName = "documents.sales_invoices",
+                BulkCopyTimeout = 120,
+            }
+        )
         {
             MapColumns(bulk, invoiceTable);
             await bulk.WriteToServerAsync(invoiceTable);
         }
 
-        using (var bulk = new SqlBulkCopy(conn) { DestinationTableName = "eta.eta_submissions", BulkCopyTimeout = 120 })
+        using (
+            var bulk = new SqlBulkCopy(conn)
+            {
+                DestinationTableName = "eta.eta_submissions",
+                BulkCopyTimeout = 120,
+            }
+        )
         {
             MapColumns(bulk, submissionTable);
             await bulk.WriteToServerAsync(submissionTable);
@@ -276,23 +319,25 @@ public class EtaDashboardPerfTests(SqlServerFixture fixture)
         Guid salesInvoiceId,
         EtaSubmissionStatus status,
         DateTime deadlineUtc,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         var row = table.NewRow();
         row["id"] = id;
         row["sales_invoice_id"] = salesInvoiceId;
         row["status"] = status.ToString();
-        row["submission_uuid"] = status == EtaSubmissionStatus.Submitted
-            ? (object)Guid.NewGuid().ToString("D")
-            : DBNull.Value;
-        row["last_attempt_at_utc"] = status == EtaSubmissionStatus.Pending
-            ? DBNull.Value
-            : (object)nowUtc.AddMinutes(-5);
+        row["submission_uuid"] =
+            status == EtaSubmissionStatus.Submitted
+                ? (object)Guid.NewGuid().ToString("D")
+                : DBNull.Value;
+        row["last_attempt_at_utc"] =
+            status == EtaSubmissionStatus.Pending ? DBNull.Value : (object)nowUtc.AddMinutes(-5);
         row["attempt_count"] = status == EtaSubmissionStatus.Pending ? 0 : 1;
         row["error_code"] = status == EtaSubmissionStatus.Failed ? (object)"SIM-001" : DBNull.Value;
-        row["error_message"] = status == EtaSubmissionStatus.Failed
-            ? (object)"Simulated transient failure"
-            : DBNull.Value;
+        row["error_message"] =
+            status == EtaSubmissionStatus.Failed
+                ? (object)"Simulated transient failure"
+                : DBNull.Value;
         row["submission_window_expires_at_utc"] = deadlineUtc;
         row["created_at_utc"] = nowUtc.AddDays(-2);
         table.Rows.Add(row);

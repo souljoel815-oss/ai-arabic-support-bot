@@ -25,31 +25,38 @@ public class AuditChainHappyPathTests(SqlServerFixture fixture)
         var store = new SqlAuditLogStore(db);
 
         // Act — append three audit entries.
-        await store.AppendAsync(new AuditLogPayload(
-            Kind: "DocumentPosted",
-            ActorUserId: Guid.NewGuid(),
-            ActorFirmName: null,
-            CompanyId: Guid.NewGuid(),
-            PayloadJson: """{"document":"INV-2026-000001","total":1140}"""));
+        await store.AppendAsync(
+            new AuditLogPayload(
+                Kind: "DocumentPosted",
+                ActorUserId: Guid.NewGuid(),
+                ActorFirmName: null,
+                CompanyId: Guid.NewGuid(),
+                PayloadJson: """{"document":"INV-2026-000001","total":1140}"""
+            )
+        );
 
-        await store.AppendAsync(new AuditLogPayload(
-            Kind: "FieldChanged",
-            ActorUserId: Guid.NewGuid(),
-            ActorFirmName: "Test Firm LLP",
-            CompanyId: Guid.NewGuid(),
-            PayloadJson: """{"field":"customer_name","before":"A","after":"B"}"""));
+        await store.AppendAsync(
+            new AuditLogPayload(
+                Kind: "FieldChanged",
+                ActorUserId: Guid.NewGuid(),
+                ActorFirmName: "Test Firm LLP",
+                CompanyId: Guid.NewGuid(),
+                PayloadJson: """{"field":"customer_name","before":"A","after":"B"}"""
+            )
+        );
 
-        await store.AppendAsync(new AuditLogPayload(
-            Kind: "LoginSucceeded",
-            ActorUserId: Guid.NewGuid(),
-            ActorFirmName: null,
-            CompanyId: Guid.NewGuid(),
-            PayloadJson: """{"ip":"127.0.0.1"}"""));
+        await store.AppendAsync(
+            new AuditLogPayload(
+                Kind: "LoginSucceeded",
+                ActorUserId: Guid.NewGuid(),
+                ActorFirmName: null,
+                CompanyId: Guid.NewGuid(),
+                PayloadJson: """{"ip":"127.0.0.1"}"""
+            )
+        );
 
         // Assert — verifier reports clean.
-        var entries = await db.Set<AuditLogEntry>()
-            .OrderBy(e => e.Index)
-            .ToListAsync();
+        var entries = await db.Set<AuditLogEntry>().OrderBy(e => e.Index).ToListAsync();
         entries.Should().HaveCount(3);
         entries[0].Index.Should().Be(1);
         entries[1].Index.Should().Be(2);
@@ -68,12 +75,15 @@ public class AuditChainHappyPathTests(SqlServerFixture fixture)
 
         for (var i = 0; i < 5; i++)
         {
-            await store.AppendAsync(new AuditLogPayload(
-                Kind: "TestEntry",
-                ActorUserId: Guid.NewGuid(),
-                ActorFirmName: null,
-                CompanyId: Guid.NewGuid(),
-                PayloadJson: $$"""{"i":{{i}}}"""));
+            await store.AppendAsync(
+                new AuditLogPayload(
+                    Kind: "TestEntry",
+                    ActorUserId: Guid.NewGuid(),
+                    ActorFirmName: null,
+                    CompanyId: Guid.NewGuid(),
+                    PayloadJson: $$"""{"i":{{i}}}"""
+                )
+            );
         }
 
         var indices = await db.Set<AuditLogEntry>()
@@ -90,23 +100,27 @@ public class AuditChainHappyPathTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var store = new SqlAuditLogStore(db);
 
-        await store.AppendAsync(new AuditLogPayload(
-            Kind: "First",
-            ActorUserId: Guid.NewGuid(),
-            ActorFirmName: null,
-            CompanyId: Guid.NewGuid(),
-            PayloadJson: """{"x":1}"""));
+        await store.AppendAsync(
+            new AuditLogPayload(
+                Kind: "First",
+                ActorUserId: Guid.NewGuid(),
+                ActorFirmName: null,
+                CompanyId: Guid.NewGuid(),
+                PayloadJson: """{"x":1}"""
+            )
+        );
 
-        await store.AppendAsync(new AuditLogPayload(
-            Kind: "Second",
-            ActorUserId: Guid.NewGuid(),
-            ActorFirmName: null,
-            CompanyId: Guid.NewGuid(),
-            PayloadJson: """{"x":2}"""));
+        await store.AppendAsync(
+            new AuditLogPayload(
+                Kind: "Second",
+                ActorUserId: Guid.NewGuid(),
+                ActorFirmName: null,
+                CompanyId: Guid.NewGuid(),
+                PayloadJson: """{"x":2}"""
+            )
+        );
 
-        var entries = await db.Set<AuditLogEntry>()
-            .OrderBy(e => e.Index)
-            .ToListAsync();
+        var entries = await db.Set<AuditLogEntry>().OrderBy(e => e.Index).ToListAsync();
 
         // The first entry's PrevHash is all zeros (genesis).
         entries[0].PrevHash.Should().BeEquivalentTo(new byte[32]);

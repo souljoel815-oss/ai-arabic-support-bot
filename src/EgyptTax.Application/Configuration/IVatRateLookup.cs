@@ -15,12 +15,17 @@ namespace EgyptTax.Application.Configuration;
 public interface IVatRateLookup
 {
     Task<VatCategory?> GetEffectiveAsync(
-        string code, DateOnly date, CancellationToken cancellationToken = default);
+        string code,
+        DateOnly date,
+        CancellationToken cancellationToken = default
+    );
 
     /// <summary>List every row for a given code (any effective
     /// window). Used by the VAT-category settings page to display
     /// the supersession history + flag overlapping rows that the
     /// operator should resolve.</summary>
     Task<IReadOnlyList<VatCategory>> ListByCodeAsync(
-        string code, CancellationToken cancellationToken = default);
+        string code,
+        CancellationToken cancellationToken = default
+    );
 }

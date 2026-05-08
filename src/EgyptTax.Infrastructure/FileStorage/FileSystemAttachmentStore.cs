@@ -26,28 +26,40 @@ public sealed class FileSystemAttachmentStore(string rootDirectory, IClock clock
         Guid attachmentId,
         string fileExtension,
         Stream content,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(content);
         var ext = NormalizeExtension(fileExtension);
 
         var nowUtc = _clock.UtcNow;
-        var relative = string.Join('/', new[]
-        {
-            AttachmentsFolder,
-            nowUtc.Year.ToString("D4", System.Globalization.CultureInfo.InvariantCulture),
-            nowUtc.Month.ToString("D2", System.Globalization.CultureInfo.InvariantCulture),
-            documentId.ToString("D"),
-            attachmentId.ToString("D") + ext,
-        });
+        var relative = string.Join(
+            '/',
+            new[]
+            {
+                AttachmentsFolder,
+                nowUtc.Year.ToString("D4", System.Globalization.CultureInfo.InvariantCulture),
+                nowUtc.Month.ToString("D2", System.Globalization.CultureInfo.InvariantCulture),
+                documentId.ToString("D"),
+                attachmentId.ToString("D") + ext,
+            }
+        );
 
         var absolute = ResolveAbsolutePath(relative);
         Directory.CreateDirectory(Path.GetDirectoryName(absolute)!);
 
         long sizeBytes;
         byte[] hash;
-        await using (var fs = new FileStream(absolute, FileMode.Create, FileAccess.Write, FileShare.None,
-                         bufferSize: 81920, useAsync: true))
+        await using (
+            var fs = new FileStream(
+                absolute,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 81920,
+                useAsync: true
+            )
+        )
         using (var sha = SHA256.Create())
         {
             using var hashing = new CryptoStream(fs, sha, CryptoStreamMode.Write);
@@ -60,11 +72,20 @@ public sealed class FileSystemAttachmentStore(string rootDirectory, IClock clock
         return new AttachmentSavedInfo(relative, sizeBytes, hash);
     }
 
-    public Task<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default)
+    public Task<Stream> OpenReadAsync(
+        string relativePath,
+        CancellationToken cancellationToken = default
+    )
     {
         var absolute = ResolveAbsolutePath(relativePath);
-        Stream s = new FileStream(absolute, FileMode.Open, FileAccess.Read, FileShare.Read,
-            bufferSize: 81920, useAsync: true);
+        Stream s = new FileStream(
+            absolute,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 81920,
+            useAsync: true
+        );
         return Task.FromResult(s);
     }
 
@@ -105,11 +126,15 @@ public sealed class FileSystemAttachmentStore(string rootDirectory, IClock clock
         var rootWithSeparator = _root.EndsWith(Path.DirectorySeparatorChar)
             ? _root
             : _root + Path.DirectorySeparatorChar;
-        if (!combined.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(combined, _root, StringComparison.OrdinalIgnoreCase))
+        if (
+            !combined.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(combined, _root, StringComparison.OrdinalIgnoreCase)
+        )
         {
             throw new ArgumentException(
-                $"Resolved path '{combined}' escapes the attachment root '{_root}'.", nameof(relativePath));
+                $"Resolved path '{combined}' escapes the attachment root '{_root}'.",
+                nameof(relativePath)
+            );
         }
 
         return combined;
@@ -128,15 +153,18 @@ public sealed class FileSystemAttachmentStore(string rootDirectory, IClock clock
         // upload). Reject any character that could change the path
         // shape: separators, traversal segments, drive-spec colons,
         // wildcards, NULs, and Windows path-invalid characters.
-        if (ext.Contains('/', StringComparison.Ordinal)
+        if (
+            ext.Contains('/', StringComparison.Ordinal)
             || ext.Contains('\\', StringComparison.Ordinal)
             || ext.Contains("..", StringComparison.Ordinal)
             || ext.Contains(':', StringComparison.Ordinal)
-            || ext.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            || ext.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+        )
         {
             throw new ArgumentException(
                 $"File extension '{fileExtension}' contains characters that would alter the storage path.",
-                nameof(fileExtension));
+                nameof(fileExtension)
+            );
         }
 
         return ext;

@@ -30,4 +30,5 @@ public sealed record EtaStatusChangedEvent(
     EtaSubmissionStatus PreviousStatus,
     EtaSubmissionStatus NewStatus,
     int AttemptCount,
-    DateTime AtUtc);
+    DateTime AtUtc
+);

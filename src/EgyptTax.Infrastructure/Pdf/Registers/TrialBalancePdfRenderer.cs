@@ -18,10 +18,7 @@ namespace EgyptTax.Infrastructure.Pdf.Registers;
 /// </summary>
 public static class TrialBalancePdfRenderer
 {
-    public static byte[] Render(
-        Company company,
-        DateTime generatedAtUtc,
-        TrialBalanceReport report)
+    public static byte[] Render(Company company, DateTime generatedAtUtc, TrialBalanceReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
         return RegisterPageShell.Render(
@@ -31,7 +28,8 @@ public static class TrialBalancePdfRenderer
             periodStart: report.PeriodStart,
             periodEnd: report.PeriodEnd,
             generatedAtUtc: generatedAtUtc,
-            renderBody: c => RenderBody(c, report));
+            renderBody: c => RenderBody(c, report)
+        );
     }
 
     private static void RenderBody(IContainer container, TrialBalanceReport report)
@@ -55,12 +53,12 @@ public static class TrialBalancePdfRenderer
         {
             table.ColumnsDefinition(c =>
             {
-                c.ConstantColumn(28);   // #
-                c.ConstantColumn(120);  // account code
-                c.RelativeColumn();     // (filler)
-                c.ConstantColumn(80);   // debit
-                c.ConstantColumn(80);   // credit
-                c.ConstantColumn(80);   // net
+                c.ConstantColumn(28); // #
+                c.ConstantColumn(120); // account code
+                c.RelativeColumn(); // (filler)
+                c.ConstantColumn(80); // debit
+                c.ConstantColumn(80); // credit
+                c.ConstantColumn(80); // net
             });
 
             table.Header(h =>
@@ -89,16 +87,29 @@ public static class TrialBalancePdfRenderer
 
     private static void RenderTotals(IContainer container, TrialBalanceReport report)
     {
-        container.AlignRight().Column(col =>
-        {
-            col.Item().AlignRight().Text(
-                $"Total debits: {RegisterPageShell.Money(report.TotalDebits.Amount)} EGP").Bold();
-            col.Item().AlignRight().Text(
-                $"Total credits: {RegisterPageShell.Money(report.TotalCredits.Amount)} EGP").Bold();
-            col.Item().AlignRight().Text(
-                $"Balanced: {(report.IsBalanced ? "YES" : "NO — INVESTIGATE")}").Bold().FontSize(11);
-            col.Item().AlignRight().Text(
-                $"Accounts with activity: {report.Rows.Count}").FontSize(9);
-        });
+        container
+            .AlignRight()
+            .Column(col =>
+            {
+                col.Item()
+                    .AlignRight()
+                    .Text($"Total debits: {RegisterPageShell.Money(report.TotalDebits.Amount)} EGP")
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text(
+                        $"Total credits: {RegisterPageShell.Money(report.TotalCredits.Amount)} EGP"
+                    )
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text($"Balanced: {(report.IsBalanced ? "YES" : "NO — INVESTIGATE")}")
+                    .Bold()
+                    .FontSize(11);
+                col.Item()
+                    .AlignRight()
+                    .Text($"Accounts with activity: {report.Rows.Count}")
+                    .FontSize(9);
+            });
     }
 }

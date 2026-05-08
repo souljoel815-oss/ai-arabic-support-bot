@@ -57,11 +57,15 @@ public sealed class SalesInvoiceLine
         decimal quantity,
         MoneyEgp unitPrice,
         Guid vatCategoryId,
-        decimal vatRatePercent)
+        decimal vatRatePercent
+    )
     {
         if (quantity == 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(quantity), "Line quantity must be non-zero.");
+            throw new ArgumentOutOfRangeException(
+                nameof(quantity),
+                "Line quantity must be non-zero."
+            );
         }
         // Negative quantities are valid for credit-note lines per
         // FR-013 (signs reversed against the original); the
@@ -69,11 +73,17 @@ public sealed class SalesInvoiceLine
         // header level.
         if (unitPrice.Amount < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(unitPrice), "Line unit price cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(unitPrice),
+                "Line unit price cannot be negative."
+            );
         }
         if (vatRatePercent < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(vatRatePercent), "VAT rate cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(vatRatePercent),
+                "VAT rate cannot be negative."
+            );
         }
 
         SalesInvoiceId = salesInvoiceId;
@@ -112,8 +122,10 @@ public sealed class SalesInvoiceLine
     {
         if (apportioned.Amount < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(apportioned),
-                "Apportioned line discount cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(apportioned),
+                "Apportioned line discount cannot be negative."
+            );
         }
         LineApportionedDiscount = apportioned;
         Recompute();

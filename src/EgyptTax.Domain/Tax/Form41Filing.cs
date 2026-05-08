@@ -35,7 +35,8 @@ public sealed class Form41Filing
         string pdfPath,
         string structuredJsonPath,
         MoneyEgp totalWhtPayable,
-        int lineCount)
+        int lineCount
+    )
     {
         FiscalYear = fiscalYear;
         Quarter = quarter;
@@ -57,24 +58,39 @@ public sealed class Form41Filing
         string pdfPath,
         string structuredJsonPath,
         MoneyEgp totalWhtPayable,
-        int lineCount)
+        int lineCount
+    )
     {
         if (fiscalYear is < 2000 or > 2099)
         {
-            throw new ArgumentOutOfRangeException(nameof(fiscalYear),
-                $"Fiscal year {fiscalYear} is outside the supported [2000, 2099] range.");
+            throw new ArgumentOutOfRangeException(
+                nameof(fiscalYear),
+                $"Fiscal year {fiscalYear} is outside the supported [2000, 2099] range."
+            );
         }
         if (quarter is < 1 or > 4)
         {
-            throw new ArgumentOutOfRangeException(nameof(quarter),
-                $"Quarter {quarter} must be 1, 2, 3, or 4.");
+            throw new ArgumentOutOfRangeException(
+                nameof(quarter),
+                $"Quarter {quarter} must be 1, 2, 3, or 4."
+            );
         }
         if (lineCount < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(lineCount), "Line count cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(lineCount),
+                "Line count cannot be negative."
+            );
         }
-        return new Form41Filing(fiscalYear, quarter, generatedAtUtc,
-            pdfPath ?? "", structuredJsonPath ?? "", totalWhtPayable, lineCount);
+        return new Form41Filing(
+            fiscalYear,
+            quarter,
+            generatedAtUtc,
+            pdfPath ?? "",
+            structuredJsonPath ?? "",
+            totalWhtPayable,
+            lineCount
+        );
     }
 
     /// <summary>FR-046 — one-time per quarter. Second call MUST be
@@ -86,7 +102,8 @@ public sealed class Form41Filing
         if (Status == Form41Status.Filed)
         {
             throw new InvalidOperationException(
-                $"Form 41 for {FiscalYear}-Q{Quarter} is already Filed at {FiledAtUtc:yyyy-MM-dd HH:mm:ss}; cannot mark it filed twice.");
+                $"Form 41 for {FiscalYear}-Q{Quarter} is already Filed at {FiledAtUtc:yyyy-MM-dd HH:mm:ss}; cannot mark it filed twice."
+            );
         }
         Status = Form41Status.Filed;
         FiledAtUtc = filedAtUtc;

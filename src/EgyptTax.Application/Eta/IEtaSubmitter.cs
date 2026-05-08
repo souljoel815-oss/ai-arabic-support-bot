@@ -22,7 +22,8 @@ public interface IEtaSubmitter
     Task<EtaSubmissionAttemptResult> SubmitAsync(
         Guid salesInvoiceId,
         string eInvoiceJson,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }
 
 /// <summary>
@@ -37,4 +38,5 @@ public sealed record EtaSubmissionAttemptResult(
     EtaSubmissionStatus OutcomeStatus,
     string? SubmissionUuid,
     string? ErrorCode,
-    string? ErrorMessage);
+    string? ErrorMessage
+);

@@ -16,21 +16,32 @@ public readonly record struct CustomerTaxProfile(
     CustomerTaxProfileType ProfileType,
     string? TinValue,
     bool VatExemption,
-    Guid? DefaultSalesVatCategoryId)
+    Guid? DefaultSalesVatCategoryId
+)
 {
-    public EgyptianTin? Tin =>
-        string.IsNullOrEmpty(TinValue)
-            ? null
-            : EgyptianTin.Parse(TinValue);
+    public EgyptianTin? Tin => string.IsNullOrEmpty(TinValue) ? null : EgyptianTin.Parse(TinValue);
 
-    public static CustomerTaxProfile B2BRegistered(EgyptianTin tin, bool vatExemption, Guid? defaultSalesVatCategoryId) =>
-        new(CustomerTaxProfileType.B2BRegistered, tin.Value, vatExemption, defaultSalesVatCategoryId);
+    public static CustomerTaxProfile B2BRegistered(
+        EgyptianTin tin,
+        bool vatExemption,
+        Guid? defaultSalesVatCategoryId
+    ) =>
+        new(
+            CustomerTaxProfileType.B2BRegistered,
+            tin.Value,
+            vatExemption,
+            defaultSalesVatCategoryId
+        );
 
-    public static CustomerTaxProfile B2BUnregistered(bool vatExemption, Guid? defaultSalesVatCategoryId) =>
-        new(CustomerTaxProfileType.B2BUnregistered, null, vatExemption, defaultSalesVatCategoryId);
+    public static CustomerTaxProfile B2BUnregistered(
+        bool vatExemption,
+        Guid? defaultSalesVatCategoryId
+    ) => new(CustomerTaxProfileType.B2BUnregistered, null, vatExemption, defaultSalesVatCategoryId);
 
-    public static CustomerTaxProfile B2CConsumer(bool vatExemption, Guid? defaultSalesVatCategoryId) =>
-        new(CustomerTaxProfileType.B2CConsumer, null, vatExemption, defaultSalesVatCategoryId);
+    public static CustomerTaxProfile B2CConsumer(
+        bool vatExemption,
+        Guid? defaultSalesVatCategoryId
+    ) => new(CustomerTaxProfileType.B2CConsumer, null, vatExemption, defaultSalesVatCategoryId);
 }
 
 public enum CustomerTaxProfileType

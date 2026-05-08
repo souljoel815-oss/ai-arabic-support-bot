@@ -40,7 +40,8 @@ public sealed class PostSupplierPaymentVoucherHandler
         IClock clock,
         IAuditLogStore auditLog,
         ISupplierPaymentVoucherJournalEmitter? journalEmitter = null,
-        IWhtComputeService? whtCompute = null)
+        IWhtComputeService? whtCompute = null
+    )
     {
         _db = db;
         _allocator = allocator;
@@ -52,19 +53,28 @@ public sealed class PostSupplierPaymentVoucherHandler
 
     public async Task<SupplierPaymentVoucher> HandleAsync(
         PostSupplierPaymentVoucherCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var voucher = await _db.Set<SupplierPaymentVoucher>()
-            .Include(v => v.Allocations)
-            .FirstOrDefaultAsync(v => v.Id == command.SupplierPaymentVoucherId, cancellationToken)
+        var voucher =
+            await _db.Set<SupplierPaymentVoucher>()
+                .Include(v => v.Allocations)
+                .FirstOrDefaultAsync(
+                    v => v.Id == command.SupplierPaymentVoucherId,
+                    cancellationToken
+                )
             ?? throw new InvalidOperationException(
-                $"SupplierPaymentVoucher {command.SupplierPaymentVoucherId} not found.");
+                $"SupplierPaymentVoucher {command.SupplierPaymentVoucherId} not found."
+            );
 
         var fiscalYear = voucher.PaymentDate.Year;
         var documentNumber = await _allocator.AllocateAsync(
-            DocumentType.SupplierPaymentVoucher, fiscalYear, cancellationToken);
+            DocumentType.SupplierPaymentVoucher,
+            fiscalYear,
+            cancellationToken
+        );
 
         var nowUtc = _clock.UtcNow;
 
@@ -73,18 +83,24 @@ public sealed class PostSupplierPaymentVoucherHandler
         // and apply the split on the voucher BEFORE MarkPosted so
         // the emitted JE picks up the 3-line shape.
         WhtCertificate? cert = null;
-        if (command.WhtCategoryCode is not null
+        if (
+            command.WhtCategoryCode is not null
             && command.WhtSourceInvoiceId is { } invoiceId
-            && _whtCompute is not null)
+            && _whtCompute is not null
+        )
         {
             var compute = await _whtCompute.ComputeAsync(
-                command.WhtCategoryCode, voucher.PaymentDate,
-                voucher.GrossPaymentAmount, WhtApplicableTo.SuppliersServices,
-                cancellationToken);
+                command.WhtCategoryCode,
+                voucher.PaymentDate,
+                voucher.GrossPaymentAmount,
+                WhtApplicableTo.SuppliersServices,
+                cancellationToken
+            );
             if (compute is null)
             {
                 throw new InvalidOperationException(
-                    $"WHT category '{command.WhtCategoryCode}' is not effective on payment date {voucher.PaymentDate:yyyy-MM-dd} for SuppliersServices direction. Cannot apply WHT split.");
+                    $"WHT category '{command.WhtCategoryCode}' is not effective on payment date {voucher.PaymentDate:yyyy-MM-dd} for SuppliersServices direction. Cannot apply WHT split."
+                );
             }
             cert = new WhtCertificate(
                 direction: WhtCertificateDirection.OutboundToSupplier,
@@ -96,7 +112,8 @@ public sealed class PostSupplierPaymentVoucherHandler
                 rateAppliedPercent: compute.RateAppliedPercent,
                 amountWithheld: compute.AmountWithheld,
                 certificateNumber: $"WHT-{documentNumber}",
-                issuedAtUtc: nowUtc);
+                issuedAtUtc: nowUtc
+            );
             _db.Add(cert);
             voucher.ApplyWhtSplit(compute.AmountWithheld, cert.Id);
         }
@@ -114,9 +131,12 @@ public sealed class PostSupplierPaymentVoucherHandler
             new AuditLogPayload(
                 Kind: "supplier_payment_voucher.posted",
                 ActorUserId: command.PostedByUserId,
-                ActorFirmName: null, CompanyId: Guid.Empty,
-                PayloadJson: BuildPayloadJson(voucher)),
-            cancellationToken);
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: BuildPayloadJson(voucher)
+            ),
+            cancellationToken
+        );
 
         return voucher;
     }

@@ -29,22 +29,23 @@ public class MfaFlowTests(SqlServerFixture fixture)
 
         var hasher = new Argon2idPasswordHasher();
         var totp = new TotpService();
-        var protector = new DataProtectionMfaSecretProtector(
-            new EphemeralDataProtectionProvider());
+        var protector = new DataProtectionMfaSecretProtector(new EphemeralDataProtectionProvider());
         var clock = new TestClock(new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
         var sessions = new SessionService(db, clock, NoOpAuditLogStore.Instance);
 
         var adminRole = new Role(
             code: "ADMIN",
             name: new ArabicEnglishText("مسؤول النظام", "Administrator"),
-            requiresMfa: true);
+            requiresMfa: true
+        );
         var initialPassword = "Init#Pass1234";
         var user = new User(
             email: "admin@firm.eg",
             displayName: new ArabicEnglishText("مسؤول", "Administrator"),
             passwordHash: hasher.Hash(initialPassword),
             preferredLanguage: Language.Ar,
-            passwordMustChange: true);
+            passwordMustChange: true
+        );
         user.Roles.Add(adminRole);
         db.Add(adminRole);
         db.Add(user);
@@ -53,7 +54,8 @@ public class MfaFlowTests(SqlServerFixture fixture)
         // Step 1 — initial login attempt with the bootstrap password verifies,
         // but FR-038 force-change must fire before MFA enrollment is allowed.
         hasher.Verify(initialPassword, user.PasswordHash).Should().BeTrue();
-        user.PasswordMustChange.Should().BeTrue("FR-038 — admin-issued password must be changed on first login");
+        user.PasswordMustChange.Should()
+            .BeTrue("FR-038 — admin-issued password must be changed on first login");
         user.RequiresMfa().Should().BeTrue("Administrator role flips RequiresMfa per FR-002");
         user.MfaSecretEncrypted.Should().BeNull("user has not enrolled MFA yet");
 
@@ -75,9 +77,7 @@ public class MfaFlowTests(SqlServerFixture fixture)
         // Step 4 — second login: verify password + TOTP code derived from
         // the decrypted secret. Reload from DB to mimic the request boundary.
         db.ChangeTracker.Clear();
-        var reloaded = await db.Set<User>()
-            .Include(u => u.Roles)
-            .FirstAsync(u => u.Id == user.Id);
+        var reloaded = await db.Set<User>().Include(u => u.Roles).FirstAsync(u => u.Id == user.Id);
 
         reloaded.MfaSecretEncrypted.Should().NotBeNull();
         var decryptedSecret = protector.Unprotect(reloaded.MfaSecretEncrypted!);
@@ -87,8 +87,12 @@ public class MfaFlowTests(SqlServerFixture fixture)
         totp.VerifyCode(decryptedSecret, code).Should().BeTrue();
 
         // Step 5 — open the application session.
-        var session = await sessions.BeginAsync(reloaded.Id, "127.0.0.1", "xunit-agent",
-            CancellationToken.None);
+        var session = await sessions.BeginAsync(
+            reloaded.Id,
+            "127.0.0.1",
+            "xunit-agent",
+            CancellationToken.None
+        );
         session.Should().NotBeNull();
 
         var validation = await sessions.ValidateAsync(session.Id, CancellationToken.None);
@@ -103,6 +107,7 @@ public class MfaFlowTests(SqlServerFixture fixture)
     private sealed class TestClock(DateTime initial) : EgyptTax.SharedKernel.Time.IClock
     {
         public DateTime UtcNow { get; private set; } = initial;
+
         public void Advance(TimeSpan delta) => UtcNow = UtcNow.Add(delta);
     }
 
@@ -117,7 +122,8 @@ public class MfaFlowTests(SqlServerFixture fixture)
 
         public Task<EgyptTax.Domain.Audit.AuditLogEntry> AppendAsync(
             EgyptTax.Domain.Audit.AuditLogPayload payload,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             // Synthesise a stub entry; tests exercising the chain itself
@@ -131,7 +137,8 @@ public class MfaFlowTests(SqlServerFixture fixture)
                 kind: payload.Kind,
                 payloadJson: payload.PayloadJson,
                 prevHash: new byte[32],
-                thisHash: new byte[32]);
+                thisHash: new byte[32]
+            );
             return Task.FromResult(entry);
         }
     }

@@ -44,7 +44,8 @@ public sealed class InspectionBundleJob
     public InspectionBundleJob(
         IInspectionBundleBuilder builder,
         IInspectionBundleProgressNotifier notifier,
-        InspectionBundleStorageOptions storage)
+        InspectionBundleStorageOptions storage
+    )
     {
         _builder = builder;
         _notifier = notifier;
@@ -54,16 +55,20 @@ public sealed class InspectionBundleJob
     public async Task ExecuteAsync(
         string jobId,
         InspectionBundleRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(jobId);
         ArgumentNullException.ThrowIfNull(request);
 
-        await _notifier.NotifyAsync(new InspectionBundleProgressEvent(
-            JobId: jobId,
-            Phase: InspectionBundleProgressPhase.Started,
-            Message: $"Starting bundle for {request.PeriodStart:yyyy-MM-dd}..{request.PeriodEnd:yyyy-MM-dd}"),
-            cancellationToken);
+        await _notifier.NotifyAsync(
+            new InspectionBundleProgressEvent(
+                JobId: jobId,
+                Phase: InspectionBundleProgressPhase.Started,
+                Message: $"Starting bundle for {request.PeriodStart:yyyy-MM-dd}..{request.PeriodEnd:yyyy-MM-dd}"
+            ),
+            cancellationToken
+        );
 
         try
         {
@@ -73,38 +78,47 @@ public sealed class InspectionBundleJob
             var path = Path.Combine(_storage.RootDirectory, $"{jobId}.zip");
             await File.WriteAllBytesAsync(path, result.ZipBytes, cancellationToken);
 
-            await _notifier.NotifyAsync(new InspectionBundleProgressEvent(
-                JobId: jobId,
-                Phase: InspectionBundleProgressPhase.Complete,
-                Message: $"Bundle ready: {result.SuggestedFilename} "
-                    + $"({result.ZipBytes.Length.ToString("N0", CultureInfo.InvariantCulture)} bytes, "
-                    + $"{result.Manifest.Files.Count} files)",
-                FilesProcessed: result.Manifest.Files.Count,
-                FilesTotal: result.Manifest.Files.Count,
-                ResultPath: path),
-                cancellationToken);
+            await _notifier.NotifyAsync(
+                new InspectionBundleProgressEvent(
+                    JobId: jobId,
+                    Phase: InspectionBundleProgressPhase.Complete,
+                    Message: $"Bundle ready: {result.SuggestedFilename} "
+                        + $"({result.ZipBytes.Length.ToString("N0", CultureInfo.InvariantCulture)} bytes, "
+                        + $"{result.Manifest.Files.Count} files)",
+                    FilesProcessed: result.Manifest.Files.Count,
+                    FilesTotal: result.Manifest.Files.Count,
+                    ResultPath: path
+                ),
+                cancellationToken
+            );
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // Cancellation isn't a "failure" — surface as Failed with a
             // clear message so the UI can distinguish operator-cancel
             // from a build error.
-            await _notifier.NotifyAsync(new InspectionBundleProgressEvent(
-                JobId: jobId,
-                Phase: InspectionBundleProgressPhase.Failed,
-                Message: "Bundle build was cancelled.",
-                ErrorMessage: "OperationCanceledException"),
-                CancellationToken.None);
+            await _notifier.NotifyAsync(
+                new InspectionBundleProgressEvent(
+                    JobId: jobId,
+                    Phase: InspectionBundleProgressPhase.Failed,
+                    Message: "Bundle build was cancelled.",
+                    ErrorMessage: "OperationCanceledException"
+                ),
+                CancellationToken.None
+            );
             throw;
         }
         catch (Exception ex)
         {
-            await _notifier.NotifyAsync(new InspectionBundleProgressEvent(
-                JobId: jobId,
-                Phase: InspectionBundleProgressPhase.Failed,
-                Message: $"Bundle build failed: {ex.Message}",
-                ErrorMessage: ex.GetType().Name + ": " + ex.Message),
-                CancellationToken.None);
+            await _notifier.NotifyAsync(
+                new InspectionBundleProgressEvent(
+                    JobId: jobId,
+                    Phase: InspectionBundleProgressPhase.Failed,
+                    Message: $"Bundle build failed: {ex.Message}",
+                    ErrorMessage: ex.GetType().Name + ": " + ex.Message
+                ),
+                CancellationToken.None
+            );
             throw;
         }
     }

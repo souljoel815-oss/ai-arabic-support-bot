@@ -47,21 +47,26 @@ public sealed class PeriodReviewLock
         int periodMonth,
         DateTime lockedAtUtc,
         Guid lockedByUserId,
-        string? lockedNote = null)
+        string? lockedNote = null
+    )
     {
         if (periodYear is < 1900 or > 9999)
         {
-            throw new ArgumentOutOfRangeException(nameof(periodYear),
-                "Year must be a 4-digit calendar year.");
+            throw new ArgumentOutOfRangeException(
+                nameof(periodYear),
+                "Year must be a 4-digit calendar year."
+            );
         }
         if (periodMonth is < 1 or > 12)
         {
-            throw new ArgumentOutOfRangeException(nameof(periodMonth),
-                "Month must be in [1, 12].");
+            throw new ArgumentOutOfRangeException(nameof(periodMonth), "Month must be in [1, 12].");
         }
         if (lockedByUserId == Guid.Empty)
         {
-            throw new ArgumentException("LockedByUserId must be a non-empty Guid.", nameof(lockedByUserId));
+            throw new ArgumentException(
+                "LockedByUserId must be a non-empty Guid.",
+                nameof(lockedByUserId)
+            );
         }
 
         PeriodYear = periodYear;
@@ -85,7 +90,8 @@ public sealed class PeriodReviewLock
         if (!IsActive)
         {
             throw new InvalidOperationException(
-                $"Cannot record activity on a released review-lock for {PeriodYear}-{PeriodMonth:D2}.");
+                $"Cannot record activity on a released review-lock for {PeriodYear}-{PeriodMonth:D2}."
+            );
         }
         AccountantActionsDuringLock++;
     }
@@ -101,7 +107,10 @@ public sealed class PeriodReviewLock
     {
         if (releasedByUserId == Guid.Empty)
         {
-            throw new ArgumentException("ReleasedByUserId must be a non-empty Guid.", nameof(releasedByUserId));
+            throw new ArgumentException(
+                "ReleasedByUserId must be a non-empty Guid.",
+                nameof(releasedByUserId)
+            );
         }
         ReleasedAtUtc ??= releasedAtUtc;
         ReleasedByUserId ??= releasedByUserId;

@@ -44,8 +44,12 @@ public class RollbackReleasesNumberTests(SqlServerFixture fixture)
             await tx.CommitAsync();
         }
 
-        firstAssigned.Should().Be(secondAssigned, because:
-            "FR-011 mandates a number is consumed only on successful end-to-end post; the rollback releases it");
+        firstAssigned
+            .Should()
+            .Be(
+                secondAssigned,
+                because: "FR-011 mandates a number is consumed only on successful end-to-end post; the rollback releases it"
+            );
         secondAssigned.Should().Be("INV-2026-000001");
     }
 
@@ -66,8 +70,10 @@ public class RollbackReleasesNumberTests(SqlServerFixture fixture)
         }
 
         // Direct query: no allocator row for fiscal_year=2099 should exist.
-        var rowCount = await db.Database
-            .SqlQuery<int>($@"SELECT COUNT(*) AS [Value] FROM [numbering].[document_number_allocator] WHERE [fiscal_year] = {2099}")
+        var rowCount = await db
+            .Database.SqlQuery<int>(
+                $@"SELECT COUNT(*) AS [Value] FROM [numbering].[document_number_allocator] WHERE [fiscal_year] = {2099}"
+            )
             .FirstAsync();
         rowCount.Should().Be(0);
     }

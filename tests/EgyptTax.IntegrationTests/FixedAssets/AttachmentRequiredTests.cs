@@ -38,25 +38,39 @@ public class AttachmentRequiredTests(SqlServerFixture fixture)
         await db.SaveChangesAsync();
 
         var audit = new CaptureAuditLogStore();
-        var handler = new PutFixedAssetInServiceHandler(db,
+        var handler = new PutFixedAssetInServiceHandler(
+            db,
             new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc)),
-            audit);
+            audit
+        );
 
-        var act = async () => await handler.HandleAsync(
-            new PutFixedAssetInServiceCommand(asset.Id, user.Id), CancellationToken.None);
+        var act = async () =>
+            await handler.HandleAsync(
+                new PutFixedAssetInServiceCommand(asset.Id, user.Id),
+                CancellationToken.None
+            );
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .Where(ex => ex.Message.Contains("attachment", StringComparison.OrdinalIgnoreCase)
-                && ex.Message.Contains("FR-016", StringComparison.OrdinalIgnoreCase));
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .Where(ex =>
+                ex.Message.Contains("attachment", StringComparison.OrdinalIgnoreCase)
+                && ex.Message.Contains("FR-016", StringComparison.OrdinalIgnoreCase)
+            );
 
         // Asset MUST still be Draft.
         db.ChangeTracker.Clear();
         var refreshed = await db.Set<FixedAsset>().AsNoTracking().FirstAsync(a => a.Id == asset.Id);
-        refreshed.Status.Should().Be(FixedAssetStatus.Draft,
-            because: "the rejection MUST happen BEFORE PutInService runs — failed transition keeps the aggregate in Draft");
+        refreshed
+            .Status.Should()
+            .Be(
+                FixedAssetStatus.Draft,
+                because: "the rejection MUST happen BEFORE PutInService runs — failed transition keeps the aggregate in Draft"
+            );
 
         // Rejection MUST be auditable so an inspector can see attempts.
-        audit.Captured.Should().Contain(p => p.Kind == "fixed_asset.put_in_service.rejected_missing_attachment");
+        audit
+            .Captured.Should()
+            .Contain(p => p.Kind == "fixed_asset.put_in_service.rejected_missing_attachment");
     }
 
     [Fact]
@@ -68,24 +82,33 @@ public class AttachmentRequiredTests(SqlServerFixture fixture)
         db.Add(asset);
 
         // Attach the supporting documentation.
-        db.Add(new Attachment(
-            documentId: asset.Id,
-            documentType: DocumentType.FixedAsset,
-            filenameOriginal: "purchase-receipt.pdf",
-            filenameStorage: $"{Guid.NewGuid():N}.pdf",
-            relativePath: $"attachments/2026/05/{asset.Id:D}/purchase-receipt.pdf",
-            sha256: new byte[32], mimeType: "application/pdf",
-            sizeBytes: 4096, uploadedByUserId: user.Id,
-            uploadedAtUtc: new DateTime(2026, 5, 9, 9, 0, 0, DateTimeKind.Utc)));
+        db.Add(
+            new Attachment(
+                documentId: asset.Id,
+                documentType: DocumentType.FixedAsset,
+                filenameOriginal: "purchase-receipt.pdf",
+                filenameStorage: $"{Guid.NewGuid():N}.pdf",
+                relativePath: $"attachments/2026/05/{asset.Id:D}/purchase-receipt.pdf",
+                sha256: new byte[32],
+                mimeType: "application/pdf",
+                sizeBytes: 4096,
+                uploadedByUserId: user.Id,
+                uploadedAtUtc: new DateTime(2026, 5, 9, 9, 0, 0, DateTimeKind.Utc)
+            )
+        );
         await db.SaveChangesAsync();
 
         var audit = new CaptureAuditLogStore();
-        var handler = new PutFixedAssetInServiceHandler(db,
+        var handler = new PutFixedAssetInServiceHandler(
+            db,
             new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc)),
-            audit);
+            audit
+        );
 
         var inService = await handler.HandleAsync(
-            new PutFixedAssetInServiceCommand(asset.Id, user.Id), CancellationToken.None);
+            new PutFixedAssetInServiceCommand(asset.Id, user.Id),
+            CancellationToken.None
+        );
 
         inService.Status.Should().Be(FixedAssetStatus.InService);
 
@@ -106,7 +129,8 @@ public class AttachmentRequiredTests(SqlServerFixture fixture)
             usefulLifeMonths: 60,
             depreciationMethod: DepreciationMethod.StraightLine,
             salvageValue: MoneyEgp.Zero,
-            convention: DepreciationConvention.FullMonth);
+            convention: DepreciationConvention.FullMonth
+        );
 
     private static async Task<User> SeedUserAsync(AppDbContext db)
     {
@@ -115,7 +139,8 @@ public class AttachmentRequiredTests(SqlServerFixture fixture)
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
         db.Add(user);
         await db.SaveChangesAsync();
         return user;
@@ -129,15 +154,27 @@ public class AttachmentRequiredTests(SqlServerFixture fixture)
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
         public List<AuditLogPayload> Captured { get; } = [];
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
-            return Task.FromResult(new AuditLogEntry(
-                index: Captured.Count, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]));
+            return Task.FromResult(
+                new AuditLogEntry(
+                    index: Captured.Count,
+                    tsUtc: DateTime.UtcNow,
+                    actorUserId: payload.ActorUserId,
+                    actorFirmName: payload.ActorFirmName,
+                    companyId: payload.CompanyId,
+                    kind: payload.Kind,
+                    payloadJson: payload.PayloadJson,
+                    prevHash: new byte[32],
+                    thisHash: new byte[32]
+                )
+            );
         }
     }
 }

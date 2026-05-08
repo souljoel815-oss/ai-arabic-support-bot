@@ -30,7 +30,9 @@ public sealed class InviteAccountantFirmUserHandler
     }
 
     public async Task<AccountantFirmUser> InviteAsync(
-        InviteAccountantFirmUserCommand command, CancellationToken cancellationToken = default)
+        InviteAccountantFirmUserCommand command,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
@@ -39,7 +41,8 @@ public sealed class InviteAccountantFirmUserHandler
             displayName: command.InviteeDisplayName,
             passwordHash: command.TemporaryPasswordHash,
             preferredLanguage: command.PreferredLanguage,
-            passwordMustChange: true);
+            passwordMustChange: true
+        );
         _db.Add(user);
 
         var nowUtc = _clock.UtcNow;
@@ -48,31 +51,39 @@ public sealed class InviteAccountantFirmUserHandler
             firmName: command.FirmName,
             firmExternalIdentifier: command.FirmExternalIdentifier,
             invitedAtUtc: nowUtc,
-            invitedByUserId: command.InvitedByUserId);
+            invitedByUserId: command.InvitedByUserId
+        );
         _db.Add(firmUser);
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "firm_user.invited",
-            ActorUserId: command.InvitedByUserId,
-            ActorFirmName: command.FirmName,
-            CompanyId: Guid.Empty,
-            PayloadJson: $$"""{"user_id":"{{user.Id:D}}","firm_name":"{{Escape(command.FirmName)}}","firm_external_identifier":"{{Escape(command.FirmExternalIdentifier)}}","invited_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}"}"""),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "firm_user.invited",
+                ActorUserId: command.InvitedByUserId,
+                ActorFirmName: command.FirmName,
+                CompanyId: Guid.Empty,
+                PayloadJson: $$"""{"user_id":"{{user.Id:D}}","firm_name":"{{Escape(command.FirmName)}}","firm_external_identifier":"{{Escape(command.FirmExternalIdentifier)}}","invited_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}"}"""
+            ),
+            cancellationToken
+        );
 
         return firmUser;
     }
 
     public async Task<AccountantFirmUser> AcceptAsync(
-        AcceptInvitationCommand command, CancellationToken cancellationToken = default)
+        AcceptInvitationCommand command,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var firmUser = await _db.Set<AccountantFirmUser>()
-            .FirstOrDefaultAsync(a => a.UserId == command.UserId, cancellationToken)
+        var firmUser =
+            await _db.Set<AccountantFirmUser>()
+                .FirstOrDefaultAsync(a => a.UserId == command.UserId, cancellationToken)
             ?? throw new InvalidOperationException(
-                $"No firm-user invitation found for user {command.UserId:D}.");
+                $"No firm-user invitation found for user {command.UserId:D}."
+            );
 
         var nowUtc = _clock.UtcNow;
         var alreadyAccepted = firmUser.AcceptedAtUtc is not null;
@@ -81,27 +92,34 @@ public sealed class InviteAccountantFirmUserHandler
 
         if (!alreadyAccepted)
         {
-            await _auditLog.AppendAsync(new AuditLogPayload(
-                Kind: "firm_user.accepted",
-                ActorUserId: command.UserId,
-                ActorFirmName: firmUser.FirmName,
-                CompanyId: Guid.Empty,
-                PayloadJson: $$"""{"user_id":"{{firmUser.UserId:D}}","accepted_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}"}"""),
-                cancellationToken);
+            await _auditLog.AppendAsync(
+                new AuditLogPayload(
+                    Kind: "firm_user.accepted",
+                    ActorUserId: command.UserId,
+                    ActorFirmName: firmUser.FirmName,
+                    CompanyId: Guid.Empty,
+                    PayloadJson: $$"""{"user_id":"{{firmUser.UserId:D}}","accepted_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}"}"""
+                ),
+                cancellationToken
+            );
         }
 
         return firmUser;
     }
 
     public async Task<AccountantFirmUser> RevokeAsync(
-        RevokeFirmUserCommand command, CancellationToken cancellationToken = default)
+        RevokeFirmUserCommand command,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var firmUser = await _db.Set<AccountantFirmUser>()
-            .FirstOrDefaultAsync(a => a.UserId == command.UserId, cancellationToken)
+        var firmUser =
+            await _db.Set<AccountantFirmUser>()
+                .FirstOrDefaultAsync(a => a.UserId == command.UserId, cancellationToken)
             ?? throw new InvalidOperationException(
-                $"No firm-user record found for user {command.UserId:D}.");
+                $"No firm-user record found for user {command.UserId:D}."
+            );
 
         var nowUtc = _clock.UtcNow;
         var alreadyRevoked = firmUser.RevokedAtUtc is not null;
@@ -110,19 +128,23 @@ public sealed class InviteAccountantFirmUserHandler
 
         if (!alreadyRevoked)
         {
-            await _auditLog.AppendAsync(new AuditLogPayload(
-                Kind: "firm_user.revoked",
-                ActorUserId: command.RevokedByUserId,
-                ActorFirmName: firmUser.FirmName,
-                CompanyId: Guid.Empty,
-                PayloadJson: $$"""{"user_id":"{{firmUser.UserId:D}}","revoked_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}","revoked_by_user_id":"{{command.RevokedByUserId:D}}"}"""),
-                cancellationToken);
+            await _auditLog.AppendAsync(
+                new AuditLogPayload(
+                    Kind: "firm_user.revoked",
+                    ActorUserId: command.RevokedByUserId,
+                    ActorFirmName: firmUser.FirmName,
+                    CompanyId: Guid.Empty,
+                    PayloadJson: $$"""{"user_id":"{{firmUser.UserId:D}}","revoked_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}","revoked_by_user_id":"{{command.RevokedByUserId:D}}"}"""
+                ),
+                cancellationToken
+            );
         }
 
         return firmUser;
     }
 
     private static string Escape(string value) =>
-        value.Replace("\\", "\\\\", StringComparison.Ordinal)
-             .Replace("\"", "\\\"", StringComparison.Ordinal);
+        value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal);
 }

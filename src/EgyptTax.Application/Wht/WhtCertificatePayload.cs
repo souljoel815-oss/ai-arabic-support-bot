@@ -10,7 +10,7 @@ namespace EgyptTax.Application.Wht;
 /// </summary>
 public sealed record WhtCertificatePayload(
     string CertificateNumber,
-    string Direction,                          // "OutboundToSupplier" | "InboundFromCustomer"
+    string Direction, // "OutboundToSupplier" | "InboundFromCustomer"
     DateTime IssuedAt,
     string IssuerCompanyTin,
     BilingualText IssuerCompanyName,
@@ -26,9 +26,10 @@ public sealed record WhtCertificatePayload(
     decimal AmountWithheld,
     decimal? GrossPayment,
     decimal? NetPayment,
-    string Currency,                           // const "EGP"
-    string Language,                           // const "ar+en"
-    string? AuditChainHash);
+    string Currency, // const "EGP"
+    string Language, // const "ar+en"
+    string? AuditChainHash
+);
 
 /// <summary>Schema-shaped { ar, en } pair. Distinct from
 /// <c>ArabicEnglishText</c> because the schema needs the lowercase

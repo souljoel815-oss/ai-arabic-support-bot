@@ -19,7 +19,8 @@ namespace EgyptTax.Infrastructure.BackgroundJobs;
 public sealed class NtpHealthCheckJob(
     IClock clock,
     INtpTimeClient ntpClient,
-    IAuditLogStore auditLog)
+    IAuditLogStore auditLog
+)
 {
     /// <summary>R-23 — default 5-second skew tolerance.</summary>
     public static readonly TimeSpan DefaultSkewThreshold = TimeSpan.FromSeconds(5);
@@ -44,8 +45,10 @@ public sealed class NtpHealthCheckJob(
                     ActorUserId: null,
                     ActorFirmName: null,
                     CompanyId: Guid.Empty,
-                    PayloadJson: $$"""{"error":"{{Escape(ex.GetType().FullName ?? "Exception")}}","message":"{{Escape(ex.Message)}}","queried_at_utc":"{{_clock.UtcNow.ToString("o", CultureInfo.InvariantCulture)}}"}"""),
-                cancellationToken);
+                    PayloadJson: $$"""{"error":"{{Escape(ex.GetType().FullName ?? "Exception")}}","message":"{{Escape(ex.Message)}}","queried_at_utc":"{{_clock.UtcNow.ToString("o", CultureInfo.InvariantCulture)}}"}"""
+                ),
+                cancellationToken
+            );
             return;
         }
 
@@ -62,8 +65,10 @@ public sealed class NtpHealthCheckJob(
                 ActorUserId: null,
                 ActorFirmName: null,
                 CompanyId: Guid.Empty,
-                PayloadJson: $$"""{"system_utc":"{{_clock.UtcNow.ToString("o", CultureInfo.InvariantCulture)}}","ntp_utc":"{{ntpUtc.ToString("o", CultureInfo.InvariantCulture)}}","skew_seconds":{{skew.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture)}},"threshold_seconds":{{_skewThreshold.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture)}}}"""),
-            cancellationToken);
+                PayloadJson: $$"""{"system_utc":"{{_clock.UtcNow.ToString("o", CultureInfo.InvariantCulture)}}","ntp_utc":"{{ntpUtc.ToString("o", CultureInfo.InvariantCulture)}}","skew_seconds":{{skew.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture)}},"threshold_seconds":{{_skewThreshold.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture)}}}"""
+            ),
+            cancellationToken
+        );
     }
 
     private static string Escape(string value) =>

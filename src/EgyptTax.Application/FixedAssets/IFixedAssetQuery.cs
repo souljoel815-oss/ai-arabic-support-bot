@@ -14,7 +14,9 @@ namespace EgyptTax.Application.FixedAssets;
 public interface IFixedAssetQuery
 {
     Task<IReadOnlyList<FixedAssetListRow>> ListAsync(
-        DateOnly asOf, CancellationToken cancellationToken = default);
+        DateOnly asOf,
+        CancellationToken cancellationToken = default
+    );
 
     Task<FixedAsset?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 }
@@ -31,4 +33,5 @@ public sealed record FixedAssetListRow(
     DepreciationConvention Convention,
     MoneyEgp NetBookValue,
     MoneyEgp DepreciatedToDate,
-    int AttachmentCount);
+    int AttachmentCount
+);

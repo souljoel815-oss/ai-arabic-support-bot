@@ -18,8 +18,11 @@ public class QrSealTests
     public void Encode_StartsWithProtocolPrefix()
     {
         var seal = DocumentSealCodec.Encode(NewPayload(seed: 1));
-        seal.Should().StartWith("EGT1.",
-            because: "the contract mandates the EGT1.<base64url-cbor> envelope");
+        seal.Should()
+            .StartWith(
+                "EGT1.",
+                because: "the contract mandates the EGT1.<base64url-cbor> envelope"
+            );
         seal.Split('.').Should().HaveCount(2);
     }
 
@@ -54,8 +57,12 @@ public class QrSealTests
             var resolver = ResolverFor(payload, divergence: SealDivergence.None);
             var result = DocumentSealCodec.Verify(seal, resolver);
 
-            result.Outcome.Should().Be(SealOutcome.Valid,
-                because: $"seal #{seed} matches live resolver — verifier MUST report VALID");
+            result
+                .Outcome.Should()
+                .Be(
+                    SealOutcome.Valid,
+                    because: $"seal #{seed} matches live resolver — verifier MUST report VALID"
+                );
             result.Mismatches.Should().BeEmpty();
         }
     }
@@ -67,7 +74,8 @@ public class QrSealTests
     [InlineData(SealDivergence.AuditEntryIndex, "audit_entry_index")]
     public void OneHundredTamperedDocuments_VerifyReportsTampered_WithCorrectField(
         SealDivergence divergence,
-        string expectedField)
+        string expectedField
+    )
     {
         for (var seed = 1; seed <= 100; seed++)
         {
@@ -77,10 +85,18 @@ public class QrSealTests
             var resolver = ResolverFor(payload, divergence);
             var result = DocumentSealCodec.Verify(seal, resolver);
 
-            result.Outcome.Should().Be(SealOutcome.Tampered,
-                because: $"seed #{seed} mutated {divergence} on the live side — verifier MUST report TAMPERED");
-            result.Mismatches.Should().Contain(m => m.Field == expectedField,
-                because: $"the {divergence} mutation MUST surface as a mismatch on the {expectedField} field");
+            result
+                .Outcome.Should()
+                .Be(
+                    SealOutcome.Tampered,
+                    because: $"seed #{seed} mutated {divergence} on the live side — verifier MUST report TAMPERED"
+                );
+            result
+                .Mismatches.Should()
+                .Contain(
+                    m => m.Field == expectedField,
+                    because: $"the {divergence} mutation MUST surface as a mismatch on the {expectedField} field"
+                );
         }
     }
 
@@ -90,22 +106,36 @@ public class QrSealTests
         var seal = DocumentSealCodec.Encode(NewPayload(seed: 7));
         var result = DocumentSealCodec.Verify(seal, _ => null);
 
-        result.Outcome.Should().Be(SealOutcome.Unknown,
-            because: "when the resolver returns null, the document does not exist in this installation");
+        result
+            .Outcome.Should()
+            .Be(
+                SealOutcome.Unknown,
+                because: "when the resolver returns null, the document does not exist in this installation"
+            );
     }
 
     [Theory]
-    [InlineData("ABCDEF.12345")]            // Wrong protocol
-    [InlineData("EGT1.")]                    // Empty payload
-    [InlineData("EGT1.not-base64url-!!!")]  // Bad base64
-    [InlineData("plain garbage")]           // No dot
-    [InlineData("EGT1.AAAA")]                // Valid base64 but truncated CBOR
+    [InlineData("ABCDEF.12345")] // Wrong protocol
+    [InlineData("EGT1.")] // Empty payload
+    [InlineData("EGT1.not-base64url-!!!")] // Bad base64
+    [InlineData("plain garbage")] // No dot
+    [InlineData("EGT1.AAAA")] // Valid base64 but truncated CBOR
     public void Verify_MalformedSeal_ReturnsMalformed(string seal)
     {
-        var result = DocumentSealCodec.Verify(seal, _ => throw new InvalidOperationException("resolver MUST NOT be called for malformed seals"));
+        var result = DocumentSealCodec.Verify(
+            seal,
+            _ =>
+                throw new InvalidOperationException(
+                    "resolver MUST NOT be called for malformed seals"
+                )
+        );
 
-        result.Outcome.Should().Be(SealOutcome.Malformed,
-            because: "verifier MUST short-circuit before calling the resolver when the seal cannot decode");
+        result
+            .Outcome.Should()
+            .Be(
+                SealOutcome.Malformed,
+                because: "verifier MUST short-circuit before calling the resolver when the seal cannot decode"
+            );
     }
 
     private static DocumentSealPayload NewPayload(int seed)
@@ -115,7 +145,8 @@ public class QrSealTests
         var hash = new byte[32];
         rng.NextBytes(hash);
 
-        var documentType = (seed % 7 == 0) ? SealedDocumentType.CreditNote : SealedDocumentType.SalesInvoice;
+        var documentType =
+            (seed % 7 == 0) ? SealedDocumentType.CreditNote : SealedDocumentType.SalesInvoice;
         var prefix = documentType == SealedDocumentType.SalesInvoice ? "INV" : "CN";
         var totalPiastres = (long)(rng.NextDouble() * 5_000_000); // up to ~50,000 EGP
 
@@ -127,7 +158,8 @@ public class QrSealTests
             AuditEntryHash: hash,
             AuditEntryIndex: seed * 10L,
             VerifyUrl: "/verify",
-            IssuerTin: "123456789");
+            IssuerTin: "123456789"
+        );
     }
 
     private static Guid NewSeededGuid(int seed)
@@ -137,7 +169,10 @@ public class QrSealTests
         return new Guid(bytes);
     }
 
-    private static DocumentSealCodec.LiveDocumentResolver ResolverFor(DocumentSealPayload original, SealDivergence divergence) =>
+    private static DocumentSealCodec.LiveDocumentResolver ResolverFor(
+        DocumentSealPayload original,
+        SealDivergence divergence
+    ) =>
         documentId =>
         {
             if (documentId != original.DocumentId)
@@ -150,27 +185,32 @@ public class QrSealTests
                     DocumentNumber: original.DocumentNumber,
                     GrandTotalPiastres: original.GrandTotalPiastres,
                     AuditEntryHash: original.AuditEntryHash,
-                    AuditEntryIndex: original.AuditEntryIndex),
+                    AuditEntryIndex: original.AuditEntryIndex
+                ),
                 SealDivergence.GrandTotalPiastres => new ResolvedDocument(
                     DocumentNumber: original.DocumentNumber,
                     GrandTotalPiastres: original.GrandTotalPiastres + 1,
                     AuditEntryHash: original.AuditEntryHash,
-                    AuditEntryIndex: original.AuditEntryIndex),
+                    AuditEntryIndex: original.AuditEntryIndex
+                ),
                 SealDivergence.AuditEntryHash => new ResolvedDocument(
                     DocumentNumber: original.DocumentNumber,
                     GrandTotalPiastres: original.GrandTotalPiastres,
                     AuditEntryHash: FlipFirstByte(original.AuditEntryHash),
-                    AuditEntryIndex: original.AuditEntryIndex),
+                    AuditEntryIndex: original.AuditEntryIndex
+                ),
                 SealDivergence.DocumentNumber => new ResolvedDocument(
                     DocumentNumber: original.DocumentNumber + "X",
                     GrandTotalPiastres: original.GrandTotalPiastres,
                     AuditEntryHash: original.AuditEntryHash,
-                    AuditEntryIndex: original.AuditEntryIndex),
+                    AuditEntryIndex: original.AuditEntryIndex
+                ),
                 SealDivergence.AuditEntryIndex => new ResolvedDocument(
                     DocumentNumber: original.DocumentNumber,
                     GrandTotalPiastres: original.GrandTotalPiastres,
                     AuditEntryHash: original.AuditEntryHash,
-                    AuditEntryIndex: original.AuditEntryIndex + 1),
+                    AuditEntryIndex: original.AuditEntryIndex + 1
+                ),
                 _ => throw new ArgumentOutOfRangeException(nameof(divergence)),
             };
         };

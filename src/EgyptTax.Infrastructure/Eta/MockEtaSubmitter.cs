@@ -29,8 +29,10 @@ public sealed class MockEtaSubmitter : IEtaSubmitter
     {
         if (failureRate is < 0d or > 1d)
         {
-            throw new ArgumentOutOfRangeException(nameof(failureRate),
-                "Failure rate must be in [0, 1].");
+            throw new ArgumentOutOfRangeException(
+                nameof(failureRate),
+                "Failure rate must be in [0, 1]."
+            );
         }
         _failureRate = failureRate;
     }
@@ -38,7 +40,8 @@ public sealed class MockEtaSubmitter : IEtaSubmitter
     public Task<EtaSubmissionAttemptResult> SubmitAsync(
         Guid salesInvoiceId,
         string eInvoiceJson,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(eInvoiceJson);
 
@@ -51,17 +54,23 @@ public sealed class MockEtaSubmitter : IEtaSubmitter
         var coinFlip = RandomNumberGenerator.GetInt32(0, 10_000) / 10_000d;
         if (coinFlip < _failureRate)
         {
-            return Task.FromResult(new EtaSubmissionAttemptResult(
-                OutcomeStatus: EtaSubmissionStatus.Failed,
-                SubmissionUuid: null,
-                ErrorCode: "ETA_MOCK_500",
-                ErrorMessage: "Mock ETA returned a simulated 5xx — eligible for retry within the submission window."));
+            return Task.FromResult(
+                new EtaSubmissionAttemptResult(
+                    OutcomeStatus: EtaSubmissionStatus.Failed,
+                    SubmissionUuid: null,
+                    ErrorCode: "ETA_MOCK_500",
+                    ErrorMessage: "Mock ETA returned a simulated 5xx — eligible for retry within the submission window."
+                )
+            );
         }
 
-        return Task.FromResult(new EtaSubmissionAttemptResult(
-            OutcomeStatus: EtaSubmissionStatus.Submitted,
-            SubmissionUuid: $"mock-{Guid.NewGuid():N}",
-            ErrorCode: null,
-            ErrorMessage: null));
+        return Task.FromResult(
+            new EtaSubmissionAttemptResult(
+                OutcomeStatus: EtaSubmissionStatus.Submitted,
+                SubmissionUuid: $"mock-{Guid.NewGuid():N}",
+                ErrorCode: null,
+                ErrorMessage: null
+            )
+        );
     }
 }

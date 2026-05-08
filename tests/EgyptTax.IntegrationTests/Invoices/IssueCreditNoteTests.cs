@@ -48,17 +48,25 @@ public class IssueCreditNoteTests(SqlServerFixture fixture)
         var auditCapture = new CaptureAuditLogStore();
         var handler = new IssueCreditNoteHandler(db, clock, auditCapture);
 
-        var creditNoteDraft = await handler.HandleAsync(new IssueCreditNoteCommand(
-            OriginalSalesInvoiceId: original.Id,
-            Lines: new[]
-            {
-                // Full credit: same line as the original with the qty negated.
-                new IssueCreditNoteLine(item.Id, Quantity: -1m, UnitPrice: MoneyEgp.From(1_000m),
-                    VatCategoryId: vat.Id, VatRatePercent: vat.RatePercent),
-            },
-            Reason: "Customer returned the unused consulting hours after cancellation.",
-            DocumentDate: new DateOnly(2026, 5, 8)),
-            CancellationToken.None);
+        var creditNoteDraft = await handler.HandleAsync(
+            new IssueCreditNoteCommand(
+                OriginalSalesInvoiceId: original.Id,
+                Lines: new[]
+                {
+                    // Full credit: same line as the original with the qty negated.
+                    new IssueCreditNoteLine(
+                        item.Id,
+                        Quantity: -1m,
+                        UnitPrice: MoneyEgp.From(1_000m),
+                        VatCategoryId: vat.Id,
+                        VatRatePercent: vat.RatePercent
+                    ),
+                },
+                Reason: "Customer returned the unused consulting hours after cancellation.",
+                DocumentDate: new DateOnly(2026, 5, 8)
+            ),
+            CancellationToken.None
+        );
 
         creditNoteDraft.IsCreditNote.Should().BeTrue();
         creditNoteDraft.CreditNoteOfInvoiceId.Should().Be(original.Id);
@@ -87,16 +95,24 @@ public class IssueCreditNoteTests(SqlServerFixture fixture)
         var handler = new IssueCreditNoteHandler(db, clock, new CaptureAuditLogStore());
 
         // Original was 1 × 1000; partial credit of 0.5 × 1000 (half).
-        var draft = await handler.HandleAsync(new IssueCreditNoteCommand(
-            OriginalSalesInvoiceId: original.Id,
-            Lines: new[]
-            {
-                new IssueCreditNoteLine(item.Id, Quantity: -0.5m, UnitPrice: MoneyEgp.From(1_000m),
-                    VatCategoryId: vat.Id, VatRatePercent: vat.RatePercent),
-            },
-            Reason: "Half of the consulting hours unused.",
-            DocumentDate: new DateOnly(2026, 5, 8)),
-            CancellationToken.None);
+        var draft = await handler.HandleAsync(
+            new IssueCreditNoteCommand(
+                OriginalSalesInvoiceId: original.Id,
+                Lines: new[]
+                {
+                    new IssueCreditNoteLine(
+                        item.Id,
+                        Quantity: -0.5m,
+                        UnitPrice: MoneyEgp.From(1_000m),
+                        VatCategoryId: vat.Id,
+                        VatRatePercent: vat.RatePercent
+                    ),
+                },
+                Reason: "Half of the consulting hours unused.",
+                DocumentDate: new DateOnly(2026, 5, 8)
+            ),
+            CancellationToken.None
+        );
 
         draft.Subtotal.Amount.Should().Be(-500m);
         draft.VatTotal.Amount.Should().Be(-70m);
@@ -111,21 +127,38 @@ public class IssueCreditNoteTests(SqlServerFixture fixture)
 
         var clock = new TestClock(new DateTime(2026, 5, 8, 9, 0, 0, DateTimeKind.Utc));
         var auditCapture = new CaptureAuditLogStore();
-        var draft = await new IssueCreditNoteHandler(db, clock, auditCapture)
-            .HandleAsync(new IssueCreditNoteCommand(
+        var draft = await new IssueCreditNoteHandler(db, clock, auditCapture).HandleAsync(
+            new IssueCreditNoteCommand(
                 original.Id,
-                new[] { new IssueCreditNoteLine(item.Id, -1m, MoneyEgp.From(1_000m), vat.Id, vat.RatePercent) },
+                new[]
+                {
+                    new IssueCreditNoteLine(
+                        item.Id,
+                        -1m,
+                        MoneyEgp.From(1_000m),
+                        vat.Id,
+                        vat.RatePercent
+                    ),
+                },
                 Reason: "Full credit.",
-                DocumentDate: new DateOnly(2026, 5, 8)),
-            CancellationToken.None);
+                DocumentDate: new DateOnly(2026, 5, 8)
+            ),
+            CancellationToken.None
+        );
 
         var allocator = new SqlSequentialNumberAllocator(db);
         var postHandler = new PostSalesInvoiceHandler(db, allocator, clock, auditCapture);
         var posted = await postHandler.HandleAsync(
-            new PostSalesInvoiceCommand(draft.Id, operatorUser.Id), CancellationToken.None);
+            new PostSalesInvoiceCommand(draft.Id, operatorUser.Id),
+            CancellationToken.None
+        );
 
-        posted.DocumentNumber.Should().StartWith("CN-",
-            because: "credit notes MUST allocate from the CN series, not INV — derived from IsCreditNote");
+        posted
+            .DocumentNumber.Should()
+            .StartWith(
+                "CN-",
+                because: "credit notes MUST allocate from the CN series, not INV — derived from IsCreditNote"
+            );
         posted.State.Should().Be(DocumentState.Posted);
     }
 
@@ -140,7 +173,10 @@ public class IssueCreditNoteTests(SqlServerFixture fixture)
         await SeedCompanyAsync(db);
 
         var draftSource = SalesInvoice.CreateDraft(
-            customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         draftSource.AddLine(item.Id, 1m, MoneyEgp.From(1_000m), vat.Id, vat.RatePercent);
         db.Add(draftSource);
         await db.SaveChangesAsync();
@@ -148,16 +184,32 @@ public class IssueCreditNoteTests(SqlServerFixture fixture)
         var clock = new TestClock(new DateTime(2026, 5, 8, 9, 0, 0, DateTimeKind.Utc));
         var handler = new IssueCreditNoteHandler(db, clock, new CaptureAuditLogStore());
 
-        var act = async () => await handler.HandleAsync(new IssueCreditNoteCommand(
-            OriginalSalesInvoiceId: draftSource.Id,
-            Lines: new[] { new IssueCreditNoteLine(item.Id, -1m, MoneyEgp.From(1_000m), vat.Id, vat.RatePercent) },
-            Reason: "Should be rejected.",
-            DocumentDate: new DateOnly(2026, 5, 8)),
-            CancellationToken.None);
+        var act = async () =>
+            await handler.HandleAsync(
+                new IssueCreditNoteCommand(
+                    OriginalSalesInvoiceId: draftSource.Id,
+                    Lines: new[]
+                    {
+                        new IssueCreditNoteLine(
+                            item.Id,
+                            -1m,
+                            MoneyEgp.From(1_000m),
+                            vat.Id,
+                            vat.RatePercent
+                        ),
+                    },
+                    Reason: "Should be rejected.",
+                    DocumentDate: new DateOnly(2026, 5, 8)
+                ),
+                CancellationToken.None
+            );
 
         var ex = await act.Should().ThrowAsync<InvalidOperationException>();
-        ex.Which.Message.Should().Contain("Posted",
-            because: "FR-013 + FR-027 — only Posted source invoices are eligible; the rejection message MUST explain why");
+        ex.Which.Message.Should()
+            .Contain(
+                "Posted",
+                because: "FR-013 + FR-027 — only Posted source invoices are eligible; the rejection message MUST explain why"
+            );
     }
 
     [Fact]
@@ -172,26 +224,60 @@ public class IssueCreditNoteTests(SqlServerFixture fixture)
         var auditCapture = new CaptureAuditLogStore();
         var issueHandler = new IssueCreditNoteHandler(db, clock, auditCapture);
 
-        var firstCreditDraft = await issueHandler.HandleAsync(new IssueCreditNoteCommand(
-            original.Id,
-            new[] { new IssueCreditNoteLine(item.Id, -1m, MoneyEgp.From(1_000m), vat.Id, vat.RatePercent) },
-            Reason: "Initial credit.",
-            DocumentDate: new DateOnly(2026, 5, 8)),
-            CancellationToken.None);
+        var firstCreditDraft = await issueHandler.HandleAsync(
+            new IssueCreditNoteCommand(
+                original.Id,
+                new[]
+                {
+                    new IssueCreditNoteLine(
+                        item.Id,
+                        -1m,
+                        MoneyEgp.From(1_000m),
+                        vat.Id,
+                        vat.RatePercent
+                    ),
+                },
+                Reason: "Initial credit.",
+                DocumentDate: new DateOnly(2026, 5, 8)
+            ),
+            CancellationToken.None
+        );
 
         var allocator = new SqlSequentialNumberAllocator(db);
-        var postedCredit = await new PostSalesInvoiceHandler(db, allocator, clock, auditCapture)
-            .HandleAsync(new PostSalesInvoiceCommand(firstCreditDraft.Id, operatorUser.Id), CancellationToken.None);
+        var postedCredit = await new PostSalesInvoiceHandler(
+            db,
+            allocator,
+            clock,
+            auditCapture
+        ).HandleAsync(
+            new PostSalesInvoiceCommand(firstCreditDraft.Id, operatorUser.Id),
+            CancellationToken.None
+        );
 
-        var act = async () => await issueHandler.HandleAsync(new IssueCreditNoteCommand(
-            OriginalSalesInvoiceId: postedCredit.Id,
-            Lines: new[] { new IssueCreditNoteLine(item.Id, 1m, MoneyEgp.From(1_000m), vat.Id, vat.RatePercent) },
-            Reason: "Trying to credit a credit.",
-            DocumentDate: new DateOnly(2026, 5, 8)),
-            CancellationToken.None);
+        var act = async () =>
+            await issueHandler.HandleAsync(
+                new IssueCreditNoteCommand(
+                    OriginalSalesInvoiceId: postedCredit.Id,
+                    Lines: new[]
+                    {
+                        new IssueCreditNoteLine(
+                            item.Id,
+                            1m,
+                            MoneyEgp.From(1_000m),
+                            vat.Id,
+                            vat.RatePercent
+                        ),
+                    },
+                    Reason: "Trying to credit a credit.",
+                    DocumentDate: new DateOnly(2026, 5, 8)
+                ),
+                CancellationToken.None
+            );
 
-        await act.Should().ThrowAsync<InvalidOperationException>(
-            because: "credit note of a credit note is non-sensical");
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>(
+                because: "credit note of a credit note is non-sensical"
+            );
     }
 
     [Fact]
@@ -200,30 +286,55 @@ public class IssueCreditNoteTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var (original, customer, item, vat, _) = await PostOriginalAsync(db);
 
-        var handler = new IssueCreditNoteHandler(db,
+        var handler = new IssueCreditNoteHandler(
+            db,
             new TestClock(new DateTime(2026, 5, 8, 9, 0, 0, DateTimeKind.Utc)),
-            new CaptureAuditLogStore());
+            new CaptureAuditLogStore()
+        );
 
-        var act = async () => await handler.HandleAsync(new IssueCreditNoteCommand(
-            original.Id,
-            new[] { new IssueCreditNoteLine(item.Id, -1m, MoneyEgp.From(1_000m), vat.Id, vat.RatePercent) },
-            Reason: "",
-            DocumentDate: new DateOnly(2026, 5, 8)),
-            CancellationToken.None);
+        var act = async () =>
+            await handler.HandleAsync(
+                new IssueCreditNoteCommand(
+                    original.Id,
+                    new[]
+                    {
+                        new IssueCreditNoteLine(
+                            item.Id,
+                            -1m,
+                            MoneyEgp.From(1_000m),
+                            vat.Id,
+                            vat.RatePercent
+                        ),
+                    },
+                    Reason: "",
+                    DocumentDate: new DateOnly(2026, 5, 8)
+                ),
+                CancellationToken.None
+            );
 
-        await act.Should().ThrowAsync<ArgumentException>(
-            because: "FR-013 — the reason field on a credit note is the legally-required justification for the correction; empty string is not acceptable");
+        await act.Should()
+            .ThrowAsync<ArgumentException>(
+                because: "FR-013 — the reason field on a credit note is the legally-required justification for the correction; empty string is not acceptable"
+            );
     }
 
-    private static async Task<(SalesInvoice original, Customer customer, Item item, VatCategory vat, User operatorUser)>
-        PostOriginalAsync(AppDbContext db)
+    private static async Task<(
+        SalesInvoice original,
+        Customer customer,
+        Item item,
+        VatCategory vat,
+        User operatorUser
+    )> PostOriginalAsync(AppDbContext db)
     {
         var (customer, item, vat) = await SeedMasterDataAsync(db);
         await SeedCompanyAsync(db);
         var operatorUser = await SeedOperatorUserAsync(db);
 
         var draft = SalesInvoice.CreateDraft(
-            customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         draft.AddLine(item.Id, 1m, MoneyEgp.From(1_000m), vat.Id, vat.RatePercent);
         db.Add(draft);
         await db.SaveChangesAsync();
@@ -233,49 +344,80 @@ public class IssueCreditNoteTests(SqlServerFixture fixture)
         var handler = new PostSalesInvoiceHandler(db, allocator, clock, new CaptureAuditLogStore());
         var posted = await handler.HandleAsync(
             new PostSalesInvoiceCommand(draft.Id, operatorUser.Id),
-            CancellationToken.None);
+            CancellationToken.None
+        );
         return (posted, customer, item, vat, operatorUser);
     }
 
     private static async Task<(Customer, Item, VatCategory)> SeedMasterDataAsync(AppDbContext db)
     {
         var vat = new VatCategory(
-            code: "Standard", name: new ArabicEnglishText("قياسي", "Standard"),
-            ratePercent: 14m, effectiveFromDate: new DateOnly(2026, 1, 1),
-            effectiveToDate: null, recoverableInputVat: true);
+            code: "Standard",
+            name: new ArabicEnglishText("قياسي", "Standard"),
+            ratePercent: 14m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: true
+        );
         var customer = new Customer(
-            code: "CUST-001", name: new ArabicEnglishText("عميل", "Customer"),
-            address: PostalAddress.Create(new ArabicEnglishText("القاهرة", "Cairo"),
-                "Cairo", "Downtown", "Tahrir", "1"),
+            code: "CUST-001",
+            name: new ArabicEnglishText("عميل", "Customer"),
+            address: PostalAddress.Create(
+                new ArabicEnglishText("القاهرة", "Cairo"),
+                "Cairo",
+                "Downtown",
+                "Tahrir",
+                "1"
+            ),
             taxProfile: CustomerTaxProfile.B2BRegistered(
-                EgyptianTin.Parse("987654321"), false, vat.Id));
+                EgyptianTin.Parse("987654321"),
+                false,
+                vat.Id
+            )
+        );
         var item = new Item(
-            code: "ITEM-001", name: new ArabicEnglishText("ساعة", "Hour"),
-            defaultVatCategoryId: vat.Id);
-        db.Add(vat); db.Add(customer); db.Add(item);
+            code: "ITEM-001",
+            name: new ArabicEnglishText("ساعة", "Hour"),
+            defaultVatCategoryId: vat.Id
+        );
+        db.Add(vat);
+        db.Add(customer);
+        db.Add(item);
         await db.SaveChangesAsync();
         return (customer, item, vat);
     }
 
     private static async Task SeedCompanyAsync(AppDbContext db)
     {
-        if (await db.Set<Company>().AnyAsync()) return;
-        db.Add(new Company(
-            legalName: new ArabicEnglishText("شركة", "Company"),
-            taxRegistrationNumber: EgyptianTin.Parse("123456789"),
-            commercialRegistrationNumber: "CR-1",
-            address: PostalAddress.Create(new ArabicEnglishText("القاهرة", "Cairo"),
-                "Cairo", "Downtown", "Tahrir", "12"),
-            taxpayerActivityCode: "0001"));
+        if (await db.Set<Company>().AnyAsync())
+            return;
+        db.Add(
+            new Company(
+                legalName: new ArabicEnglishText("شركة", "Company"),
+                taxRegistrationNumber: EgyptianTin.Parse("123456789"),
+                commercialRegistrationNumber: "CR-1",
+                address: PostalAddress.Create(
+                    new ArabicEnglishText("القاهرة", "Cairo"),
+                    "Cairo",
+                    "Downtown",
+                    "Tahrir",
+                    "12"
+                ),
+                taxpayerActivityCode: "0001"
+            )
+        );
         await db.SaveChangesAsync();
     }
 
     private static async Task<User> SeedOperatorUserAsync(AppDbContext db)
     {
-        var user = new User(email: $"op-{Guid.NewGuid():N}@firm.eg",
+        var user = new User(
+            email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
-            preferredLanguage: Language.Ar, passwordMustChange: false);
+            preferredLanguage: Language.Ar,
+            passwordMustChange: false
+        );
         db.Add(user);
         await db.SaveChangesAsync();
         return user;
@@ -289,14 +431,25 @@ public class IssueCreditNoteTests(SqlServerFixture fixture)
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
         public List<AuditLogPayload> Captured { get; } = [];
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
-            var entry = new AuditLogEntry(index: Captured.Count, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]);
+            var entry = new AuditLogEntry(
+                index: Captured.Count,
+                tsUtc: DateTime.UtcNow,
+                actorUserId: payload.ActorUserId,
+                actorFirmName: payload.ActorFirmName,
+                companyId: payload.CompanyId,
+                kind: payload.Kind,
+                payloadJson: payload.PayloadJson,
+                prevHash: new byte[32],
+                thisHash: new byte[32]
+            );
             return Task.FromResult(entry);
         }
     }

@@ -46,7 +46,8 @@ public sealed class CorrelationContextMiddleware
     public async Task InvokeAsync(
         HttpContext httpContext,
         ICurrentUser currentUser,
-        IFirmContextResolver firmContextResolver)
+        IFirmContextResolver firmContextResolver
+    )
     {
         ArgumentNullException.ThrowIfNull(httpContext);
 
@@ -59,10 +60,15 @@ public sealed class CorrelationContextMiddleware
             string? firmName = null;
             if (userId is { } id && id != Guid.Empty)
             {
-                firmName = await firmContextResolver.ResolveFirmNameAsync(id, httpContext.RequestAborted);
+                firmName = await firmContextResolver.ResolveFirmNameAsync(
+                    id,
+                    httpContext.RequestAborted
+                );
             }
 
-            using (LogContext.PushProperty("UserId", userId?.ToString("D"), destructureObjects: false))
+            using (
+                LogContext.PushProperty("UserId", userId?.ToString("D"), destructureObjects: false)
+            )
             using (LogContext.PushProperty("FirmName", firmName, destructureObjects: false))
             {
                 await _next(httpContext);
@@ -75,7 +81,11 @@ public sealed class CorrelationContextMiddleware
         if (httpContext.Request.Headers.TryGetValue(CorrelationIdHeader, out var headerValues))
         {
             var raw = headerValues.ToString();
-            if (!string.IsNullOrWhiteSpace(raw) && Guid.TryParse(raw, out var fromHeader) && fromHeader != Guid.Empty)
+            if (
+                !string.IsNullOrWhiteSpace(raw)
+                && Guid.TryParse(raw, out var fromHeader)
+                && fromHeader != Guid.Empty
+            )
             {
                 return fromHeader;
             }

@@ -22,22 +22,24 @@ namespace EgyptTax.Application.Wht;
 public interface IWhtLifecycleDashboardQuery
 {
     Task<WhtLifecycleDashboard> GetAsync(
-        DateOnly asOf, CancellationToken cancellationToken = default);
+        DateOnly asOf,
+        CancellationToken cancellationToken = default
+    );
 }
 
 public sealed record WhtLifecycleDashboard(
     WhtOwedView Owed,
     WhtExpectedView Expected,
-    IReadOnlyList<Form41FilingRow> Filings);
+    IReadOnlyList<Form41FilingRow> Filings
+);
 
 public sealed record WhtOwedView(
     decimal TotalAccruedNotYetFiled,
     int CertCount,
-    DateOnly? OldestUnfiledCertDate);
+    DateOnly? OldestUnfiledCertDate
+);
 
-public sealed record WhtExpectedView(
-    decimal TotalReceivableFromCustomerWht,
-    int InboundCertCount);
+public sealed record WhtExpectedView(decimal TotalReceivableFromCustomerWht, int InboundCertCount);
 
 public sealed record Form41FilingRow(
     Guid Id,
@@ -48,4 +50,5 @@ public sealed record Form41FilingRow(
     int DaysOverdue,
     decimal TotalWhtPayable,
     int LineCount,
-    decimal? EstimatedPenalty);
+    decimal? EstimatedPenalty
+);

@@ -26,14 +26,16 @@ public static class CreditNoteAndReversalRegisterPdfRenderer
         string Reason,
         decimal Subtotal,
         decimal Vat,
-        decimal Total);
+        decimal Total
+    );
 
     public static byte[] Render(
         Company company,
         DateOnly periodStart,
         DateOnly periodEnd,
         DateTime generatedAtUtc,
-        IReadOnlyList<Row> rows)
+        IReadOnlyList<Row> rows
+    )
     {
         ArgumentNullException.ThrowIfNull(rows);
         return RegisterPageShell.Render(
@@ -43,14 +45,18 @@ public static class CreditNoteAndReversalRegisterPdfRenderer
             periodStart: periodStart,
             periodEnd: periodEnd,
             generatedAtUtc: generatedAtUtc,
-            renderBody: c => RenderBody(c, rows));
+            renderBody: c => RenderBody(c, rows)
+        );
     }
 
     private static void RenderBody(IContainer container, IReadOnlyList<Row> rows)
     {
         if (rows.Count == 0)
         {
-            container.AlignCenter().Text("No credit notes or reversals posted in this period.").Italic();
+            container
+                .AlignCenter()
+                .Text("No credit notes or reversals posted in this period.")
+                .Italic();
             return;
         }
 
@@ -67,16 +73,16 @@ public static class CreditNoteAndReversalRegisterPdfRenderer
         {
             table.ColumnsDefinition(c =>
             {
-                c.ConstantColumn(28);  // #
-                c.ConstantColumn(70);  // CN doc no
-                c.ConstantColumn(65);  // CN date
+                c.ConstantColumn(28); // #
+                c.ConstantColumn(70); // CN doc no
+                c.ConstantColumn(65); // CN date
                 c.RelativeColumn(1.2f); // customer
-                c.ConstantColumn(70);  // orig doc no
-                c.ConstantColumn(65);  // orig date
+                c.ConstantColumn(70); // orig doc no
+                c.ConstantColumn(65); // orig date
                 c.RelativeColumn(1.4f); // reason
-                c.ConstantColumn(60);  // subtotal
-                c.ConstantColumn(50);  // VAT
-                c.ConstantColumn(60);  // total
+                c.ConstantColumn(60); // subtotal
+                c.ConstantColumn(50); // VAT
+                c.ConstantColumn(60); // total
             });
 
             table.Header(h =>
@@ -99,11 +105,13 @@ public static class CreditNoteAndReversalRegisterPdfRenderer
                 table.Cell().Text(i.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 table.Cell().Text(r.DocumentNumber);
                 table.Cell().Text(RegisterPageShell.Date(r.DocumentDate));
-                table.Cell().Column(cc =>
-                {
-                    cc.Item().Text(r.CustomerNameEn);
-                    cc.Item().Text(r.CustomerNameAr).FontSize(8);
-                });
+                table
+                    .Cell()
+                    .Column(cc =>
+                    {
+                        cc.Item().Text(r.CustomerNameEn);
+                        cc.Item().Text(r.CustomerNameAr).FontSize(8);
+                    });
                 table.Cell().Text(r.OriginalDocumentNumber);
                 table.Cell().Text(RegisterPageShell.Date(r.OriginalDocumentDate));
                 table.Cell().Text(r.Reason).FontSize(8);
@@ -120,16 +128,24 @@ public static class CreditNoteAndReversalRegisterPdfRenderer
         var subtotal = rows.Sum(r => r.Subtotal);
         var vat = rows.Sum(r => r.Vat);
         var total = rows.Sum(r => r.Total);
-        container.AlignRight().Column(col =>
-        {
-            col.Item().AlignRight().Text(
-                $"Credit subtotal: {RegisterPageShell.Money(subtotal)} EGP").Bold();
-            col.Item().AlignRight().Text(
-                $"Credit VAT: {RegisterPageShell.Money(vat)} EGP").Bold();
-            col.Item().AlignRight().Text(
-                $"Credit total: {RegisterPageShell.Money(total)} EGP").Bold().FontSize(11);
-            col.Item().AlignRight().Text(
-                $"Credit notes: {rows.Count}").FontSize(9);
-        });
+        container
+            .AlignRight()
+            .Column(col =>
+            {
+                col.Item()
+                    .AlignRight()
+                    .Text($"Credit subtotal: {RegisterPageShell.Money(subtotal)} EGP")
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text($"Credit VAT: {RegisterPageShell.Money(vat)} EGP")
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text($"Credit total: {RegisterPageShell.Money(total)} EGP")
+                    .Bold()
+                    .FontSize(11);
+                col.Item().AlignRight().Text($"Credit notes: {rows.Count}").FontSize(9);
+            });
     }
 }

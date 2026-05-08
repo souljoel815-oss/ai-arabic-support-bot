@@ -24,7 +24,8 @@ public sealed record AuditedPingCommand(string Message) : ICommand<string>, IAud
             ActorUserId: currentUser.UserId,
             ActorFirmName: currentUser.FirmName,
             CompanyId: currentUser.CompanyId ?? Guid.Empty,
-            PayloadJson: $$"""{"message":"{{Message}}","result":"{{result}}"}""");
+            PayloadJson: $$"""{"message":"{{Message}}","result":"{{result}}"}"""
+        );
 }
 
 public sealed record AuthorizedPingCommand(string Message) : ICommand<string>, IAuthorizedRequest;
@@ -46,11 +47,8 @@ public sealed class FakeCurrentUser : ICurrentUser
 
     public static FakeCurrentUser Anonymous { get; } = new();
 
-    public static FakeCurrentUser Authenticated(Guid? id = null) => new()
-    {
-        UserId = id ?? Guid.NewGuid(),
-        CompanyId = Guid.NewGuid(),
-    };
+    public static FakeCurrentUser Authenticated(Guid? id = null) =>
+        new() { UserId = id ?? Guid.NewGuid(), CompanyId = Guid.NewGuid() };
 }
 
 public sealed class FakeFirmContextResolver : IFirmContextResolver
@@ -63,8 +61,10 @@ public sealed class FakeFirmContextResolver : IFirmContextResolver
         return this;
     }
 
-    public Task<string?> ResolveFirmNameAsync(Guid userId, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_byUserId.TryGetValue(userId, out var name) ? name : null);
+    public Task<string?> ResolveFirmNameAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default
+    ) => Task.FromResult(_byUserId.TryGetValue(userId, out var name) ? name : null);
 
     public static FakeFirmContextResolver Empty { get; } = new();
 }

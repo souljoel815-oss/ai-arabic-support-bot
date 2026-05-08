@@ -26,7 +26,9 @@ public class BundleVerifierScriptRoundTripTests(SqlServerFixture fixture) : IDis
 {
     private readonly SqlServerFixture _fixture = fixture;
     private readonly string _tempRoot = Path.Combine(
-        Path.GetTempPath(), $"egypttax-bundle-roundtrip-{Guid.NewGuid():N}");
+        Path.GetTempPath(),
+        $"egypttax-bundle-roundtrip-{Guid.NewGuid():N}"
+    );
 
     [Fact]
     public async Task VerifierScript_PassesOnPristineBundle_AndFailsOnTamperedFile()
@@ -46,27 +48,39 @@ public class BundleVerifierScriptRoundTripTests(SqlServerFixture fixture) : IDis
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
         db.Add(user);
         await db.SaveChangesAsync();
 
         var clock = new TestClock(new DateTime(2026, 5, 7, 11, 0, 0, DateTimeKind.Utc));
         var store = new FileSystemAttachmentStore(_tempRoot, clock);
-        var builder = new InspectionBundleBuilder(db, store, clock,
-            new EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery(db));
+        var builder = new InspectionBundleBuilder(
+            db,
+            store,
+            clock,
+            new EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery(db)
+        );
 
-        var result = await builder.BuildAsync(new InspectionBundleRequest(
-            PeriodStart: new DateOnly(2026, 5, 1),
-            PeriodEnd: new DateOnly(2026, 5, 31),
-            GeneratedByUserId: user.Id,
-            AllowDrafts: false), CancellationToken.None);
+        var result = await builder.BuildAsync(
+            new InspectionBundleRequest(
+                PeriodStart: new DateOnly(2026, 5, 1),
+                PeriodEnd: new DateOnly(2026, 5, 31),
+                GeneratedByUserId: user.Id,
+                AllowDrafts: false
+            ),
+            CancellationToken.None
+        );
 
         // T232 sanity — verify-bundle.ps1 MUST be in the manifest under
         // the VerifierScript category, otherwise the rest of this test
         // is meaningless (no script in the bundle to invoke).
-        result.Manifest.Files.Should().Contain(
-            f => f.RelativePath == "verify-bundle.ps1" && f.Category == "VerifierScript",
-            because: "T232 — every bundle MUST embed verify-bundle.ps1 so an inspector can verify integrity on a clean Windows machine without the application installed");
+        result
+            .Manifest.Files.Should()
+            .Contain(
+                f => f.RelativePath == "verify-bundle.ps1" && f.Category == "VerifierScript",
+                because: "T232 — every bundle MUST embed verify-bundle.ps1 so an inspector can verify integrity on a clean Windows machine without the application installed"
+            );
 
         // Extract the produced ZIP to disk — that's the directory the
         // inspector would point the script at after unzipping.
@@ -79,14 +93,16 @@ public class BundleVerifierScriptRoundTripTests(SqlServerFixture fixture) : IDis
         }
 
         var scriptPath = Path.Combine(extractDir, "verify-bundle.ps1");
-        File.Exists(scriptPath).Should().BeTrue(
-            because: "the script MUST land at the bundle root after extraction");
+        File.Exists(scriptPath)
+            .Should()
+            .BeTrue(because: "the script MUST land at the bundle root after extraction");
 
         // Pristine bundle — every on-disk SHA-256 matches the manifest's
         // recorded value, so the script MUST exit 0 with PASS.
         var (cleanExit, cleanOutput) = RunVerifierScript(scriptPath, extractDir);
-        cleanExit.Should().Be(0,
-            because: "pristine bundle MUST verify clean. Script output:\n" + cleanOutput);
+        cleanExit
+            .Should()
+            .Be(0, because: "pristine bundle MUST verify clean. Script output:\n" + cleanOutput);
         cleanOutput.Should().Contain("BUNDLE INTEGRITY: PASS");
 
         // Tamper with the README — flip one byte in place. Size stays
@@ -98,14 +114,26 @@ public class BundleVerifierScriptRoundTripTests(SqlServerFixture fixture) : IDis
         await File.WriteAllBytesAsync(readmePath, readmeBytes);
 
         var (tamperedExit, tamperedOutput) = RunVerifierScript(scriptPath, extractDir);
-        tamperedExit.Should().Be(1,
-            because: "the byte-flip in README changes its SHA-256, which the script MUST catch. Script output:\n" + tamperedOutput);
+        tamperedExit
+            .Should()
+            .Be(
+                1,
+                because: "the byte-flip in README changes its SHA-256, which the script MUST catch. Script output:\n"
+                    + tamperedOutput
+            );
         tamperedOutput.Should().Contain("BUNDLE INTEGRITY: FAIL");
-        tamperedOutput.Should().Contain("README-FOR-INSPECTOR.md",
-            because: "the script MUST name the failing file so the inspector knows exactly what was tampered");
+        tamperedOutput
+            .Should()
+            .Contain(
+                "README-FOR-INSPECTOR.md",
+                because: "the script MUST name the failing file so the inspector knows exactly what was tampered"
+            );
     }
 
-    private static (int ExitCode, string Output) RunVerifierScript(string scriptPath, string bundleDirectory)
+    private static (int ExitCode, string Output) RunVerifierScript(
+        string scriptPath,
+        string bundleDirectory
+    )
     {
         var psi = new ProcessStartInfo
         {
@@ -124,30 +152,43 @@ public class BundleVerifierScriptRoundTripTests(SqlServerFixture fixture) : IDis
         psi.ArgumentList.Add("-BundleDirectory");
         psi.ArgumentList.Add(bundleDirectory);
 
-        using var p = Process.Start(psi)
-            ?? throw new InvalidOperationException("Failed to spawn powershell.exe — is it on PATH?");
+        using var p =
+            Process.Start(psi)
+            ?? throw new InvalidOperationException(
+                "Failed to spawn powershell.exe — is it on PATH?"
+            );
         var stdout = p.StandardOutput.ReadToEnd();
         var stderr = p.StandardError.ReadToEnd();
         if (!p.WaitForExit(TimeSpan.FromSeconds(60)))
         {
             p.Kill(entireProcessTree: true);
             throw new TimeoutException(
-                $"verify-bundle.ps1 did not complete within 60s. Partial stdout:\n{stdout}\nstderr:\n{stderr}");
+                $"verify-bundle.ps1 did not complete within 60s. Partial stdout:\n{stdout}\nstderr:\n{stderr}"
+            );
         }
         return (p.ExitCode, stdout + Environment.NewLine + stderr);
     }
 
     private static async Task EnsureCompanyAsync(AppDbContext db)
     {
-        if (await db.Set<Company>().AnyAsync()) return;
-        db.Add(new Company(
-            legalName: new ArabicEnglishText("شركة", "Test Company SAE"),
-            taxRegistrationNumber: EgyptianTin.Parse("123456789"),
-            commercialRegistrationNumber: "CR-1",
-            address: PostalAddress.Create(
-                new ArabicEnglishText("القاهرة", "Cairo"),
-                "Cairo", "Downtown", "Tahrir", "12", postalCode: "11511"),
-            taxpayerActivityCode: "0001"));
+        if (await db.Set<Company>().AnyAsync())
+            return;
+        db.Add(
+            new Company(
+                legalName: new ArabicEnglishText("شركة", "Test Company SAE"),
+                taxRegistrationNumber: EgyptianTin.Parse("123456789"),
+                commercialRegistrationNumber: "CR-1",
+                address: PostalAddress.Create(
+                    new ArabicEnglishText("القاهرة", "Cairo"),
+                    "Cairo",
+                    "Downtown",
+                    "Tahrir",
+                    "12",
+                    postalCode: "11511"
+                ),
+                taxpayerActivityCode: "0001"
+            )
+        );
         await db.SaveChangesAsync();
     }
 

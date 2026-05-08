@@ -21,7 +21,8 @@ public sealed class SqlAuditLogStore(AppDbContext db) : IAuditLogStore
 
     public async Task<AuditLogEntry> AppendAsync(
         AuditLogPayload payload,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(payload);
 
@@ -31,7 +32,8 @@ public sealed class SqlAuditLogStore(AppDbContext db) : IAuditLogStore
         // SqlServer-coupled behaviour in the audit store.
         var tail = await _db.Set<AuditLogEntry>()
             .FromSqlRaw(
-                "SELECT TOP (1) * FROM [audit].[audit_log] WITH (UPDLOCK, HOLDLOCK) ORDER BY [index] DESC")
+                "SELECT TOP (1) * FROM [audit].[audit_log] WITH (UPDLOCK, HOLDLOCK) ORDER BY [index] DESC"
+            )
             .AsNoTracking()
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -48,7 +50,8 @@ public sealed class SqlAuditLogStore(AppDbContext db) : IAuditLogStore
             kind: payload.Kind,
             payloadJson: payload.PayloadJson,
             prevHash: prevHash,
-            thisHash: thisHash);
+            thisHash: thisHash
+        );
 
         _db.Set<AuditLogEntry>().Add(entry);
         await _db.SaveChangesAsync(cancellationToken);

@@ -19,12 +19,22 @@ internal sealed class AccountantFirmUserConfiguration : IEntityTypeConfiguration
             .OnDelete(DeleteBehavior.Cascade);
 
         b.Property(a => a.FirmName).HasColumnName("firm_name").HasMaxLength(200).IsRequired();
-        b.Property(a => a.FirmExternalIdentifier).HasColumnName("firm_external_identifier").HasMaxLength(200).IsRequired();
+        b.Property(a => a.FirmExternalIdentifier)
+            .HasColumnName("firm_external_identifier")
+            .HasMaxLength(200)
+            .IsRequired();
 
-        b.Property(a => a.InvitedAtUtc).HasColumnName("invited_at_utc").HasColumnType("datetime2(3)").IsRequired();
+        b.Property(a => a.InvitedAtUtc)
+            .HasColumnName("invited_at_utc")
+            .HasColumnType("datetime2(3)")
+            .IsRequired();
         b.Property(a => a.InvitedByUserId).HasColumnName("invited_by_user_id").IsRequired();
-        b.Property(a => a.AcceptedAtUtc).HasColumnName("accepted_at_utc").HasColumnType("datetime2(3)");
-        b.Property(a => a.RevokedAtUtc).HasColumnName("revoked_at_utc").HasColumnType("datetime2(3)");
+        b.Property(a => a.AcceptedAtUtc)
+            .HasColumnName("accepted_at_utc")
+            .HasColumnType("datetime2(3)");
+        b.Property(a => a.RevokedAtUtc)
+            .HasColumnName("revoked_at_utc")
+            .HasColumnType("datetime2(3)");
         b.Property(a => a.RevokedByUserId).HasColumnName("revoked_by_user_id");
 
         // Useful for the "is this user a firm user — and if so which

@@ -54,7 +54,8 @@ public static class JsonCanonicalizer
             case JsonValueKind.Undefined:
             default:
                 throw new InvalidOperationException(
-                    $"Unsupported JSON value kind in canonicalization: {element.ValueKind}");
+                    $"Unsupported JSON value kind in canonicalization: {element.ValueKind}"
+                );
         }
     }
 
@@ -62,14 +63,16 @@ public static class JsonCanonicalizer
     {
         // RFC 8785 §3.2.3: object keys sorted in ascending order by their
         // UTF-16 code-point sequence (lexicographic / ordinal).
-        var members = element.EnumerateObject()
+        var members = element
+            .EnumerateObject()
             .OrderBy(p => p.Name, StringComparer.Ordinal)
             .ToList();
 
         sb.Append('{');
         for (var i = 0; i < members.Count; i++)
         {
-            if (i > 0) sb.Append(',');
+            if (i > 0)
+                sb.Append(',');
             WriteString(members[i].Name, sb);
             sb.Append(':');
             WriteElement(members[i].Value, sb);
@@ -83,7 +86,8 @@ public static class JsonCanonicalizer
         var first = true;
         foreach (var item in element.EnumerateArray())
         {
-            if (!first) sb.Append(',');
+            if (!first)
+                sb.Append(',');
             WriteElement(item, sb);
             first = false;
         }
@@ -98,17 +102,32 @@ public static class JsonCanonicalizer
         {
             switch (c)
             {
-                case '"': sb.Append("\\\""); break;
-                case '\\': sb.Append("\\\\"); break;
-                case '\b': sb.Append("\\b"); break;
-                case '\f': sb.Append("\\f"); break;
-                case '\n': sb.Append("\\n"); break;
-                case '\r': sb.Append("\\r"); break;
-                case '\t': sb.Append("\\t"); break;
+                case '"':
+                    sb.Append("\\\"");
+                    break;
+                case '\\':
+                    sb.Append("\\\\");
+                    break;
+                case '\b':
+                    sb.Append("\\b");
+                    break;
+                case '\f':
+                    sb.Append("\\f");
+                    break;
+                case '\n':
+                    sb.Append("\\n");
+                    break;
+                case '\r':
+                    sb.Append("\\r");
+                    break;
+                case '\t':
+                    sb.Append("\\t");
+                    break;
                 default:
                     if (c < 0x20)
                     {
-                        sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+                        sb.Append("\\u")
+                            .Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
                     }
                     else
                     {

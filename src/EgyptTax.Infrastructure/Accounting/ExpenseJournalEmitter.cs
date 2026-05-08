@@ -33,21 +33,26 @@ public sealed class ExpenseJournalEmitter : IExpenseJournalEmitter
     public Task EmitForExpenseAsync(
         Expense expense,
         DateTime postedAtUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(expense);
         if (expense.State != DocumentState.Posted)
         {
             throw new InvalidOperationException(
-                $"Cannot emit journal for expense {expense.Id}: state is {expense.State}, not Posted.");
+                $"Cannot emit journal for expense {expense.Id}: state is {expense.State}, not Posted."
+            );
         }
         if (string.IsNullOrWhiteSpace(expense.DocumentNumber))
         {
             throw new InvalidOperationException(
-                $"Cannot emit journal for expense {expense.Id}: document number is empty.");
+                $"Cannot emit journal for expense {expense.Id}: document number is empty."
+            );
         }
 
-        var amount = MoneyEgp.From(decimal.Round(expense.Amount.Amount, 2, MidpointRounding.ToEven));
+        var amount = MoneyEgp.From(
+            decimal.Round(expense.Amount.Amount, 2, MidpointRounding.ToEven)
+        );
         var entry = JournalEntry.Create(
             sourceDocumentId: expense.Id,
             sourceDocumentNumber: expense.DocumentNumber!,
@@ -55,11 +60,20 @@ public sealed class ExpenseJournalEmitter : IExpenseJournalEmitter
             postedAtUtc: postedAtUtc,
             lines: new[]
             {
-                (ChartOfAccountCodes.GenericExpense, amount, MoneyEgp.Zero,
-                    $"Expense {expense.DocumentNumber} — book expense"),
-                (ChartOfAccountCodes.AccountsPayable, MoneyEgp.Zero, amount,
-                    $"Expense {expense.DocumentNumber} — accrue payable"),
-            });
+                (
+                    ChartOfAccountCodes.GenericExpense,
+                    amount,
+                    MoneyEgp.Zero,
+                    $"Expense {expense.DocumentNumber} — book expense"
+                ),
+                (
+                    ChartOfAccountCodes.AccountsPayable,
+                    MoneyEgp.Zero,
+                    amount,
+                    $"Expense {expense.DocumentNumber} — accrue payable"
+                ),
+            }
+        );
 
         _db.Add(entry);
         return Task.CompletedTask;

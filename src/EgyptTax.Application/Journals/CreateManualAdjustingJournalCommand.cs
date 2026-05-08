@@ -16,10 +16,12 @@ public sealed record CreateManualAdjustingJournalCommand(
     DateOnly Date,
     ArabicEnglishText Narration,
     Guid CreatedByUserId,
-    IReadOnlyList<ManualJournalLineInput> Lines);
+    IReadOnlyList<ManualJournalLineInput> Lines
+);
 
 public sealed record ManualJournalLineInput(
     string AccountCode,
     MoneyEgp Debit,
     MoneyEgp Credit,
-    string Description);
+    string Description
+);

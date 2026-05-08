@@ -12,7 +12,8 @@ public sealed record LockTaxPeriodCommand(
     int Year,
     int MonthOrQuarter,
     Guid LockedByUserId,
-    string? Reason);
+    string? Reason
+);
 
 /// <summary>FR-037 — Administrator-only reopen.</summary>
 public sealed record ReopenTaxPeriodCommand(
@@ -20,4 +21,5 @@ public sealed record ReopenTaxPeriodCommand(
     int Year,
     int MonthOrQuarter,
     Guid ReopenedByUserId,
-    string? Reason);
+    string? Reason
+);

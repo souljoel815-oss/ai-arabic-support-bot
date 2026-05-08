@@ -18,11 +18,13 @@ public sealed record TrialBalanceReport(
     MoneyEgp TotalDebits,
     MoneyEgp TotalCredits,
     bool IsBalanced,
-    IReadOnlyList<TrialBalanceRow> Rows);
+    IReadOnlyList<TrialBalanceRow> Rows
+);
 
 /// <summary>One per account code with non-zero activity in the period.</summary>
 public sealed record TrialBalanceRow(
     string AccountCode,
     MoneyEgp TotalDebit,
     MoneyEgp TotalCredit,
-    MoneyEgp NetBalance);
+    MoneyEgp NetBalance
+);

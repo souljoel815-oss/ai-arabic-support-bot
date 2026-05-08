@@ -12,22 +12,39 @@ internal sealed class WhtCertificateConfiguration : IEntityTypeConfiguration<Wht
         b.HasKey(c => c.Id);
         b.Property(c => c.Id).HasColumnName("id").ValueGeneratedNever();
 
-        b.Property(c => c.Direction).HasColumnName("direction")
-            .HasConversion<string>().HasMaxLength(32).IsRequired();
+        b.Property(c => c.Direction)
+            .HasColumnName("direction")
+            .HasConversion<string>()
+            .HasMaxLength(32)
+            .IsRequired();
         b.Property(c => c.Date).HasColumnName("date").HasColumnType("date").IsRequired();
         b.Property(c => c.CounterpartyId).HasColumnName("counterparty_id").IsRequired();
         b.Property(c => c.SourceVoucherId).HasColumnName("source_voucher_id").IsRequired();
         b.Property(c => c.SourceInvoiceId).HasColumnName("source_invoice_id").IsRequired();
         b.Property(c => c.WhtCategoryId).HasColumnName("wht_category_id").IsRequired();
-        b.Property(c => c.RateAppliedPercent).HasColumnName("rate_applied_percent")
-            .HasColumnType("decimal(5,2)").IsRequired();
-        b.Property(c => c.CertificateNumber).HasColumnName("certificate_number")
-            .HasMaxLength(64).IsUnicode(false).IsRequired();
-        b.Property(c => c.IssuedAtUtc).HasColumnName("issued_at_utc").HasColumnType("datetime2(3)").IsRequired();
+        b.Property(c => c.RateAppliedPercent)
+            .HasColumnName("rate_applied_percent")
+            .HasColumnType("decimal(5,2)")
+            .IsRequired();
+        b.Property(c => c.CertificateNumber)
+            .HasColumnName("certificate_number")
+            .HasMaxLength(64)
+            .IsUnicode(false)
+            .IsRequired();
+        b.Property(c => c.IssuedAtUtc)
+            .HasColumnName("issued_at_utc")
+            .HasColumnType("datetime2(3)")
+            .IsRequired();
         b.Property(c => c.IncludedInForm41FilingId).HasColumnName("included_in_form41_filing_id");
 
-        b.ComplexProperty(c => c.AmountWithheld,
-            p => p.Property(x => x.Amount).HasColumnName("amount_withheld").HasColumnType("decimal(19,2)").IsRequired());
+        b.ComplexProperty(
+            c => c.AmountWithheld,
+            p =>
+                p.Property(x => x.Amount)
+                    .HasColumnName("amount_withheld")
+                    .HasColumnType("decimal(19,2)")
+                    .IsRequired()
+        );
 
         // Outbound certificate numbers MUST be unique (we generate
         // them); inbound certificate numbers come from the customer

@@ -30,7 +30,8 @@ public sealed record TaxableIncomeReport(
     MoneyEgp NonDeductibleAdjustments,
     MoneyEgp ManagementProfitLoss,
     MoneyEgp TaxableIncome,
-    IReadOnlyList<TaxableIncomeRow> Rows);
+    IReadOnlyList<TaxableIncomeRow> Rows
+);
 
 /// <summary>
 /// One contributing line. <see cref="Bucket"/> is the user-facing
@@ -45,4 +46,5 @@ public sealed record TaxableIncomeRow(
     string? DocumentNumber,
     DateOnly DocumentDate,
     string Description,
-    MoneyEgp Amount);
+    MoneyEgp Amount
+);

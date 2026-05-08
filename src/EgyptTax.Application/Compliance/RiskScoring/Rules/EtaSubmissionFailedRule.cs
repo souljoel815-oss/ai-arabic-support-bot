@@ -28,25 +28,32 @@ public sealed class EtaSubmissionFailedRule : IDocumentRiskRule
             return Array.Empty<RiskFinding>();
         }
 
-        var severity = sub.AttemptCount >= 3
-            ? RiskSeverity.MustFixBeforeFiling
-            : RiskSeverity.Warning;
+        var severity =
+            sub.AttemptCount >= 3 ? RiskSeverity.MustFixBeforeFiling : RiskSeverity.Warning;
 
         var errorClause = string.IsNullOrWhiteSpace(sub.ErrorCode)
             ? ""
             : $" (code {sub.ErrorCode})";
 
-        return [new RiskFinding(
-            RuleId,
-            severity,
-            new ArabicEnglishText(
-                $"فشل إرسال ETA — {sub.AttemptCount} محاولة",
-                $"ETA submission failed — {sub.AttemptCount} attempt(s){errorClause}"),
-            new ArabicEnglishText(
-                sub.ErrorMessage ?? "لم تنجح المحاولات السابقة في تقديم الفاتورة لمصلحة الضرائب.",
-                sub.ErrorMessage ?? "Previous attempts to submit this document to ETA have failed. The retry job will continue trying until the 7-day window closes."),
-            FixHint: severity == RiskSeverity.MustFixBeforeFiling
-                ? "Open the ETA dashboard, review the error code, and intervene manually before the window closes."
-                : "Monitor the next retry tick; investigate if it fails again.")];
+        return
+        [
+            new RiskFinding(
+                RuleId,
+                severity,
+                new ArabicEnglishText(
+                    $"فشل إرسال ETA — {sub.AttemptCount} محاولة",
+                    $"ETA submission failed — {sub.AttemptCount} attempt(s){errorClause}"
+                ),
+                new ArabicEnglishText(
+                    sub.ErrorMessage
+                        ?? "لم تنجح المحاولات السابقة في تقديم الفاتورة لمصلحة الضرائب.",
+                    sub.ErrorMessage
+                        ?? "Previous attempts to submit this document to ETA have failed. The retry job will continue trying until the 7-day window closes."
+                ),
+                FixHint: severity == RiskSeverity.MustFixBeforeFiling
+                    ? "Open the ETA dashboard, review the error code, and intervene manually before the window closes."
+                    : "Monitor the next retry tick; investigate if it fails again."
+            ),
+        ];
     }
 }

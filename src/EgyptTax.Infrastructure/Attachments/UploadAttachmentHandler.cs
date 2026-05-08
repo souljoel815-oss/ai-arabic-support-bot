@@ -32,12 +32,14 @@ public sealed class UploadAttachmentHandler
 {
     public const long MaxBytes = 10 * 1024 * 1024; // 10 MiB per file
 
-    private static readonly Dictionary<string, string> AllowedMimeToExtension = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string> AllowedMimeToExtension = new(
+        StringComparer.OrdinalIgnoreCase
+    )
     {
         ["application/pdf"] = ".pdf",
         ["image/jpeg"] = ".jpg",
-        ["image/jpg"]  = ".jpg",
-        ["image/png"]  = ".png",
+        ["image/jpg"] = ".jpg",
+        ["image/png"] = ".png",
     };
 
     private readonly AppDbContext _db;
@@ -49,7 +51,8 @@ public sealed class UploadAttachmentHandler
         AppDbContext db,
         IAttachmentStore store,
         IAuditLogStore auditLog,
-        IClock clock)
+        IClock clock
+    )
     {
         _db = db;
         _store = store;
@@ -59,7 +62,8 @@ public sealed class UploadAttachmentHandler
 
     public async Task<Attachment> HandleAsync(
         UploadAttachmentCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentException.ThrowIfNullOrWhiteSpace(command.FilenameOriginal);
@@ -69,13 +73,18 @@ public sealed class UploadAttachmentHandler
         if (!AllowedMimeToExtension.TryGetValue(command.MimeType, out var extension))
         {
             throw new InvalidOperationException(
-                $"FR-032 rejects MIME type '{command.MimeType}'. Allowed: {string.Join(", ", AllowedMimeToExtension.Keys)}.");
+                $"FR-032 rejects MIME type '{command.MimeType}'. Allowed: {string.Join(", ", AllowedMimeToExtension.Keys)}."
+            );
         }
 
         var attachmentId = Guid.NewGuid();
         var saved = await _store.SaveAsync(
-            command.DocumentId, attachmentId, extension,
-            command.ContentStream, cancellationToken);
+            command.DocumentId,
+            attachmentId,
+            extension,
+            command.ContentStream,
+            cancellationToken
+        );
 
         if (saved.SizeBytes == 0)
         {
@@ -88,7 +97,8 @@ public sealed class UploadAttachmentHandler
         {
             await _store.DeleteAsync(saved.RelativePath, cancellationToken);
             throw new InvalidOperationException(
-                $"Uploaded file is {saved.SizeBytes:N0} bytes; FR-032 caps attachments at {MaxBytes:N0} bytes.");
+                $"Uploaded file is {saved.SizeBytes:N0} bytes; FR-032 caps attachments at {MaxBytes:N0} bytes."
+            );
         }
 
         var nowUtc = _clock.UtcNow;
@@ -108,24 +118,31 @@ public sealed class UploadAttachmentHandler
 #pragma warning restore CA1308
             sizeBytes: saved.SizeBytes,
             uploadedByUserId: command.UploadedByUserId,
-            uploadedAtUtc: nowUtc)
-        { Id = attachmentId };
+            uploadedAtUtc: nowUtc
+        )
+        {
+            Id = attachmentId,
+        };
 
         _db.Add(entity);
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "attachment.uploaded",
-            ActorUserId: command.UploadedByUserId,
-            ActorFirmName: null,
-            CompanyId: Guid.Empty,
-            PayloadJson: $$"""{"attachment_id":"{{entity.Id:D}}","document_id":"{{entity.DocumentId:D}}","document_type":"{{entity.DocumentType}}","filename_original":"{{Escape(entity.FilenameOriginal)}}","mime_type":"{{entity.MimeType}}","size_bytes":{{entity.SizeBytes.ToString(CultureInfo.InvariantCulture)}},"sha256_hex":"{{Convert.ToHexString(entity.Sha256)}}","relative_path":"{{Escape(entity.RelativePath)}}"}"""),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "attachment.uploaded",
+                ActorUserId: command.UploadedByUserId,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: $$"""{"attachment_id":"{{entity.Id:D}}","document_id":"{{entity.DocumentId:D}}","document_type":"{{entity.DocumentType}}","filename_original":"{{Escape(entity.FilenameOriginal)}}","mime_type":"{{entity.MimeType}}","size_bytes":{{entity.SizeBytes.ToString(CultureInfo.InvariantCulture)}},"sha256_hex":"{{Convert.ToHexString(entity.Sha256)}}","relative_path":"{{Escape(entity.RelativePath)}}"}"""
+            ),
+            cancellationToken
+        );
 
         return entity;
     }
 
     private static string Escape(string value) =>
-        value.Replace("\\", "\\\\", StringComparison.Ordinal)
-             .Replace("\"", "\\\"", StringComparison.Ordinal);
+        value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal);
 }

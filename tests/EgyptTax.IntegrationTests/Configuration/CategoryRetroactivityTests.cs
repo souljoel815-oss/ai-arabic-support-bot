@@ -40,14 +40,17 @@ public class CategoryRetroactivityTests(SqlServerFixture fixture)
             code: $"CAT-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("فئة", "Category"),
             defaultDeductible: true,
-            defaultAccountId: Guid.NewGuid());
+            defaultAccountId: Guid.NewGuid()
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        db.Add(category); db.Add(user);
+            passwordMustChange: false
+        );
+        db.Add(category);
+        db.Add(user);
         await db.SaveChangesAsync();
 
         // Post a non-deductible expense referencing this category
@@ -60,16 +63,19 @@ public class CategoryRetroactivityTests(SqlServerFixture fixture)
             categoryId: category.Id,
             amount: MoneyEgp.From(500m),
             deductibleFlag: false,
-            description: new ArabicEnglishText("اختبار", "Test"));
+            description: new ArabicEnglishText("اختبار", "Test")
+        );
         db.Add(draft);
         await db.SaveChangesAsync();
 
         var clock = new TestClock(new DateTime(2026, 5, 7, 11, 0, 0, DateTimeKind.Utc));
-        var posted = await new PostExpenseHandler(db,
-                new SqlSequentialNumberAllocator(db), clock,
-                new CaptureAuditLogStore(),
-                new ExpenseJournalEmitter(db))
-            .HandleAsync(new PostExpenseCommand(draft.Id, user.Id), CancellationToken.None);
+        var posted = await new PostExpenseHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            clock,
+            new CaptureAuditLogStore(),
+            new ExpenseJournalEmitter(db)
+        ).HandleAsync(new PostExpenseCommand(draft.Id, user.Id), CancellationToken.None);
 
         posted.DeductibleFlag.Should().BeFalse();
         var originalAmount = posted.Amount.Amount;
@@ -84,15 +90,26 @@ public class CategoryRetroactivityTests(SqlServerFixture fixture)
         // Reload the posted expense — its DeductibleFlag MUST not
         // have changed; its Amount MUST not have changed.
         db.ChangeTracker.Clear();
-        var refreshed = await db.Set<Expense>().AsNoTracking()
-            .FirstAsync(e => e.Id == posted.Id);
+        var refreshed = await db.Set<Expense>().AsNoTracking().FirstAsync(e => e.Id == posted.Id);
 
-        refreshed.DeductibleFlag.Should().Be(false,
-            because: "FR-015 / US5 scenario 1 — category-default updates MUST NOT retroactively flip posted-expense flags");
-        refreshed.Amount.Amount.Should().Be(originalAmount,
-            because: "Amount + other fields are aggregate state, not derived from the category — they stay frozen");
-        refreshed.CategoryId.Should().Be(category.Id,
-            because: "the FK back-pointer stays — only the per-row data on the parent category changed");
+        refreshed
+            .DeductibleFlag.Should()
+            .Be(
+                false,
+                because: "FR-015 / US5 scenario 1 — category-default updates MUST NOT retroactively flip posted-expense flags"
+            );
+        refreshed
+            .Amount.Amount.Should()
+            .Be(
+                originalAmount,
+                because: "Amount + other fields are aggregate state, not derived from the category — they stay frozen"
+            );
+        refreshed
+            .CategoryId.Should()
+            .Be(
+                category.Id,
+                because: "the FK back-pointer stays — only the per-row data on the parent category changed"
+            );
         refreshed.State.Should().Be(DocumentState.Posted);
     }
 
@@ -109,14 +126,17 @@ public class CategoryRetroactivityTests(SqlServerFixture fixture)
             code: $"CAT-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("فئة", "Category"),
             defaultDeductible: false,
-            defaultAccountId: Guid.NewGuid());
+            defaultAccountId: Guid.NewGuid()
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        db.Add(category); db.Add(user);
+            passwordMustChange: false
+        );
+        db.Add(category);
+        db.Add(user);
         await db.SaveChangesAsync();
 
         var draft = Expense.CreateDraft(
@@ -124,23 +144,25 @@ public class CategoryRetroactivityTests(SqlServerFixture fixture)
             categoryId: category.Id,
             amount: MoneyEgp.From(750m),
             deductibleFlag: false,
-            description: new ArabicEnglishText("اختبار", "Test"));
+            description: new ArabicEnglishText("اختبار", "Test")
+        );
         db.Add(draft);
         await db.SaveChangesAsync();
         var clock = new TestClock(new DateTime(2026, 5, 7, 11, 0, 0, DateTimeKind.Utc));
-        var posted = await new PostExpenseHandler(db,
-                new SqlSequentialNumberAllocator(db), clock,
-                new CaptureAuditLogStore(),
-                new ExpenseJournalEmitter(db))
-            .HandleAsync(new PostExpenseCommand(draft.Id, user.Id), CancellationToken.None);
+        var posted = await new PostExpenseHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            clock,
+            new CaptureAuditLogStore(),
+            new ExpenseJournalEmitter(db)
+        ).HandleAsync(new PostExpenseCommand(draft.Id, user.Id), CancellationToken.None);
 
         // Deactivate the category.
         category.Deactivate();
         await db.SaveChangesAsync();
 
         db.ChangeTracker.Clear();
-        var refreshed = await db.Set<Expense>().AsNoTracking()
-            .FirstAsync(e => e.Id == posted.Id);
+        var refreshed = await db.Set<Expense>().AsNoTracking().FirstAsync(e => e.Id == posted.Id);
         refreshed.Amount.Amount.Should().Be(750m);
         refreshed.State.Should().Be(DocumentState.Posted);
     }
@@ -153,15 +175,27 @@ public class CategoryRetroactivityTests(SqlServerFixture fixture)
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
         public List<AuditLogPayload> Captured { get; } = [];
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
-            return Task.FromResult(new AuditLogEntry(
-                index: Captured.Count, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]));
+            return Task.FromResult(
+                new AuditLogEntry(
+                    index: Captured.Count,
+                    tsUtc: DateTime.UtcNow,
+                    actorUserId: payload.ActorUserId,
+                    actorFirmName: payload.ActorFirmName,
+                    companyId: payload.CompanyId,
+                    kind: payload.Kind,
+                    payloadJson: payload.PayloadJson,
+                    prevHash: new byte[32],
+                    thisHash: new byte[32]
+                )
+            );
         }
     }
 }

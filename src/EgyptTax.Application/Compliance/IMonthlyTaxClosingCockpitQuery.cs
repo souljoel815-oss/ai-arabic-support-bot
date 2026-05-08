@@ -6,5 +6,9 @@ namespace EgyptTax.Application.Compliance;
 /// </summary>
 public interface IMonthlyTaxClosingCockpitQuery
 {
-    Task<MonthlyTaxClosingCockpit> RunAsync(int year, int month, CancellationToken cancellationToken = default);
+    Task<MonthlyTaxClosingCockpit> RunAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken = default
+    );
 }

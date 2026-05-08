@@ -15,14 +15,21 @@ internal sealed class PeriodReviewLockConfiguration : IEntityTypeConfiguration<P
         b.Property(l => l.PeriodYear).HasColumnName("period_year").IsRequired();
         b.Property(l => l.PeriodMonth).HasColumnName("period_month").IsRequired();
 
-        b.Property(l => l.LockedAtUtc).HasColumnName("locked_at_utc").HasColumnType("datetime2(3)").IsRequired();
+        b.Property(l => l.LockedAtUtc)
+            .HasColumnName("locked_at_utc")
+            .HasColumnType("datetime2(3)")
+            .IsRequired();
         b.Property(l => l.LockedByUserId).HasColumnName("locked_by_user_id").IsRequired();
         b.Property(l => l.LockedNote).HasColumnName("locked_note").HasMaxLength(500);
 
-        b.Property(l => l.ReleasedAtUtc).HasColumnName("released_at_utc").HasColumnType("datetime2(3)");
+        b.Property(l => l.ReleasedAtUtc)
+            .HasColumnName("released_at_utc")
+            .HasColumnType("datetime2(3)");
         b.Property(l => l.ReleasedByUserId).HasColumnName("released_by_user_id");
 
-        b.Property(l => l.AccountantActionsDuringLock).HasColumnName("accountant_actions_during_lock").IsRequired();
+        b.Property(l => l.AccountantActionsDuringLock)
+            .HasColumnName("accountant_actions_during_lock")
+            .IsRequired();
 
         // Each (year, month) can have at most ONE active review lock.
         // Enforced via filtered unique index on the active rows

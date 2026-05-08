@@ -13,10 +13,10 @@ public class PostedDocumentImmutabilityGuardTests
                 DocumentState.Posted,
                 DocumentType.SalesInvoice,
                 Guid.NewGuid(),
-                operation: "Edit");
+                operation: "Edit"
+            );
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*Posted*credit note*");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*Posted*credit note*");
     }
 
     [Theory]
@@ -31,7 +31,8 @@ public class PostedDocumentImmutabilityGuardTests
                 state,
                 DocumentType.SalesInvoice,
                 Guid.NewGuid(),
-                operation: "Edit");
+                operation: "Edit"
+            );
 
         act.Should().NotThrow();
     }
@@ -44,16 +45,17 @@ public class PostedDocumentImmutabilityGuardTests
     [InlineData(DocumentType.SupplierPaymentVoucher, "reversal voucher")]
     public void EnsureNotPosted_HintsCorrectCorrectionPath_ByDocumentType(
         DocumentType type,
-        string expectedHint)
+        string expectedHint
+    )
     {
         Action act = () =>
             PostedDocumentImmutabilityGuard.EnsureNotPosted(
                 DocumentState.Posted,
                 type,
                 Guid.NewGuid(),
-                operation: "Edit");
+                operation: "Edit"
+            );
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage($"*{expectedHint}*");
+        act.Should().Throw<InvalidOperationException>().WithMessage($"*{expectedHint}*");
     }
 }

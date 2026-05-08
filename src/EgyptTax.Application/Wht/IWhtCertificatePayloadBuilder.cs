@@ -11,5 +11,7 @@ namespace EgyptTax.Application.Wht;
 public interface IWhtCertificatePayloadBuilder
 {
     Task<WhtCertificatePayload?> BuildAsync(
-        Guid certificateId, CancellationToken cancellationToken = default);
+        Guid certificateId,
+        CancellationToken cancellationToken = default
+    );
 }

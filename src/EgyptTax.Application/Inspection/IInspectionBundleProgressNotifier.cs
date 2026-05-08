@@ -19,7 +19,10 @@ namespace EgyptTax.Application.Inspection;
 public interface IInspectionBundleProgressNotifier
 {
     event EventHandler<InspectionBundleProgressEvent>? ProgressChanged;
-    Task NotifyAsync(InspectionBundleProgressEvent e, CancellationToken cancellationToken = default);
+    Task NotifyAsync(
+        InspectionBundleProgressEvent e,
+        CancellationToken cancellationToken = default
+    );
 }
 
 /// <summary>
@@ -35,7 +38,8 @@ public sealed record InspectionBundleProgressEvent(
     int? FilesProcessed = null,
     int? FilesTotal = null,
     string? ResultPath = null,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null
+);
 
 public enum InspectionBundleProgressPhase
 {

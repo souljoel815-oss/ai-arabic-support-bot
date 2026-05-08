@@ -9,5 +9,8 @@ namespace EgyptTax.Application.Compliance.TinRevalidation;
 /// </summary>
 public interface ISupplierTinRevalidator
 {
-    Task<TinRevalidationResult> RevalidateAsync(string tin, CancellationToken cancellationToken = default);
+    Task<TinRevalidationResult> RevalidateAsync(
+        string tin,
+        CancellationToken cancellationToken = default
+    );
 }

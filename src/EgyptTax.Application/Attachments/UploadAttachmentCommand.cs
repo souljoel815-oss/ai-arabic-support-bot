@@ -18,4 +18,5 @@ public sealed record UploadAttachmentCommand(
     string FilenameOriginal,
     string MimeType,
     Stream ContentStream,
-    Guid UploadedByUserId);
+    Guid UploadedByUserId
+);

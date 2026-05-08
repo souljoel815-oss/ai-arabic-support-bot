@@ -32,12 +32,17 @@ public sealed class SqlWhtLifecycleDashboardQuery : IWhtLifecycleDashboardQuery
     }
 
     public async Task<WhtLifecycleDashboard> GetAsync(
-        DateOnly asOf, CancellationToken cancellationToken = default)
+        DateOnly asOf,
+        CancellationToken cancellationToken = default
+    )
     {
         // Owed view: outbound certs not yet stamped into a filing.
-        var unfiledOutbound = await _db.Set<WhtCertificate>().AsNoTracking()
-            .Where(c => c.Direction == WhtCertificateDirection.OutboundToSupplier
-                && c.IncludedInForm41FilingId == null)
+        var unfiledOutbound = await _db.Set<WhtCertificate>()
+            .AsNoTracking()
+            .Where(c =>
+                c.Direction == WhtCertificateDirection.OutboundToSupplier
+                && c.IncludedInForm41FilingId == null
+            )
             .Select(c => new { c.Date, Amount = c.AmountWithheld.Amount })
             .ToListAsync(cancellationToken);
 
@@ -46,44 +51,53 @@ public sealed class SqlWhtLifecycleDashboardQuery : IWhtLifecycleDashboardQuery
             CertCount: unfiledOutbound.Count,
             OldestUnfiledCertDate: unfiledOutbound.Count == 0
                 ? null
-                : unfiledOutbound.Min(x => x.Date));
+                : unfiledOutbound.Min(x => x.Date)
+        );
 
         // Expected view: inbound certs (customer-issued).
-        var inbound = await _db.Set<WhtCertificate>().AsNoTracking()
+        var inbound = await _db.Set<WhtCertificate>()
+            .AsNoTracking()
             .Where(c => c.Direction == WhtCertificateDirection.InboundFromCustomer)
             .Select(c => c.AmountWithheld.Amount)
             .ToListAsync(cancellationToken);
         var expected = new WhtExpectedView(
             TotalReceivableFromCustomerWht: inbound.Sum(),
-            InboundCertCount: inbound.Count);
+            InboundCertCount: inbound.Count
+        );
 
         // Filings: every row, decorated with overdue derivation +
         // penalty estimate.
-        var filings = await _db.Set<Form41Filing>().AsNoTracking()
-            .OrderByDescending(f => f.FiscalYear).ThenByDescending(f => f.Quarter)
+        var filings = await _db.Set<Form41Filing>()
+            .AsNoTracking()
+            .OrderByDescending(f => f.FiscalYear)
+            .ThenByDescending(f => f.Quarter)
             .ToListAsync(cancellationToken);
 
-        var filingRows = filings.Select(f =>
-        {
-            var dueDate = QuarterEndDate(f.FiscalYear, f.Quarter)
-                .AddDays(Form41FilingGraceDays);
-            var derivedStatus = DeriveStatus(f, asOf, dueDate);
-            var daysOverdue = derivedStatus == Form41Status.Overdue
-                ? Math.Max(0, asOf.DayNumber - dueDate.DayNumber)
-                : 0;
-            return new Form41FilingRow(
-                Id: f.Id,
-                FiscalYear: f.FiscalYear,
-                Quarter: f.Quarter,
-                DerivedStatus: derivedStatus,
-                DueDate: dueDate,
-                DaysOverdue: daysOverdue,
-                TotalWhtPayable: f.TotalWhtPayable.Amount,
-                LineCount: f.LineCount,
-                EstimatedPenalty: derivedStatus == Form41Status.Overdue
-                    ? EstimatedPenalty(f.TotalWhtPayable.Amount, daysOverdue)
-                    : null);
-        }).ToList();
+        var filingRows = filings
+            .Select(f =>
+            {
+                var dueDate = QuarterEndDate(f.FiscalYear, f.Quarter)
+                    .AddDays(Form41FilingGraceDays);
+                var derivedStatus = DeriveStatus(f, asOf, dueDate);
+                var daysOverdue =
+                    derivedStatus == Form41Status.Overdue
+                        ? Math.Max(0, asOf.DayNumber - dueDate.DayNumber)
+                        : 0;
+                return new Form41FilingRow(
+                    Id: f.Id,
+                    FiscalYear: f.FiscalYear,
+                    Quarter: f.Quarter,
+                    DerivedStatus: derivedStatus,
+                    DueDate: dueDate,
+                    DaysOverdue: daysOverdue,
+                    TotalWhtPayable: f.TotalWhtPayable.Amount,
+                    LineCount: f.LineCount,
+                    EstimatedPenalty: derivedStatus == Form41Status.Overdue
+                        ? EstimatedPenalty(f.TotalWhtPayable.Amount, daysOverdue)
+                        : null
+                );
+            })
+            .ToList();
 
         return new WhtLifecycleDashboard(owed, expected, filingRows);
     }
@@ -102,18 +116,18 @@ public sealed class SqlWhtLifecycleDashboardQuery : IWhtLifecycleDashboardQuery
         return decimal.Round(totalWhtPayable * rate, 2, MidpointRounding.ToEven);
     }
 
-    private static Form41Status DeriveStatus(
-        Form41Filing f, DateOnly asOf, DateOnly dueDate)
+    private static Form41Status DeriveStatus(Form41Filing f, DateOnly asOf, DateOnly dueDate)
     {
-        if (f.Status == Form41Status.Filed) return Form41Status.Filed;
-        if (asOf > dueDate) return Form41Status.Overdue;
+        if (f.Status == Form41Status.Filed)
+            return Form41Status.Filed;
+        if (asOf > dueDate)
+            return Form41Status.Overdue;
         return Form41Status.Unfiled;
     }
 
     private static DateOnly QuarterEndDate(int fiscalYear, int quarter)
     {
         var endMonth = quarter * 3;
-        return new DateOnly(fiscalYear, endMonth,
-            DateTime.DaysInMonth(fiscalYear, endMonth));
+        return new DateOnly(fiscalYear, endMonth, DateTime.DaysInMonth(fiscalYear, endMonth));
     }
 }

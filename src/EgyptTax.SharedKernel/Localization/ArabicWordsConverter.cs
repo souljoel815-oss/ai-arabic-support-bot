@@ -22,34 +22,68 @@ public static class ArabicWordsConverter
 
     private static readonly string[] Ones =
     {
-        string.Empty, "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة",
-        "ستة", "سبعة", "ثمانية", "تسعة",
+        string.Empty,
+        "واحد",
+        "اثنان",
+        "ثلاثة",
+        "أربعة",
+        "خمسة",
+        "ستة",
+        "سبعة",
+        "ثمانية",
+        "تسعة",
     };
 
     private static readonly string[] Teens =
     {
-        "عشرة", "أحد عشر", "اثنا عشر", "ثلاثة عشر", "أربعة عشر",
-        "خمسة عشر", "ستة عشر", "سبعة عشر", "ثمانية عشر", "تسعة عشر",
+        "عشرة",
+        "أحد عشر",
+        "اثنا عشر",
+        "ثلاثة عشر",
+        "أربعة عشر",
+        "خمسة عشر",
+        "ستة عشر",
+        "سبعة عشر",
+        "ثمانية عشر",
+        "تسعة عشر",
     };
 
     private static readonly string[] Tens =
     {
-        string.Empty, string.Empty, "عشرون", "ثلاثون", "أربعون", "خمسون",
-        "ستون", "سبعون", "ثمانون", "تسعون",
+        string.Empty,
+        string.Empty,
+        "عشرون",
+        "ثلاثون",
+        "أربعون",
+        "خمسون",
+        "ستون",
+        "سبعون",
+        "ثمانون",
+        "تسعون",
     };
 
     private static readonly string[] Hundreds =
     {
-        string.Empty, "مائة", "مئتان", "ثلاثمائة", "أربعمائة", "خمسمائة",
-        "ستمائة", "سبعمائة", "ثمانمائة", "تسعمائة",
+        string.Empty,
+        "مائة",
+        "مئتان",
+        "ثلاثمائة",
+        "أربعمائة",
+        "خمسمائة",
+        "ستمائة",
+        "سبعمائة",
+        "ثمانمائة",
+        "تسعمائة",
     };
 
     public static string FromInteger(long value)
     {
         if (value < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(value),
-                "FR-014 amount-in-words is only defined for non-negative integers.");
+            throw new ArgumentOutOfRangeException(
+                nameof(value),
+                "FR-014 amount-in-words is only defined for non-negative integers."
+            );
         }
         if (value == 0)
         {
@@ -64,18 +98,39 @@ public static class ArabicWordsConverter
         var parts = new List<string>(4);
         if (billions > 0)
         {
-            parts.Add(BuildScaleGroup(billions, singular: "مليار", dual: "ملياران",
-                pluralFor3To10: "مليارات", singularAccusative: "مليارا"));
+            parts.Add(
+                BuildScaleGroup(
+                    billions,
+                    singular: "مليار",
+                    dual: "ملياران",
+                    pluralFor3To10: "مليارات",
+                    singularAccusative: "مليارا"
+                )
+            );
         }
         if (millions > 0)
         {
-            parts.Add(BuildScaleGroup(millions, singular: "مليون", dual: "مليونان",
-                pluralFor3To10: "ملايين", singularAccusative: "مليونا"));
+            parts.Add(
+                BuildScaleGroup(
+                    millions,
+                    singular: "مليون",
+                    dual: "مليونان",
+                    pluralFor3To10: "ملايين",
+                    singularAccusative: "مليونا"
+                )
+            );
         }
         if (thousands > 0)
         {
-            parts.Add(BuildScaleGroup(thousands, singular: "ألف", dual: "ألفان",
-                pluralFor3To10: "آلاف", singularAccusative: "ألفا"));
+            parts.Add(
+                BuildScaleGroup(
+                    thousands,
+                    singular: "ألف",
+                    dual: "ألفان",
+                    pluralFor3To10: "آلاف",
+                    singularAccusative: "ألفا"
+                )
+            );
         }
         if (ones > 0)
         {
@@ -89,8 +144,10 @@ public static class ArabicWordsConverter
     {
         if (amount < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(amount),
-                "FR-014 amount-in-words is only defined for non-negative monetary amounts.");
+            throw new ArgumentOutOfRangeException(
+                nameof(amount),
+                "FR-014 amount-in-words is only defined for non-negative monetary amounts."
+            );
         }
 
         // Round to qirsh (1/100 EGP) using banker's rounding so the textual
@@ -107,19 +164,27 @@ public static class ArabicWordsConverter
         var parts = new List<string>(2);
         if (pounds > 0)
         {
-            parts.Add(BuildCurrencyPhrase(pounds,
-                singular: "جنيه مصري واحد",
-                dual: "جنيهان مصريان",
-                pluralFor3To10Suffix: "جنيهات مصرية",
-                singularAccusativeSuffix: "جنيها مصريا"));
+            parts.Add(
+                BuildCurrencyPhrase(
+                    pounds,
+                    singular: "جنيه مصري واحد",
+                    dual: "جنيهان مصريان",
+                    pluralFor3To10Suffix: "جنيهات مصرية",
+                    singularAccusativeSuffix: "جنيها مصريا"
+                )
+            );
         }
         if (piasters > 0)
         {
-            parts.Add(BuildCurrencyPhrase(piasters,
-                singular: "قرش واحد",
-                dual: "قرشان",
-                pluralFor3To10Suffix: "قروش",
-                singularAccusativeSuffix: "قرشا"));
+            parts.Add(
+                BuildCurrencyPhrase(
+                    piasters,
+                    singular: "قرش واحد",
+                    dual: "قرشان",
+                    pluralFor3To10Suffix: "قروش",
+                    singularAccusativeSuffix: "قرشا"
+                )
+            );
         }
 
         return string.Join(Conjunction, parts) + " فقط لا غير";
@@ -162,9 +227,7 @@ public static class ArabicWordsConverter
 
         var t = n / 10;
         var o = n % 10;
-        return o == 0
-            ? Tens[t]
-            : Ones[o] + Conjunction + Tens[t];
+        return o == 0 ? Tens[t] : Ones[o] + Conjunction + Tens[t];
     }
 
     private static string BuildScaleGroup(
@@ -172,7 +235,8 @@ public static class ArabicWordsConverter
         string singular,
         string dual,
         string pluralFor3To10,
-        string singularAccusative)
+        string singularAccusative
+    )
     {
         if (count == 1)
         {
@@ -214,7 +278,8 @@ public static class ArabicWordsConverter
         string singular,
         string dual,
         string pluralFor3To10Suffix,
-        string singularAccusativeSuffix)
+        string singularAccusativeSuffix
+    )
     {
         return count switch
         {

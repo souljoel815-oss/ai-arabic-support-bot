@@ -25,18 +25,24 @@ internal static class VerifyAuditHost
         var configuration = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
             .AddJsonFile("appsettings.json", optional: true)
-            .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json", optional: true)
+            .AddJsonFile(
+                $"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json",
+                optional: true
+            )
             .AddEnvironmentVariables()
             .AddUserSecrets(typeof(VerifyAuditHost).Assembly, optional: true)
             .Build();
 
-        var connectionString = configuration.GetConnectionString("EgyptTax")
+        var connectionString =
+            configuration.GetConnectionString("EgyptTax")
             ?? configuration["ConnectionStrings:EgyptTax"]
             ?? Environment.GetEnvironmentVariable("EGYPTTAX_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            await Console.Error.WriteLineAsync(
-                "[verify-audit] No connection string found. Set ConnectionStrings:EgyptTax in appsettings or EGYPTTAX_CONNECTION env var.")
+            await Console
+                .Error.WriteLineAsync(
+                    "[verify-audit] No connection string found. Set ConnectionStrings:EgyptTax in appsettings or EGYPTTAX_CONNECTION env var."
+                )
                 .WaitAsync(cancellationToken);
             return 3;
         }
@@ -48,6 +54,12 @@ internal static class VerifyAuditHost
         var checkpointStore = new SqlSchemaCheckpointStore(db);
 
         return await VerifyAudit.RunAsync(
-            args, db, checkpointStore, Console.Out, Console.Error, cancellationToken);
+            args,
+            db,
+            checkpointStore,
+            Console.Out,
+            Console.Error,
+            cancellationToken
+        );
     }
 }

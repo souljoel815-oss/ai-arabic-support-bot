@@ -23,11 +23,13 @@ public interface IWhtComputeService
         DateOnly paymentDate,
         MoneyEgp grossAmount,
         WhtApplicableTo direction,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }
 
 public sealed record WhtComputation(
     Guid WhtCategoryId,
     string WhtCategoryCode,
     decimal RateAppliedPercent,
-    MoneyEgp AmountWithheld);
+    MoneyEgp AmountWithheld
+);

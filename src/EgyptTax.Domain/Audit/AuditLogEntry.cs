@@ -44,7 +44,8 @@ public sealed class AuditLogEntry
         string kind,
         string payloadJson,
         byte[] prevHash,
-        byte[] thisHash)
+        byte[] thisHash
+    )
     {
         Index = index;
         TsUtc = tsUtc;
@@ -64,4 +65,5 @@ public sealed record AuditLogPayload(
     Guid? ActorUserId,
     string? ActorFirmName,
     Guid CompanyId,
-    string PayloadJson);
+    string PayloadJson
+);

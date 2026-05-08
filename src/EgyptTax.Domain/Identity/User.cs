@@ -38,7 +38,8 @@ public sealed class User
         ArabicEnglishText displayName,
         string passwordHash,
         Language preferredLanguage = Language.Ar,
-        bool passwordMustChange = true)
+        bool passwordMustChange = true
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
@@ -68,7 +69,10 @@ public sealed class User
         ArgumentNullException.ThrowIfNull(encryptedSecret);
         if (encryptedSecret.Length == 0)
         {
-            throw new ArgumentException("Encrypted MFA secret must be non-empty.", nameof(encryptedSecret));
+            throw new ArgumentException(
+                "Encrypted MFA secret must be non-empty.",
+                nameof(encryptedSecret)
+            );
         }
         MfaSecretEncrypted = encryptedSecret;
         MfaEnrolledAtUtc = DateTime.UtcNow;
@@ -84,7 +88,8 @@ public sealed class User
         if (RequiresMfa())
         {
             throw new InvalidOperationException(
-                "Cannot disable MFA: user holds at least one role that requires it. Remove the role first.");
+                "Cannot disable MFA: user holds at least one role that requires it. Remove the role first."
+            );
         }
         MfaSecretEncrypted = null;
         MfaEnrolledAtUtc = null;
@@ -114,5 +119,6 @@ public sealed class User
         LockoutUntilUtc is { } until && until > nowUtc;
 
     public void Disable() => Status = UserStatus.Disabled;
+
     public void Reactivate() => Status = UserStatus.Active;
 }

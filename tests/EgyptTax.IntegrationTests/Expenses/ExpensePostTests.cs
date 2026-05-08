@@ -37,19 +37,28 @@ public class ExpensePostTests(SqlServerFixture fixture)
         var (category, user) = await SeedAsync(db);
 
         var draft = Expense.CreateDraft(
-            new DateOnly(2026, 5, 7), category.Id, MoneyEgp.From(500m),
+            new DateOnly(2026, 5, 7),
+            category.Id,
+            MoneyEgp.From(500m),
             deductibleFlag: true,
-            description: new ArabicEnglishText("مصروفات مكتبية", "Office supplies"));
+            description: new ArabicEnglishText("مصروفات مكتبية", "Office supplies")
+        );
         db.Add(draft);
         await db.SaveChangesAsync();
 
         var handler = BuildHandler(db);
-        var act = async () => await handler.HandleAsync(
-            new PostExpenseCommand(draft.Id, user.Id), CancellationToken.None);
+        var act = async () =>
+            await handler.HandleAsync(
+                new PostExpenseCommand(draft.Id, user.Id),
+                CancellationToken.None
+            );
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .Where(ex => ex.Message.Contains("FR-016", StringComparison.OrdinalIgnoreCase)
-                || ex.Message.Contains("deductible", StringComparison.OrdinalIgnoreCase));
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .Where(ex =>
+                ex.Message.Contains("FR-016", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("deductible", StringComparison.OrdinalIgnoreCase)
+            );
 
         var refreshed = await db.Set<Expense>().AsNoTracking().FirstAsync(e => e.Id == draft.Id);
         refreshed.State.Should().Be(DocumentState.Draft);
@@ -63,9 +72,12 @@ public class ExpensePostTests(SqlServerFixture fixture)
         var (category, user) = await SeedAsync(db);
 
         var draft = Expense.CreateDraft(
-            new DateOnly(2026, 5, 7), category.Id, MoneyEgp.From(500m),
+            new DateOnly(2026, 5, 7),
+            category.Id,
+            MoneyEgp.From(500m),
             deductibleFlag: true,
-            description: new ArabicEnglishText("مصروفات مكتبية", "Office supplies"));
+            description: new ArabicEnglishText("مصروفات مكتبية", "Office supplies")
+        );
         db.Add(draft);
 
         var attachment = new Attachment(
@@ -78,17 +90,21 @@ public class ExpensePostTests(SqlServerFixture fixture)
             mimeType: "application/pdf",
             sizeBytes: 1234,
             uploadedByUserId: user.Id,
-            uploadedAtUtc: new DateTime(2026, 5, 7, 9, 0, 0, DateTimeKind.Utc));
+            uploadedAtUtc: new DateTime(2026, 5, 7, 9, 0, 0, DateTimeKind.Utc)
+        );
         db.Add(attachment);
         await db.SaveChangesAsync();
 
         var handler = BuildHandler(db);
         var posted = await handler.HandleAsync(
-            new PostExpenseCommand(draft.Id, user.Id), CancellationToken.None);
+            new PostExpenseCommand(draft.Id, user.Id),
+            CancellationToken.None
+        );
 
         posted.State.Should().Be(DocumentState.Posted);
-        posted.DocumentNumber.Should().NotBeNullOrWhiteSpace(
-            because: "FR-011 — sequential EXP-{year}-{n} allocated on Post");
+        posted
+            .DocumentNumber.Should()
+            .NotBeNullOrWhiteSpace(because: "FR-011 — sequential EXP-{year}-{n} allocated on Post");
     }
 
     [Fact]
@@ -98,39 +114,51 @@ public class ExpensePostTests(SqlServerFixture fixture)
         var (category, user) = await SeedAsync(db);
 
         var draft = Expense.CreateDraft(
-            new DateOnly(2026, 5, 7), category.Id, MoneyEgp.From(200m),
+            new DateOnly(2026, 5, 7),
+            category.Id,
+            MoneyEgp.From(200m),
             deductibleFlag: false,
-            description: new ArabicEnglishText("ضيافة", "Entertainment (non-deductible)"));
+            description: new ArabicEnglishText("ضيافة", "Entertainment (non-deductible)")
+        );
         db.Add(draft);
         await db.SaveChangesAsync();
 
         var handler = BuildHandler(db);
         var posted = await handler.HandleAsync(
-            new PostExpenseCommand(draft.Id, user.Id), CancellationToken.None);
+            new PostExpenseCommand(draft.Id, user.Id),
+            CancellationToken.None
+        );
 
         posted.State.Should().Be(DocumentState.Posted);
     }
 
     private static PostExpenseHandler BuildHandler(AppDbContext db) =>
-        new(db,
+        new(
+            db,
             new SqlSequentialNumberAllocator(db),
             new TestClock(new DateTime(2026, 5, 7, 11, 0, 0, DateTimeKind.Utc)),
-            new CaptureAuditLogStore());
+            new CaptureAuditLogStore()
+        );
 
-    private static async Task<(DeductibleExpenseCategory category, User user)> SeedAsync(AppDbContext db)
+    private static async Task<(DeductibleExpenseCategory category, User user)> SeedAsync(
+        AppDbContext db
+    )
     {
         var category = new DeductibleExpenseCategory(
             code: $"CAT-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("فئة تجريبية", "Test Category"),
             defaultDeductible: true,
-            defaultAccountId: Guid.NewGuid());
+            defaultAccountId: Guid.NewGuid()
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        db.Add(category); db.Add(user);
+            passwordMustChange: false
+        );
+        db.Add(category);
+        db.Add(user);
         await db.SaveChangesAsync();
         return (category, user);
     }
@@ -143,15 +171,27 @@ public class ExpensePostTests(SqlServerFixture fixture)
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
         public List<AuditLogPayload> Captured { get; } = [];
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
-            return Task.FromResult(new AuditLogEntry(
-                index: Captured.Count, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]));
+            return Task.FromResult(
+                new AuditLogEntry(
+                    index: Captured.Count,
+                    tsUtc: DateTime.UtcNow,
+                    actorUserId: payload.ActorUserId,
+                    actorFirmName: payload.ActorFirmName,
+                    companyId: payload.CompanyId,
+                    kind: payload.Kind,
+                    payloadJson: payload.PayloadJson,
+                    prevHash: new byte[32],
+                    thisHash: new byte[32]
+                )
+            );
         }
     }
 }

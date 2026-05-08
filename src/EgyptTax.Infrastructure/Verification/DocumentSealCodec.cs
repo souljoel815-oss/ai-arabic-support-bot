@@ -31,7 +31,10 @@ public static class DocumentSealCodec
     {
         ArgumentNullException.ThrowIfNull(payload);
 
-        var writer = new CborWriter(CborConformanceMode.Ctap2Canonical, convertIndefiniteLengthEncodings: true);
+        var writer = new CborWriter(
+            CborConformanceMode.Ctap2Canonical,
+            convertIndefiniteLengthEncodings: true
+        );
         writer.WriteStartMap(8);
 
         writer.WriteUInt32(1);
@@ -120,22 +123,47 @@ public static class DocumentSealCodec
                 var key = reader.ReadUInt32();
                 switch (key)
                 {
-                    case 1: docType = reader.ReadUInt32(); break;
-                    case 2: docNumber = reader.ReadTextString(); break;
-                    case 3: docIdRaw = reader.ReadTextString(); break;
-                    case 4: totalPiastres = reader.ReadInt64(); break;
-                    case 5: entryHash = reader.ReadByteString(); break;
-                    case 6: entryIndex = reader.ReadInt64(); break;
-                    case 7: verifyUrl = reader.ReadTextString(); break;
-                    case 8: issuerTin = reader.ReadTextString(); break;
-                    default: reader.SkipValue(); break;
+                    case 1:
+                        docType = reader.ReadUInt32();
+                        break;
+                    case 2:
+                        docNumber = reader.ReadTextString();
+                        break;
+                    case 3:
+                        docIdRaw = reader.ReadTextString();
+                        break;
+                    case 4:
+                        totalPiastres = reader.ReadInt64();
+                        break;
+                    case 5:
+                        entryHash = reader.ReadByteString();
+                        break;
+                    case 6:
+                        entryIndex = reader.ReadInt64();
+                        break;
+                    case 7:
+                        verifyUrl = reader.ReadTextString();
+                        break;
+                    case 8:
+                        issuerTin = reader.ReadTextString();
+                        break;
+                    default:
+                        reader.SkipValue();
+                        break;
                 }
             }
             reader.ReadEndMap();
 
-            if (docType is null || docNumber is null || docIdRaw is null
-                || totalPiastres is null || entryHash is null || entryIndex is null
-                || verifyUrl is null || issuerTin is null)
+            if (
+                docType is null
+                || docNumber is null
+                || docIdRaw is null
+                || totalPiastres is null
+                || entryHash is null
+                || entryIndex is null
+                || verifyUrl is null
+                || issuerTin is null
+            )
             {
                 return null;
             }
@@ -158,9 +186,11 @@ public static class DocumentSealCodec
                 AuditEntryHash: entryHash,
                 AuditEntryIndex: entryIndex.Value,
                 VerifyUrl: verifyUrl,
-                IssuerTin: issuerTin);
+                IssuerTin: issuerTin
+            );
         }
-        catch (Exception ex) when (ex is CborContentException or InvalidOperationException or FormatException)
+        catch (Exception ex)
+            when (ex is CborContentException or InvalidOperationException or FormatException)
         {
             return null;
         }
@@ -173,43 +203,70 @@ public static class DocumentSealCodec
         var payload = Decode(seal);
         if (payload is null)
         {
-            return new SealVerificationResult(SealOutcome.Malformed, null, null, Array.Empty<SealMismatch>());
+            return new SealVerificationResult(
+                SealOutcome.Malformed,
+                null,
+                null,
+                Array.Empty<SealMismatch>()
+            );
         }
 
         var live = resolver(payload.DocumentId);
         if (live is null)
         {
-            return new SealVerificationResult(SealOutcome.Unknown,
-                payload.DocumentNumber, payload.DocumentType.ToString(), Array.Empty<SealMismatch>());
+            return new SealVerificationResult(
+                SealOutcome.Unknown,
+                payload.DocumentNumber,
+                payload.DocumentType.ToString(),
+                Array.Empty<SealMismatch>()
+            );
         }
 
         var mismatches = new List<SealMismatch>(4);
         if (!string.Equals(live.DocumentNumber, payload.DocumentNumber, StringComparison.Ordinal))
         {
-            mismatches.Add(new SealMismatch("document_number", payload.DocumentNumber, live.DocumentNumber));
+            mismatches.Add(
+                new SealMismatch("document_number", payload.DocumentNumber, live.DocumentNumber)
+            );
         }
         if (live.GrandTotalPiastres != payload.GrandTotalPiastres)
         {
-            mismatches.Add(new SealMismatch("grand_total_piastres",
-                payload.GrandTotalPiastres.ToString(CultureInfo.InvariantCulture),
-                live.GrandTotalPiastres.ToString(CultureInfo.InvariantCulture)));
+            mismatches.Add(
+                new SealMismatch(
+                    "grand_total_piastres",
+                    payload.GrandTotalPiastres.ToString(CultureInfo.InvariantCulture),
+                    live.GrandTotalPiastres.ToString(CultureInfo.InvariantCulture)
+                )
+            );
         }
         if (!live.AuditEntryHash.AsSpan().SequenceEqual(payload.AuditEntryHash))
         {
-            mismatches.Add(new SealMismatch("audit_entry_hash",
-                Convert.ToHexString(payload.AuditEntryHash),
-                Convert.ToHexString(live.AuditEntryHash)));
+            mismatches.Add(
+                new SealMismatch(
+                    "audit_entry_hash",
+                    Convert.ToHexString(payload.AuditEntryHash),
+                    Convert.ToHexString(live.AuditEntryHash)
+                )
+            );
         }
         if (live.AuditEntryIndex != payload.AuditEntryIndex)
         {
-            mismatches.Add(new SealMismatch("audit_entry_index",
-                payload.AuditEntryIndex.ToString(CultureInfo.InvariantCulture),
-                live.AuditEntryIndex.ToString(CultureInfo.InvariantCulture)));
+            mismatches.Add(
+                new SealMismatch(
+                    "audit_entry_index",
+                    payload.AuditEntryIndex.ToString(CultureInfo.InvariantCulture),
+                    live.AuditEntryIndex.ToString(CultureInfo.InvariantCulture)
+                )
+            );
         }
 
         var outcome = mismatches.Count == 0 ? SealOutcome.Valid : SealOutcome.Tampered;
-        return new SealVerificationResult(outcome,
-            payload.DocumentNumber, payload.DocumentType.ToString(), mismatches);
+        return new SealVerificationResult(
+            outcome,
+            payload.DocumentNumber,
+            payload.DocumentType.ToString(),
+            mismatches
+        );
     }
 }
 
@@ -223,10 +280,7 @@ internal static class Base64Url
     public static string Encode(ReadOnlySpan<byte> bytes)
     {
         var standard = Convert.ToBase64String(bytes);
-        return standard
-            .TrimEnd('=')
-            .Replace('+', '-')
-            .Replace('/', '_');
+        return standard.TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
     public static bool TryDecode(ReadOnlySpan<char> input, out byte[] result)

@@ -14,34 +14,44 @@ public class EtaSubmissionFailedRuleTests
     [Fact]
     public void Silent_When_No_Submission()
     {
-        new EtaSubmissionFailedRule().Evaluate(BuildContext(null))
-            .Should().BeEmpty();
+        new EtaSubmissionFailedRule().Evaluate(BuildContext(null)).Should().BeEmpty();
     }
 
     [Fact]
     public void Silent_When_Pending()
     {
         var sub = NewPending();
-        new EtaSubmissionFailedRule().Evaluate(BuildContext(sub))
-            .Should().BeEmpty(because: "Pending with zero attempts has nothing to flag yet");
+        new EtaSubmissionFailedRule()
+            .Evaluate(BuildContext(sub))
+            .Should()
+            .BeEmpty(because: "Pending with zero attempts has nothing to flag yet");
     }
 
     [Fact]
     public void Silent_When_Submitted()
     {
         var sub = NewPending();
-        sub.RecordAttempt(EtaSubmissionStatus.Submitted,
-            submissionUuid: "etasub-123", errorCode: null, errorMessage: null,
-            nowUtc: DateTime.UtcNow);
-        new EtaSubmissionFailedRule().Evaluate(BuildContext(sub))
-            .Should().BeEmpty();
+        sub.RecordAttempt(
+            EtaSubmissionStatus.Submitted,
+            submissionUuid: "etasub-123",
+            errorCode: null,
+            errorMessage: null,
+            nowUtc: DateTime.UtcNow
+        );
+        new EtaSubmissionFailedRule().Evaluate(BuildContext(sub)).Should().BeEmpty();
     }
 
     [Fact]
     public void Warning_For_Single_Failed_Attempt()
     {
         var sub = NewPending();
-        sub.RecordAttempt(EtaSubmissionStatus.Failed, null, "ETA_TIMEOUT", "timeout", DateTime.UtcNow);
+        sub.RecordAttempt(
+            EtaSubmissionStatus.Failed,
+            null,
+            "ETA_TIMEOUT",
+            "timeout",
+            DateTime.UtcNow
+        );
 
         var findings = new EtaSubmissionFailedRule().Evaluate(BuildContext(sub));
         findings.Should().HaveCount(1);
@@ -55,13 +65,23 @@ public class EtaSubmissionFailedRuleTests
         var sub = NewPending();
         for (var i = 0; i < 3; i++)
         {
-            sub.RecordAttempt(EtaSubmissionStatus.Failed, null, "ETA_TIMEOUT", "timeout", DateTime.UtcNow);
+            sub.RecordAttempt(
+                EtaSubmissionStatus.Failed,
+                null,
+                "ETA_TIMEOUT",
+                "timeout",
+                DateTime.UtcNow
+            );
         }
 
         var findings = new EtaSubmissionFailedRule().Evaluate(BuildContext(sub));
         findings.Should().HaveCount(1);
-        findings[0].Severity.Should().Be(RiskSeverity.MustFixBeforeFiling,
-            because: "repeated failures are unlikely to clear on the next retry tick — operator must look");
+        findings[0]
+            .Severity.Should()
+            .Be(
+                RiskSeverity.MustFixBeforeFiling,
+                because: "repeated failures are unlikely to clear on the next retry tick — operator must look"
+            );
     }
 
     private static EtaSubmission NewPending()
@@ -73,10 +93,17 @@ public class EtaSubmissionFailedRuleTests
     private static DocumentRiskContext BuildContext(EtaSubmission? submission)
     {
         var snapshot = CustomerTaxProfile.B2BRegistered(
-            EgyptianTin.Parse("123456789"), false, VatId);
+            EgyptianTin.Parse("123456789"),
+            false,
+            VatId
+        );
         var invoice = SalesInvoice.CreateDraft(Guid.NewGuid(), snapshot, new DateOnly(2026, 5, 7));
         invoice.AddLine(Guid.NewGuid(), 1m, MoneyEgp.From(100m), VatId, 14m);
-        return new DocumentRiskContext(invoice, new Dictionary<Guid, Item>(), submission,
-            new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
+        return new DocumentRiskContext(
+            invoice,
+            new Dictionary<Guid, Item>(),
+            submission,
+            new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc)
+        );
     }
 }

@@ -20,7 +20,8 @@ namespace EgyptTax.Infrastructure.Eta;
 /// </summary>
 public sealed class SqlEtaDashboardQuery(AppDbContext db) : IEtaDashboardQuery
 {
-    private const string Sql = @"
+    private const string Sql =
+        @"
 SELECT
     [sales_invoice_id]                  AS SalesInvoiceId,
     [id]                                AS EtaSubmissionId,
@@ -39,12 +40,15 @@ ORDER BY [submission_window_expires_at_utc] ASC;";
     public async Task<IReadOnlyList<EtaDashboardRow>> GetUpcomingDeadlinesAsync(
         TimeSpan within,
         DateTime nowUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         if (within <= TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(nameof(within),
-                "Lookahead window must be strictly positive.");
+            throw new ArgumentOutOfRangeException(
+                nameof(within),
+                "Lookahead window must be strictly positive."
+            );
         }
 
         var connection = _db.Database.GetDbConnection();
@@ -56,21 +60,19 @@ ORDER BY [submission_window_expires_at_utc] ASC;";
         var rows = await connection.QueryAsync<DapperRow>(
             new CommandDefinition(
                 Sql,
-                parameters: new
-                {
-                    nowUtc,
-                    cutoffUtc = nowUtc.Add(within),
-                },
-                cancellationToken: cancellationToken));
+                parameters: new { nowUtc, cutoffUtc = nowUtc.Add(within) },
+                cancellationToken: cancellationToken
+            )
+        );
 
-        return rows
-            .Select(r => new EtaDashboardRow(
+        return rows.Select(r => new EtaDashboardRow(
                 SalesInvoiceId: r.SalesInvoiceId,
                 EtaSubmissionId: r.EtaSubmissionId,
                 Status: Enum.Parse<EtaSubmissionStatus>(r.StatusRaw),
                 SubmissionWindowExpiresAtUtc: r.SubmissionWindowExpiresAtUtc,
                 AttemptCount: r.AttemptCount,
-                LastErrorCode: r.LastErrorCode))
+                LastErrorCode: r.LastErrorCode
+            ))
             .ToList()
             .AsReadOnly();
     }

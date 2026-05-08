@@ -14,11 +14,15 @@ public class MissingTinRuleTests
     public void Returns_NoFinding_When_B2BRegistered_Has_Tin()
     {
         var rule = new MissingTinRule();
-        var ctx = BuildContext(CustomerTaxProfile.B2BRegistered(
-            EgyptianTin.Parse("123456789"), false, VatId));
+        var ctx = BuildContext(
+            CustomerTaxProfile.B2BRegistered(EgyptianTin.Parse("123456789"), false, VatId)
+        );
 
-        rule.Evaluate(ctx).Should().BeEmpty(
-            because: "the canonical case — registered customer with a valid TIN — has nothing to flag");
+        rule.Evaluate(ctx)
+            .Should()
+            .BeEmpty(
+                because: "the canonical case — registered customer with a valid TIN — has nothing to flag"
+            );
     }
 
     [Fact]
@@ -32,13 +36,18 @@ public class MissingTinRuleTests
             CustomerTaxProfileType.B2BRegistered,
             TinValue: null,
             VatExemption: false,
-            DefaultSalesVatCategoryId: VatId);
+            DefaultSalesVatCategoryId: VatId
+        );
         var ctx = BuildContext(rotten);
 
         var findings = rule.Evaluate(ctx);
         findings.Should().HaveCount(1);
-        findings[0].Severity.Should().Be(RiskSeverity.Blocker,
-            because: "B2B-Registered without a TIN is data-integrity rot — the strongest signal possible");
+        findings[0]
+            .Severity.Should()
+            .Be(
+                RiskSeverity.Blocker,
+                because: "B2B-Registered without a TIN is data-integrity rot — the strongest signal possible"
+            );
         findings[0].RuleId.Should().Be("SALES_INVOICE.MISSING_TIN");
     }
 
@@ -50,8 +59,12 @@ public class MissingTinRuleTests
 
         var findings = rule.Evaluate(ctx);
         findings.Should().HaveCount(1);
-        findings[0].Severity.Should().Be(RiskSeverity.MustFixBeforeFiling,
-            because: "B2B traffic without a registered TIN frequently rejects at ETA");
+        findings[0]
+            .Severity.Should()
+            .Be(
+                RiskSeverity.MustFixBeforeFiling,
+                because: "B2B traffic without a registered TIN frequently rejects at ETA"
+            );
     }
 
     [Fact]
@@ -60,8 +73,9 @@ public class MissingTinRuleTests
         var rule = new MissingTinRule();
         var ctx = BuildContext(CustomerTaxProfile.B2CConsumer(false, VatId));
 
-        rule.Evaluate(ctx).Should().BeEmpty(
-            because: "B2C consumer documents legitimately have no TIN");
+        rule.Evaluate(ctx)
+            .Should()
+            .BeEmpty(because: "B2C consumer documents legitimately have no TIN");
     }
 
     private static DocumentRiskContext BuildContext(CustomerTaxProfile snapshot)
@@ -72,6 +86,7 @@ public class MissingTinRuleTests
             Invoice: draft,
             Items: new Dictionary<Guid, Item>(),
             EtaSubmission: null,
-            NowUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
+            NowUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc)
+        );
     }
 }

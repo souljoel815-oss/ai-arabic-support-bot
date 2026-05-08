@@ -14,9 +14,12 @@ namespace EgyptTax.Application.Compliance.RiskScoring;
 /// </summary>
 public interface IPurchaseInvoiceFingerprintQuery
 {
-    Task<IReadOnlyList<PurchaseInvoiceFingerprint>> FindOtherPurchaseInvoicesWithSameSupplierReferenceAsync(
+    Task<
+        IReadOnlyList<PurchaseInvoiceFingerprint>
+    > FindOtherPurchaseInvoicesWithSameSupplierReferenceAsync(
         Guid supplierId,
         string supplierInvoiceNumber,
         Guid? excludePurchaseInvoiceId,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }

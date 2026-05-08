@@ -14,18 +14,24 @@ public class EtaSubmissionWindowExpiringRuleTests
     [Fact]
     public void Silent_When_No_EtaSubmission()
     {
-        new EtaSubmissionWindowExpiringRule().Evaluate(BuildContext(submission: null))
-            .Should().BeEmpty(
-                because: "draft invoices never have an ETA submission row — the rule has nothing to evaluate");
+        new EtaSubmissionWindowExpiringRule()
+            .Evaluate(BuildContext(submission: null))
+            .Should()
+            .BeEmpty(
+                because: "draft invoices never have an ETA submission row — the rule has nothing to evaluate"
+            );
     }
 
     [Fact]
     public void Silent_When_Submission_Already_Submitted()
     {
         var sub = BuildSubmission(EtaSubmissionStatus.Submitted, hoursToDeadline: 1);
-        new EtaSubmissionWindowExpiringRule().Evaluate(BuildContext(sub))
-            .Should().BeEmpty(
-                because: "Submitted is the terminal-success state — the regulator already accepted it");
+        new EtaSubmissionWindowExpiringRule()
+            .Evaluate(BuildContext(sub))
+            .Should()
+            .BeEmpty(
+                because: "Submitted is the terminal-success state — the regulator already accepted it"
+            );
     }
 
     [Fact]
@@ -59,23 +65,29 @@ public class EtaSubmissionWindowExpiringRuleTests
     public void Silent_When_Window_More_Than_24h_Out()
     {
         var sub = BuildSubmission(EtaSubmissionStatus.Pending, hoursToDeadline: 72);
-        new EtaSubmissionWindowExpiringRule().Evaluate(BuildContext(sub))
-            .Should().BeEmpty(
-                because: "with > 24h on the clock there's nothing yet to escalate");
+        new EtaSubmissionWindowExpiringRule()
+            .Evaluate(BuildContext(sub))
+            .Should()
+            .BeEmpty(because: "with > 24h on the clock there's nothing yet to escalate");
     }
 
     private static EtaSubmission BuildSubmission(EtaSubmissionStatus status, double hoursToDeadline)
     {
         var nowUtc = new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc);
-        var postedAt = nowUtc - TimeSpan.FromDays(EtaSubmission.DefaultSubmissionWindowDays)
+        var postedAt =
+            nowUtc
+            - TimeSpan.FromDays(EtaSubmission.DefaultSubmissionWindowDays)
             + TimeSpan.FromHours(hoursToDeadline);
         var sub = new EtaSubmission(Guid.NewGuid(), postedAt, postedAt);
         if (status != EtaSubmissionStatus.Pending)
         {
-            sub.RecordAttempt(status, submissionUuid: null,
+            sub.RecordAttempt(
+                status,
+                submissionUuid: null,
                 errorCode: status == EtaSubmissionStatus.Failed ? "MOCK" : null,
                 errorMessage: status == EtaSubmissionStatus.Failed ? "mock failure" : null,
-                nowUtc: nowUtc);
+                nowUtc: nowUtc
+            );
         }
         return sub;
     }
@@ -83,10 +95,17 @@ public class EtaSubmissionWindowExpiringRuleTests
     private static DocumentRiskContext BuildContext(EtaSubmission? submission)
     {
         var snapshot = CustomerTaxProfile.B2BRegistered(
-            EgyptianTin.Parse("123456789"), false, VatId);
+            EgyptianTin.Parse("123456789"),
+            false,
+            VatId
+        );
         var invoice = SalesInvoice.CreateDraft(Guid.NewGuid(), snapshot, new DateOnly(2026, 5, 7));
         invoice.AddLine(Guid.NewGuid(), 1m, MoneyEgp.From(100m), VatId, 14m);
-        return new DocumentRiskContext(invoice, new Dictionary<Guid, Item>(), submission,
-            new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
+        return new DocumentRiskContext(
+            invoice,
+            new Dictionary<Guid, Item>(),
+            submission,
+            new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc)
+        );
     }
 }

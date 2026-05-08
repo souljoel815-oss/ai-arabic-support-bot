@@ -17,13 +17,27 @@ namespace EgyptTax.Infrastructure.Migrations
                 columns: table => new
                 {
                     user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    firm_name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    firm_external_identifier = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    firm_name = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: false
+                    ),
+                    firm_external_identifier = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: false
+                    ),
                     invited_at_utc = table.Column<DateTime>(type: "datetime2(3)", nullable: false),
-                    invited_by_user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    invited_by_user_id = table.Column<Guid>(
+                        type: "uniqueidentifier",
+                        nullable: false
+                    ),
                     accepted_at_utc = table.Column<DateTime>(type: "datetime2(3)", nullable: true),
                     revoked_at_utc = table.Column<DateTime>(type: "datetime2(3)", nullable: true),
-                    revoked_by_user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
+                    revoked_by_user_id = table.Column<Guid>(
+                        type: "uniqueidentifier",
+                        nullable: true
+                    ),
                 },
                 constraints: table =>
                 {
@@ -34,8 +48,10 @@ namespace EgyptTax.Infrastructure.Migrations
                         principalSchema: "identity",
                         principalTable: "users",
                         principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "period_review_locks",
@@ -46,22 +62,37 @@ namespace EgyptTax.Infrastructure.Migrations
                     period_year = table.Column<int>(type: "int", nullable: false),
                     period_month = table.Column<int>(type: "int", nullable: false),
                     locked_at_utc = table.Column<DateTime>(type: "datetime2(3)", nullable: false),
-                    locked_by_user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    locked_note = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    locked_by_user_id = table.Column<Guid>(
+                        type: "uniqueidentifier",
+                        nullable: false
+                    ),
+                    locked_note = table.Column<string>(
+                        type: "nvarchar(500)",
+                        maxLength: 500,
+                        nullable: true
+                    ),
                     released_at_utc = table.Column<DateTime>(type: "datetime2(3)", nullable: true),
-                    released_by_user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    accountant_actions_during_lock = table.Column<int>(type: "int", nullable: false)
+                    released_by_user_id = table.Column<Guid>(
+                        type: "uniqueidentifier",
+                        nullable: true
+                    ),
+                    accountant_actions_during_lock = table.Column<int>(
+                        type: "int",
+                        nullable: false
+                    ),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_period_review_locks", x => x.id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "ix_firm_users_external_id",
                 schema: "identity",
                 table: "accountant_firm_users",
-                column: "firm_external_identifier");
+                column: "firm_external_identifier"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "ux_period_review_locks_active_year_month",
@@ -69,19 +100,16 @@ namespace EgyptTax.Infrastructure.Migrations
                 table: "period_review_locks",
                 columns: new[] { "period_year", "period_month" },
                 unique: true,
-                filter: "[released_at_utc] IS NULL");
+                filter: "[released_at_utc] IS NULL"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "accountant_firm_users",
-                schema: "identity");
+            migrationBuilder.DropTable(name: "accountant_firm_users", schema: "identity");
 
-            migrationBuilder.DropTable(
-                name: "period_review_locks",
-                schema: "workflow");
+            migrationBuilder.DropTable(name: "period_review_locks", schema: "workflow");
         }
     }
 }

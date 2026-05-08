@@ -57,46 +57,73 @@ public class SupplierPaymentWhtSplitTests(SqlServerFixture fixture)
             ratePercent: 5m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            applicableTo: WhtApplicableTo.SuppliersServices);
+            applicableTo: WhtApplicableTo.SuppliersServices
+        );
         db.Add(whtCategory);
 
         // Post a 10,000 EGP purchase invoice (no VAT to keep maths clean).
-        var purchaseDraft = PurchaseInvoice.CreateDraft(supplier.Id, supplier.TaxProfile,
-            "SUP-INV-WHT-T188", new DateOnly(2026, 5, 9));
-        purchaseDraft.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 1m, unitPrice: MoneyEgp.From(10_000m),
-            vatCategoryId: vat.Id, vatRatePercent: 0m,
-            deductibleFlag: false);
+        var purchaseDraft = PurchaseInvoice.CreateDraft(
+            supplier.Id,
+            supplier.TaxProfile,
+            "SUP-INV-WHT-T188",
+            new DateOnly(2026, 5, 9)
+        );
+        purchaseDraft.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(10_000m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: 0m,
+            deductibleFlag: false
+        );
         db.Add(purchaseDraft);
         await db.SaveChangesAsync();
-        var postedPurchase = await new PostPurchaseInvoiceHandler(db,
-                new SqlSequentialNumberAllocator(db),
-                new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc)),
-                new CaptureAuditLogStore())
-            .HandleAsync(new PostPurchaseInvoiceCommand(purchaseDraft.Id, user.Id),
-                CancellationToken.None);
+        var postedPurchase = await new PostPurchaseInvoiceHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc)),
+            new CaptureAuditLogStore()
+        ).HandleAsync(
+            new PostPurchaseInvoiceCommand(purchaseDraft.Id, user.Id),
+            CancellationToken.None
+        );
 
         // Pay it with WHT split applied.
-        var voucher = SupplierPaymentVoucher.CreateDraft(supplier.Id,
-            new DateOnly(2026, 5, 10), PaymentMethod.BankTransfer, "PAY-T188",
-            MoneyEgp.From(10_000m));
+        var voucher = SupplierPaymentVoucher.CreateDraft(
+            supplier.Id,
+            new DateOnly(2026, 5, 10),
+            PaymentMethod.BankTransfer,
+            "PAY-T188",
+            MoneyEgp.From(10_000m)
+        );
         db.Add(voucher);
         await db.SaveChangesAsync();
         await new AllocatePaymentHandler(db).HandleAsync(
-            new AllocateSupplierPaymentCommand(voucher.Id, postedPurchase.Id, MoneyEgp.From(10_000m)),
-            CancellationToken.None);
+            new AllocateSupplierPaymentCommand(
+                voucher.Id,
+                postedPurchase.Id,
+                MoneyEgp.From(10_000m)
+            ),
+            CancellationToken.None
+        );
 
-        var posted = await new PostSupplierPaymentVoucherHandler(db,
-                new SqlSequentialNumberAllocator(db),
-                new TestClock(new DateTime(2026, 5, 10, 11, 0, 0, DateTimeKind.Utc)),
-                new CaptureAuditLogStore(),
-                new SupplierPaymentVoucherJournalEmitter(db),
-                new SqlWhtComputeService(db))
-            .HandleAsync(new PostSupplierPaymentVoucherCommand(
-                voucher.Id, user.Id,
+        var posted = await new PostSupplierPaymentVoucherHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            new TestClock(new DateTime(2026, 5, 10, 11, 0, 0, DateTimeKind.Utc)),
+            new CaptureAuditLogStore(),
+            new SupplierPaymentVoucherJournalEmitter(db),
+            new SqlWhtComputeService(db)
+        ).HandleAsync(
+            new PostSupplierPaymentVoucherCommand(
+                voucher.Id,
+                user.Id,
                 WhtCategoryCode: "Services",
-                WhtSourceInvoiceId: postedPurchase.Id),
-                CancellationToken.None);
+                WhtSourceInvoiceId: postedPurchase.Id
+            ),
+            CancellationToken.None
+        );
 
         // Voucher state.
         posted.WhtPayableAmount.Amount.Should().Be(500m, because: "10k × 5% = 500");
@@ -105,7 +132,8 @@ public class SupplierPaymentWhtSplitTests(SqlServerFixture fixture)
 
         // Outbound certificate persisted.
         db.ChangeTracker.Clear();
-        var cert = await db.Set<WhtCertificate>().AsNoTracking()
+        var cert = await db.Set<WhtCertificate>()
+            .AsNoTracking()
             .FirstAsync(c => c.SourceVoucherId == posted.Id);
         cert.Direction.Should().Be(WhtCertificateDirection.OutboundToSupplier);
         cert.CounterpartyId.Should().Be(supplier.Id);
@@ -113,20 +141,27 @@ public class SupplierPaymentWhtSplitTests(SqlServerFixture fixture)
         cert.WhtCategoryId.Should().Be(whtCategory.Id);
         cert.RateAppliedPercent.Should().Be(5m);
         cert.AmountWithheld.Amount.Should().Be(500m);
-        cert.CertificateNumber.Should().StartWith("WHT-SPV-2026-",
-            because: "outbound cert numbers are derived from the voucher's SPV-{year}-{n} document number");
+        cert.CertificateNumber.Should()
+            .StartWith(
+                "WHT-SPV-2026-",
+                because: "outbound cert numbers are derived from the voucher's SPV-{year}-{n} document number"
+            );
 
         // 3-line balanced JE.
-        var je = await db.Set<JournalEntry>().AsNoTracking()
+        var je = await db.Set<JournalEntry>()
+            .AsNoTracking()
             .Include(e => e.Lines)
             .FirstAsync(e => e.SourceDocumentId == posted.Id);
         je.Lines.Should().HaveCount(3);
         je.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.AccountsPayable)
-            .Debit.Amount.Should().Be(10_000m);
+            .Debit.Amount.Should()
+            .Be(10_000m);
         je.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.Cash)
-            .Credit.Amount.Should().Be(9_500m);
+            .Credit.Amount.Should()
+            .Be(9_500m);
         je.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.WhtPayable)
-            .Credit.Amount.Should().Be(500m);
+            .Credit.Amount.Should()
+            .Be(500m);
     }
 
     [Fact]
@@ -142,67 +177,107 @@ public class SupplierPaymentWhtSplitTests(SqlServerFixture fixture)
             ratePercent: 5m,
             effectiveFromDate: new DateOnly(2027, 1, 1),
             effectiveToDate: null,
-            applicableTo: WhtApplicableTo.SuppliersServices);
+            applicableTo: WhtApplicableTo.SuppliersServices
+        );
         db.Add(whtCategory);
 
-        var purchaseDraft = PurchaseInvoice.CreateDraft(supplier.Id, supplier.TaxProfile,
-            "SUP-INV-NEFF", new DateOnly(2026, 5, 9));
-        purchaseDraft.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 1m, unitPrice: MoneyEgp.From(1_000m),
-            vatCategoryId: vat.Id, vatRatePercent: 0m,
-            deductibleFlag: false);
+        var purchaseDraft = PurchaseInvoice.CreateDraft(
+            supplier.Id,
+            supplier.TaxProfile,
+            "SUP-INV-NEFF",
+            new DateOnly(2026, 5, 9)
+        );
+        purchaseDraft.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(1_000m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: 0m,
+            deductibleFlag: false
+        );
         db.Add(purchaseDraft);
         await db.SaveChangesAsync();
-        var postedPurchase = await new PostPurchaseInvoiceHandler(db,
-                new SqlSequentialNumberAllocator(db),
-                new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc)),
-                new CaptureAuditLogStore())
-            .HandleAsync(new PostPurchaseInvoiceCommand(purchaseDraft.Id, user.Id),
-                CancellationToken.None);
+        var postedPurchase = await new PostPurchaseInvoiceHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc)),
+            new CaptureAuditLogStore()
+        ).HandleAsync(
+            new PostPurchaseInvoiceCommand(purchaseDraft.Id, user.Id),
+            CancellationToken.None
+        );
 
-        var voucher = SupplierPaymentVoucher.CreateDraft(supplier.Id,
-            new DateOnly(2026, 5, 10), PaymentMethod.BankTransfer, "PAY-NEFF",
-            MoneyEgp.From(1_000m));
+        var voucher = SupplierPaymentVoucher.CreateDraft(
+            supplier.Id,
+            new DateOnly(2026, 5, 10),
+            PaymentMethod.BankTransfer,
+            "PAY-NEFF",
+            MoneyEgp.From(1_000m)
+        );
         db.Add(voucher);
         await db.SaveChangesAsync();
         await new AllocatePaymentHandler(db).HandleAsync(
-            new AllocateSupplierPaymentCommand(voucher.Id, postedPurchase.Id, MoneyEgp.From(1_000m)),
-            CancellationToken.None);
+            new AllocateSupplierPaymentCommand(
+                voucher.Id,
+                postedPurchase.Id,
+                MoneyEgp.From(1_000m)
+            ),
+            CancellationToken.None
+        );
 
-        var act = async () => await new PostSupplierPaymentVoucherHandler(db,
+        var act = async () =>
+            await new PostSupplierPaymentVoucherHandler(
+                db,
                 new SqlSequentialNumberAllocator(db),
                 new TestClock(new DateTime(2026, 5, 10, 11, 0, 0, DateTimeKind.Utc)),
                 new CaptureAuditLogStore(),
                 new SupplierPaymentVoucherJournalEmitter(db),
-                new SqlWhtComputeService(db))
-            .HandleAsync(new PostSupplierPaymentVoucherCommand(
-                voucher.Id, user.Id,
-                WhtCategoryCode: "Services-2027",
-                WhtSourceInvoiceId: postedPurchase.Id),
-                CancellationToken.None);
+                new SqlWhtComputeService(db)
+            ).HandleAsync(
+                new PostSupplierPaymentVoucherCommand(
+                    voucher.Id,
+                    user.Id,
+                    WhtCategoryCode: "Services-2027",
+                    WhtSourceInvoiceId: postedPurchase.Id
+                ),
+                CancellationToken.None
+            );
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
             .Where(ex => ex.Message.Contains("not effective", StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<(Supplier, VatCategory, User)> SeedAsync(AppDbContext db)
     {
         var vat = new VatCategory(
-            code: "Standard", name: new ArabicEnglishText("قياسي", "Standard"),
-            ratePercent: 0m, effectiveFromDate: new DateOnly(2026, 1, 1),
-            effectiveToDate: null, recoverableInputVat: true);
+            code: "Standard",
+            name: new ArabicEnglishText("قياسي", "Standard"),
+            ratePercent: 0m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: true
+        );
         var supplier = new Supplier(
             code: $"SUP-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("مورد", "Supplier"),
             address: new ArabicEnglishText("القاهرة", "Cairo"),
-            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("123456789"), vat.Id));
+            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(
+                EgyptianTin.Parse("123456789"),
+                vat.Id
+            )
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        db.Add(vat); db.Add(supplier); db.Add(user);
+            passwordMustChange: false
+        );
+        db.Add(vat);
+        db.Add(supplier);
+        db.Add(user);
         await db.SaveChangesAsync();
         return (supplier, vat, user);
     }
@@ -215,15 +290,27 @@ public class SupplierPaymentWhtSplitTests(SqlServerFixture fixture)
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
         public List<AuditLogPayload> Captured { get; } = [];
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
-            return Task.FromResult(new AuditLogEntry(
-                index: Captured.Count, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]));
+            return Task.FromResult(
+                new AuditLogEntry(
+                    index: Captured.Count,
+                    tsUtc: DateTime.UtcNow,
+                    actorUserId: payload.ActorUserId,
+                    actorFirmName: payload.ActorFirmName,
+                    companyId: payload.CompanyId,
+                    kind: payload.Kind,
+                    payloadJson: payload.PayloadJson,
+                    prevHash: new byte[32],
+                    thisHash: new byte[32]
+                )
+            );
         }
     }
 }

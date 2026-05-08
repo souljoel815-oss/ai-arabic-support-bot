@@ -11,25 +11,15 @@ internal sealed class AuditLogEntryConfiguration : IEntityTypeConfiguration<Audi
         b.ToTable("audit_log", schema: "audit");
 
         b.HasKey(e => e.Index);
-        b.Property(e => e.Index)
-            .ValueGeneratedNever()
-            .HasColumnName("index");
+        b.Property(e => e.Index).ValueGeneratedNever().HasColumnName("index");
 
-        b.Property(e => e.TsUtc)
-            .HasColumnName("ts_utc")
-            .HasColumnType("datetime2(3)")
-            .IsRequired();
+        b.Property(e => e.TsUtc).HasColumnName("ts_utc").HasColumnType("datetime2(3)").IsRequired();
 
-        b.Property(e => e.ActorUserId)
-            .HasColumnName("actor_user_id");
+        b.Property(e => e.ActorUserId).HasColumnName("actor_user_id");
 
-        b.Property(e => e.ActorFirmName)
-            .HasColumnName("actor_firm_name")
-            .HasMaxLength(200);
+        b.Property(e => e.ActorFirmName).HasColumnName("actor_firm_name").HasMaxLength(200);
 
-        b.Property(e => e.CompanyId)
-            .HasColumnName("company_id")
-            .IsRequired();
+        b.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
 
         b.Property(e => e.Kind)
             .HasColumnName("kind")

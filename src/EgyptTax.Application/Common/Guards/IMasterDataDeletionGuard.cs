@@ -11,9 +11,24 @@ namespace EgyptTax.Application.Common.Guards;
 /// </summary>
 public interface IMasterDataDeletionGuard
 {
-    Task<MasterDataReferenceCheck> CheckSupplierAsync(Guid supplierId, CancellationToken cancellationToken = default);
-    Task<MasterDataReferenceCheck> CheckCustomerAsync(Guid customerId, CancellationToken cancellationToken = default);
-    Task<MasterDataReferenceCheck> CheckItemAsync(Guid itemId, CancellationToken cancellationToken = default);
-    Task<MasterDataReferenceCheck> CheckExpenseCategoryAsync(Guid categoryId, CancellationToken cancellationToken = default);
-    Task<MasterDataReferenceCheck> CheckVatCategoryAsync(Guid vatCategoryId, CancellationToken cancellationToken = default);
+    Task<MasterDataReferenceCheck> CheckSupplierAsync(
+        Guid supplierId,
+        CancellationToken cancellationToken = default
+    );
+    Task<MasterDataReferenceCheck> CheckCustomerAsync(
+        Guid customerId,
+        CancellationToken cancellationToken = default
+    );
+    Task<MasterDataReferenceCheck> CheckItemAsync(
+        Guid itemId,
+        CancellationToken cancellationToken = default
+    );
+    Task<MasterDataReferenceCheck> CheckExpenseCategoryAsync(
+        Guid categoryId,
+        CancellationToken cancellationToken = default
+    );
+    Task<MasterDataReferenceCheck> CheckVatCategoryAsync(
+        Guid vatCategoryId,
+        CancellationToken cancellationToken = default
+    );
 }

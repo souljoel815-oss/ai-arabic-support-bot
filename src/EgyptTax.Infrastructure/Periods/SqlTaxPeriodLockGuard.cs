@@ -23,23 +23,32 @@ public sealed class SqlTaxPeriodLockGuard : ITaxPeriodLockGuard
 
     public async Task<TaxPeriodLockCheck> CheckVatMonthAsync(
         DateOnly documentDate,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         var year = documentDate.Year;
         var month = documentDate.Month;
 
         var row = await _db.Set<TaxPeriod>()
             .AsNoTracking()
-            .FirstOrDefaultAsync(p =>
-                p.PeriodKind == TaxPeriodKind.VatMonth
-                && p.Year == year
-                && p.MonthOrQuarter == month, cancellationToken);
+            .FirstOrDefaultAsync(
+                p =>
+                    p.PeriodKind == TaxPeriodKind.VatMonth
+                    && p.Year == year
+                    && p.MonthOrQuarter == month,
+                cancellationToken
+            );
 
         if (row is null || row.Status == TaxPeriodStatus.Open)
         {
             return new TaxPeriodLockCheck(
-                IsLocked: false, Year: year, MonthOrQuarter: month,
-                LockedAtUtc: null, LockedByUserId: null, LockedReason: null);
+                IsLocked: false,
+                Year: year,
+                MonthOrQuarter: month,
+                LockedAtUtc: null,
+                LockedByUserId: null,
+                LockedReason: null
+            );
         }
 
         return new TaxPeriodLockCheck(
@@ -48,6 +57,7 @@ public sealed class SqlTaxPeriodLockGuard : ITaxPeriodLockGuard
             MonthOrQuarter: month,
             LockedAtUtc: row.LockedAtUtc,
             LockedByUserId: row.LockedByUserId,
-            LockedReason: row.LockedReason);
+            LockedReason: row.LockedReason
+        );
     }
 }

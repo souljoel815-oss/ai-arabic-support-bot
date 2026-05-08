@@ -26,26 +26,35 @@ public sealed class JournalEntryLine
         string accountCode,
         MoneyEgp debit,
         MoneyEgp credit,
-        string description)
+        string description
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accountCode);
         if (debit.Amount < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(debit), "Debit amount cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(debit),
+                "Debit amount cannot be negative."
+            );
         }
         if (credit.Amount < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(credit), "Credit amount cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(credit),
+                "Credit amount cannot be negative."
+            );
         }
         if (debit.Amount > 0m && credit.Amount > 0m)
         {
             throw new ArgumentException(
-                "A journal line MUST debit XOR credit — not both. Split into two rows if both sides are needed.");
+                "A journal line MUST debit XOR credit — not both. Split into two rows if both sides are needed."
+            );
         }
         if (debit.Amount == 0m && credit.Amount == 0m)
         {
             throw new ArgumentException(
-                "A journal line MUST be either a debit or a credit; both being zero is meaningless.");
+                "A journal line MUST be either a debit or a credit; both being zero is meaningless."
+            );
         }
 
         JournalEntryId = journalEntryId;

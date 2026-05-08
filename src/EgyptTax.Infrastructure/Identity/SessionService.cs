@@ -18,10 +18,8 @@ namespace EgyptTax.Infrastructure.Identity;
 /// <c>OnValidatePrincipal</c> hook so revocation takes effect on the
 /// next protected request.
 /// </summary>
-public sealed class SessionService(
-    AppDbContext db,
-    IClock clock,
-    IAuditLogStore auditLog) : ISessionService
+public sealed class SessionService(AppDbContext db, IClock clock, IAuditLogStore auditLog)
+    : ISessionService
 {
     /// <summary>FR-039 default inactivity window.</summary>
     public static readonly TimeSpan DefaultInactivityWindow = TimeSpan.FromMinutes(30);
@@ -39,7 +37,8 @@ public sealed class SessionService(
         Guid userId,
         string? ipAddress,
         string? userAgent,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         var nowUtc = _clock.UtcNow;
         var session = new Session(userId, nowUtc, _absoluteLifetime, ipAddress, userAgent);
@@ -53,8 +52,10 @@ public sealed class SessionService(
                 ActorUserId: userId,
                 ActorFirmName: null,
                 CompanyId: Guid.Empty,
-                PayloadJson: PayloadJsonForSession(session)),
-            cancellationToken);
+                PayloadJson: PayloadJsonForSession(session)
+            ),
+            cancellationToken
+        );
 
         return session;
     }
@@ -73,7 +74,8 @@ public sealed class SessionService(
 
     public async Task<SessionValidationResult> ValidateAsync(
         Guid sessionId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         var session = await _db.Set<Session>()
             .FirstOrDefaultAsync(s => s.Id == sessionId, cancellationToken);
@@ -86,8 +88,9 @@ public sealed class SessionService(
         {
             // De-dupe — if a previous validation already revoked it for
             // timeout, the audit event has already been emitted.
-            var status = session.RevocationReason is SessionRevocationReason.InactivityTimeout
-                or SessionRevocationReason.AbsoluteTimeout
+            var status = session.RevocationReason
+                is SessionRevocationReason.InactivityTimeout
+                    or SessionRevocationReason.AbsoluteTimeout
                 ? SessionValidationStatus.Expired
                 : SessionValidationStatus.Revoked;
             return new SessionValidationResult(status, session.UserId, session.RevocationReason);
@@ -120,16 +123,23 @@ public sealed class SessionService(
                 ActorUserId: session.UserId,
                 ActorFirmName: null,
                 CompanyId: Guid.Empty,
-                PayloadJson: PayloadJsonForExpiry(session, expiryReason.Value)),
-            cancellationToken);
+                PayloadJson: PayloadJsonForExpiry(session, expiryReason.Value)
+            ),
+            cancellationToken
+        );
 
-        return new SessionValidationResult(SessionValidationStatus.Expired, session.UserId, expiryReason);
+        return new SessionValidationResult(
+            SessionValidationStatus.Expired,
+            session.UserId,
+            expiryReason
+        );
     }
 
     public async Task RevokeAsync(
         Guid sessionId,
         SessionRevocationReason reason,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         var session = await _db.Set<Session>()
             .FirstOrDefaultAsync(s => s.Id == sessionId, cancellationToken);
@@ -147,8 +157,10 @@ public sealed class SessionService(
                 ActorUserId: session.UserId,
                 ActorFirmName: null,
                 CompanyId: Guid.Empty,
-                PayloadJson: PayloadJsonForRevocation(session, reason)),
-            cancellationToken);
+                PayloadJson: PayloadJsonForRevocation(session, reason)
+            ),
+            cancellationToken
+        );
     }
 
     private static string PayloadJsonForSession(Session s) =>
@@ -161,5 +173,11 @@ public sealed class SessionService(
         $$"""{"session_id":"{{s.Id:D}}","user_id":"{{s.UserId:D}}","reason":"{{reason}}"}""";
 
     private static string JsonStringOrNull(string? value) =>
-        value is null ? "null" : "\"" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+        value is null
+            ? "null"
+            : "\""
+                + value
+                    .Replace("\\", "\\\\", StringComparison.Ordinal)
+                    .Replace("\"", "\\\"", StringComparison.Ordinal)
+                + "\"";
 }

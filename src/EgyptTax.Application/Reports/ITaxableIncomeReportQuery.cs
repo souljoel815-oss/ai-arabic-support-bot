@@ -10,5 +10,6 @@ public interface ITaxableIncomeReportQuery
     Task<TaxableIncomeReport> RunAsync(
         DateOnly periodStart,
         DateOnly periodEnd,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }

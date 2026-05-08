@@ -36,9 +36,7 @@ public sealed class SqlSupplierTinSource : ISupplierTinSource
     private readonly TimeSpan _staleAfter;
 
     public SqlSupplierTinSource(AppDbContext db, IClock clock)
-        : this(db, clock, DefaultStaleAfter)
-    {
-    }
+        : this(db, clock, DefaultStaleAfter) { }
 
     public SqlSupplierTinSource(AppDbContext db, IClock clock, TimeSpan staleAfter)
     {
@@ -48,22 +46,28 @@ public sealed class SqlSupplierTinSource : ISupplierTinSource
     }
 
     public async Task<IReadOnlyList<SupplierTinRow>> GetSuppliersToRevalidateAsync(
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         var threshold = _clock.UtcNow - _staleAfter;
 
         var rows = await _db.Set<Supplier>()
             .AsNoTracking()
-            .Where(s => s.Status == SupplierStatus.Active
+            .Where(s =>
+                s.Status == SupplierStatus.Active
                 && s.TaxProfile.ProfileType == SupplierTaxProfileType.RegisteredTaxpayer
                 && s.TaxProfile.TinValue != null
-                && (s.LastTinRevalidatedAtUtc == null || s.LastTinRevalidatedAtUtc < threshold))
+                && (s.LastTinRevalidatedAtUtc == null || s.LastTinRevalidatedAtUtc < threshold)
+            )
             .OrderBy(s => s.LastTinRevalidatedAtUtc) // oldest first; nulls float up under SQL Server NULLS-FIRST default
-            .Select(s => new { s.Id, Tin = s.TaxProfile.TinValue!, NameEn = s.Name.English })
+            .Select(s => new
+            {
+                s.Id,
+                Tin = s.TaxProfile.TinValue!,
+                NameEn = s.Name.English,
+            })
             .ToListAsync(cancellationToken);
 
-        return rows
-            .Select(r => new SupplierTinRow(r.Id, r.Tin, r.NameEn))
-            .ToList();
+        return rows.Select(r => new SupplierTinRow(r.Id, r.Tin, r.NameEn)).ToList();
     }
 }

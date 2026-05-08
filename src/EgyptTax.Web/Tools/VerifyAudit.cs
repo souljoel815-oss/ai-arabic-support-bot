@@ -31,7 +31,8 @@ namespace EgyptTax.Web.Tools;
 public static class VerifyAudit
 {
     public static bool IsVerifyAuditInvocation(string[] args) =>
-        args.Length > 0 && string.Equals(args[0], "verify-audit", StringComparison.OrdinalIgnoreCase);
+        args.Length > 0
+        && string.Equals(args[0], "verify-audit", StringComparison.OrdinalIgnoreCase);
 
     public static async Task<int> RunAsync(
         string[] args,
@@ -39,7 +40,8 @@ public static class VerifyAudit
         IAuditCheckpointStore checkpointStore,
         TextWriter stdout,
         TextWriter stderr,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(db);
@@ -48,7 +50,8 @@ public static class VerifyAudit
         var asJson = args.Any(a => string.Equals(a, "--json", StringComparison.OrdinalIgnoreCase));
         var maxEntries = ParseIntFlag(args, "--max") ?? int.MaxValue;
 
-        await stdout.WriteLineAsync($"[verify-audit] Loading entries (cap={maxEntries:N0}) …")
+        await stdout
+            .WriteLineAsync($"[verify-audit] Loading entries (cap={maxEntries:N0}) …")
             .WaitAsync(cancellationToken);
 
         var entries = await db.Set<AuditLogEntry>()
@@ -59,16 +62,23 @@ public static class VerifyAudit
 
         var checkpoint = await checkpointStore.ReadLatestAsync(cancellationToken);
 
-        await stdout.WriteLineAsync($"[verify-audit] Verifying {entries.Count:N0} entries …")
+        await stdout
+            .WriteLineAsync($"[verify-audit] Verifying {entries.Count:N0} entries …")
             .WaitAsync(cancellationToken);
         if (checkpoint is not null)
         {
-            await stdout.WriteLineAsync($"[verify-audit] Comparing against checkpoint at index {checkpoint.LastIndex:N0}.")
+            await stdout
+                .WriteLineAsync(
+                    $"[verify-audit] Comparing against checkpoint at index {checkpoint.LastIndex:N0}."
+                )
                 .WaitAsync(cancellationToken);
         }
         else
         {
-            await stdout.WriteLineAsync("[verify-audit] No checkpoint on file (chain hash-only verification).")
+            await stdout
+                .WriteLineAsync(
+                    "[verify-audit] No checkpoint on file (chain hash-only verification)."
+                )
                 .WaitAsync(cancellationToken);
         }
 
@@ -76,7 +86,11 @@ public static class VerifyAudit
 
         if (asJson)
         {
-            var jsonPayload = BuildJson(report, entries.Count, maxEntries == entries.Count && entries.Count > 0);
+            var jsonPayload = BuildJson(
+                report,
+                entries.Count,
+                maxEntries == entries.Count && entries.Count > 0
+            );
             await stdout.WriteLineAsync(jsonPayload).WaitAsync(cancellationToken);
         }
         else
@@ -88,16 +102,24 @@ public static class VerifyAudit
     }
 
     private static async Task WriteHumanReportAsync(
-        TextWriter stdout, AuditChainReport report, int entriesScanned, CancellationToken cancellationToken)
+        TextWriter stdout,
+        AuditChainReport report,
+        int entriesScanned,
+        CancellationToken cancellationToken
+    )
     {
         if (report.IsValid)
         {
-            await stdout.WriteLineAsync($"[verify-audit] ✓ CHAIN VALID across {entriesScanned:N0} entries.")
+            await stdout
+                .WriteLineAsync($"[verify-audit] ✓ CHAIN VALID across {entriesScanned:N0} entries.")
                 .WaitAsync(cancellationToken);
             return;
         }
 
-        await stdout.WriteLineAsync($"[verify-audit] ✗ CHAIN INTEGRITY FAILED — {report.Findings.Count} finding(s):")
+        await stdout
+            .WriteLineAsync(
+                $"[verify-audit] ✗ CHAIN INTEGRITY FAILED — {report.Findings.Count} finding(s):"
+            )
             .WaitAsync(cancellationToken);
         foreach (var f in report.Findings)
         {
@@ -110,21 +132,29 @@ public static class VerifyAudit
 
     private static string BuildJson(AuditChainReport report, int entriesScanned, bool truncated)
     {
-        var findings = string.Join(",", report.Findings.Select(f =>
-            $$"""{"kind":"{{f.Kind}}","atIndex":{{f.AtIndex}},"notes":{{(f.Notes is null ? "null" : "\"" + Escape(f.Notes) + "\"")}}}"""));
+        var findings = string.Join(
+            ",",
+            report.Findings.Select(f =>
+                $$"""{"kind":"{{f.Kind}}","atIndex":{{f.AtIndex}},"notes":{{(f.Notes is null ? "null" : "\"" + Escape(f.Notes) + "\"")}}}"""
+            )
+        );
         return $$"""{"isValid":{{(report.IsValid ? "true" : "false")}},"entriesScanned":{{entriesScanned}},"truncated":{{(truncated ? "true" : "false")}},"findings":[{{findings}}]}""";
     }
 
     private static string Escape(string value) =>
-        value.Replace("\\", "\\\\", StringComparison.Ordinal)
-             .Replace("\"", "\\\"", StringComparison.Ordinal);
+        value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal);
 
     private static int? ParseIntFlag(string[] args, string flag)
     {
         for (var i = 0; i < args.Length - 1; i++)
         {
-            if (string.Equals(args[i], flag, StringComparison.OrdinalIgnoreCase)
-                && int.TryParse(args[i + 1], out var n) && n > 0)
+            if (
+                string.Equals(args[i], flag, StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(args[i + 1], out var n)
+                && n > 0
+            )
             {
                 return n;
             }

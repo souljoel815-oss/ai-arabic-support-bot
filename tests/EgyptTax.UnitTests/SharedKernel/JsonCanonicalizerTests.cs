@@ -105,7 +105,6 @@ public class JsonCanonicalizerTests
         const string input1 = """{"a": 1, "b": 2}""";
         var input2 = "{\n    \"b\": 2,\n    \"a\": 1\n}";
 
-        JsonCanonicalizer.Canonicalize(input1)
-            .Should().Be(JsonCanonicalizer.Canonicalize(input2));
+        JsonCanonicalizer.Canonicalize(input1).Should().Be(JsonCanonicalizer.Canonicalize(input2));
     }
 }

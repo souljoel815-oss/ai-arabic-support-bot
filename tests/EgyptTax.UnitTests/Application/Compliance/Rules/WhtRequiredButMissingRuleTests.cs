@@ -23,14 +23,19 @@ public class WhtRequiredButMissingRuleTests
     {
         var ctx = BuildContext(
             SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("123456789"), VatId),
-            deductible: true);
+            deductible: true
+        );
 
         var findings = new WhtRequiredButMissingRule().Evaluate(ctx);
 
         findings.Should().HaveCount(1);
         findings[0].RuleId.Should().Be("PURCHASE_INVOICE.WHT_REQUIRED_BUT_MISSING");
-        findings[0].Severity.Should().Be(RiskSeverity.Info,
-            because: "the rule is a hint, not a blocker — the operator decides whether WHT genuinely applies");
+        findings[0]
+            .Severity.Should()
+            .Be(
+                RiskSeverity.Info,
+                because: "the rule is a hint, not a blocker — the operator decides whether WHT genuinely applies"
+            );
         findings[0].FixHint.Should().NotBeNullOrEmpty();
     }
 
@@ -39,38 +44,67 @@ public class WhtRequiredButMissingRuleTests
     {
         var ctx = BuildContext(
             SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("123456789"), VatId),
-            deductible: false);
+            deductible: false
+        );
 
-        new WhtRequiredButMissingRule().Evaluate(ctx).Should().BeEmpty(
-            because: "WHT applies on services + deductible expenses — no deductible line means no hint");
+        new WhtRequiredButMissingRule()
+            .Evaluate(ctx)
+            .Should()
+            .BeEmpty(
+                because: "WHT applies on services + deductible expenses — no deductible line means no hint"
+            );
     }
 
     [Fact]
     public void Silent_OnDeductiblePurchase_FromUnregisteredSupplier()
     {
         var ctx = BuildContext(SupplierTaxProfile.Unregistered(VatId), deductible: true);
-        new WhtRequiredButMissingRule().Evaluate(ctx).Should().BeEmpty(
-            because: "Unregistered suppliers don't attract WHT the same way as registered taxpayers — silence avoids noise");
+        new WhtRequiredButMissingRule()
+            .Evaluate(ctx)
+            .Should()
+            .BeEmpty(
+                because: "Unregistered suppliers don't attract WHT the same way as registered taxpayers — silence avoids noise"
+            );
     }
 
     [Fact]
     public void Silent_OnDeductiblePurchase_FromForeignSupplier()
     {
         var ctx = BuildContext(SupplierTaxProfile.ForeignSupplier(VatId), deductible: true);
-        new WhtRequiredButMissingRule().Evaluate(ctx).Should().BeEmpty(
-            because: "Foreign suppliers go through reverse-charge VAT, not WHT — different compliance regime, different hint");
+        new WhtRequiredButMissingRule()
+            .Evaluate(ctx)
+            .Should()
+            .BeEmpty(
+                because: "Foreign suppliers go through reverse-charge VAT, not WHT — different compliance regime, different hint"
+            );
     }
 
-    private static PurchaseDocumentRiskContext BuildContext(SupplierTaxProfile profile, bool deductible)
+    private static PurchaseDocumentRiskContext BuildContext(
+        SupplierTaxProfile profile,
+        bool deductible
+    )
     {
         var draft = PurchaseInvoice.CreateDraft(
-            Guid.NewGuid(), profile, "SUP-INV-WHT-RULE", new DateOnly(2026, 5, 7));
-        draft.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 1m, unitPrice: MoneyEgp.From(1_000m),
-            vatCategoryId: VatId, vatRatePercent: 14m, deductibleFlag: deductible);
+            Guid.NewGuid(),
+            profile,
+            "SUP-INV-WHT-RULE",
+            new DateOnly(2026, 5, 7)
+        );
+        draft.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(1_000m),
+            vatCategoryId: VatId,
+            vatRatePercent: 14m,
+            deductibleFlag: deductible
+        );
         return new PurchaseDocumentRiskContext(
-            draft, Supplier: null, Attachments: Array.Empty<Attachment>(),
+            draft,
+            Supplier: null,
+            Attachments: Array.Empty<Attachment>(),
             SupplierInvoiceFingerprints: Array.Empty<PurchaseInvoiceFingerprint>(),
-            NowUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
+            NowUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc)
+        );
     }
 }

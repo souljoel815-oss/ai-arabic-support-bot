@@ -58,7 +58,8 @@ public sealed class SalesInvoice
     private SalesInvoice(
         Guid customerId,
         CustomerTaxProfile customerTaxProfileSnapshot,
-        DateOnly documentDate)
+        DateOnly documentDate
+    )
     {
         CustomerId = customerId;
         CustomerTaxProfileSnapshot = customerTaxProfileSnapshot;
@@ -68,7 +69,8 @@ public sealed class SalesInvoice
     public static SalesInvoice CreateDraft(
         Guid customerId,
         CustomerTaxProfile customerTaxProfileSnapshot,
-        DateOnly documentDate)
+        DateOnly documentDate
+    )
     {
         if (customerId == Guid.Empty)
         {
@@ -89,7 +91,8 @@ public sealed class SalesInvoice
     public static SalesInvoice CreateCreditNoteFor(
         SalesInvoice originalInvoice,
         string reason,
-        DateOnly documentDate)
+        DateOnly documentDate
+    )
     {
         ArgumentNullException.ThrowIfNull(originalInvoice);
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
@@ -97,18 +100,21 @@ public sealed class SalesInvoice
         if (originalInvoice.State != DocumentState.Posted)
         {
             throw new InvalidOperationException(
-                $"Cannot issue a credit note against {originalInvoice.Id}: source state is {originalInvoice.State}, not Posted. FR-013 + FR-027 require the source to be Posted.");
+                $"Cannot issue a credit note against {originalInvoice.Id}: source state is {originalInvoice.State}, not Posted. FR-013 + FR-027 require the source to be Posted."
+            );
         }
         if (originalInvoice.IsCreditNote)
         {
             throw new InvalidOperationException(
-                $"Cannot issue a credit note against {originalInvoice.Id}: source is itself a credit note. Credit-note-of-credit-note is non-sensical and would unwind the audit trail.");
+                $"Cannot issue a credit note against {originalInvoice.Id}: source is itself a credit note. Credit-note-of-credit-note is non-sensical and would unwind the audit trail."
+            );
         }
 
         var draft = new SalesInvoice(
             originalInvoice.CustomerId,
             originalInvoice.CustomerTaxProfileSnapshot,
-            documentDate);
+            documentDate
+        );
         draft.CreditNoteOfInvoiceId = originalInvoice.Id;
         draft.CreditNoteReason = reason;
         return draft;
@@ -119,14 +125,23 @@ public sealed class SalesInvoice
         decimal quantity,
         MoneyEgp unitPrice,
         Guid vatCategoryId,
-        decimal vatRatePercent)
+        decimal vatRatePercent
+    )
     {
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot add a line to sales invoice {Id}: current state {State} is not Draft.");
+                $"Cannot add a line to sales invoice {Id}: current state {State} is not Draft."
+            );
         }
-        var line = new SalesInvoiceLine(Id, itemId, quantity, unitPrice, vatCategoryId, vatRatePercent);
+        var line = new SalesInvoiceLine(
+            Id,
+            itemId,
+            quantity,
+            unitPrice,
+            vatCategoryId,
+            vatRatePercent
+        );
         _lines.Add(line);
         Recompute();
         return line;
@@ -145,13 +160,13 @@ public sealed class SalesInvoice
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot remove a line from sales invoice {Id}: current state {State} is not Draft.");
+                $"Cannot remove a line from sales invoice {Id}: current state {State} is not Draft."
+            );
         }
         var line = _lines.FirstOrDefault(l => l.Id == lineId);
         if (line is null)
         {
-            throw new InvalidOperationException(
-                $"Line {lineId} is not on sales invoice {Id}.");
+            throw new InvalidOperationException($"Line {lineId} is not on sales invoice {Id}.");
         }
         _lines.Remove(line);
         Recompute();
@@ -169,22 +184,29 @@ public sealed class SalesInvoice
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot change invoice-level discount on sales invoice {Id}: current state {State} is not Draft.");
+                $"Cannot change invoice-level discount on sales invoice {Id}: current state {State} is not Draft."
+            );
         }
         if (amount is not null && percent is not null)
         {
             throw new ArgumentException(
-                "Exactly one of {amount, percent} must be supplied; the other must be null.", nameof(amount));
+                "Exactly one of {amount, percent} must be supplied; the other must be null.",
+                nameof(amount)
+            );
         }
         if (percent is { } pct && pct is < 0m or > 100m)
         {
-            throw new ArgumentOutOfRangeException(nameof(percent),
-                "Invoice-level discount percent must be in the range [0, 100].");
+            throw new ArgumentOutOfRangeException(
+                nameof(percent),
+                "Invoice-level discount percent must be in the range [0, 100]."
+            );
         }
         if (amount is { } amt && amt.Amount < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(amount),
-                "Invoice-level discount amount cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(amount),
+                "Invoice-level discount amount cannot be negative."
+            );
         }
 
         InvoiceLevelDiscountAmount = amount ?? MoneyEgp.Zero;
@@ -211,7 +233,10 @@ public sealed class SalesInvoice
         if (InvoiceLevelDiscountPercent > 0m && preDiscountSubtotal > 0m)
         {
             effectiveDiscount = decimal.Round(
-                preDiscountSubtotal * (InvoiceLevelDiscountPercent / 100m), 2, MidpointRounding.ToEven);
+                preDiscountSubtotal * (InvoiceLevelDiscountPercent / 100m),
+                2,
+                MidpointRounding.ToEven
+            );
         }
         else
         {
@@ -227,7 +252,8 @@ public sealed class SalesInvoice
         if (effectiveDiscount > 0m && effectiveDiscount > preDiscountSubtotal)
         {
             throw new InvalidOperationException(
-                $"Invoice-level discount {effectiveDiscount:F2} exceeds pre-discount subtotal {preDiscountSubtotal:F2}.");
+                $"Invoice-level discount {effectiveDiscount:F2} exceeds pre-discount subtotal {preDiscountSubtotal:F2}."
+            );
         }
 
         // Apportion pro-rata. The last line absorbs the rounding
@@ -246,7 +272,11 @@ public sealed class SalesInvoice
                 else
                 {
                     var ratio = line.LineSubtotal.Amount / preDiscountSubtotal;
-                    apportioned = decimal.Round(effectiveDiscount * ratio, 2, MidpointRounding.ToEven);
+                    apportioned = decimal.Round(
+                        effectiveDiscount * ratio,
+                        2,
+                        MidpointRounding.ToEven
+                    );
                 }
                 line.SetApportionedDiscount(MoneyEgp.From(apportioned));
                 allocated += apportioned;
@@ -283,13 +313,21 @@ public sealed class SalesInvoice
     /// </summary>
     public void MarkSubmitted()
     {
-        State = DocumentStateMachine.Transition(State, DocumentState.Submitted, approvalEnabled: true);
+        State = DocumentStateMachine.Transition(
+            State,
+            DocumentState.Submitted,
+            approvalEnabled: true
+        );
     }
 
     /// <summary>FR-026 — Approver moves Submitted → Approved.</summary>
     public void MarkApproved()
     {
-        State = DocumentStateMachine.Transition(State, DocumentState.Approved, approvalEnabled: true);
+        State = DocumentStateMachine.Transition(
+            State,
+            DocumentState.Approved,
+            approvalEnabled: true
+        );
     }
 
     /// <summary>
@@ -317,15 +355,21 @@ public sealed class SalesInvoice
         Guid postedByUserId,
         DateTime postedAtUtc,
         DocumentPostingMode postingMode,
-        bool approvalEnabled)
+        bool approvalEnabled
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(documentNumber);
 
-        var nextState = DocumentStateMachine.Transition(State, DocumentState.Posted, approvalEnabled);
+        var nextState = DocumentStateMachine.Transition(
+            State,
+            DocumentState.Posted,
+            approvalEnabled
+        );
         if (_lines.Count == 0)
         {
             throw new InvalidOperationException(
-                $"Cannot post sales invoice {Id}: at least one line is required.");
+                $"Cannot post sales invoice {Id}: at least one line is required."
+            );
         }
 
         Recompute();

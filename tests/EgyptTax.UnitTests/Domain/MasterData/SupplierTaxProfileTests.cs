@@ -18,16 +18,19 @@ public class SupplierTaxProfileTests
     [Fact]
     public void RegisteredTaxpayer_HasTin_AndIsRecoverable()
     {
-        var profile = SupplierTaxProfile.RegisteredTaxpayer(
-            EgyptianTin.Parse("123456789"), VatId);
+        var profile = SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("123456789"), VatId);
 
         profile.ProfileType.Should().Be(SupplierTaxProfileType.RegisteredTaxpayer);
         profile.TinValue.Should().Be("123456789");
         profile.Tin.Should().NotBeNull();
-        profile.ReverseChargeFlag.Should().BeFalse(
-            because: "reverse charge applies to ForeignSupplier only");
-        profile.InputVatRecoverable.Should().BeTrue(
-            because: "FR-020 / FR-041 — input VAT is recoverable only for registered taxpayers, and this is one");
+        profile
+            .ReverseChargeFlag.Should()
+            .BeFalse(because: "reverse charge applies to ForeignSupplier only");
+        profile
+            .InputVatRecoverable.Should()
+            .BeTrue(
+                because: "FR-020 / FR-041 — input VAT is recoverable only for registered taxpayers, and this is one"
+            );
     }
 
     [Fact]
@@ -39,8 +42,11 @@ public class SupplierTaxProfileTests
         profile.TinValue.Should().BeNull();
         profile.Tin.Should().BeNull();
         profile.ReverseChargeFlag.Should().BeFalse();
-        profile.InputVatRecoverable.Should().BeFalse(
-            because: "FR-020 — unregistered suppliers cannot pass through recoverable VAT to the buyer");
+        profile
+            .InputVatRecoverable.Should()
+            .BeFalse(
+                because: "FR-020 — unregistered suppliers cannot pass through recoverable VAT to the buyer"
+            );
     }
 
     [Fact]
@@ -50,17 +56,22 @@ public class SupplierTaxProfileTests
 
         profile.ProfileType.Should().Be(SupplierTaxProfileType.ForeignSupplier);
         profile.TinValue.Should().BeNull();
-        profile.ReverseChargeFlag.Should().BeTrue(
-            because: "imported services / goods from a foreign supplier are subject to reverse-charge VAT");
-        profile.InputVatRecoverable.Should().BeFalse(
-            because: "the foreign supplier itself doesn't issue Egyptian-recoverable input VAT — reverse-charge is the buyer's own self-invoiced output VAT");
+        profile
+            .ReverseChargeFlag.Should()
+            .BeTrue(
+                because: "imported services / goods from a foreign supplier are subject to reverse-charge VAT"
+            );
+        profile
+            .InputVatRecoverable.Should()
+            .BeFalse(
+                because: "the foreign supplier itself doesn't issue Egyptian-recoverable input VAT — reverse-charge is the buyer's own self-invoiced output VAT"
+            );
     }
 
     [Fact]
     public void Tin_RoundTrips_Through_EgyptianTin()
     {
-        var profile = SupplierTaxProfile.RegisteredTaxpayer(
-            EgyptianTin.Parse("987654321"), VatId);
+        var profile = SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("987654321"), VatId);
 
         profile.Tin!.Value.Value.Should().Be("987654321");
     }
@@ -68,11 +79,17 @@ public class SupplierTaxProfileTests
     [Fact]
     public void DefaultPurchaseVatCategory_IsOptional()
     {
-        SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("111111111"), defaultPurchaseVatCategoryId: null)
-            .DefaultPurchaseVatCategoryId.Should().BeNull();
-        SupplierTaxProfile.Unregistered(defaultPurchaseVatCategoryId: null)
-            .DefaultPurchaseVatCategoryId.Should().BeNull();
-        SupplierTaxProfile.ForeignSupplier(defaultPurchaseVatCategoryId: null)
-            .DefaultPurchaseVatCategoryId.Should().BeNull();
+        SupplierTaxProfile
+            .RegisteredTaxpayer(EgyptianTin.Parse("111111111"), defaultPurchaseVatCategoryId: null)
+            .DefaultPurchaseVatCategoryId.Should()
+            .BeNull();
+        SupplierTaxProfile
+            .Unregistered(defaultPurchaseVatCategoryId: null)
+            .DefaultPurchaseVatCategoryId.Should()
+            .BeNull();
+        SupplierTaxProfile
+            .ForeignSupplier(defaultPurchaseVatCategoryId: null)
+            .DefaultPurchaseVatCategoryId.Should()
+            .BeNull();
     }
 }

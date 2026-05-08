@@ -41,9 +41,11 @@ internal static class QuestPdfFontInitializer
     {
         var assembly = typeof(QuestPdfFontInitializer).Assembly;
         var resourceName = $"{assembly.GetName().Name}.{relativeName}";
-        using var resourceStream = assembly.GetManifestResourceStream(resourceName)
+        using var resourceStream =
+            assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException(
-                $"Embedded font resource '{resourceName}' was not found. Check the EmbeddedResource Link in EgyptTax.Infrastructure.csproj.");
+                $"Embedded font resource '{resourceName}' was not found. Check the EmbeddedResource Link in EgyptTax.Infrastructure.csproj."
+            );
         using var buffer = new MemoryStream();
         resourceStream.CopyTo(buffer);
         var bytes = buffer.ToArray();

@@ -46,12 +46,19 @@ public class InvoicePdfGoldenTests
 
         if (Environment.GetEnvironmentVariable("UPDATE_GOLDEN_PDF") == "1")
         {
-            File.WriteAllText(goldenPath, rendered, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.WriteAllText(
+                goldenPath,
+                rendered,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
+            );
             return;
         }
 
-        File.Exists(goldenPath).Should().BeTrue(
-            because: $"the golden snapshot at {goldenPath} MUST be checked in. Run with UPDATE_GOLDEN_PDF=1 to bootstrap it after an intentional change to the renderer.");
+        File.Exists(goldenPath)
+            .Should()
+            .BeTrue(
+                because: $"the golden snapshot at {goldenPath} MUST be checked in. Run with UPDATE_GOLDEN_PDF=1 to bootstrap it after an intentional change to the renderer."
+            );
 
         var golden = File.ReadAllText(goldenPath);
 
@@ -61,9 +68,13 @@ public class InvoicePdfGoldenTests
         var normalizedGolden = golden.Replace("\r\n", "\n", StringComparison.Ordinal);
         var normalizedActual = rendered.Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        normalizedActual.Should().Be(normalizedGolden,
-            because: "the rendered PDF text MUST match the checked-in golden snapshot exactly. " +
-                     "If this is an intentional renderer change, re-run with UPDATE_GOLDEN_PDF=1 and commit the diff.");
+        normalizedActual
+            .Should()
+            .Be(
+                normalizedGolden,
+                because: "the rendered PDF text MUST match the checked-in golden snapshot exactly. "
+                    + "If this is an intentional renderer change, re-run with UPDATE_GOLDEN_PDF=1 and commit the diff."
+            );
     }
 
     private static string RenderCanonicalInvoiceText()
@@ -111,11 +122,14 @@ public class InvoicePdfGoldenTests
         // generated per-run via Guid.NewGuid() because the SalesInvoice
         // factory does not accept a caller-supplied Id; redact GUIDs
         // from the snapshot so it remains stable.
-        var redacted = Regex.Replace(collapsed,
+        var redacted = Regex.Replace(
+            collapsed,
             @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
-            "<GUID>");
+            "<GUID>"
+        );
 
-        var lines = redacted.Split('\n', StringSplitOptions.None)
+        var lines = redacted
+            .Split('\n', StringSplitOptions.None)
             .Select(l => l.TrimEnd())
             .ToArray();
         return string.Join("\n", lines);
@@ -135,18 +149,27 @@ public class InvoicePdfGoldenTests
         var dir = AppContext.BaseDirectory;
         for (var i = 0; i < 8 && dir is not null; i++)
         {
-            var candidate = Path.Combine(dir, "tests", "EgyptTax.ContractTests", "Pdf", GoldenFileName);
-            if (File.Exists(candidate)) return candidate;
+            var candidate = Path.Combine(
+                dir,
+                "tests",
+                "EgyptTax.ContractTests",
+                "Pdf",
+                GoldenFileName
+            );
+            if (File.Exists(candidate))
+                return candidate;
             dir = Path.GetDirectoryName(dir);
         }
         // Fallback: the bin-folder sibling that CopyToOutputDirectory
         // produces. Used only when no source-tree path resolves.
         var binSibling = Path.Combine(AppContext.BaseDirectory, "Pdf", GoldenFileName);
-        if (File.Exists(binSibling)) return binSibling;
+        if (File.Exists(binSibling))
+            return binSibling;
         // Last-resort bootstrap path so UPDATE_GOLDEN_PDF=1 can write
         // a brand-new file even when the file does not exist anywhere.
-        return Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "Pdf", GoldenFileName));
+        return Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Pdf", GoldenFileName)
+        );
     }
 
     private static Fixture BuildPinnedFixture()
@@ -163,8 +186,10 @@ public class InvoicePdfGoldenTests
                 regionCity: "Downtown",
                 street: "Tahrir",
                 buildingNumber: "12",
-                postalCode: "11511"),
-            taxpayerActivityCode: "0001");
+                postalCode: "11511"
+            ),
+            taxpayerActivityCode: "0001"
+        );
 
         var vatId = new Guid("11111111-1111-1111-1111-111111111111");
         var vat = new VatCategory(
@@ -173,50 +198,73 @@ public class InvoicePdfGoldenTests
             ratePercent: 14m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            recoverableInputVat: true)
-        { Id = vatId };
+            recoverableInputVat: true
+        )
+        {
+            Id = vatId,
+        };
 
         var itemId = new Guid("22222222-2222-2222-2222-222222222222");
         var item = new Item(
             code: "ITEM-001",
             name: new ArabicEnglishText("ساعة استشارة", "Consulting Hour"),
-            defaultVatCategoryId: vatId)
-        { Id = itemId };
+            defaultVatCategoryId: vatId
+        )
+        {
+            Id = itemId,
+        };
 
         var taxProfile = CustomerTaxProfile.B2BRegistered(
-            EgyptianTin.Parse("987654321"), false, vatId);
+            EgyptianTin.Parse("987654321"),
+            false,
+            vatId
+        );
         var receiver = new Customer(
             code: "CUST-001",
             name: new ArabicEnglishText("عميل تجريبي", "Test Customer LLC"),
             address: PostalAddress.Create(
                 display: new ArabicEnglishText("شارع النيل ٤٥", "45 Nile Street"),
-                governorate: "Giza", regionCity: "Dokki",
-                street: "Nile", buildingNumber: "45"),
+                governorate: "Giza",
+                regionCity: "Dokki",
+                street: "Nile",
+                buildingNumber: "45"
+            ),
             taxProfile: taxProfile,
-            phone: "+20 10 1234 5678")
-        { Id = new Guid("33333333-3333-3333-3333-333333333333") };
+            phone: "+20 10 1234 5678"
+        )
+        {
+            Id = new Guid("33333333-3333-3333-3333-333333333333"),
+        };
 
-        var draft = SalesInvoice.CreateDraft(receiver.Id, receiver.TaxProfile, new DateOnly(2026, 5, 7));
+        var draft = SalesInvoice.CreateDraft(
+            receiver.Id,
+            receiver.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         draft.AddLine(item.Id, 1m, MoneyEgp.From(1_000m), vatId, vat.RatePercent);
         draft.MarkPosted(
             documentNumber: "INV-2026-000123",
             postedByUserId: new Guid("44444444-4444-4444-4444-444444444444"),
             postedAtUtc: new DateTime(2026, 5, 7, 11, 0, 0, DateTimeKind.Utc),
             postingMode: DocumentPostingMode.UnapprovedDirect,
-            approvalEnabled: false);
+            approvalEnabled: false
+        );
 
         // The seal payload is binary inside the QR image, not text on
         // the page; pinning the document_id keeps the QR pixel-stable
         // even though it doesn't affect the extracted text.
-        var sealPayload = DocumentSealCodec.Encode(new DocumentSealPayload(
-            DocumentType: SealedDocumentType.SalesInvoice,
-            DocumentNumber: draft.DocumentNumber!,
-            DocumentId: draft.Id,
-            GrandTotalPiastres: (long)(draft.GrandTotal.Amount * 100m),
-            AuditEntryHash: new byte[32],
-            AuditEntryIndex: 1L,
-            VerifyUrl: "/verify",
-            IssuerTin: issuer.TaxRegistrationNumber));
+        var sealPayload = DocumentSealCodec.Encode(
+            new DocumentSealPayload(
+                DocumentType: SealedDocumentType.SalesInvoice,
+                DocumentNumber: draft.DocumentNumber!,
+                DocumentId: draft.Id,
+                GrandTotalPiastres: (long)(draft.GrandTotal.Amount * 100m),
+                AuditEntryHash: new byte[32],
+                AuditEntryIndex: 1L,
+                VerifyUrl: "/verify",
+                IssuerTin: issuer.TaxRegistrationNumber
+            )
+        );
 
         var items = new Dictionary<Guid, ItemRenderInfo> { [item.Id] = new(item.Code, item.Name) };
         var vats = new Dictionary<Guid, VatCategoryRenderInfo>
@@ -230,10 +278,16 @@ public class InvoicePdfGoldenTests
             Items: items,
             VatCategories: vats,
             PostedByUserDisplayName: "Test Operator",
-            SealQrPayload: sealPayload);
+            SealQrPayload: sealPayload
+        );
 
         return new Fixture(draft, issuer, receiver, request);
     }
 
-    private sealed record Fixture(SalesInvoice Invoice, Company Issuer, Customer Receiver, InvoicePdfRequest Request);
+    private sealed record Fixture(
+        SalesInvoice Invoice,
+        Company Issuer,
+        Customer Receiver,
+        InvoicePdfRequest Request
+    );
 }

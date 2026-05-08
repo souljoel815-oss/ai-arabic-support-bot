@@ -18,18 +18,21 @@ public interface ISessionService
         Guid userId,
         string? ipAddress,
         string? userAgent,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     Task TouchAsync(Guid sessionId, CancellationToken cancellationToken = default);
 
     Task<SessionValidationResult> ValidateAsync(
         Guid sessionId,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     Task RevokeAsync(
         Guid sessionId,
         SessionRevocationReason reason,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }
 
 /// <summary>
@@ -38,7 +41,8 @@ public interface ISessionService
 public sealed record SessionValidationResult(
     SessionValidationStatus Status,
     Guid? UserId,
-    SessionRevocationReason? Reason);
+    SessionRevocationReason? Reason
+);
 
 public enum SessionValidationStatus
 {

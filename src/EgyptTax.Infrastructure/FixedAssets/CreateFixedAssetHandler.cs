@@ -23,8 +23,7 @@ public sealed class CreateFixedAssetHandler
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
 
-    public CreateFixedAssetHandler(
-        AppDbContext db, IClock clock, IAuditLogStore auditLog)
+    public CreateFixedAssetHandler(AppDbContext db, IClock clock, IAuditLogStore auditLog)
     {
         _db = db;
         _clock = clock;
@@ -33,16 +32,19 @@ public sealed class CreateFixedAssetHandler
 
     public async Task<FixedAsset> HandleAsync(
         CreateFixedAssetCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var existing = await _db.Set<FixedAsset>().AsNoTracking()
+        var existing = await _db.Set<FixedAsset>()
+            .AsNoTracking()
             .AnyAsync(a => a.Code == command.Code, cancellationToken);
         if (existing)
         {
             throw new InvalidOperationException(
-                $"Fixed-asset code '{command.Code}' is already in use; pick a different code.");
+                $"Fixed-asset code '{command.Code}' is already in use; pick a different code."
+            );
         }
 
         var asset = FixedAsset.CreateDraft(
@@ -54,18 +56,23 @@ public sealed class CreateFixedAssetHandler
             usefulLifeMonths: command.UsefulLifeMonths,
             depreciationMethod: command.DepreciationMethod,
             salvageValue: command.SalvageValue,
-            convention: command.Convention);
+            convention: command.Convention
+        );
 
         _db.Add(asset);
         await _db.SaveChangesAsync(cancellationToken);
 
         var inv = CultureInfo.InvariantCulture;
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "fixed_asset.created",
-            ActorUserId: command.CreatedByUserId,
-            ActorFirmName: null, CompanyId: Guid.Empty,
-            PayloadJson: $$"""{"fixed_asset_id":"{{asset.Id:D}}","code":"{{asset.Code}}","cost_egp":{{asset.Cost.Amount.ToString("F2", inv)}},"in_service_date":"{{asset.InServiceDate:yyyy-MM-dd}}","useful_life_months":{{asset.UsefulLifeMonths}},"convention":"{{asset.Convention}}","salvage_egp":{{asset.SalvageValue.Amount.ToString("F2", inv)}}}"""),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "fixed_asset.created",
+                ActorUserId: command.CreatedByUserId,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: $$"""{"fixed_asset_id":"{{asset.Id:D}}","code":"{{asset.Code}}","cost_egp":{{asset.Cost.Amount.ToString("F2", inv)}},"in_service_date":"{{asset.InServiceDate:yyyy-MM-dd}}","useful_life_months":{{asset.UsefulLifeMonths}},"convention":"{{asset.Convention}}","salvage_egp":{{asset.SalvageValue.Amount.ToString("F2", inv)}}}"""
+            ),
+            cancellationToken
+        );
 
         return asset;
     }

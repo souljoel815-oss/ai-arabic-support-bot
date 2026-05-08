@@ -12,7 +12,11 @@ internal sealed class DocumentSeriesConfiguration : IEntityTypeConfiguration<Doc
         b.HasKey(s => s.Id);
         b.Property(s => s.Id).HasColumnName("id").ValueGeneratedNever();
 
-        b.Property(s => s.Code).HasColumnName("code").HasMaxLength(16).IsUnicode(false).IsRequired();
+        b.Property(s => s.Code)
+            .HasColumnName("code")
+            .HasMaxLength(16)
+            .IsUnicode(false)
+            .IsRequired();
         b.HasIndex(s => s.Code).IsUnique().HasDatabaseName("ux_document_series_code");
 
         b.Property(s => s.DocumentType)
@@ -25,10 +29,13 @@ internal sealed class DocumentSeriesConfiguration : IEntityTypeConfiguration<Doc
         // (per the existing T024 / T044 pattern). Seeding the bilingual
         // Name happens in the migration via raw SQL because EF Core's
         // HasData doesn't seed complex properties cleanly.
-        b.ComplexProperty(s => s.Name, n =>
-        {
-            n.Property(x => x.Arabic).HasColumnName("name_ar").HasMaxLength(100).IsRequired();
-            n.Property(x => x.English).HasColumnName("name_en").HasMaxLength(100).IsRequired();
-        });
+        b.ComplexProperty(
+            s => s.Name,
+            n =>
+            {
+                n.Property(x => x.Arabic).HasColumnName("name_ar").HasMaxLength(100).IsRequired();
+                n.Property(x => x.English).HasColumnName("name_en").HasMaxLength(100).IsRequired();
+            }
+        );
     }
 }

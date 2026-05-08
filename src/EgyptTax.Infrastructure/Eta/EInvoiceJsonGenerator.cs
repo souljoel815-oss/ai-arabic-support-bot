@@ -31,7 +31,8 @@ public sealed class EInvoiceJsonGenerator : IEInvoiceJsonGenerator
         if (invoice.State != DocumentState.Posted)
         {
             throw new InvalidOperationException(
-                "eInvoice JSON can only be rendered for a posted sales invoice.");
+                "eInvoice JSON can only be rendered for a posted sales invoice."
+            );
         }
 
         using var stream = new MemoryStream();
@@ -40,9 +41,12 @@ public sealed class EInvoiceJsonGenerator : IEInvoiceJsonGenerator
             w.WriteStartObject();
 
             // Header
-            w.WriteString("documentType", invoice.PostingMode is null
-                ? "I"  // Default to invoice; credit-note path supplied via document-type discrimination once CreditNote ships.
-                : "I");
+            w.WriteString(
+                "documentType",
+                invoice.PostingMode is null
+                    ? "I" // Default to invoice; credit-note path supplied via document-type discrimination once CreditNote ships.
+                    : "I"
+            );
             w.WriteString("documentTypeVersion", DocumentTypeVersion);
             w.WriteString("dateTimeIssued", FormatPostingTimestampIso(invoice));
             w.WriteString("taxpayerActivityCode", request.Issuer.TaxpayerActivityCode);
@@ -50,8 +54,13 @@ public sealed class EInvoiceJsonGenerator : IEInvoiceJsonGenerator
 
             // Issuer
             w.WritePropertyName("issuer");
-            WriteParty(w, request.Issuer.LegalName.English,
-                request.Issuer.Address, IssuerType, tin: request.Issuer.TaxRegistrationNumber);
+            WriteParty(
+                w,
+                request.Issuer.LegalName.English,
+                request.Issuer.Address,
+                IssuerType,
+                tin: request.Issuer.TaxRegistrationNumber
+            );
 
             // Receiver
             w.WritePropertyName("receiver");
@@ -92,7 +101,8 @@ public sealed class EInvoiceJsonGenerator : IEInvoiceJsonGenerator
         string name,
         PostalAddress address,
         string type,
-        string? tin)
+        string? tin
+    )
     {
         w.WriteStartObject();
         WriteAddress(w, address);
@@ -108,7 +118,8 @@ public sealed class EInvoiceJsonGenerator : IEInvoiceJsonGenerator
     private static void WriteReceiver(
         Utf8JsonWriter w,
         Customer customer,
-        CustomerTaxProfile snapshot)
+        CustomerTaxProfile snapshot
+    )
     {
         w.WriteStartObject();
         WriteAddress(w, customer.Address);
@@ -124,7 +135,10 @@ public sealed class EInvoiceJsonGenerator : IEInvoiceJsonGenerator
             _ => "P",
         };
         w.WriteString("type", type);
-        if (snapshot.ProfileType == CustomerTaxProfileType.B2BRegistered && snapshot.TinValue is not null)
+        if (
+            snapshot.ProfileType == CustomerTaxProfileType.B2BRegistered
+            && snapshot.TinValue is not null
+        )
         {
             w.WriteString("id", snapshot.TinValue);
         }
@@ -148,10 +162,18 @@ public sealed class EInvoiceJsonGenerator : IEInvoiceJsonGenerator
         w.WriteEndObject();
     }
 
-    private static void WriteLine(Utf8JsonWriter w, SalesInvoiceLine line, EInvoiceRenderRequest request)
+    private static void WriteLine(
+        Utf8JsonWriter w,
+        SalesInvoiceLine line,
+        EInvoiceRenderRequest request
+    )
     {
-        var itemCode = request.ItemCodes.TryGetValue(line.ItemId, out var code) ? code : line.ItemId.ToString("N");
-        var vatCategoryCode = request.VatCategoryCodes.TryGetValue(line.VatCategoryId, out var vc) ? vc : "Standard";
+        var itemCode = request.ItemCodes.TryGetValue(line.ItemId, out var code)
+            ? code
+            : line.ItemId.ToString("N");
+        var vatCategoryCode = request.VatCategoryCodes.TryGetValue(line.VatCategoryId, out var vc)
+            ? vc
+            : "Standard";
 
         w.WriteStartObject();
         w.WriteString("description", itemCode);

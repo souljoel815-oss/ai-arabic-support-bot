@@ -35,10 +35,14 @@ public class VerifyAuditCliTests(SqlServerFixture fixture)
             db: db,
             checkpointStore: new SqlSchemaCheckpointStore(db),
             stdout: stdout,
-            stderr: stderr);
+            stderr: stderr
+        );
 
-        exit.Should().Be(0,
-            because: "a clean chain MUST return exit code 0 — operator runbooks rely on this for scripted verification");
+        exit.Should()
+            .Be(
+                0,
+                because: "a clean chain MUST return exit code 0 — operator runbooks rely on this for scripted verification"
+            );
         stdout.ToString().Should().Contain("CHAIN VALID");
     }
 
@@ -52,7 +56,8 @@ public class VerifyAuditCliTests(SqlServerFixture fixture)
         // init-only, and the append-only trigger only fires on
         // app-name connections).
         await db.Database.ExecuteSqlInterpolatedAsync(
-            $"UPDATE [audit].[audit_log] SET payload_json = {"{\"tampered\":true}"} WHERE [index] = 1");
+            $"UPDATE [audit].[audit_log] SET payload_json = {"{\"tampered\":true}"} WHERE [index] = 1"
+        );
 
         var stdout = new StringWriter();
         var stderr = new StringWriter();
@@ -61,10 +66,14 @@ public class VerifyAuditCliTests(SqlServerFixture fixture)
             db: db,
             checkpointStore: new SqlSchemaCheckpointStore(db),
             stdout: stdout,
-            stderr: stderr);
+            stderr: stderr
+        );
 
-        exit.Should().Be(1,
-            because: "any chain finding MUST surface as exit code 1 so a CI / nightly verification job fails loudly");
+        exit.Should()
+            .Be(
+                1,
+                because: "any chain finding MUST surface as exit code 1 so a CI / nightly verification job fails loudly"
+            );
         stdout.ToString().Should().Contain("CHAIN INTEGRITY FAILED");
         stdout.ToString().Should().Contain("ThisHashMismatch");
     }
@@ -82,7 +91,8 @@ public class VerifyAuditCliTests(SqlServerFixture fixture)
             db: db,
             checkpointStore: new SqlSchemaCheckpointStore(db),
             stdout: stdout,
-            stderr: stderr);
+            stderr: stderr
+        );
 
         exit.Should().Be(0);
         var output = stdout.ToString();
@@ -104,11 +114,17 @@ public class VerifyAuditCliTests(SqlServerFixture fixture)
             db: db,
             checkpointStore: new SqlSchemaCheckpointStore(db),
             stdout: stdout,
-            stderr: stderr);
+            stderr: stderr
+        );
 
         exit.Should().Be(0);
-        stdout.ToString().Should().Contain("\"entriesScanned\":3",
-            because: "the --max flag MUST cap the verifier scope so operators can sample-verify large chains without paying for the full walk");
+        stdout
+            .ToString()
+            .Should()
+            .Contain(
+                "\"entriesScanned\":3",
+                because: "the --max flag MUST cap the verifier scope so operators can sample-verify large chains without paying for the full walk"
+            );
         stdout.ToString().Should().Contain("\"truncated\":true");
     }
 
@@ -116,8 +132,10 @@ public class VerifyAuditCliTests(SqlServerFixture fixture)
     public void IsVerifyAuditInvocation_Recognises_TheVerb()
     {
         VerifyAudit.IsVerifyAuditInvocation(BasicArgs).Should().BeTrue();
-        VerifyAudit.IsVerifyAuditInvocation(UpperCaseArgs).Should().BeTrue(
-            because: "case-insensitive match is friendlier on Windows shells");
+        VerifyAudit
+            .IsVerifyAuditInvocation(UpperCaseArgs)
+            .Should()
+            .BeTrue(because: "case-insensitive match is friendlier on Windows shells");
         VerifyAudit.IsVerifyAuditInvocation(SeedArgs).Should().BeFalse();
         VerifyAudit.IsVerifyAuditInvocation(Array.Empty<string>()).Should().BeFalse();
     }
@@ -133,12 +151,15 @@ public class VerifyAuditCliTests(SqlServerFixture fixture)
         var store = new SqlAuditLogStore(db);
         for (var i = 1; i <= count; i++)
         {
-            await store.AppendAsync(new AuditLogPayload(
-                Kind: $"test.event_{i}",
-                ActorUserId: Guid.NewGuid(),
-                ActorFirmName: null,
-                CompanyId: Guid.NewGuid(),
-                PayloadJson: $$"""{"i":{{i}}}"""));
+            await store.AppendAsync(
+                new AuditLogPayload(
+                    Kind: $"test.event_{i}",
+                    ActorUserId: Guid.NewGuid(),
+                    ActorFirmName: null,
+                    CompanyId: Guid.NewGuid(),
+                    PayloadJson: $$"""{"i":{{i}}}"""
+                )
+            );
         }
     }
 }

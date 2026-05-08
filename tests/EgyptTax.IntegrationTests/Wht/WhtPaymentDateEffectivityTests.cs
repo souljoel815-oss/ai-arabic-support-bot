@@ -34,38 +34,51 @@ public class WhtPaymentDateEffectivityTests(SqlServerFixture fixture)
             ratePercent: 5m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: new DateOnly(2026, 6, 30),
-            applicableTo: WhtApplicableTo.SuppliersServices);
+            applicableTo: WhtApplicableTo.SuppliersServices
+        );
         var newRate = new WhtCategory(
             code: "Services",
             name: new ArabicEnglishText("خدمات", "Services (10%)"),
             ratePercent: 10m,
             effectiveFromDate: new DateOnly(2026, 7, 1),
             effectiveToDate: null,
-            applicableTo: WhtApplicableTo.SuppliersServices);
-        db.Add(oldRate); db.Add(newRate);
+            applicableTo: WhtApplicableTo.SuppliersServices
+        );
+        db.Add(oldRate);
+        db.Add(newRate);
         await db.SaveChangesAsync();
 
         var service = new SqlWhtComputeService(db);
 
         // Payment in June → 5% applies.
         var june = await service.ComputeAsync(
-            "Services", new DateOnly(2026, 6, 15),
-            MoneyEgp.From(10_000m), WhtApplicableTo.SuppliersServices);
+            "Services",
+            new DateOnly(2026, 6, 15),
+            MoneyEgp.From(10_000m),
+            WhtApplicableTo.SuppliersServices
+        );
         june.Should().NotBeNull();
         june!.RateAppliedPercent.Should().Be(5m);
-        june.AmountWithheld.Amount.Should().Be(500m,
-            because: "10k × 5% = 500 — June payment falls in the old rate's window");
+        june.AmountWithheld.Amount.Should()
+            .Be(500m, because: "10k × 5% = 500 — June payment falls in the old rate's window");
         june.WhtCategoryId.Should().Be(oldRate.Id);
 
         // Payment in August → 10% applies even if the underlying
         // invoice was issued in June. R-17 — payment date wins.
         var august = await service.ComputeAsync(
-            "Services", new DateOnly(2026, 8, 1),
-            MoneyEgp.From(10_000m), WhtApplicableTo.SuppliersServices);
+            "Services",
+            new DateOnly(2026, 8, 1),
+            MoneyEgp.From(10_000m),
+            WhtApplicableTo.SuppliersServices
+        );
         august.Should().NotBeNull();
         august!.RateAppliedPercent.Should().Be(10m);
-        august.AmountWithheld.Amount.Should().Be(1_000m,
-            because: "10k × 10% = 1,000 — August payment falls in the new rate's window");
+        august
+            .AmountWithheld.Amount.Should()
+            .Be(
+                1_000m,
+                because: "10k × 10% = 1,000 — August payment falls in the new rate's window"
+            );
         august.WhtCategoryId.Should().Be(newRate.Id);
     }
 
@@ -80,7 +93,8 @@ public class WhtPaymentDateEffectivityTests(SqlServerFixture fixture)
             ratePercent: 5m,
             effectiveFromDate: new DateOnly(2027, 1, 1),
             effectiveToDate: null,
-            applicableTo: WhtApplicableTo.SuppliersServices);
+            applicableTo: WhtApplicableTo.SuppliersServices
+        );
         db.Add(category);
         await db.SaveChangesAsync();
 
@@ -88,11 +102,17 @@ public class WhtPaymentDateEffectivityTests(SqlServerFixture fixture)
 
         // Payment in 2026 → category not yet effective → no WHT.
         var result = await service.ComputeAsync(
-            "Services-Future", new DateOnly(2026, 6, 15),
-            MoneyEgp.From(1_000m), WhtApplicableTo.SuppliersServices);
+            "Services-Future",
+            new DateOnly(2026, 6, 15),
+            MoneyEgp.From(1_000m),
+            WhtApplicableTo.SuppliersServices
+        );
 
-        result.Should().BeNull(
-            because: "no category is effective on the payment date — caller treats this as 'WHT not applicable'");
+        result
+            .Should()
+            .BeNull(
+                because: "no category is effective on the payment date — caller treats this as 'WHT not applicable'"
+            );
     }
 
     [Fact]
@@ -108,20 +128,27 @@ public class WhtPaymentDateEffectivityTests(SqlServerFixture fixture)
             ratePercent: 5m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            applicableTo: WhtApplicableTo.CustomersServices);
+            applicableTo: WhtApplicableTo.CustomersServices
+        );
         db.Add(category);
         await db.SaveChangesAsync();
 
         var service = new SqlWhtComputeService(db);
 
         var supplierSide = await service.ComputeAsync(
-            "Cust-Only", new DateOnly(2026, 6, 1),
-            MoneyEgp.From(1_000m), WhtApplicableTo.SuppliersServices);
+            "Cust-Only",
+            new DateOnly(2026, 6, 1),
+            MoneyEgp.From(1_000m),
+            WhtApplicableTo.SuppliersServices
+        );
         supplierSide.Should().BeNull();
 
         var customerSide = await service.ComputeAsync(
-            "Cust-Only", new DateOnly(2026, 6, 1),
-            MoneyEgp.From(1_000m), WhtApplicableTo.CustomersServices);
+            "Cust-Only",
+            new DateOnly(2026, 6, 1),
+            MoneyEgp.From(1_000m),
+            WhtApplicableTo.CustomersServices
+        );
         customerSide.Should().NotBeNull();
         customerSide!.RateAppliedPercent.Should().Be(5m);
     }
@@ -137,18 +164,25 @@ public class WhtPaymentDateEffectivityTests(SqlServerFixture fixture)
             ratePercent: 3m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            applicableTo: WhtApplicableTo.Both);
+            applicableTo: WhtApplicableTo.Both
+        );
         db.Add(category);
         await db.SaveChangesAsync();
 
         var service = new SqlWhtComputeService(db);
 
         var supplierSide = await service.ComputeAsync(
-            "Universal", new DateOnly(2026, 6, 1),
-            MoneyEgp.From(1_000m), WhtApplicableTo.SuppliersServices);
+            "Universal",
+            new DateOnly(2026, 6, 1),
+            MoneyEgp.From(1_000m),
+            WhtApplicableTo.SuppliersServices
+        );
         var customerSide = await service.ComputeAsync(
-            "Universal", new DateOnly(2026, 6, 1),
-            MoneyEgp.From(1_000m), WhtApplicableTo.CustomersServices);
+            "Universal",
+            new DateOnly(2026, 6, 1),
+            MoneyEgp.From(1_000m),
+            WhtApplicableTo.CustomersServices
+        );
 
         supplierSide.Should().NotBeNull();
         customerSide.Should().NotBeNull();

@@ -48,37 +48,50 @@ public class PaymentVoucherPostTests(SqlServerFixture fixture)
         var posted = await PostSalesAsync(db, customer, item, vat, user, unitPrice: 1_000m);
 
         // Create a receipt voucher with gross 1,140 + allocate the full amount.
-        var voucher = CustomerReceiptVoucher.CreateDraft(customer.Id,
-            new DateOnly(2026, 5, 9), PaymentMethod.BankTransfer, "RCV-1",
-            MoneyEgp.From(1_140m));
+        var voucher = CustomerReceiptVoucher.CreateDraft(
+            customer.Id,
+            new DateOnly(2026, 5, 9),
+            PaymentMethod.BankTransfer,
+            "RCV-1",
+            MoneyEgp.From(1_140m)
+        );
         db.Add(voucher);
         await db.SaveChangesAsync();
 
         await new AllocatePaymentHandler(db).HandleAsync(
             new AllocateCustomerReceiptCommand(voucher.Id, posted.Id, MoneyEgp.From(1_140m)),
-            CancellationToken.None);
+            CancellationToken.None
+        );
 
         // Post.
-        var postHandler = new PostCustomerReceiptVoucherHandler(db,
+        var postHandler = new PostCustomerReceiptVoucherHandler(
+            db,
             new SqlSequentialNumberAllocator(db),
             new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc)),
             new CaptureAuditLogStore(),
-            new CustomerReceiptVoucherJournalEmitter(db));
+            new CustomerReceiptVoucherJournalEmitter(db)
+        );
         var postedVoucher = await postHandler.HandleAsync(
             new PostCustomerReceiptVoucherCommand(voucher.Id, user.Id),
-            CancellationToken.None);
+            CancellationToken.None
+        );
 
         postedVoucher.State.Should().Be(DocumentState.Posted);
-        postedVoucher.DocumentNumber.Should().StartWith("CRV-2026-",
-            because: "FR-011 — sequential CRV-{year}-{n} allocated on Post");
+        postedVoucher
+            .DocumentNumber.Should()
+            .StartWith(
+                "CRV-2026-",
+                because: "FR-011 — sequential CRV-{year}-{n} allocated on Post"
+            );
 
         // GL effect: 2-line balanced JE — DR Cash 1,140 / CR AR 1,140.
         db.ChangeTracker.Clear();
-        var je = await db.Set<JournalEntry>().AsNoTracking()
+        var je = await db.Set<JournalEntry>()
+            .AsNoTracking()
             .Include(e => e.Lines)
             .FirstAsync(e => e.SourceDocumentId == postedVoucher.Id);
-        je.Lines.Should().HaveCount(2,
-            because: "Phase 9 default — no WHT, so 2-line JE (Cash + AR)");
+        je.Lines.Should()
+            .HaveCount(2, because: "Phase 9 default — no WHT, so 2-line JE (Cash + AR)");
         je.Lines.Sum(l => l.Debit.Amount).Should().Be(1_140m);
         je.Lines.Sum(l => l.Credit.Amount).Should().Be(1_140m);
 
@@ -89,12 +102,14 @@ public class PaymentVoucherPostTests(SqlServerFixture fixture)
 
         // AR open balance for the invoice = 1,140 (sales) − 1,140 (allocation) = 0.
         // (Calculation: same query the handler uses.)
-        var allocated = await db.Set<PaymentAllocation>().AsNoTracking()
+        var allocated = await db.Set<PaymentAllocation>()
+            .AsNoTracking()
             .Where(a => a.TargetDocumentId == posted.Id)
             .SumAsync(a => a.AllocatedAmount.Amount);
         var openBalance = posted.GrandTotal.Amount - allocated;
-        openBalance.Should().Be(0m,
-            because: "the receipt voucher fully closes the invoice's AR balance");
+        openBalance
+            .Should()
+            .Be(0m, because: "the receipt voucher fully closes the invoice's AR balance");
     }
 
     [Fact]
@@ -104,56 +119,77 @@ public class PaymentVoucherPostTests(SqlServerFixture fixture)
         var (supplier, vat, user) = await SeedPurchaseAsync(db);
 
         // Post a 570 purchase invoice (500 + 70 VAT, non-deductible).
-        var purchaseDraft = PurchaseInvoice.CreateDraft(supplier.Id, supplier.TaxProfile,
-            "SUP-INV-PAY", new DateOnly(2026, 5, 9));
-        purchaseDraft.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 1m, unitPrice: MoneyEgp.From(500m),
-            vatCategoryId: vat.Id, vatRatePercent: vat.RatePercent,
-            deductibleFlag: false);
+        var purchaseDraft = PurchaseInvoice.CreateDraft(
+            supplier.Id,
+            supplier.TaxProfile,
+            "SUP-INV-PAY",
+            new DateOnly(2026, 5, 9)
+        );
+        purchaseDraft.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(500m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: vat.RatePercent,
+            deductibleFlag: false
+        );
         db.Add(purchaseDraft);
         await db.SaveChangesAsync();
-        var postedPurchase = await new PostPurchaseInvoiceHandler(db,
-                new SqlSequentialNumberAllocator(db),
-                new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc)),
-                new CaptureAuditLogStore())
-            .HandleAsync(new PostPurchaseInvoiceCommand(purchaseDraft.Id, user.Id),
-                CancellationToken.None);
+        var postedPurchase = await new PostPurchaseInvoiceHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc)),
+            new CaptureAuditLogStore()
+        ).HandleAsync(
+            new PostPurchaseInvoiceCommand(purchaseDraft.Id, user.Id),
+            CancellationToken.None
+        );
 
         // Pay it.
-        var voucher = SupplierPaymentVoucher.CreateDraft(supplier.Id,
-            new DateOnly(2026, 5, 10), PaymentMethod.BankTransfer, "PAY-1",
-            MoneyEgp.From(570m));
+        var voucher = SupplierPaymentVoucher.CreateDraft(
+            supplier.Id,
+            new DateOnly(2026, 5, 10),
+            PaymentMethod.BankTransfer,
+            "PAY-1",
+            MoneyEgp.From(570m)
+        );
         db.Add(voucher);
         await db.SaveChangesAsync();
 
         await new AllocatePaymentHandler(db).HandleAsync(
             new AllocateSupplierPaymentCommand(voucher.Id, postedPurchase.Id, MoneyEgp.From(570m)),
-            CancellationToken.None);
+            CancellationToken.None
+        );
 
-        var posted = await new PostSupplierPaymentVoucherHandler(db,
-                new SqlSequentialNumberAllocator(db),
-                new TestClock(new DateTime(2026, 5, 10, 11, 0, 0, DateTimeKind.Utc)),
-                new CaptureAuditLogStore(),
-                new SupplierPaymentVoucherJournalEmitter(db))
-            .HandleAsync(new PostSupplierPaymentVoucherCommand(voucher.Id, user.Id),
-                CancellationToken.None);
+        var posted = await new PostSupplierPaymentVoucherHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            new TestClock(new DateTime(2026, 5, 10, 11, 0, 0, DateTimeKind.Utc)),
+            new CaptureAuditLogStore(),
+            new SupplierPaymentVoucherJournalEmitter(db)
+        ).HandleAsync(
+            new PostSupplierPaymentVoucherCommand(voucher.Id, user.Id),
+            CancellationToken.None
+        );
 
         posted.State.Should().Be(DocumentState.Posted);
         posted.DocumentNumber.Should().StartWith("SPV-2026-");
 
         db.ChangeTracker.Clear();
-        var je = await db.Set<JournalEntry>().AsNoTracking()
+        var je = await db.Set<JournalEntry>()
+            .AsNoTracking()
             .Include(e => e.Lines)
             .FirstAsync(e => e.SourceDocumentId == posted.Id);
-        je.Lines.Should().HaveCount(2,
-            because: "Phase 9 — no WHT split yet; 2-line JE (AP + Cash)");
+        je.Lines.Should()
+            .HaveCount(2, because: "Phase 9 — no WHT split yet; 2-line JE (AP + Cash)");
 
         var ap = je.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.AccountsPayable);
         var cash = je.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.Cash);
-        ap.Debit.Amount.Should().Be(570m,
-            because: "settle the AP raised by the purchase invoice posting");
-        cash.Credit.Amount.Should().Be(570m,
-            because: "Phase 9 — full gross goes to cash leg (no WHT withheld)");
+        ap.Debit.Amount.Should()
+            .Be(570m, because: "settle the AP raised by the purchase invoice posting");
+        cash.Credit.Amount.Should()
+            .Be(570m, because: "Phase 9 — full gross goes to cash leg (no WHT withheld)");
     }
 
     [Fact]
@@ -166,100 +202,156 @@ public class PaymentVoucherPostTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var (supplier, vat, user) = await SeedPurchaseAsync(db);
 
-        var purchaseDraft = PurchaseInvoice.CreateDraft(supplier.Id, supplier.TaxProfile,
-            "SUP-INV-WHT", new DateOnly(2026, 5, 9));
-        purchaseDraft.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 1m, unitPrice: MoneyEgp.From(10_000m),
-            vatCategoryId: vat.Id, vatRatePercent: 0m,
-            deductibleFlag: false);
+        var purchaseDraft = PurchaseInvoice.CreateDraft(
+            supplier.Id,
+            supplier.TaxProfile,
+            "SUP-INV-WHT",
+            new DateOnly(2026, 5, 9)
+        );
+        purchaseDraft.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(10_000m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: 0m,
+            deductibleFlag: false
+        );
         db.Add(purchaseDraft);
         await db.SaveChangesAsync();
-        var postedPurchase = await new PostPurchaseInvoiceHandler(db,
-                new SqlSequentialNumberAllocator(db),
-                new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc)),
-                new CaptureAuditLogStore())
-            .HandleAsync(new PostPurchaseInvoiceCommand(purchaseDraft.Id, user.Id),
-                CancellationToken.None);
+        var postedPurchase = await new PostPurchaseInvoiceHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc)),
+            new CaptureAuditLogStore()
+        ).HandleAsync(
+            new PostPurchaseInvoiceCommand(purchaseDraft.Id, user.Id),
+            CancellationToken.None
+        );
 
-        var voucher = SupplierPaymentVoucher.CreateDraft(supplier.Id,
-            new DateOnly(2026, 5, 10), PaymentMethod.BankTransfer, "PAY-WHT",
-            MoneyEgp.From(10_000m));
+        var voucher = SupplierPaymentVoucher.CreateDraft(
+            supplier.Id,
+            new DateOnly(2026, 5, 10),
+            PaymentMethod.BankTransfer,
+            "PAY-WHT",
+            MoneyEgp.From(10_000m)
+        );
         // Apply 5% WHT split (500 EGP withheld, 9,500 cash leg).
         voucher.ApplyWhtSplit(MoneyEgp.From(500m), Guid.NewGuid());
         db.Add(voucher);
         await db.SaveChangesAsync();
 
         await new AllocatePaymentHandler(db).HandleAsync(
-            new AllocateSupplierPaymentCommand(voucher.Id, postedPurchase.Id, MoneyEgp.From(10_000m)),
-            CancellationToken.None);
+            new AllocateSupplierPaymentCommand(
+                voucher.Id,
+                postedPurchase.Id,
+                MoneyEgp.From(10_000m)
+            ),
+            CancellationToken.None
+        );
 
-        var posted = await new PostSupplierPaymentVoucherHandler(db,
-                new SqlSequentialNumberAllocator(db),
-                new TestClock(new DateTime(2026, 5, 10, 11, 0, 0, DateTimeKind.Utc)),
-                new CaptureAuditLogStore(),
-                new SupplierPaymentVoucherJournalEmitter(db))
-            .HandleAsync(new PostSupplierPaymentVoucherCommand(voucher.Id, user.Id),
-                CancellationToken.None);
+        var posted = await new PostSupplierPaymentVoucherHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            new TestClock(new DateTime(2026, 5, 10, 11, 0, 0, DateTimeKind.Utc)),
+            new CaptureAuditLogStore(),
+            new SupplierPaymentVoucherJournalEmitter(db)
+        ).HandleAsync(
+            new PostSupplierPaymentVoucherCommand(voucher.Id, user.Id),
+            CancellationToken.None
+        );
 
         db.ChangeTracker.Clear();
-        var je = await db.Set<JournalEntry>().AsNoTracking()
+        var je = await db.Set<JournalEntry>()
+            .AsNoTracking()
             .Include(e => e.Lines)
             .FirstAsync(e => e.SourceDocumentId == posted.Id);
-        je.Lines.Should().HaveCount(3,
-            because: "WHT split → 3-line JE (DR AP / CR Cash / CR WhtPayable)");
+        je.Lines.Should()
+            .HaveCount(3, because: "WHT split → 3-line JE (DR AP / CR Cash / CR WhtPayable)");
 
         var ap = je.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.AccountsPayable);
         var cash = je.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.Cash);
         var wht = je.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.WhtPayable);
         ap.Debit.Amount.Should().Be(10_000m);
-        cash.Credit.Amount.Should().Be(9_500m,
-            because: "net cash = gross 10k − WHT 500");
+        cash.Credit.Amount.Should().Be(9_500m, because: "net cash = gross 10k − WHT 500");
         wht.Credit.Amount.Should().Be(500m);
     }
 
     private static async Task<SalesInvoice> PostSalesAsync(
-        AppDbContext db, Customer customer, Item item, VatCategory vat, User user, decimal unitPrice)
+        AppDbContext db,
+        Customer customer,
+        Item item,
+        VatCategory vat,
+        User user,
+        decimal unitPrice
+    )
     {
-        var draft = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 9));
+        var draft = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 9)
+        );
         draft.AddLine(item.Id, 1m, MoneyEgp.From(unitPrice), vat.Id, vat.RatePercent);
         db.Add(draft);
         await db.SaveChangesAsync();
 
         var clock = new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc));
         var emitter = new SalesInvoiceJournalEmitter(db);
-        var handler = new PostSalesInvoiceHandler(db,
-            new SqlSequentialNumberAllocator(db), clock,
-            new CaptureAuditLogStore(), emitter);
+        var handler = new PostSalesInvoiceHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            clock,
+            new CaptureAuditLogStore(),
+            emitter
+        );
         return await handler.HandleAsync(
-            new PostSalesInvoiceCommand(draft.Id, user.Id), CancellationToken.None);
+            new PostSalesInvoiceCommand(draft.Id, user.Id),
+            CancellationToken.None
+        );
     }
 
     private static async Task<(Customer, Item, VatCategory, User)> SeedSalesAsync(AppDbContext db)
     {
         var vat = new VatCategory(
-            code: "Standard", name: new ArabicEnglishText("قياسي", "Standard"),
-            ratePercent: 14m, effectiveFromDate: new DateOnly(2026, 1, 1),
-            effectiveToDate: null, recoverableInputVat: true);
+            code: "Standard",
+            name: new ArabicEnglishText("قياسي", "Standard"),
+            ratePercent: 14m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: true
+        );
         var customer = new Customer(
             code: $"CUS-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("عميل", "Customer"),
             address: PostalAddress.Create(
                 new ArabicEnglishText("القاهرة", "Cairo"),
-                "Cairo", "Downtown", "Tahrir", "1"),
+                "Cairo",
+                "Downtown",
+                "Tahrir",
+                "1"
+            ),
             taxProfile: CustomerTaxProfile.B2BRegistered(
                 EgyptianTin.Parse("987654321"),
-                vatExemption: false, defaultSalesVatCategoryId: vat.Id));
+                vatExemption: false,
+                defaultSalesVatCategoryId: vat.Id
+            )
+        );
         var item = new Item(
             code: $"IT-{Guid.NewGuid():N}".Substring(0, 8),
             name: new ArabicEnglishText("بند", "Item"),
-            defaultVatCategoryId: vat.Id);
+            defaultVatCategoryId: vat.Id
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        db.Add(vat); db.Add(customer); db.Add(item); db.Add(user);
+            passwordMustChange: false
+        );
+        db.Add(vat);
+        db.Add(customer);
+        db.Add(item);
+        db.Add(user);
         await db.SaveChangesAsync();
         return (customer, item, vat, user);
     }
@@ -267,21 +359,32 @@ public class PaymentVoucherPostTests(SqlServerFixture fixture)
     private static async Task<(Supplier, VatCategory, User)> SeedPurchaseAsync(AppDbContext db)
     {
         var vat = new VatCategory(
-            code: "Standard", name: new ArabicEnglishText("قياسي", "Standard"),
-            ratePercent: 14m, effectiveFromDate: new DateOnly(2026, 1, 1),
-            effectiveToDate: null, recoverableInputVat: true);
+            code: "Standard",
+            name: new ArabicEnglishText("قياسي", "Standard"),
+            ratePercent: 14m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: true
+        );
         var supplier = new Supplier(
             code: $"SUP-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("مورد", "Supplier"),
             address: new ArabicEnglishText("القاهرة", "Cairo"),
-            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("123456789"), vat.Id));
+            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(
+                EgyptianTin.Parse("123456789"),
+                vat.Id
+            )
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        db.Add(vat); db.Add(supplier); db.Add(user);
+            passwordMustChange: false
+        );
+        db.Add(vat);
+        db.Add(supplier);
+        db.Add(user);
         await db.SaveChangesAsync();
         return (supplier, vat, user);
     }
@@ -294,15 +397,27 @@ public class PaymentVoucherPostTests(SqlServerFixture fixture)
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
         public List<AuditLogPayload> Captured { get; } = [];
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
-            return Task.FromResult(new AuditLogEntry(
-                index: Captured.Count, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]));
+            return Task.FromResult(
+                new AuditLogEntry(
+                    index: Captured.Count,
+                    tsUtc: DateTime.UtcNow,
+                    actorUserId: payload.ActorUserId,
+                    actorFirmName: payload.ActorFirmName,
+                    companyId: payload.CompanyId,
+                    kind: payload.Kind,
+                    payloadJson: payload.PayloadJson,
+                    prevHash: new byte[32],
+                    thisHash: new byte[32]
+                )
+            );
         }
     }
 }

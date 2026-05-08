@@ -21,20 +21,23 @@ public static class GeneralJournalListingPdfRenderer
         DateTime PostedAtUtc,
         string SourceDocumentNumber,
         DocumentType SourceDocumentType,
-        IReadOnlyList<LineRow> Lines);
+        IReadOnlyList<LineRow> Lines
+    );
 
     public sealed record LineRow(
         string AccountCode,
         decimal Debit,
         decimal Credit,
-        string Description);
+        string Description
+    );
 
     public static byte[] Render(
         Company company,
         DateOnly periodStart,
         DateOnly periodEnd,
         DateTime generatedAtUtc,
-        IReadOnlyList<EntryRow> entries)
+        IReadOnlyList<EntryRow> entries
+    )
     {
         ArgumentNullException.ThrowIfNull(entries);
         return RegisterPageShell.Render(
@@ -44,7 +47,8 @@ public static class GeneralJournalListingPdfRenderer
             periodStart: periodStart,
             periodEnd: periodEnd,
             generatedAtUtc: generatedAtUtc,
-            renderBody: c => RenderBody(c, entries));
+            renderBody: c => RenderBody(c, entries)
+        );
     }
 
     private static void RenderBody(IContainer container, IReadOnlyList<EntryRow> entries)
@@ -69,46 +73,64 @@ public static class GeneralJournalListingPdfRenderer
     {
         container.Column(col =>
         {
-            col.Item().Row(row =>
-            {
-                row.RelativeItem().Text($"{e.SourceDocumentType} • {e.SourceDocumentNumber}").Bold();
-                row.RelativeItem().AlignRight().Text(
-                    $"Posted (UTC): {e.PostedAtUtc.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)}").FontSize(8);
-            });
-
-            col.Item().Element(c => c.Table(table =>
-            {
-                table.ColumnsDefinition(cd =>
+            col.Item()
+                .Row(row =>
                 {
-                    cd.ConstantColumn(80);  // account
-                    cd.RelativeColumn();    // description
-                    cd.ConstantColumn(70);  // debit
-                    cd.ConstantColumn(70);  // credit
+                    row.RelativeItem()
+                        .Text($"{e.SourceDocumentType} • {e.SourceDocumentNumber}")
+                        .Bold();
+                    row.RelativeItem()
+                        .AlignRight()
+                        .Text(
+                            $"Posted (UTC): {e.PostedAtUtc.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)}"
+                        )
+                        .FontSize(8);
                 });
 
-                table.Header(h =>
-                {
-                    h.Cell().Text("Account").Bold().FontSize(8);
-                    h.Cell().Text("Description").Bold().FontSize(8);
-                    h.Cell().AlignRight().Text("Debit").Bold().FontSize(8);
-                    h.Cell().AlignRight().Text("Credit").Bold().FontSize(8);
-                });
+            col.Item()
+                .Element(c =>
+                    c.Table(table =>
+                    {
+                        table.ColumnsDefinition(cd =>
+                        {
+                            cd.ConstantColumn(80); // account
+                            cd.RelativeColumn(); // description
+                            cd.ConstantColumn(70); // debit
+                            cd.ConstantColumn(70); // credit
+                        });
 
-                foreach (var l in e.Lines)
-                {
-                    table.Cell().Text(l.AccountCode);
-                    table.Cell().Text(l.Description).FontSize(8);
-                    table.Cell().AlignRight().Text(
-                        l.Debit > 0m ? RegisterPageShell.Money(l.Debit) : "");
-                    table.Cell().AlignRight().Text(
-                        l.Credit > 0m ? RegisterPageShell.Money(l.Credit) : "");
-                }
-            }));
+                        table.Header(h =>
+                        {
+                            h.Cell().Text("Account").Bold().FontSize(8);
+                            h.Cell().Text("Description").Bold().FontSize(8);
+                            h.Cell().AlignRight().Text("Debit").Bold().FontSize(8);
+                            h.Cell().AlignRight().Text("Credit").Bold().FontSize(8);
+                        });
+
+                        foreach (var l in e.Lines)
+                        {
+                            table.Cell().Text(l.AccountCode);
+                            table.Cell().Text(l.Description).FontSize(8);
+                            table
+                                .Cell()
+                                .AlignRight()
+                                .Text(l.Debit > 0m ? RegisterPageShell.Money(l.Debit) : "");
+                            table
+                                .Cell()
+                                .AlignRight()
+                                .Text(l.Credit > 0m ? RegisterPageShell.Money(l.Credit) : "");
+                        }
+                    })
+                );
 
             var debits = e.Lines.Sum(l => l.Debit);
             var credits = e.Lines.Sum(l => l.Credit);
-            col.Item().AlignRight().Text(
-                $"Σ Debit {RegisterPageShell.Money(debits)} • Σ Credit {RegisterPageShell.Money(credits)}").FontSize(8);
+            col.Item()
+                .AlignRight()
+                .Text(
+                    $"Σ Debit {RegisterPageShell.Money(debits)} • Σ Credit {RegisterPageShell.Money(credits)}"
+                )
+                .FontSize(8);
             col.Item().LineHorizontal(0.25f);
         });
     }
@@ -117,13 +139,24 @@ public static class GeneralJournalListingPdfRenderer
     {
         var debits = entries.SelectMany(e => e.Lines).Sum(l => l.Debit);
         var credits = entries.SelectMany(e => e.Lines).Sum(l => l.Credit);
-        container.AlignRight().Column(col =>
-        {
-            col.Item().AlignRight().Text($"Total debits: {RegisterPageShell.Money(debits)} EGP").Bold();
-            col.Item().AlignRight().Text($"Total credits: {RegisterPageShell.Money(credits)} EGP").Bold();
-            col.Item().AlignRight().Text(
-                $"Balanced: {(debits == credits ? "YES" : "NO — INVESTIGATE")}").Bold().FontSize(11);
-            col.Item().AlignRight().Text($"Entries: {entries.Count}").FontSize(9);
-        });
+        container
+            .AlignRight()
+            .Column(col =>
+            {
+                col.Item()
+                    .AlignRight()
+                    .Text($"Total debits: {RegisterPageShell.Money(debits)} EGP")
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text($"Total credits: {RegisterPageShell.Money(credits)} EGP")
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text($"Balanced: {(debits == credits ? "YES" : "NO — INVESTIGATE")}")
+                    .Bold()
+                    .FontSize(11);
+                col.Item().AlignRight().Text($"Entries: {entries.Count}").FontSize(9);
+            });
     }
 }

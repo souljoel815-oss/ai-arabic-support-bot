@@ -24,22 +24,27 @@ public class AuditAppendOnlyTriggerTests(SqlServerFixture fixture)
     {
         await using var db = await _fixture.CreateContextAsync();
         var store = new SqlAuditLogStore(db);
-        await store.AppendAsync(new AuditLogPayload(
-            Kind: "Test",
-            ActorUserId: Guid.NewGuid(),
-            ActorFirmName: null,
-            CompanyId: Guid.NewGuid(),
-            PayloadJson: """{"x":1}"""));
+        await store.AppendAsync(
+            new AuditLogPayload(
+                Kind: "Test",
+                ActorUserId: Guid.NewGuid(),
+                ActorFirmName: null,
+                CompanyId: Guid.NewGuid(),
+                PayloadJson: """{"x":1}"""
+            )
+        );
 
         var appConn = AppNamedConnection(db);
         await using var conn = new SqlConnection(appConn);
         await conn.OpenAsync();
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE [audit].[audit_log] SET [payload_json] = '{\"x\":2}' WHERE [index] = 1";
+        cmd.CommandText =
+            "UPDATE [audit].[audit_log] SET [payload_json] = '{\"x\":2}' WHERE [index] = 1";
 
         var act = async () => await cmd.ExecuteNonQueryAsync();
 
-        await act.Should().ThrowAsync<SqlException>()
+        await act.Should()
+            .ThrowAsync<SqlException>()
             .Where(ex => ex.Message.Contains("append-only", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -48,12 +53,15 @@ public class AuditAppendOnlyTriggerTests(SqlServerFixture fixture)
     {
         await using var db = await _fixture.CreateContextAsync();
         var store = new SqlAuditLogStore(db);
-        await store.AppendAsync(new AuditLogPayload(
-            Kind: "Test",
-            ActorUserId: Guid.NewGuid(),
-            ActorFirmName: null,
-            CompanyId: Guid.NewGuid(),
-            PayloadJson: """{"x":1}"""));
+        await store.AppendAsync(
+            new AuditLogPayload(
+                Kind: "Test",
+                ActorUserId: Guid.NewGuid(),
+                ActorFirmName: null,
+                CompanyId: Guid.NewGuid(),
+                PayloadJson: """{"x":1}"""
+            )
+        );
 
         var appConn = AppNamedConnection(db);
         await using var conn = new SqlConnection(appConn);
@@ -63,7 +71,8 @@ public class AuditAppendOnlyTriggerTests(SqlServerFixture fixture)
 
         var act = async () => await cmd.ExecuteNonQueryAsync();
 
-        await act.Should().ThrowAsync<SqlException>()
+        await act.Should()
+            .ThrowAsync<SqlException>()
             .Where(ex => ex.Message.Contains("append-only", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -75,15 +84,19 @@ public class AuditAppendOnlyTriggerTests(SqlServerFixture fixture)
         // tooling) can still mutate the audit table.
         await using var db = await _fixture.CreateContextAsync();
         var store = new SqlAuditLogStore(db);
-        await store.AppendAsync(new AuditLogPayload(
-            Kind: "Test",
-            ActorUserId: Guid.NewGuid(),
-            ActorFirmName: null,
-            CompanyId: Guid.NewGuid(),
-            PayloadJson: """{"x":1}"""));
+        await store.AppendAsync(
+            new AuditLogPayload(
+                Kind: "Test",
+                ActorUserId: Guid.NewGuid(),
+                ActorFirmName: null,
+                CompanyId: Guid.NewGuid(),
+                PayloadJson: """{"x":1}"""
+            )
+        );
 
         var rows = await db.Database.ExecuteSqlRawAsync(
-            "UPDATE [audit].[audit_log] SET [payload_json] = '{{\"x\":2}}' WHERE [index] = 1");
+            "UPDATE [audit].[audit_log] SET [payload_json] = '{{\"x\":2}}' WHERE [index] = 1"
+        );
 
         rows.Should().Be(1);
     }

@@ -49,31 +49,40 @@ public sealed class GenerateForm41Handler
     }
 
     public async Task<GenerateForm41Result> HandleAsync(
-        GenerateForm41Command command, CancellationToken cancellationToken = default)
+        GenerateForm41Command command,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
         if (command.Quarter is < 1 or > 4)
         {
-            throw new ArgumentOutOfRangeException(nameof(command),
-                $"Quarter {command.Quarter} must be 1, 2, 3, or 4.");
+            throw new ArgumentOutOfRangeException(
+                nameof(command),
+                $"Quarter {command.Quarter} must be 1, 2, 3, or 4."
+            );
         }
 
-        var company = await _db.Set<Company>().AsNoTracking()
-            .FirstOrDefaultAsync(cancellationToken)
+        var company =
+            await _db.Set<Company>().AsNoTracking().FirstOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException(
-                "No Company row exists. Seed the company profile before generating Form 41.");
+                "No Company row exists. Seed the company profile before generating Form 41."
+            );
 
         // Refuse a duplicate generation — the unique index would
         // also catch it on Save, but failing here gives a friendlier
         // error.
-        var existing = await _db.Set<Form41Filing>().AsNoTracking()
-            .AnyAsync(f => f.FiscalYear == command.FiscalYear && f.Quarter == command.Quarter,
-                cancellationToken);
+        var existing = await _db.Set<Form41Filing>()
+            .AsNoTracking()
+            .AnyAsync(
+                f => f.FiscalYear == command.FiscalYear && f.Quarter == command.Quarter,
+                cancellationToken
+            );
         if (existing)
         {
             throw new InvalidOperationException(
-                $"Form 41 for {command.FiscalYear}-Q{command.Quarter} has already been generated. " +
-                "Each quarter has exactly one canonical filing per FR-046.");
+                $"Form 41 for {command.FiscalYear}-Q{command.Quarter} has already been generated. "
+                    + "Each quarter has exactly one canonical filing per FR-046."
+            );
         }
 
         var (periodStart, periodEnd) = QuarterDates(command.FiscalYear, command.Quarter);
@@ -82,11 +91,16 @@ public sealed class GenerateForm41Handler
         // that haven't been stamped into a prior filing already
         // (FR-046 / US7 scenario 3 immutability — once a cert is
         // included in a Filed Form 41, it never appears in another).
-        var certs = await _db.Set<WhtCertificate>().AsNoTracking()
-            .Where(c => c.Direction == WhtCertificateDirection.OutboundToSupplier
-                && c.Date >= periodStart && c.Date <= periodEnd
-                && c.IncludedInForm41FilingId == null)
-            .OrderBy(c => c.Date).ThenBy(c => c.CertificateNumber)
+        var certs = await _db.Set<WhtCertificate>()
+            .AsNoTracking()
+            .Where(c =>
+                c.Direction == WhtCertificateDirection.OutboundToSupplier
+                && c.Date >= periodStart
+                && c.Date <= periodEnd
+                && c.IncludedInForm41FilingId == null
+            )
+            .OrderBy(c => c.Date)
+            .ThenBy(c => c.CertificateNumber)
             .ToListAsync(cancellationToken);
 
         // Resolve supplier + voucher + invoice + category lookups
@@ -96,42 +110,50 @@ public sealed class GenerateForm41Handler
         var invoiceIds = certs.Select(c => c.SourceInvoiceId).Distinct().ToArray();
         var categoryIds = certs.Select(c => c.WhtCategoryId).Distinct().ToArray();
 
-        var suppliers = await _db.Set<Supplier>().AsNoTracking()
+        var suppliers = await _db.Set<Supplier>()
+            .AsNoTracking()
             .Where(s => supplierIds.Contains(s.Id))
             .ToDictionaryAsync(s => s.Id, cancellationToken);
-        var vouchers = await _db.Set<SupplierPaymentVoucher>().AsNoTracking()
+        var vouchers = await _db.Set<SupplierPaymentVoucher>()
+            .AsNoTracking()
             .Where(v => voucherIds.Contains(v.Id))
             .ToDictionaryAsync(v => v.Id, cancellationToken);
-        var invoices = await _db.Set<PurchaseInvoice>().AsNoTracking()
+        var invoices = await _db.Set<PurchaseInvoice>()
+            .AsNoTracking()
             .Where(i => invoiceIds.Contains(i.Id))
             .ToDictionaryAsync(i => i.Id, cancellationToken);
-        var categories = await _db.Set<WhtCategory>().AsNoTracking()
+        var categories = await _db.Set<WhtCategory>()
+            .AsNoTracking()
             .Where(c => categoryIds.Contains(c.Id))
             .ToDictionaryAsync(c => c.Id, cancellationToken);
 
-        var lines = certs.Select(cert =>
-        {
-            suppliers.TryGetValue(cert.CounterpartyId, out var supplier);
-            vouchers.TryGetValue(cert.SourceVoucherId, out var voucher);
-            invoices.TryGetValue(cert.SourceInvoiceId, out var invoice);
-            categories.TryGetValue(cert.WhtCategoryId, out var category);
+        var lines = certs
+            .Select(cert =>
+            {
+                suppliers.TryGetValue(cert.CounterpartyId, out var supplier);
+                vouchers.TryGetValue(cert.SourceVoucherId, out var voucher);
+                invoices.TryGetValue(cert.SourceInvoiceId, out var invoice);
+                categories.TryGetValue(cert.WhtCategoryId, out var category);
 
-            return new Form41Line(
-                SupplierTin: supplier?.TaxProfile.TinValue
-                    ?? throw new InvalidOperationException(
-                        $"Supplier {cert.CounterpartyId} on cert {cert.Id} has no TIN; cannot include in Form 41."),
-                SupplierName: supplier is null
-                    ? new BilingualText("(unknown)", "(unknown)")
-                    : new BilingualText(supplier.Name.Arabic, supplier.Name.English),
-                WhtCategoryCode: category?.Code ?? "(unknown)",
-                RateAppliedPercent: cert.RateAppliedPercent,
-                GrossPaymentTotal: voucher?.GrossPaymentAmount.Amount ?? 0m,
-                AmountWithheld: cert.AmountWithheld.Amount,
-                SupplierPaymentVoucherNumber: voucher?.DocumentNumber ?? "(unknown)",
-                SupplierPaymentVoucherDate: voucher?.PaymentDate ?? cert.Date,
-                SourceInvoiceNumber: invoice?.DocumentNumber ?? "(unknown)",
-                OutboundCertificateNumber: cert.CertificateNumber);
-        }).ToList();
+                return new Form41Line(
+                    SupplierTin: supplier?.TaxProfile.TinValue
+                        ?? throw new InvalidOperationException(
+                            $"Supplier {cert.CounterpartyId} on cert {cert.Id} has no TIN; cannot include in Form 41."
+                        ),
+                    SupplierName: supplier is null
+                        ? new BilingualText("(unknown)", "(unknown)")
+                        : new BilingualText(supplier.Name.Arabic, supplier.Name.English),
+                    WhtCategoryCode: category?.Code ?? "(unknown)",
+                    RateAppliedPercent: cert.RateAppliedPercent,
+                    GrossPaymentTotal: voucher?.GrossPaymentAmount.Amount ?? 0m,
+                    AmountWithheld: cert.AmountWithheld.Amount,
+                    SupplierPaymentVoucherNumber: voucher?.DocumentNumber ?? "(unknown)",
+                    SupplierPaymentVoucherDate: voucher?.PaymentDate ?? cert.Date,
+                    SourceInvoiceNumber: invoice?.DocumentNumber ?? "(unknown)",
+                    OutboundCertificateNumber: cert.CertificateNumber
+                );
+            })
+            .ToList();
 
         // Per-category roll-up.
         var byCategory = lines
@@ -139,7 +161,8 @@ public sealed class GenerateForm41Handler
             .Select(g => new Form41ByCategoryRow(
                 WhtCategoryCode: g.Key,
                 LineCount: g.Count(),
-                AmountWithheld: g.Sum(x => x.AmountWithheld)))
+                AmountWithheld: g.Sum(x => x.AmountWithheld)
+            ))
             .OrderBy(c => c.WhtCategoryCode, StringComparer.Ordinal)
             .ToList();
 
@@ -157,15 +180,21 @@ public sealed class GenerateForm41Handler
         var fromJournalEntries = await (
             from e in _db.Set<JournalEntry>().AsNoTracking()
             from l in e.Lines
-            where e.PostedAtUtc >= startUtc && e.PostedAtUtc < endExclusive
+            where
+                e.PostedAtUtc >= startUtc
+                && e.PostedAtUtc < endExclusive
                 && l.AccountCode == ChartOfAccountCodes.WhtPayable
-            select l.Credit.Amount - l.Debit.Amount).SumAsync(cancellationToken);
+            select l.Credit.Amount - l.Debit.Amount
+        ).SumAsync(cancellationToken);
         var fromJournalVouchers = await (
             from v in _db.Set<JournalVoucher>().AsNoTracking()
             from l in v.Lines
-            where v.Date >= periodStart && v.Date <= periodEnd
+            where
+                v.Date >= periodStart
+                && v.Date <= periodEnd
                 && l.AccountCode == ChartOfAccountCodes.WhtPayable
-            select l.Credit.Amount - l.Debit.Amount).SumAsync(cancellationToken);
+            select l.Credit.Amount - l.Debit.Amount
+        ).SumAsync(cancellationToken);
         var whtPayableAccrued = fromJournalEntries + fromJournalVouchers;
 
         var matches = whtPayableAccrued == totalWithheld;
@@ -176,9 +205,14 @@ public sealed class GenerateForm41Handler
         // Build the payload BEFORE computing its hash so the audit
         // chain extract ref points at the immutable JSON bytes.
         var auditExtractRef = new Form41AuditChainExtractRef(
-            StartIndex: 0,  // placeholder — full audit-extract wiring lands in batch 4b
+            StartIndex: 0, // placeholder — full audit-extract wiring lands in batch 4b
             EndIndex: 0,
-            ExtractSha256: ComputePlaceholderHash(command.FiscalYear, command.Quarter, totalWithheld));
+            ExtractSha256: ComputePlaceholderHash(
+                command.FiscalYear,
+                command.Quarter,
+                totalWithheld
+            )
+        );
 
         var payload = new Form41Payload(
             FilingHeader: new Form41Header(
@@ -189,18 +223,22 @@ public sealed class GenerateForm41Handler
                 FillingPeriodStart: periodStart,
                 FillingPeriodEnd: periodEnd,
                 PreparedAt: nowUtc,
-                PreparedByUserId: command.PreparedByUserId),
+                PreparedByUserId: command.PreparedByUserId
+            ),
             Lines: lines,
             Totals: new Form41Totals(
                 LineCount: lines.Count,
                 TotalGrossPayment: totalGross,
                 TotalAmountWithheld: totalWithheld,
-                ByCategory: byCategory),
+                ByCategory: byCategory
+            ),
             Reconciliation: new Form41Reconciliation(
                 WhtPayableAccountBalanceAtPeriodEnd: whtPayableAccrued,
                 MatchesTotalAmountWithheld: matches,
-                DiscrepancyAmount: discrepancy),
-            AuditChainExtractRef: auditExtractRef);
+                DiscrepancyAmount: discrepancy
+            ),
+            AuditChainExtractRef: auditExtractRef
+        );
 
         // Persist a Form41Filing row (Unfiled) so the lifecycle
         // dashboard sees it. PDF + JSON file paths are stubbed to
@@ -213,8 +251,11 @@ public sealed class GenerateForm41Handler
             generatedAtUtc: nowUtc,
             pdfPath: "",
             structuredJsonPath: "",
-            totalWhtPayable: MoneyEgp.From(decimal.Round(totalWithheld, 2, MidpointRounding.ToEven)),
-            lineCount: lines.Count);
+            totalWhtPayable: MoneyEgp.From(
+                decimal.Round(totalWithheld, 2, MidpointRounding.ToEven)
+            ),
+            lineCount: lines.Count
+        );
         _db.Add(filing);
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -228,8 +269,7 @@ public sealed class GenerateForm41Handler
         var startMonth = (quarter - 1) * 3 + 1;
         var endMonth = startMonth + 2;
         var start = new DateOnly(fiscalYear, startMonth, 1);
-        var end = new DateOnly(fiscalYear, endMonth,
-            DateTime.DaysInMonth(fiscalYear, endMonth));
+        var end = new DateOnly(fiscalYear, endMonth, DateTime.DaysInMonth(fiscalYear, endMonth));
         return (start, end);
     }
 
@@ -240,7 +280,8 @@ public sealed class GenerateForm41Handler
     /// test even before the real extract lands.</summary>
     private static string ComputePlaceholderHash(int year, int quarter, decimal totalWithheld)
     {
-        var input = $"form41|{year}|{quarter}|{totalWithheld.ToString("F2", CultureInfo.InvariantCulture)}";
+        var input =
+            $"form41|{year}|{quarter}|{totalWithheld.ToString("F2", CultureInfo.InvariantCulture)}";
         var bytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(input));
 #pragma warning disable CA1308
         return Convert.ToHexString(bytes).ToLowerInvariant();

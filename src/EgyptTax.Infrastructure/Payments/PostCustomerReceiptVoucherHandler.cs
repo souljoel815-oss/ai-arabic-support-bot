@@ -39,7 +39,8 @@ public sealed class PostCustomerReceiptVoucherHandler
         IClock clock,
         IAuditLogStore auditLog,
         ICustomerReceiptVoucherJournalEmitter? journalEmitter = null,
-        IWhtComputeService? whtCompute = null)
+        IWhtComputeService? whtCompute = null
+    )
     {
         _db = db;
         _allocator = allocator;
@@ -51,19 +52,28 @@ public sealed class PostCustomerReceiptVoucherHandler
 
     public async Task<CustomerReceiptVoucher> HandleAsync(
         PostCustomerReceiptVoucherCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var voucher = await _db.Set<CustomerReceiptVoucher>()
-            .Include(v => v.Allocations)
-            .FirstOrDefaultAsync(v => v.Id == command.CustomerReceiptVoucherId, cancellationToken)
+        var voucher =
+            await _db.Set<CustomerReceiptVoucher>()
+                .Include(v => v.Allocations)
+                .FirstOrDefaultAsync(
+                    v => v.Id == command.CustomerReceiptVoucherId,
+                    cancellationToken
+                )
             ?? throw new InvalidOperationException(
-                $"CustomerReceiptVoucher {command.CustomerReceiptVoucherId} not found.");
+                $"CustomerReceiptVoucher {command.CustomerReceiptVoucherId} not found."
+            );
 
         var fiscalYear = voucher.ReceiptDate.Year;
         var documentNumber = await _allocator.AllocateAsync(
-            DocumentType.CustomerReceiptVoucher, fiscalYear, cancellationToken);
+            DocumentType.CustomerReceiptVoucher,
+            fiscalYear,
+            cancellationToken
+        );
 
         var nowUtc = _clock.UtcNow;
 
@@ -76,23 +86,29 @@ public sealed class PostCustomerReceiptVoucherHandler
         // it computes is informational here — the customer's number
         // is what hits the books).
         WhtCertificate? cert = null;
-        if (command.CustomerWhtCertificateNumber is not null
+        if (
+            command.CustomerWhtCertificateNumber is not null
             && command.CustomerWhtAmount is { } amount
             && command.WhtCategoryCode is not null
             && command.WhtSourceInvoiceId is { } invoiceId
-            && _whtCompute is not null)
+            && _whtCompute is not null
+        )
         {
             // Resolve the category for audit (we record its id on the
             // certificate row); the amount on the cert is the
             // customer-supplied number.
             var compute = await _whtCompute.ComputeAsync(
-                command.WhtCategoryCode, voucher.ReceiptDate,
-                voucher.GrossReceiptAmount, WhtApplicableTo.CustomersServices,
-                cancellationToken);
+                command.WhtCategoryCode,
+                voucher.ReceiptDate,
+                voucher.GrossReceiptAmount,
+                WhtApplicableTo.CustomersServices,
+                cancellationToken
+            );
             if (compute is null)
             {
                 throw new InvalidOperationException(
-                    $"WHT category '{command.WhtCategoryCode}' is not effective on receipt date {voucher.ReceiptDate:yyyy-MM-dd} for CustomersServices direction.");
+                    $"WHT category '{command.WhtCategoryCode}' is not effective on receipt date {voucher.ReceiptDate:yyyy-MM-dd} for CustomersServices direction."
+                );
             }
             cert = new WhtCertificate(
                 direction: WhtCertificateDirection.InboundFromCustomer,
@@ -104,7 +120,8 @@ public sealed class PostCustomerReceiptVoucherHandler
                 rateAppliedPercent: compute.RateAppliedPercent,
                 amountWithheld: MoneyEgp.From(amount),
                 certificateNumber: command.CustomerWhtCertificateNumber,
-                issuedAtUtc: nowUtc);
+                issuedAtUtc: nowUtc
+            );
             _db.Add(cert);
             voucher.ApplyCustomerWhtCertificate(MoneyEgp.From(amount), cert.Id);
         }
@@ -122,9 +139,12 @@ public sealed class PostCustomerReceiptVoucherHandler
             new AuditLogPayload(
                 Kind: "customer_receipt_voucher.posted",
                 ActorUserId: command.PostedByUserId,
-                ActorFirmName: null, CompanyId: Guid.Empty,
-                PayloadJson: BuildPayloadJson(voucher)),
-            cancellationToken);
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: BuildPayloadJson(voucher)
+            ),
+            cancellationToken
+        );
 
         return voucher;
     }

@@ -27,8 +27,9 @@ public class NtpHealthCheckJobTests
 
         await job.RunOnceAsync(CancellationToken.None);
 
-        captured.Captured.Should().BeEmpty(
-            because: "no skew was detected; the audit chain MUST stay quiet");
+        captured
+            .Captured.Should()
+            .BeEmpty(because: "no skew was detected; the audit chain MUST stay quiet");
     }
 
     [Fact]
@@ -41,8 +42,9 @@ public class NtpHealthCheckJobTests
 
         await job.RunOnceAsync(CancellationToken.None);
 
-        captured.Captured.Should().BeEmpty(
-            because: "2-second skew is within the default 5-second tolerance");
+        captured
+            .Captured.Should()
+            .BeEmpty(because: "2-second skew is within the default 5-second tolerance");
     }
 
     [Fact]
@@ -55,9 +57,12 @@ public class NtpHealthCheckJobTests
 
         await job.RunOnceAsync(CancellationToken.None);
 
-        captured.Captured.Should().ContainSingle(
-            e => e.Kind == "system.ntp_skew_detected",
-            because: "15-second skew exceeds the 5-second tolerance");
+        captured
+            .Captured.Should()
+            .ContainSingle(
+                e => e.Kind == "system.ntp_skew_detected",
+                because: "15-second skew exceeds the 5-second tolerance"
+            );
     }
 
     [Fact]
@@ -70,9 +75,12 @@ public class NtpHealthCheckJobTests
 
         await job.RunOnceAsync(CancellationToken.None);
 
-        captured.Captured.Should().ContainSingle(
-            e => e.Kind == "system.ntp_health_check_failed",
-            because: "an NTP query failure is itself a fact worth recording");
+        captured
+            .Captured.Should()
+            .ContainSingle(
+                e => e.Kind == "system.ntp_health_check_failed",
+                because: "an NTP query failure is itself a fact worth recording"
+            );
     }
 
     private sealed class FixedClock(DateTime utcNow) : IClock
@@ -96,7 +104,10 @@ public class NtpHealthCheckJobTests
     {
         public List<AuditLogPayload> Captured { get; } = [];
 
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
@@ -109,7 +120,8 @@ public class NtpHealthCheckJobTests
                 kind: payload.Kind,
                 payloadJson: payload.PayloadJson,
                 prevHash: new byte[32],
-                thisHash: new byte[32]);
+                thisHash: new byte[32]
+            );
             return Task.FromResult(entry);
         }
     }

@@ -20,5 +20,6 @@ public interface ISupplierPaymentVoucherJournalEmitter
     Task EmitForSupplierPaymentAsync(
         SupplierPaymentVoucher voucher,
         DateTime postedAtUtc,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }

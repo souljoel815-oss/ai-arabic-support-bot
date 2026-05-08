@@ -19,7 +19,8 @@ public class CustomerReceiptVoucherTests
             receiptDate: new DateOnly(2026, 5, 9),
             paymentMethod: PaymentMethod.BankTransfer,
             paymentReference: "RCV-001",
-            grossReceiptAmount: MoneyEgp.From(8_500m));
+            grossReceiptAmount: MoneyEgp.From(8_500m)
+        );
 
         v.State.Should().Be(DocumentState.Draft);
         v.GrossReceiptAmount.Amount.Should().Be(8_500m);
@@ -31,37 +32,58 @@ public class CustomerReceiptVoucherTests
     [Fact]
     public void AddAllocation_RespectsVoucherCap_PerFr053()
     {
-        var v = CustomerReceiptVoucher.CreateDraft(Guid.NewGuid(),
-            new DateOnly(2026, 5, 9), PaymentMethod.Cash, "REF",
-            MoneyEgp.From(1_000m));
+        var v = CustomerReceiptVoucher.CreateDraft(
+            Guid.NewGuid(),
+            new DateOnly(2026, 5, 9),
+            PaymentMethod.Cash,
+            "REF",
+            MoneyEgp.From(1_000m)
+        );
 
         v.AddAllocation(Guid.NewGuid(), MoneyEgp.From(800m));
 
         var act = () => v.AddAllocation(Guid.NewGuid(), MoneyEgp.From(300m));
-        act.Should().Throw<InvalidOperationException>(
-            because: "FR-053 — sum of allocations cannot exceed gross receipt");
+        act.Should()
+            .Throw<InvalidOperationException>(
+                because: "FR-053 — sum of allocations cannot exceed gross receipt"
+            );
         v.Allocations.Should().HaveCount(1);
     }
 
     [Fact]
     public void MarkPosted_RequiresAtLeastOneAllocation()
     {
-        var v = CustomerReceiptVoucher.CreateDraft(Guid.NewGuid(),
-            new DateOnly(2026, 5, 9), PaymentMethod.Cash, "REF",
-            MoneyEgp.From(500m));
+        var v = CustomerReceiptVoucher.CreateDraft(
+            Guid.NewGuid(),
+            new DateOnly(2026, 5, 9),
+            PaymentMethod.Cash,
+            "REF",
+            MoneyEgp.From(500m)
+        );
 
-        var act = () => v.MarkPosted("RCV-001", Guid.NewGuid(),
-            new DateTime(2026, 5, 9, 10, 0, 0, DateTimeKind.Utc));
-        act.Should().Throw<InvalidOperationException>()
-            .Where(ex => ex.Message.Contains("at least one allocation", StringComparison.OrdinalIgnoreCase));
+        var act = () =>
+            v.MarkPosted(
+                "RCV-001",
+                Guid.NewGuid(),
+                new DateTime(2026, 5, 9, 10, 0, 0, DateTimeKind.Utc)
+            );
+        act.Should()
+            .Throw<InvalidOperationException>()
+            .Where(ex =>
+                ex.Message.Contains("at least one allocation", StringComparison.OrdinalIgnoreCase)
+            );
     }
 
     [Fact]
     public void ApplyCustomerWhtCertificate_SplitsGrossIntoCashPlusWhtReceivable()
     {
-        var v = CustomerReceiptVoucher.CreateDraft(Guid.NewGuid(),
-            new DateOnly(2026, 5, 9), PaymentMethod.BankTransfer, "REF",
-            MoneyEgp.From(10_000m));
+        var v = CustomerReceiptVoucher.CreateDraft(
+            Guid.NewGuid(),
+            new DateOnly(2026, 5, 9),
+            PaymentMethod.BankTransfer,
+            "REF",
+            MoneyEgp.From(10_000m)
+        );
 
         var certId = Guid.NewGuid();
         v.ApplyCustomerWhtCertificate(MoneyEgp.From(750m), certId);

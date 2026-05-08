@@ -52,8 +52,13 @@ public sealed class SupplierPaymentVoucher
     private SupplierPaymentVoucher() { }
 
     private SupplierPaymentVoucher(
-        Guid supplierId, DateOnly paymentDate, PaymentMethod paymentMethod,
-        string paymentReference, string? note, MoneyEgp grossPaymentAmount)
+        Guid supplierId,
+        DateOnly paymentDate,
+        PaymentMethod paymentMethod,
+        string paymentReference,
+        string? note,
+        MoneyEgp grossPaymentAmount
+    )
     {
         SupplierId = supplierId;
         PaymentDate = paymentDate;
@@ -70,7 +75,8 @@ public sealed class SupplierPaymentVoucher
         PaymentMethod paymentMethod,
         string paymentReference,
         MoneyEgp grossPaymentAmount,
-        string? note = null)
+        string? note = null
+    )
     {
         if (supplierId == Guid.Empty)
         {
@@ -79,11 +85,19 @@ public sealed class SupplierPaymentVoucher
         ArgumentException.ThrowIfNullOrWhiteSpace(paymentReference);
         if (grossPaymentAmount.Amount <= 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(grossPaymentAmount),
-                "Gross payment amount must be positive.");
+            throw new ArgumentOutOfRangeException(
+                nameof(grossPaymentAmount),
+                "Gross payment amount must be positive."
+            );
         }
-        return new SupplierPaymentVoucher(supplierId, paymentDate, paymentMethod,
-            paymentReference, note, grossPaymentAmount);
+        return new SupplierPaymentVoucher(
+            supplierId,
+            paymentDate,
+            paymentMethod,
+            paymentReference,
+            note,
+            grossPaymentAmount
+        );
     }
 
     /// <summary>
@@ -98,21 +112,24 @@ public sealed class SupplierPaymentVoucher
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot add allocation to supplier payment voucher {Id}: state {State} is not Draft.");
+                $"Cannot add allocation to supplier payment voucher {Id}: state {State} is not Draft."
+            );
         }
         var allocatedSoFar = _allocations.Sum(a => a.AllocatedAmount.Amount);
         if (allocatedSoFar + amount.Amount > GrossPaymentAmount.Amount)
         {
             throw new InvalidOperationException(
-                $"Cannot allocate {amount.Amount:F2} to invoice {purchaseInvoiceId}: " +
-                $"would push voucher's allocated total {allocatedSoFar + amount.Amount:F2} past the gross payment {GrossPaymentAmount.Amount:F2} (FR-053 voucher cap).");
+                $"Cannot allocate {amount.Amount:F2} to invoice {purchaseInvoiceId}: "
+                    + $"would push voucher's allocated total {allocatedSoFar + amount.Amount:F2} past the gross payment {GrossPaymentAmount.Amount:F2} (FR-053 voucher cap)."
+            );
         }
         var allocation = new PaymentAllocation(
             supplierPaymentVoucherId: Id,
             customerReceiptVoucherId: null,
             targetDocumentId: purchaseInvoiceId,
             targetDocumentType: DocumentType.PurchaseInvoice,
-            allocatedAmount: amount);
+            allocatedAmount: amount
+        );
         _allocations.Add(allocation);
         return allocation;
     }
@@ -122,10 +139,14 @@ public sealed class SupplierPaymentVoucher
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot remove allocation from supplier payment voucher {Id}: state {State} is not Draft.");
+                $"Cannot remove allocation from supplier payment voucher {Id}: state {State} is not Draft."
+            );
         }
-        var found = _allocations.FirstOrDefault(a => a.Id == allocationId)
-            ?? throw new InvalidOperationException($"Allocation {allocationId} is not on voucher {Id}.");
+        var found =
+            _allocations.FirstOrDefault(a => a.Id == allocationId)
+            ?? throw new InvalidOperationException(
+                $"Allocation {allocationId} is not on voucher {Id}."
+            );
         _allocations.Remove(found);
     }
 
@@ -138,17 +159,22 @@ public sealed class SupplierPaymentVoucher
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot apply WHT split to supplier payment voucher {Id}: state {State} is not Draft.");
+                $"Cannot apply WHT split to supplier payment voucher {Id}: state {State} is not Draft."
+            );
         }
         if (whtPayableAmount.Amount < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(whtPayableAmount),
-                "WHT payable amount cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(whtPayableAmount),
+                "WHT payable amount cannot be negative."
+            );
         }
         if (whtPayableAmount.Amount > GrossPaymentAmount.Amount)
         {
-            throw new ArgumentOutOfRangeException(nameof(whtPayableAmount),
-                $"WHT payable {whtPayableAmount.Amount:F2} cannot exceed gross payment {GrossPaymentAmount.Amount:F2}.");
+            throw new ArgumentOutOfRangeException(
+                nameof(whtPayableAmount),
+                $"WHT payable {whtPayableAmount.Amount:F2} cannot exceed gross payment {GrossPaymentAmount.Amount:F2}."
+            );
         }
         WhtPayableAmount = whtPayableAmount;
         NetCashPaid = MoneyEgp.From(GrossPaymentAmount.Amount - whtPayableAmount.Amount);
@@ -161,18 +187,21 @@ public sealed class SupplierPaymentVoucher
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot post supplier payment voucher {Id}: state {State} is not Draft.");
+                $"Cannot post supplier payment voucher {Id}: state {State} is not Draft."
+            );
         }
         if (_allocations.Count == 0)
         {
             throw new InvalidOperationException(
-                $"Cannot post supplier payment voucher {Id}: at least one allocation is required.");
+                $"Cannot post supplier payment voucher {Id}: at least one allocation is required."
+            );
         }
         var allocatedTotal = _allocations.Sum(a => a.AllocatedAmount.Amount);
         if (allocatedTotal > GrossPaymentAmount.Amount)
         {
             throw new InvalidOperationException(
-                $"Cannot post supplier payment voucher {Id}: allocations total {allocatedTotal:F2} exceeds gross payment {GrossPaymentAmount.Amount:F2} (FR-053).");
+                $"Cannot post supplier payment voucher {Id}: allocations total {allocatedTotal:F2} exceeds gross payment {GrossPaymentAmount.Amount:F2} (FR-053)."
+            );
         }
         DocumentNumber = documentNumber;
         PostedByUserId = postedByUserId;

@@ -34,7 +34,8 @@ public class VatEffectiveDatedRateTests(SqlServerFixture fixture)
             ratePercent: 14m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: new DateOnly(2026, 6, 30),
-            recoverableInputVat: true);
+            recoverableInputVat: true
+        );
         // New rate: Standard 15% from Jul 1 (open-ended).
         var newRate = new VatCategory(
             code: "Standard-T173",
@@ -42,8 +43,10 @@ public class VatEffectiveDatedRateTests(SqlServerFixture fixture)
             ratePercent: 15m,
             effectiveFromDate: new DateOnly(2026, 7, 1),
             effectiveToDate: null,
-            recoverableInputVat: true);
-        db.Add(oldRate); db.Add(newRate);
+            recoverableInputVat: true
+        );
+        db.Add(oldRate);
+        db.Add(newRate);
         await db.SaveChangesAsync();
 
         var lookup = new SqlVatRateLookup(db);
@@ -51,21 +54,27 @@ public class VatEffectiveDatedRateTests(SqlServerFixture fixture)
         // Document dated June 15 → 14%.
         var june = await lookup.GetEffectiveAsync("Standard-T173", new DateOnly(2026, 6, 15));
         june.Should().NotBeNull();
-        june!.RatePercent.Should().Be(14m,
-            because: "FR-022 — June document picks the rate effective on its document date (14%)");
+        june!
+            .RatePercent.Should()
+            .Be(
+                14m,
+                because: "FR-022 — June document picks the rate effective on its document date (14%)"
+            );
         june.Id.Should().Be(oldRate.Id);
 
         // Document dated July 15 → 15% (the supersession).
         var july = await lookup.GetEffectiveAsync("Standard-T173", new DateOnly(2026, 7, 15));
         july.Should().NotBeNull();
-        july!.RatePercent.Should().Be(15m,
-            because: "the new row covers Jul 1 onwards");
+        july!.RatePercent.Should().Be(15m, because: "the new row covers Jul 1 onwards");
         july.Id.Should().Be(newRate.Id);
 
         // Date before either row → null (caller treats as "no rate effective").
         var early = await lookup.GetEffectiveAsync("Standard-T173", new DateOnly(2025, 12, 15));
-        early.Should().BeNull(
-            because: "no row's effective window covers 2025-12-15 — the operator hasn't configured one yet");
+        early
+            .Should()
+            .BeNull(
+                because: "no row's effective window covers 2025-12-15 — the operator hasn't configured one yet"
+            );
     }
 
     [Fact]
@@ -82,15 +91,18 @@ public class VatEffectiveDatedRateTests(SqlServerFixture fixture)
             ratePercent: 5m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: new DateOnly(2026, 6, 30),
-            recoverableInputVat: true);
+            recoverableInputVat: true
+        );
         var jul = new VatCategory(
             code: "Reduced-T173",
             name: new ArabicEnglishText("مخفض", "Reduced (7%)"),
             ratePercent: 7m,
             effectiveFromDate: new DateOnly(2026, 7, 1),
             effectiveToDate: null,
-            recoverableInputVat: true);
-        db.Add(jul); db.Add(jan);  // intentionally inserted out of order
+            recoverableInputVat: true
+        );
+        db.Add(jul);
+        db.Add(jan); // intentionally inserted out of order
         await db.SaveChangesAsync();
 
         var rows = await new SqlVatRateLookup(db).ListByCodeAsync("Reduced-T173");

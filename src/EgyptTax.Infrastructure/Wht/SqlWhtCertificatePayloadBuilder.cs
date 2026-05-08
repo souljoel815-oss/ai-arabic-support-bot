@@ -25,21 +25,29 @@ public sealed class SqlWhtCertificatePayloadBuilder : IWhtCertificatePayloadBuil
     }
 
     public async Task<WhtCertificatePayload?> BuildAsync(
-        Guid certificateId, CancellationToken cancellationToken = default)
+        Guid certificateId,
+        CancellationToken cancellationToken = default
+    )
     {
-        var cert = await _db.Set<WhtCertificate>().AsNoTracking()
+        var cert = await _db.Set<WhtCertificate>()
+            .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == certificateId, cancellationToken);
-        if (cert is null) return null;
+        if (cert is null)
+            return null;
 
-        var company = await _db.Set<Company>().AsNoTracking()
-            .FirstOrDefaultAsync(cancellationToken)
+        var company =
+            await _db.Set<Company>().AsNoTracking().FirstOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException(
-                "No Company row exists. Seed the company profile before issuing WHT certificates.");
+                "No Company row exists. Seed the company profile before issuing WHT certificates."
+            );
 
-        var category = await _db.Set<WhtCategory>().AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == cert.WhtCategoryId, cancellationToken)
+        var category =
+            await _db.Set<WhtCategory>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == cert.WhtCategoryId, cancellationToken)
             ?? throw new InvalidOperationException(
-                $"WhtCategory {cert.WhtCategoryId} referenced by certificate {cert.Id} not found.");
+                $"WhtCategory {cert.WhtCategoryId} referenced by certificate {cert.Id} not found."
+            );
 
         // Direction picks which side of the system the voucher +
         // counterparty live on.
@@ -54,27 +62,38 @@ public sealed class SqlWhtCertificatePayloadBuilder : IWhtCertificatePayloadBuil
 
         if (cert.Direction == WhtCertificateDirection.OutboundToSupplier)
         {
-            var voucher = await _db.Set<SupplierPaymentVoucher>().AsNoTracking()
-                .FirstOrDefaultAsync(v => v.Id == cert.SourceVoucherId, cancellationToken)
+            var voucher =
+                await _db.Set<SupplierPaymentVoucher>()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(v => v.Id == cert.SourceVoucherId, cancellationToken)
                 ?? throw new InvalidOperationException(
-                    $"SupplierPaymentVoucher {cert.SourceVoucherId} not found.");
-            var supplier = await _db.Set<Supplier>().AsNoTracking()
-                .FirstOrDefaultAsync(s => s.Id == cert.CounterpartyId, cancellationToken)
+                    $"SupplierPaymentVoucher {cert.SourceVoucherId} not found."
+                );
+            var supplier =
+                await _db.Set<Supplier>()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == cert.CounterpartyId, cancellationToken)
                 ?? throw new InvalidOperationException(
-                    $"Supplier {cert.CounterpartyId} not found.");
-            var invoice = await _db.Set<PurchaseInvoice>().AsNoTracking()
-                .FirstOrDefaultAsync(p => p.Id == cert.SourceInvoiceId, cancellationToken)
+                    $"Supplier {cert.CounterpartyId} not found."
+                );
+            var invoice =
+                await _db.Set<PurchaseInvoice>()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.Id == cert.SourceInvoiceId, cancellationToken)
                 ?? throw new InvalidOperationException(
-                    $"PurchaseInvoice {cert.SourceInvoiceId} not found.");
+                    $"PurchaseInvoice {cert.SourceInvoiceId} not found."
+                );
 
             voucherNumber = voucher.DocumentNumber ?? "(unknown)";
             voucherDate = voucher.PaymentDate;
             // Suppliers MUST have a TIN to receive a WHT certificate
             // (Egyptian tax authority requires it on the cert). The
             // TIN lives on the SupplierTaxProfile snapshot per FR-041.
-            counterpartyTin = supplier.TaxProfile.TinValue
+            counterpartyTin =
+                supplier.TaxProfile.TinValue
                 ?? throw new InvalidOperationException(
-                    $"Supplier {supplier.Id} has no TIN; cannot issue a WHT certificate without one (FR-045 + FR-041).");
+                    $"Supplier {supplier.Id} has no TIN; cannot issue a WHT certificate without one (FR-045 + FR-041)."
+                );
             counterpartyName = new BilingualText(supplier.Name.Arabic, supplier.Name.English);
             invoiceNumber = invoice.DocumentNumber ?? "(unknown)";
             invoiceDate = invoice.DateReceived;
@@ -83,24 +102,35 @@ public sealed class SqlWhtCertificatePayloadBuilder : IWhtCertificatePayloadBuil
         }
         else
         {
-            var voucher = await _db.Set<CustomerReceiptVoucher>().AsNoTracking()
-                .FirstOrDefaultAsync(v => v.Id == cert.SourceVoucherId, cancellationToken)
+            var voucher =
+                await _db.Set<CustomerReceiptVoucher>()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(v => v.Id == cert.SourceVoucherId, cancellationToken)
                 ?? throw new InvalidOperationException(
-                    $"CustomerReceiptVoucher {cert.SourceVoucherId} not found.");
-            var customer = await _db.Set<Customer>().AsNoTracking()
-                .FirstOrDefaultAsync(c => c.Id == cert.CounterpartyId, cancellationToken)
+                    $"CustomerReceiptVoucher {cert.SourceVoucherId} not found."
+                );
+            var customer =
+                await _db.Set<Customer>()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.Id == cert.CounterpartyId, cancellationToken)
                 ?? throw new InvalidOperationException(
-                    $"Customer {cert.CounterpartyId} not found.");
-            var invoice = await _db.Set<SalesInvoice>().AsNoTracking()
-                .FirstOrDefaultAsync(s => s.Id == cert.SourceInvoiceId, cancellationToken)
+                    $"Customer {cert.CounterpartyId} not found."
+                );
+            var invoice =
+                await _db.Set<SalesInvoice>()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == cert.SourceInvoiceId, cancellationToken)
                 ?? throw new InvalidOperationException(
-                    $"SalesInvoice {cert.SourceInvoiceId} not found.");
+                    $"SalesInvoice {cert.SourceInvoiceId} not found."
+                );
 
             voucherNumber = voucher.DocumentNumber ?? "(unknown)";
             voucherDate = voucher.ReceiptDate;
-            counterpartyTin = customer.TaxProfile.TinValue
+            counterpartyTin =
+                customer.TaxProfile.TinValue
                 ?? throw new InvalidOperationException(
-                    $"Customer {customer.Id} has no TIN; cannot record an inbound WHT certificate without one (FR-045 + FR-040).");
+                    $"Customer {customer.Id} has no TIN; cannot record an inbound WHT certificate without one (FR-045 + FR-040)."
+                );
             counterpartyName = new BilingualText(customer.Name.Arabic, customer.Name.English);
             invoiceNumber = invoice.DocumentNumber ?? "(unknown)";
             invoiceDate = invoice.DocumentDate;
@@ -113,7 +143,10 @@ public sealed class SqlWhtCertificatePayloadBuilder : IWhtCertificatePayloadBuil
             Direction: cert.Direction.ToString(),
             IssuedAt: cert.IssuedAtUtc,
             IssuerCompanyTin: company.TaxRegistrationNumber,
-            IssuerCompanyName: new BilingualText(company.LegalName.Arabic, company.LegalName.English),
+            IssuerCompanyName: new BilingualText(
+                company.LegalName.Arabic,
+                company.LegalName.English
+            ),
             CounterpartyTin: counterpartyTin,
             CounterpartyName: counterpartyName,
             SourceInvoiceNumber: invoiceNumber,
@@ -128,6 +161,7 @@ public sealed class SqlWhtCertificatePayloadBuilder : IWhtCertificatePayloadBuil
             NetPayment: net,
             Currency: "EGP",
             Language: "ar+en",
-            AuditChainHash: null); // wired when audit-chain back-pointer lands (out of scope this batch)
+            AuditChainHash: null
+        ); // wired when audit-chain back-pointer lands (out of scope this batch)
     }
 }

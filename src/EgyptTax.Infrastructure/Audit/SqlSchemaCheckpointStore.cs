@@ -15,18 +15,21 @@ public sealed class SqlSchemaCheckpointStore(AppDbContext db) : IAuditCheckpoint
 {
     private readonly AppDbContext _db = db;
 
-    public async Task<AuditCheckpoint?> ReadLatestAsync(CancellationToken cancellationToken = default)
+    public async Task<AuditCheckpoint?> ReadLatestAsync(
+        CancellationToken cancellationToken = default
+    )
     {
         var row = await _db.Set<AuditCheckpointRow>()
             .AsNoTracking()
             .SingleOrDefaultAsync(c => c.Id == 1, cancellationToken);
 
-        return row is null
-            ? null
-            : new AuditCheckpoint(row.LastIndex, row.LastHash, row.TsUtc);
+        return row is null ? null : new AuditCheckpoint(row.LastIndex, row.LastHash, row.TsUtc);
     }
 
-    public async Task WriteAsync(AuditCheckpoint checkpoint, CancellationToken cancellationToken = default)
+    public async Task WriteAsync(
+        AuditCheckpoint checkpoint,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(checkpoint);
 
@@ -35,13 +38,16 @@ public sealed class SqlSchemaCheckpointStore(AppDbContext db) : IAuditCheckpoint
 
         if (existing is null)
         {
-            _db.Set<AuditCheckpointRow>().Add(new AuditCheckpointRow
-            {
-                Id = 1,
-                LastIndex = checkpoint.LastIndex,
-                LastHash = checkpoint.LastHash,
-                TsUtc = checkpoint.TsUtc,
-            });
+            _db.Set<AuditCheckpointRow>()
+                .Add(
+                    new AuditCheckpointRow
+                    {
+                        Id = 1,
+                        LastIndex = checkpoint.LastIndex,
+                        LastHash = checkpoint.LastHash,
+                        TsUtc = checkpoint.TsUtc,
+                    }
+                );
         }
         else
         {

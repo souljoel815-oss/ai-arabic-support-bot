@@ -55,7 +55,8 @@ public sealed class EtaSubmissionRetryJob
         IEtaSubmitter submitter,
         IEInvoiceJsonGenerator jsonGenerator,
         IAuditLogStore auditLog,
-        IClock clock)
+        IClock clock
+    )
     {
         _db = db;
         _submitter = submitter;
@@ -69,8 +70,9 @@ public sealed class EtaSubmissionRetryJob
         var nowUtc = _clock.UtcNow;
 
         var candidates = await _db.Set<EtaSubmission>()
-            .Where(s => s.Status == EtaSubmissionStatus.Failed
-                && s.SubmissionWindowExpiresAtUtc > nowUtc)
+            .Where(s =>
+                s.Status == EtaSubmissionStatus.Failed && s.SubmissionWindowExpiresAtUtc > nowUtc
+            )
             .OrderBy(s => s.SubmissionWindowExpiresAtUtc)
             .ToListAsync(cancellationToken);
 
@@ -81,17 +83,24 @@ public sealed class EtaSubmissionRetryJob
         {
             await EmitRetryAttemptedAsync(row, cancellationToken);
 
-            var bundle = await InvoiceRenderingPipeline.LoadAsync(_db, row.SalesInvoiceId, cancellationToken);
+            var bundle = await InvoiceRenderingPipeline.LoadAsync(
+                _db,
+                row.SalesInvoiceId,
+                cancellationToken
+            );
             if (bundle is null)
             {
                 // The invoice or its issuer / receiver is missing — we
                 // can't generate the JSON. Log a synthetic failure
                 // attempt so the row's attempt counter advances and an
                 // operator sees the issue on the dashboard.
-                row.RecordAttempt(EtaSubmissionStatus.Failed, submissionUuid: null,
+                row.RecordAttempt(
+                    EtaSubmissionStatus.Failed,
+                    submissionUuid: null,
                     errorCode: "ETA_RETRY_HYDRATE_MISSING",
                     errorMessage: "Could not load invoice + dependencies for retry. Check Company / Customer rows.",
-                    nowUtc: _clock.UtcNow);
+                    nowUtc: _clock.UtcNow
+                );
                 await _db.SaveChangesAsync(cancellationToken);
                 await EmitRetryFailedAsync(row, cancellationToken);
                 failed++;
@@ -106,7 +115,8 @@ public sealed class EtaSubmissionRetryJob
                 submissionUuid: attempt.SubmissionUuid,
                 errorCode: attempt.ErrorCode,
                 errorMessage: attempt.ErrorMessage,
-                nowUtc: _clock.UtcNow);
+                nowUtc: _clock.UtcNow
+            );
             await _db.SaveChangesAsync(cancellationToken);
 
             if (attempt.OutcomeStatus == EtaSubmissionStatus.Submitted)
@@ -124,34 +134,57 @@ public sealed class EtaSubmissionRetryJob
         return new EtaRetryJobResult(
             TotalCandidates: candidates.Count,
             SucceededCount: succeeded,
-            FailedCount: failed);
+            FailedCount: failed
+        );
     }
 
-    private async Task EmitRetryAttemptedAsync(EtaSubmission row, CancellationToken cancellationToken)
+    private async Task EmitRetryAttemptedAsync(
+        EtaSubmission row,
+        CancellationToken cancellationToken
+    )
     {
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "eta_submission.retry_attempted",
-            ActorUserId: null, ActorFirmName: null, CompanyId: Guid.Empty,
-            PayloadJson: $$"""{"eta_submission_id":"{{row.Id:D}}","sales_invoice_id":"{{row.SalesInvoiceId:D}}","attempt_count_before":{{row.AttemptCount.ToString(CultureInfo.InvariantCulture)}},"deadline_utc":"{{row.SubmissionWindowExpiresAtUtc:o}}"}"""),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "eta_submission.retry_attempted",
+                ActorUserId: null,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: $$"""{"eta_submission_id":"{{row.Id:D}}","sales_invoice_id":"{{row.SalesInvoiceId:D}}","attempt_count_before":{{row.AttemptCount.ToString(CultureInfo.InvariantCulture)}},"deadline_utc":"{{row.SubmissionWindowExpiresAtUtc:o}}"}"""
+            ),
+            cancellationToken
+        );
     }
 
-    private async Task EmitRetrySubmittedAsync(EtaSubmission row, EtaSubmissionAttemptResult attempt, CancellationToken cancellationToken)
+    private async Task EmitRetrySubmittedAsync(
+        EtaSubmission row,
+        EtaSubmissionAttemptResult attempt,
+        CancellationToken cancellationToken
+    )
     {
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "eta_submission.retry_submitted",
-            ActorUserId: null, ActorFirmName: null, CompanyId: Guid.Empty,
-            PayloadJson: $$"""{"eta_submission_id":"{{row.Id:D}}","sales_invoice_id":"{{row.SalesInvoiceId:D}}","attempt_count":{{row.AttemptCount.ToString(CultureInfo.InvariantCulture)}},"submission_uuid":"{{attempt.SubmissionUuid}}"}"""),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "eta_submission.retry_submitted",
+                ActorUserId: null,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: $$"""{"eta_submission_id":"{{row.Id:D}}","sales_invoice_id":"{{row.SalesInvoiceId:D}}","attempt_count":{{row.AttemptCount.ToString(CultureInfo.InvariantCulture)}},"submission_uuid":"{{attempt.SubmissionUuid}}"}"""
+            ),
+            cancellationToken
+        );
     }
 
     private async Task EmitRetryFailedAsync(EtaSubmission row, CancellationToken cancellationToken)
     {
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "eta_submission.retry_failed",
-            ActorUserId: null, ActorFirmName: null, CompanyId: Guid.Empty,
-            PayloadJson: $$"""{"eta_submission_id":"{{row.Id:D}}","sales_invoice_id":"{{row.SalesInvoiceId:D}}","attempt_count":{{row.AttemptCount.ToString(CultureInfo.InvariantCulture)}},"error_code":{{(row.ErrorCode is null ? "null" : "\"" + row.ErrorCode + "\"")}}}"""),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "eta_submission.retry_failed",
+                ActorUserId: null,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: $$"""{"eta_submission_id":"{{row.Id:D}}","sales_invoice_id":"{{row.SalesInvoiceId:D}}","attempt_count":{{row.AttemptCount.ToString(CultureInfo.InvariantCulture)}},"error_code":{{(row.ErrorCode is null ? "null" : "\"" + row.ErrorCode + "\"")}}}"""
+            ),
+            cancellationToken
+        );
     }
 }
 
@@ -160,7 +193,4 @@ public sealed class EtaSubmissionRetryJob
 /// tick. Surfaced from the job so observability + tests can assert
 /// on which branches fired.
 /// </summary>
-public sealed record EtaRetryJobResult(
-    int TotalCandidates,
-    int SucceededCount,
-    int FailedCount);
+public sealed record EtaRetryJobResult(int TotalCandidates, int SucceededCount, int FailedCount);

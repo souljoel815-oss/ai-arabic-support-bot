@@ -16,7 +16,8 @@ public static class PostedDocumentImmutabilityGuard
         DocumentState state,
         DocumentType documentType,
         Guid documentId,
-        string operation)
+        string operation
+    )
     {
         if (state != DocumentState.Posted)
         {
@@ -28,7 +29,8 @@ public static class PostedDocumentImmutabilityGuard
             : "create a reversal voucher referencing the original instead";
 
         throw new InvalidOperationException(
-            $"Cannot {operation} {documentType} {documentId}: the document is Posted and immutable. " +
-            $"To correct it, {hint}.");
+            $"Cannot {operation} {documentType} {documentId}: the document is Posted and immutable. "
+                + $"To correct it, {hint}."
+        );
     }
 }

@@ -19,11 +19,22 @@ internal sealed class EtaSubmissionConfiguration : IEntityTypeConfiguration<EtaS
         // tables; a FK would force an ordering constraint we don't
         // need at the storage layer because the unique index on
         // sales_invoice_id is sufficient to enforce 1:1).
-        b.HasIndex(s => s.SalesInvoiceId).IsUnique().HasDatabaseName("ux_eta_submissions_sales_invoice_id");
+        b.HasIndex(s => s.SalesInvoiceId)
+            .IsUnique()
+            .HasDatabaseName("ux_eta_submissions_sales_invoice_id");
 
-        b.Property(s => s.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(16).IsRequired();
-        b.Property(s => s.SubmissionUuid).HasColumnName("submission_uuid").HasMaxLength(64).IsUnicode(false);
-        b.Property(s => s.LastAttemptAtUtc).HasColumnName("last_attempt_at_utc").HasColumnType("datetime2(3)");
+        b.Property(s => s.Status)
+            .HasColumnName("status")
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .IsRequired();
+        b.Property(s => s.SubmissionUuid)
+            .HasColumnName("submission_uuid")
+            .HasMaxLength(64)
+            .IsUnicode(false);
+        b.Property(s => s.LastAttemptAtUtc)
+            .HasColumnName("last_attempt_at_utc")
+            .HasColumnType("datetime2(3)");
         b.Property(s => s.AttemptCount).HasColumnName("attempt_count").IsRequired();
         b.Property(s => s.ErrorCode).HasColumnName("error_code").HasMaxLength(64).IsUnicode(false);
         b.Property(s => s.ErrorMessage).HasColumnName("error_message").HasMaxLength(1024);
@@ -33,7 +44,10 @@ internal sealed class EtaSubmissionConfiguration : IEntityTypeConfiguration<EtaS
             .HasColumnType("datetime2(3)")
             .IsRequired();
 
-        b.Property(s => s.CreatedAtUtc).HasColumnName("created_at_utc").HasColumnType("datetime2(3)").IsRequired();
+        b.Property(s => s.CreatedAtUtc)
+            .HasColumnName("created_at_utc")
+            .HasColumnType("datetime2(3)")
+            .IsRequired();
 
         // SC-012 covering index — the dashboard's "upcoming deadlines"
         // query filters on (status, submission_window_expires_at_utc).
@@ -43,6 +57,11 @@ internal sealed class EtaSubmissionConfiguration : IEntityTypeConfiguration<EtaS
         // for the dashboard projection so the query never hits the heap.
         b.HasIndex(s => new { s.Status, s.SubmissionWindowExpiresAtUtc })
             .HasDatabaseName("ix_eta_submissions_dashboard")
-            .IncludeProperties(s => new { s.SalesInvoiceId, s.AttemptCount, s.ErrorCode });
+            .IncludeProperties(s => new
+            {
+                s.SalesInvoiceId,
+                s.AttemptCount,
+                s.ErrorCode,
+            });
     }
 }

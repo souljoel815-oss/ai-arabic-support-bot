@@ -16,7 +16,11 @@ namespace EgyptTax.Infrastructure.Pdf.Registers;
 /// </summary>
 public static class PurchaseAndExpenseRegisterPdfRenderer
 {
-    public enum RowKind { PurchaseInvoice, Expense }
+    public enum RowKind
+    {
+        PurchaseInvoice,
+        Expense,
+    }
 
     public sealed record Row(
         RowKind Kind,
@@ -29,14 +33,16 @@ public static class PurchaseAndExpenseRegisterPdfRenderer
         decimal Subtotal,
         decimal Vat,
         decimal Total,
-        bool DeductibleFlag);
+        bool DeductibleFlag
+    );
 
     public static byte[] Render(
         Company company,
         DateOnly periodStart,
         DateOnly periodEnd,
         DateTime generatedAtUtc,
-        IReadOnlyList<Row> rows)
+        IReadOnlyList<Row> rows
+    )
     {
         ArgumentNullException.ThrowIfNull(rows);
         return RegisterPageShell.Render(
@@ -46,14 +52,18 @@ public static class PurchaseAndExpenseRegisterPdfRenderer
             periodStart: periodStart,
             periodEnd: periodEnd,
             generatedAtUtc: generatedAtUtc,
-            renderBody: c => RenderBody(c, rows));
+            renderBody: c => RenderBody(c, rows)
+        );
     }
 
     private static void RenderBody(IContainer container, IReadOnlyList<Row> rows)
     {
         if (rows.Count == 0)
         {
-            container.AlignCenter().Text("No posted purchase invoices or expenses in this period.").Italic();
+            container
+                .AlignCenter()
+                .Text("No posted purchase invoices or expenses in this period.")
+                .Italic();
             return;
         }
 
@@ -70,16 +80,16 @@ public static class PurchaseAndExpenseRegisterPdfRenderer
         {
             table.ColumnsDefinition(c =>
             {
-                c.ConstantColumn(28);  // #
-                c.ConstantColumn(50);  // kind
-                c.ConstantColumn(70);  // doc no
-                c.ConstantColumn(70);  // date
-                c.RelativeColumn();    // counterparty
-                c.ConstantColumn(70);  // TIN / supplier inv
-                c.ConstantColumn(40);  // ded?
-                c.ConstantColumn(60);  // subtotal
-                c.ConstantColumn(50);  // VAT
-                c.ConstantColumn(60);  // total
+                c.ConstantColumn(28); // #
+                c.ConstantColumn(50); // kind
+                c.ConstantColumn(70); // doc no
+                c.ConstantColumn(70); // date
+                c.RelativeColumn(); // counterparty
+                c.ConstantColumn(70); // TIN / supplier inv
+                c.ConstantColumn(40); // ded?
+                c.ConstantColumn(60); // subtotal
+                c.ConstantColumn(50); // VAT
+                c.ConstantColumn(60); // total
             });
 
             table.Header(h =>
@@ -103,19 +113,23 @@ public static class PurchaseAndExpenseRegisterPdfRenderer
                 table.Cell().Text(r.Kind == RowKind.PurchaseInvoice ? "PUR" : "EXP");
                 table.Cell().Text(r.DocumentNumber);
                 table.Cell().Text(RegisterPageShell.Date(r.DocumentDate));
-                table.Cell().Column(cc =>
-                {
-                    cc.Item().Text(r.CounterpartyEn);
-                    cc.Item().Text(r.CounterpartyAr).FontSize(8);
-                });
-                table.Cell().Column(cc =>
-                {
-                    cc.Item().Text(r.SupplierTin ?? "—").FontSize(8);
-                    if (!string.IsNullOrWhiteSpace(r.SupplierInvoiceNumber))
+                table
+                    .Cell()
+                    .Column(cc =>
                     {
-                        cc.Item().Text(r.SupplierInvoiceNumber).FontSize(8);
-                    }
-                });
+                        cc.Item().Text(r.CounterpartyEn);
+                        cc.Item().Text(r.CounterpartyAr).FontSize(8);
+                    });
+                table
+                    .Cell()
+                    .Column(cc =>
+                    {
+                        cc.Item().Text(r.SupplierTin ?? "—").FontSize(8);
+                        if (!string.IsNullOrWhiteSpace(r.SupplierInvoiceNumber))
+                        {
+                            cc.Item().Text(r.SupplierInvoiceNumber).FontSize(8);
+                        }
+                    });
                 table.Cell().AlignCenter().Text(r.DeductibleFlag ? "Y" : "N");
                 table.Cell().AlignRight().Text(RegisterPageShell.Money(r.Subtotal));
                 table.Cell().AlignRight().Text(RegisterPageShell.Money(r.Vat));
@@ -127,27 +141,41 @@ public static class PurchaseAndExpenseRegisterPdfRenderer
 
     private static void RenderTotals(IContainer container, IReadOnlyList<Row> rows)
     {
-        var purchaseSubtotal = rows.Where(r => r.Kind == RowKind.PurchaseInvoice).Sum(r => r.Subtotal);
+        var purchaseSubtotal = rows.Where(r => r.Kind == RowKind.PurchaseInvoice)
+            .Sum(r => r.Subtotal);
         var purchaseVat = rows.Where(r => r.Kind == RowKind.PurchaseInvoice).Sum(r => r.Vat);
         var purchaseTotal = rows.Where(r => r.Kind == RowKind.PurchaseInvoice).Sum(r => r.Total);
         var expenseTotal = rows.Where(r => r.Kind == RowKind.Expense).Sum(r => r.Total);
         var deductibleVat = rows.Where(r => r.DeductibleFlag).Sum(r => r.Vat);
 
-        container.AlignRight().Column(col =>
-        {
-            col.Item().AlignRight().Text(
-                $"Purchase subtotal: {RegisterPageShell.Money(purchaseSubtotal)} EGP").Bold();
-            col.Item().AlignRight().Text(
-                $"Purchase VAT: {RegisterPageShell.Money(purchaseVat)} EGP").Bold();
-            col.Item().AlignRight().Text(
-                $"Purchase total: {RegisterPageShell.Money(purchaseTotal)} EGP").Bold();
-            col.Item().AlignRight().Text(
-                $"Expense total: {RegisterPageShell.Money(expenseTotal)} EGP").Bold();
-            col.Item().AlignRight().Text(
-                $"Deductible-flagged input VAT: {RegisterPageShell.Money(deductibleVat)} EGP")
-                .Bold().FontSize(11);
-            col.Item().AlignRight().Text(
-                $"Rows: {rows.Count}").FontSize(9);
-        });
+        container
+            .AlignRight()
+            .Column(col =>
+            {
+                col.Item()
+                    .AlignRight()
+                    .Text($"Purchase subtotal: {RegisterPageShell.Money(purchaseSubtotal)} EGP")
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text($"Purchase VAT: {RegisterPageShell.Money(purchaseVat)} EGP")
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text($"Purchase total: {RegisterPageShell.Money(purchaseTotal)} EGP")
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text($"Expense total: {RegisterPageShell.Money(expenseTotal)} EGP")
+                    .Bold();
+                col.Item()
+                    .AlignRight()
+                    .Text(
+                        $"Deductible-flagged input VAT: {RegisterPageShell.Money(deductibleVat)} EGP"
+                    )
+                    .Bold()
+                    .FontSize(11);
+                col.Item().AlignRight().Text($"Rows: {rows.Count}").FontSize(9);
+            });
     }
 }

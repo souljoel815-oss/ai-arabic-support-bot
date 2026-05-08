@@ -13,7 +13,8 @@ public interface ITaxPeriodLockGuard
 {
     Task<TaxPeriodLockCheck> CheckVatMonthAsync(
         DateOnly documentDate,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }
 
 /// <summary>
@@ -27,4 +28,5 @@ public sealed record TaxPeriodLockCheck(
     int MonthOrQuarter,
     DateTime? LockedAtUtc,
     Guid? LockedByUserId,
-    string? LockedReason);
+    string? LockedReason
+);

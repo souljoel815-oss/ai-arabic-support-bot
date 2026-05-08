@@ -26,7 +26,10 @@ public sealed class EtaStatusNotifier : IEtaStatusNotifier
 
     public event EventHandler<EtaStatusChangedEvent>? StatusChanged;
 
-    public async Task NotifyAsync(EtaStatusChangedEvent e, CancellationToken cancellationToken = default)
+    public async Task NotifyAsync(
+        EtaStatusChangedEvent e,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(e);
 
@@ -35,7 +38,10 @@ public sealed class EtaStatusNotifier : IEtaStatusNotifier
         // subscriber that throws doesn't prevent the broadcast from
         // happening.
         await _hubContext.Clients.All.SendAsync(
-            EtaStatusHub.StatusChangedMethod, e, cancellationToken);
+            EtaStatusHub.StatusChangedMethod,
+            e,
+            cancellationToken
+        );
 
         StatusChanged?.Invoke(this, e);
     }

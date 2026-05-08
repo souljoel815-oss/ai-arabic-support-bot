@@ -17,16 +17,14 @@ namespace EgyptTax.Infrastructure.Migrations
                 type: "varchar(32)",
                 unicode: false,
                 maxLength: 32,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "eta_item_code",
-                schema: "master",
-                table: "items");
+            migrationBuilder.DropColumn(name: "eta_item_code", schema: "master", table: "items");
         }
     }
 }

@@ -11,4 +11,5 @@ public sealed record TinRevalidationResult(
     string Tin,
     bool IsValid,
     string? RegistryName,
-    string? Reason);
+    string? Reason
+);

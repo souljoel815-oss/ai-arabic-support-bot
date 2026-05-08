@@ -6,5 +6,6 @@ public interface ITrialBalanceReportQuery
     Task<TrialBalanceReport> RunAsync(
         DateOnly periodStart,
         DateOnly periodEnd,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }

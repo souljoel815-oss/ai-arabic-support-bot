@@ -34,8 +34,7 @@ public sealed class MarkForm41FiledHandler
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
 
-    public MarkForm41FiledHandler(
-        AppDbContext db, IClock clock, IAuditLogStore auditLog)
+    public MarkForm41FiledHandler(AppDbContext db, IClock clock, IAuditLogStore auditLog)
     {
         _db = db;
         _clock = clock;
@@ -43,14 +42,18 @@ public sealed class MarkForm41FiledHandler
     }
 
     public async Task<Form41Filing> HandleAsync(
-        MarkForm41FiledCommand command, CancellationToken cancellationToken = default)
+        MarkForm41FiledCommand command,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var filing = await _db.Set<Form41Filing>()
-            .FirstOrDefaultAsync(f => f.Id == command.Form41FilingId, cancellationToken)
+        var filing =
+            await _db.Set<Form41Filing>()
+                .FirstOrDefaultAsync(f => f.Id == command.Form41FilingId, cancellationToken)
             ?? throw new InvalidOperationException(
-                $"Form41Filing {command.Form41FilingId} not found.");
+                $"Form41Filing {command.Form41FilingId} not found."
+            );
 
         // Early status check — short-circuit before recomputing the
         // reconciliation. On a second call the certs would all be
@@ -61,7 +64,8 @@ public sealed class MarkForm41FiledHandler
         if (filing.Status == Form41Status.Filed)
         {
             throw new InvalidOperationException(
-                $"Form 41 for {filing.FiscalYear}-Q{filing.Quarter} is already Filed at {filing.FiledAtUtc:yyyy-MM-dd HH:mm:ss}; cannot mark it filed twice (FR-046).");
+                $"Form 41 for {filing.FiscalYear}-Q{filing.Quarter} is already Filed at {filing.FiledAtUtc:yyyy-MM-dd HH:mm:ss}; cannot mark it filed twice (FR-046)."
+            );
         }
 
         // Quarter date range — same math the generator used.
@@ -76,9 +80,12 @@ public sealed class MarkForm41FiledHandler
         // out-of-date payload after issuing more certs since
         // generation.
         var certs = await _db.Set<WhtCertificate>()
-            .Where(c => c.Direction == WhtCertificateDirection.OutboundToSupplier
-                && c.Date >= periodStart && c.Date <= periodEnd
-                && c.IncludedInForm41FilingId == null)
+            .Where(c =>
+                c.Direction == WhtCertificateDirection.OutboundToSupplier
+                && c.Date >= periodStart
+                && c.Date <= periodEnd
+                && c.IncludedInForm41FilingId == null
+            )
             .ToListAsync(cancellationToken);
         var certTotal = certs.Sum(c => c.AmountWithheld.Amount);
 
@@ -88,24 +95,31 @@ public sealed class MarkForm41FiledHandler
         var fromJournalEntries = await (
             from e in _db.Set<JournalEntry>().AsNoTracking()
             from l in e.Lines
-            where e.PostedAtUtc >= startUtc && e.PostedAtUtc < endExclusive
+            where
+                e.PostedAtUtc >= startUtc
+                && e.PostedAtUtc < endExclusive
                 && l.AccountCode == ChartOfAccountCodes.WhtPayable
-            select l.Credit.Amount - l.Debit.Amount).SumAsync(cancellationToken);
+            select l.Credit.Amount - l.Debit.Amount
+        ).SumAsync(cancellationToken);
         var fromJournalVouchers = await (
             from v in _db.Set<EgyptTax.Domain.Documents.JournalVoucher>().AsNoTracking()
             from l in v.Lines
-            where v.Date >= periodStart && v.Date <= periodEnd
+            where
+                v.Date >= periodStart
+                && v.Date <= periodEnd
                 && l.AccountCode == ChartOfAccountCodes.WhtPayable
-            select l.Credit.Amount - l.Debit.Amount).SumAsync(cancellationToken);
+            select l.Credit.Amount - l.Debit.Amount
+        ).SumAsync(cancellationToken);
         var whtPayableAccrued = fromJournalEntries + fromJournalVouchers;
 
         if (whtPayableAccrued != certTotal)
         {
             throw new InvalidOperationException(
-                $"Cannot mark Form 41 for {filing.FiscalYear}-Q{filing.Quarter} as Filed: " +
-                $"reconciliation does NOT match. Cert total {certTotal:F2} EGP vs WHT-payable accrual " +
-                $"{whtPayableAccrued:F2} EGP (discrepancy {(whtPayableAccrued - certTotal):F2}). " +
-                "FR-046 — fix the books (likely a missing manual adjusting voucher), regenerate, then re-file.");
+                $"Cannot mark Form 41 for {filing.FiscalYear}-Q{filing.Quarter} as Filed: "
+                    + $"reconciliation does NOT match. Cert total {certTotal:F2} EGP vs WHT-payable accrual "
+                    + $"{whtPayableAccrued:F2} EGP (discrepancy {(whtPayableAccrued - certTotal):F2}). "
+                    + "FR-046 — fix the books (likely a missing manual adjusting voucher), regenerate, then re-file."
+            );
         }
 
         var nowUtc = _clock.UtcNow;
@@ -124,12 +138,16 @@ public sealed class MarkForm41FiledHandler
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "form41.marked_filed",
-            ActorUserId: command.FiledByUserId,
-            ActorFirmName: null, CompanyId: Guid.Empty,
-            PayloadJson: $$"""{"form41_filing_id":"{{filing.Id:D}}","fiscal_year":{{filing.FiscalYear}},"quarter":{{filing.Quarter}},"line_count":{{certs.Count}},"total_wht_egp":{{certTotal.ToString("F2", CultureInfo.InvariantCulture)}},"filed_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}"}"""),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "form41.marked_filed",
+                ActorUserId: command.FiledByUserId,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: $$"""{"form41_filing_id":"{{filing.Id:D}}","fiscal_year":{{filing.FiscalYear}},"quarter":{{filing.Quarter}},"line_count":{{certs.Count}},"total_wht_egp":{{certTotal.ToString("F2", CultureInfo.InvariantCulture)}},"filed_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}"}"""
+            ),
+            cancellationToken
+        );
 
         return filing;
     }
@@ -139,8 +157,7 @@ public sealed class MarkForm41FiledHandler
         var startMonth = (quarter - 1) * 3 + 1;
         var endMonth = startMonth + 2;
         var start = new DateOnly(fiscalYear, startMonth, 1);
-        var end = new DateOnly(fiscalYear, endMonth,
-            DateTime.DaysInMonth(fiscalYear, endMonth));
+        var end = new DateOnly(fiscalYear, endMonth, DateTime.DaysInMonth(fiscalYear, endMonth));
         return (start, end);
     }
 }

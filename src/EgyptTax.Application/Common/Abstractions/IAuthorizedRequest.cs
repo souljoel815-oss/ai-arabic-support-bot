@@ -7,6 +7,4 @@ namespace EgyptTax.Application.Common.Abstractions;
 /// Per-permission FR-003 checks land in subsequent stages alongside the
 /// individual handlers; this marker is the minimum baseline.
 /// </summary>
-public interface IAuthorizedRequest
-{
-}
+public interface IAuthorizedRequest { }

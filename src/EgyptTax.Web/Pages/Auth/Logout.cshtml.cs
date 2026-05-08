@@ -39,7 +39,11 @@ public sealed class LogoutModel : PageModel
     {
         if (User.SessionIdValue() is { } sessionId)
         {
-            await _sessions.RevokeAsync(sessionId, SessionRevocationReason.UserLogout, cancellationToken);
+            await _sessions.RevokeAsync(
+                sessionId,
+                SessionRevocationReason.UserLogout,
+                cancellationToken
+            );
         }
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return RedirectToPage("/Auth/Login");

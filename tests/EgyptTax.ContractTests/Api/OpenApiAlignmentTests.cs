@@ -29,21 +29,35 @@ public class OpenApiAlignmentTests : IClassFixture<EgyptTaxContractTestFactory>
         using var client = _factory.CreateClient();
 
         var response = await client.GetAsync(new Uri("/openapi.yaml", UriKind.Relative));
-        response.IsSuccessStatusCode.Should().BeTrue(
-            because: $"GET /openapi.yaml MUST succeed; got {(int)response.StatusCode}");
+        response
+            .IsSuccessStatusCode.Should()
+            .BeTrue(because: $"GET /openapi.yaml MUST succeed; got {(int)response.StatusCode}");
 
-        response.Content.Headers.ContentType?.MediaType.Should().Be("application/yaml",
-            because: "the served OpenAPI MUST advertise application/yaml");
+        response
+            .Content.Headers.ContentType?.MediaType.Should()
+            .Be("application/yaml", because: "the served OpenAPI MUST advertise application/yaml");
 
         var served = NormalizeLineEndings(await response.Content.ReadAsStringAsync());
 
-        var contractPath = Path.Combine(AppContext.BaseDirectory, "contracts", "api", "openapi.yaml");
-        File.Exists(contractPath).Should().BeTrue(
-            because: $"the contract file MUST be copied alongside the test binary; expected at {contractPath}");
+        var contractPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "contracts",
+            "api",
+            "openapi.yaml"
+        );
+        File.Exists(contractPath)
+            .Should()
+            .BeTrue(
+                because: $"the contract file MUST be copied alongside the test binary; expected at {contractPath}"
+            );
         var canonical = NormalizeLineEndings(await File.ReadAllTextAsync(contractPath));
 
-        served.Should().Be(canonical,
-            because: "served OpenAPI MUST be the canonical contract — no drift permitted");
+        served
+            .Should()
+            .Be(
+                canonical,
+                because: "served OpenAPI MUST be the canonical contract — no drift permitted"
+            );
     }
 
     [Fact]
@@ -52,8 +66,12 @@ public class OpenApiAlignmentTests : IClassFixture<EgyptTaxContractTestFactory>
         using var client = _factory.CreateClient();
         var served = await client.GetStringAsync(new Uri("/openapi.yaml", UriKind.Relative));
 
-        served.Should().Contain("/health/live",
-            because: "T073 health endpoints MUST be declared in the served contract");
+        served
+            .Should()
+            .Contain(
+                "/health/live",
+                because: "T073 health endpoints MUST be declared in the served contract"
+            );
         served.Should().Contain("/health/ready");
     }
 
@@ -72,7 +90,9 @@ public sealed class EgyptTaxContractTestFactory : WebApplicationFactory<Program>
     {
         builder.ConfigureServices(services =>
         {
-            var existing = services.Where(d => d.ServiceType == typeof(DbContextOptions<AppDbContext>)).ToList();
+            var existing = services
+                .Where(d => d.ServiceType == typeof(DbContextOptions<AppDbContext>))
+                .ToList();
             foreach (var d in existing)
             {
                 services.Remove(d);

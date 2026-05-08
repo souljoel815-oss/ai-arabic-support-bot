@@ -15,10 +15,7 @@ namespace EgyptTax.Infrastructure.Identity;
 /// (after migrations apply) so the audit chain reflects every recovery
 /// even though the CLI cannot append to the chain itself.
 /// </summary>
-public sealed class AdminRecoveryDrainer(
-    AppDbContext db,
-    IClock clock,
-    IAuditLogStore auditLog)
+public sealed class AdminRecoveryDrainer(AppDbContext db, IClock clock, IAuditLogStore auditLog)
 {
     private readonly AppDbContext _db = db;
     private readonly IClock _clock = clock;
@@ -44,8 +41,10 @@ public sealed class AdminRecoveryDrainer(
                     ActorUserId: record.TargetUserId,
                     ActorFirmName: null,
                     CompanyId: Guid.Empty,
-                    PayloadJson: $$"""{"recovery_id":"{{record.Id:D}}","target_user_id":"{{record.TargetUserId:D}}","target_email":"{{record.TargetEmail}}","recovered_at_utc":"{{record.RecoveredAtUtc:o}}","machine_name":"{{record.MachineName}}","operator_identity":{{(record.OperatorIdentity is null ? "null" : "\"" + record.OperatorIdentity + "\"")}}}"""),
-                cancellationToken);
+                    PayloadJson: $$"""{"recovery_id":"{{record.Id:D}}","target_user_id":"{{record.TargetUserId:D}}","target_email":"{{record.TargetEmail}}","recovered_at_utc":"{{record.RecoveredAtUtc:o}}","machine_name":"{{record.MachineName}}","operator_identity":{{(record.OperatorIdentity is null ? "null" : "\"" + record.OperatorIdentity + "\"")}}}"""
+                ),
+                cancellationToken
+            );
 
             record.MarkAuditEmitted(_clock.UtcNow);
         }

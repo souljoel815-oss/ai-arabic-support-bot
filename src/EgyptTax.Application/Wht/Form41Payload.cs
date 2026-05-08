@@ -19,7 +19,8 @@ public sealed record Form41Payload(
     IReadOnlyList<Form41Line> Lines,
     Form41Totals Totals,
     Form41Reconciliation Reconciliation,
-    Form41AuditChainExtractRef AuditChainExtractRef);
+    Form41AuditChainExtractRef AuditChainExtractRef
+);
 
 public sealed record Form41Header(
     string CompanyTin,
@@ -29,7 +30,8 @@ public sealed record Form41Header(
     DateOnly FillingPeriodStart,
     DateOnly FillingPeriodEnd,
     DateTime PreparedAt,
-    Guid PreparedByUserId);
+    Guid PreparedByUserId
+);
 
 public sealed record Form41Line(
     string SupplierTin,
@@ -41,25 +43,30 @@ public sealed record Form41Line(
     string SupplierPaymentVoucherNumber,
     DateOnly SupplierPaymentVoucherDate,
     string SourceInvoiceNumber,
-    string? OutboundCertificateNumber);
+    string? OutboundCertificateNumber
+);
 
 public sealed record Form41Totals(
     int LineCount,
     decimal TotalGrossPayment,
     decimal TotalAmountWithheld,
-    IReadOnlyList<Form41ByCategoryRow> ByCategory);
+    IReadOnlyList<Form41ByCategoryRow> ByCategory
+);
 
 public sealed record Form41ByCategoryRow(
     string WhtCategoryCode,
     int LineCount,
-    decimal AmountWithheld);
+    decimal AmountWithheld
+);
 
 public sealed record Form41Reconciliation(
     decimal WhtPayableAccountBalanceAtPeriodEnd,
     bool MatchesTotalAmountWithheld,
-    decimal? DiscrepancyAmount);
+    decimal? DiscrepancyAmount
+);
 
 public sealed record Form41AuditChainExtractRef(
     long StartIndex,
     long EndIndex,
-    string ExtractSha256);
+    string ExtractSha256
+);

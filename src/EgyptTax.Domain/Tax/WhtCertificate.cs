@@ -54,7 +54,8 @@ public sealed class WhtCertificate
         decimal rateAppliedPercent,
         MoneyEgp amountWithheld,
         string certificateNumber,
-        DateTime issuedAtUtc)
+        DateTime issuedAtUtc
+    )
     {
         if (counterpartyId == Guid.Empty)
         {
@@ -74,13 +75,17 @@ public sealed class WhtCertificate
         }
         if (rateAppliedPercent < 0m || rateAppliedPercent > 100m)
         {
-            throw new ArgumentOutOfRangeException(nameof(rateAppliedPercent),
-                "Rate must be in the range [0, 100] percent.");
+            throw new ArgumentOutOfRangeException(
+                nameof(rateAppliedPercent),
+                "Rate must be in the range [0, 100] percent."
+            );
         }
         if (amountWithheld.Amount < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(amountWithheld),
-                "Withheld amount cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(amountWithheld),
+                "Withheld amount cannot be negative."
+            );
         }
         ArgumentException.ThrowIfNullOrWhiteSpace(certificateNumber);
 
@@ -111,8 +116,9 @@ public sealed class WhtCertificate
         if (IncludedInForm41FilingId is { } existing)
         {
             throw new InvalidOperationException(
-                $"WhtCertificate {Id} is already included in Form 41 filing {existing}; " +
-                "a single cert MAY NOT appear in two filings (FR-046 / US7 scenario 3 immutability).");
+                $"WhtCertificate {Id} is already included in Form 41 filing {existing}; "
+                    + "a single cert MAY NOT appear in two filings (FR-046 / US7 scenario 3 immutability)."
+            );
         }
         IncludedInForm41FilingId = form41FilingId;
     }

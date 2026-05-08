@@ -33,15 +33,19 @@ public sealed class SqlWhtComputeService : IWhtComputeService
         DateOnly paymentDate,
         MoneyEgp grossAmount,
         WhtApplicableTo direction,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(categoryCode);
 
-        var category = await _db.Set<WhtCategory>().AsNoTracking()
-            .Where(c => c.Code == categoryCode
+        var category = await _db.Set<WhtCategory>()
+            .AsNoTracking()
+            .Where(c =>
+                c.Code == categoryCode
                 && c.EffectiveFromDate <= paymentDate
                 && (c.EffectiveToDate == null || c.EffectiveToDate >= paymentDate)
-                && (c.ApplicableTo == direction || c.ApplicableTo == WhtApplicableTo.Both))
+                && (c.ApplicableTo == direction || c.ApplicableTo == WhtApplicableTo.Both)
+            )
             .OrderByDescending(c => c.EffectiveFromDate)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -52,12 +56,15 @@ public sealed class SqlWhtComputeService : IWhtComputeService
 
         var amount = decimal.Round(
             grossAmount.Amount * category.RatePercent / 100m,
-            2, MidpointRounding.ToEven);
+            2,
+            MidpointRounding.ToEven
+        );
 
         return new WhtComputation(
             WhtCategoryId: category.Id,
             WhtCategoryCode: category.Code,
             RateAppliedPercent: category.RatePercent,
-            AmountWithheld: MoneyEgp.From(amount));
+            AmountWithheld: MoneyEgp.From(amount)
+        );
     }
 }

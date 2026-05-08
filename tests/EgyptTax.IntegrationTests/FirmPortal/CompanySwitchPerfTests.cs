@@ -54,24 +54,36 @@ public class CompanySwitchPerfTests(SqlServerFixture fixture)
         await dbA.SaveChangesAsync();
         await dbB.SaveChangesAsync();
 
-        var firmUserA = await new InviteAccountantFirmUserHandler(dbA,
-                new TestClock(new DateTime(2026, 4, 1, 9, 0, 0, DateTimeKind.Utc)), auditA)
-            .InviteAsync(new InviteAccountantFirmUserCommand(
+        var firmUserA = await new InviteAccountantFirmUserHandler(
+            dbA,
+            new TestClock(new DateTime(2026, 4, 1, 9, 0, 0, DateTimeKind.Utc)),
+            auditA
+        ).InviteAsync(
+            new InviteAccountantFirmUserCommand(
                 InviteeEmail: firmEmail,
                 InviteeDisplayName: new ArabicEnglishText("محاسب", "Accountant"),
                 FirmName: "Nile Accounting LLC",
                 FirmExternalIdentifier: firmExtId,
                 TemporaryPasswordHash: "argon2id$m=65536,t=3,p=4$XXXX$YYYY",
-                InvitedByUserId: adminA.Id), CancellationToken.None);
-        var firmUserB = await new InviteAccountantFirmUserHandler(dbB,
-                new TestClock(new DateTime(2026, 4, 1, 9, 0, 0, DateTimeKind.Utc)), auditB)
-            .InviteAsync(new InviteAccountantFirmUserCommand(
+                InvitedByUserId: adminA.Id
+            ),
+            CancellationToken.None
+        );
+        var firmUserB = await new InviteAccountantFirmUserHandler(
+            dbB,
+            new TestClock(new DateTime(2026, 4, 1, 9, 0, 0, DateTimeKind.Utc)),
+            auditB
+        ).InviteAsync(
+            new InviteAccountantFirmUserCommand(
                 InviteeEmail: firmEmail,
                 InviteeDisplayName: new ArabicEnglishText("محاسب", "Accountant"),
                 FirmName: "Nile Accounting LLC",
                 FirmExternalIdentifier: firmExtId,
                 TemporaryPasswordHash: "argon2id$m=65536,t=3,p=4$XXXX$YYYY",
-                InvitedByUserId: adminB.Id), CancellationToken.None);
+                InvitedByUserId: adminB.Id
+            ),
+            CancellationToken.None
+        );
 
         // Warm — first run includes JIT + EF model build cost.
         _ = await LookupAsync(dbA, firmExtId);
@@ -90,15 +102,22 @@ public class CompanySwitchPerfTests(SqlServerFixture fixture)
         first!.UserId.Should().Be(firmUserA.UserId);
         second!.UserId.Should().Be(firmUserB.UserId);
 
-        sw.ElapsedMilliseconds.Should().BeLessThan(1000,
-            because: "SC-014 — server-side firm-user lookup across two installations "
-                + "MUST land well under 1 s (we did THREE roundtrips inside the budget; "
-                + $"actual was {sw.ElapsedMilliseconds} ms)");
+        sw.ElapsedMilliseconds.Should()
+            .BeLessThan(
+                1000,
+                because: "SC-014 — server-side firm-user lookup across two installations "
+                    + "MUST land well under 1 s (we did THREE roundtrips inside the budget; "
+                    + $"actual was {sw.ElapsedMilliseconds} ms)"
+            );
     }
 
-    private static Task<AccountantFirmUser?> LookupAsync(Microsoft.EntityFrameworkCore.DbContext db, string firmExternalIdentifier)
+    private static Task<AccountantFirmUser?> LookupAsync(
+        Microsoft.EntityFrameworkCore.DbContext db,
+        string firmExternalIdentifier
+    )
     {
-        return db.Set<AccountantFirmUser>().AsNoTracking()
+        return db.Set<AccountantFirmUser>()
+            .AsNoTracking()
             .FirstOrDefaultAsync(a => a.FirmExternalIdentifier == firmExternalIdentifier);
     }
 
@@ -109,7 +128,8 @@ public class CompanySwitchPerfTests(SqlServerFixture fixture)
             displayName: new ArabicEnglishText("مسؤول", "Administrator"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
         db.Add(u);
         return u;
     }

@@ -35,12 +35,16 @@ public sealed class PasswordResetToken
         byte[] tokenHash,
         Guid issuedByAdminUserId,
         DateTime nowUtc,
-        TimeSpan? lifetime = null)
+        TimeSpan? lifetime = null
+    )
     {
         ArgumentNullException.ThrowIfNull(tokenHash);
         if (tokenHash.Length != 32)
         {
-            throw new ArgumentException("TokenHash must be exactly 32 bytes (SHA-256).", nameof(tokenHash));
+            throw new ArgumentException(
+                "TokenHash must be exactly 32 bytes (SHA-256).",
+                nameof(tokenHash)
+            );
         }
 
         UserId = userId;
@@ -50,8 +54,7 @@ public sealed class PasswordResetToken
         ExpiresAtUtc = nowUtc.Add(lifetime ?? TimeSpan.FromHours(DefaultLifetimeHours));
     }
 
-    public bool IsActive(DateTime nowUtc) =>
-        RedeemedAtUtc is null && nowUtc < ExpiresAtUtc;
+    public bool IsActive(DateTime nowUtc) => RedeemedAtUtc is null && nowUtc < ExpiresAtUtc;
 
     public void Redeem(DateTime nowUtc)
     {

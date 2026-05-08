@@ -23,6 +23,5 @@ public sealed class DocumentTypeApprovalSetting
         ApprovalRequired = approvalRequired;
     }
 
-    public void SetApprovalRequired(bool approvalRequired) =>
-        ApprovalRequired = approvalRequired;
+    public void SetApprovalRequired(bool approvalRequired) => ApprovalRequired = approvalRequired;
 }

@@ -33,12 +33,15 @@ public sealed class DuplicateSupplierInvoiceRule : IPurchaseDocumentRiskRule
         ArgumentNullException.ThrowIfNull(context);
 
         var subject = context.Invoice;
-        var matches = context.SupplierInvoiceFingerprints
-            .Where(f => f.Id != subject.Id) // ignore self
-            .Where(f => string.Equals(
-                f.SupplierInvoiceNumber.Trim(),
-                subject.SupplierInvoiceNumber.Trim(),
-                StringComparison.OrdinalIgnoreCase))
+        var matches = context
+            .SupplierInvoiceFingerprints.Where(f => f.Id != subject.Id) // ignore self
+            .Where(f =>
+                string.Equals(
+                    f.SupplierInvoiceNumber.Trim(),
+                    subject.SupplierInvoiceNumber.Trim(),
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
             .ToList();
 
         if (matches.Count == 0)
@@ -50,32 +53,45 @@ public sealed class DuplicateSupplierInvoiceRule : IPurchaseDocumentRiskRule
         // Otherwise → MustFixBeforeFiling.
         var exact = matches.FirstOrDefault(f =>
             f.DateReceived == subject.DateReceived
-            && f.GrandTotal.Amount == subject.GrandTotal.Amount);
+            && f.GrandTotal.Amount == subject.GrandTotal.Amount
+        );
 
         if (exact is not null)
         {
-            return [new RiskFinding(
-                RuleId,
-                RiskSeverity.Blocker,
-                new ArabicEnglishText(
-                    "فاتورة مورد مكررة",
-                    $"Duplicate supplier invoice — same number + date + amount as {exact.DocumentNumber ?? "(another draft)"}"),
-                new ArabicEnglishText(
-                    $"المورد ورقم الفاتورة \"{subject.SupplierInvoiceNumber}\" والتاريخ والإجمالي مطابقون لمستند موجود بالفعل ({exact.DocumentNumber ?? "draft"}). إدخال نفس الفاتورة مرتين يؤدي إلى المطالبة بضريبة المدخلات مرتين.",
-                    $"Supplier reference number \"{subject.SupplierInvoiceNumber}\" + date {subject.DateReceived:yyyy-MM-dd} + grand total {subject.GrandTotal.Amount:F2} EGP all match an existing document ({exact.DocumentNumber ?? "draft"}). Posting will double-claim input VAT against the same supplier invoice."),
-                FixHint: "Verify this is not a duplicate. If it is, discard this draft. If it is a legitimate re-issue, ask the supplier for a new reference number.")];
+            return
+            [
+                new RiskFinding(
+                    RuleId,
+                    RiskSeverity.Blocker,
+                    new ArabicEnglishText(
+                        "فاتورة مورد مكررة",
+                        $"Duplicate supplier invoice — same number + date + amount as {exact.DocumentNumber ?? "(another draft)"}"
+                    ),
+                    new ArabicEnglishText(
+                        $"المورد ورقم الفاتورة \"{subject.SupplierInvoiceNumber}\" والتاريخ والإجمالي مطابقون لمستند موجود بالفعل ({exact.DocumentNumber ?? "draft"}). إدخال نفس الفاتورة مرتين يؤدي إلى المطالبة بضريبة المدخلات مرتين.",
+                        $"Supplier reference number \"{subject.SupplierInvoiceNumber}\" + date {subject.DateReceived:yyyy-MM-dd} + grand total {subject.GrandTotal.Amount:F2} EGP all match an existing document ({exact.DocumentNumber ?? "draft"}). Posting will double-claim input VAT against the same supplier invoice."
+                    ),
+                    FixHint: "Verify this is not a duplicate. If it is, discard this draft. If it is a legitimate re-issue, ask the supplier for a new reference number."
+                ),
+            ];
         }
 
         var first = matches[0];
-        return [new RiskFinding(
-            RuleId,
-            RiskSeverity.MustFixBeforeFiling,
-            new ArabicEnglishText(
-                "رقم فاتورة المورد قيد الاستخدام",
-                $"Supplier invoice number already used — {first.DocumentNumber ?? "(another draft)"}"),
-            new ArabicEnglishText(
-                $"تم استخدام رقم الفاتورة \"{subject.SupplierInvoiceNumber}\" مع نفس المورد من قبل (التاريخ أو المبلغ مختلف). تحقق من أن هذا ليس إعادة إصدار للفاتورة نفسها قبل النشر.",
-                $"Supplier reference number \"{subject.SupplierInvoiceNumber}\" was used on {matches.Count} prior document(s) with this supplier (date or amount differs). Verify this is a legitimate re-issue / correction before posting."),
-            FixHint: "Open the prior document; if it's the same physical invoice with a typo fix, void this draft.")];
+        return
+        [
+            new RiskFinding(
+                RuleId,
+                RiskSeverity.MustFixBeforeFiling,
+                new ArabicEnglishText(
+                    "رقم فاتورة المورد قيد الاستخدام",
+                    $"Supplier invoice number already used — {first.DocumentNumber ?? "(another draft)"}"
+                ),
+                new ArabicEnglishText(
+                    $"تم استخدام رقم الفاتورة \"{subject.SupplierInvoiceNumber}\" مع نفس المورد من قبل (التاريخ أو المبلغ مختلف). تحقق من أن هذا ليس إعادة إصدار للفاتورة نفسها قبل النشر.",
+                    $"Supplier reference number \"{subject.SupplierInvoiceNumber}\" was used on {matches.Count} prior document(s) with this supplier (date or amount differs). Verify this is a legitimate re-issue / correction before posting."
+                ),
+                FixHint: "Open the prior document; if it's the same physical invoice with a typo fix, void this draft."
+            ),
+        ];
     }
 }

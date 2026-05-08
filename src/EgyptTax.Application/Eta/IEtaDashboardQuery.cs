@@ -16,7 +16,8 @@ public interface IEtaDashboardQuery
     Task<IReadOnlyList<EtaDashboardRow>> GetUpcomingDeadlinesAsync(
         TimeSpan within,
         DateTime nowUtc,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }
 
 /// <summary>
@@ -31,4 +32,5 @@ public sealed record EtaDashboardRow(
     EtaSubmissionStatus Status,
     DateTime SubmissionWindowExpiresAtUtc,
     int AttemptCount,
-    string? LastErrorCode);
+    string? LastErrorCode
+);

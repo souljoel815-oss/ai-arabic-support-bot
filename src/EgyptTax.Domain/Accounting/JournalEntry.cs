@@ -35,7 +35,8 @@ public sealed class JournalEntry
         Guid sourceDocumentId,
         string sourceDocumentNumber,
         DocumentType sourceDocumentType,
-        DateTime postedAtUtc)
+        DateTime postedAtUtc
+    )
     {
         SourceDocumentId = sourceDocumentId;
         SourceDocumentNumber = sourceDocumentNumber;
@@ -53,24 +54,31 @@ public sealed class JournalEntry
         string sourceDocumentNumber,
         DocumentType sourceDocumentType,
         DateTime postedAtUtc,
-        IEnumerable<(string AccountCode, MoneyEgp Debit, MoneyEgp Credit, string Description)> lines)
+        IEnumerable<(string AccountCode, MoneyEgp Debit, MoneyEgp Credit, string Description)> lines
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceDocumentNumber);
         ArgumentNullException.ThrowIfNull(lines);
 
         var entry = new JournalEntry(
-            sourceDocumentId, sourceDocumentNumber, sourceDocumentType, postedAtUtc);
+            sourceDocumentId,
+            sourceDocumentNumber,
+            sourceDocumentType,
+            postedAtUtc
+        );
 
         foreach (var l in lines)
         {
-            entry._lines.Add(new JournalEntryLine(
-                entry.Id, l.AccountCode, l.Debit, l.Credit, l.Description));
+            entry._lines.Add(
+                new JournalEntryLine(entry.Id, l.AccountCode, l.Debit, l.Credit, l.Description)
+            );
         }
 
         if (entry._lines.Count == 0)
         {
             throw new InvalidOperationException(
-                $"Cannot create a journal entry for {sourceDocumentNumber}: no lines were supplied.");
+                $"Cannot create a journal entry for {sourceDocumentNumber}: no lines were supplied."
+            );
         }
 
         var sumDebits = entry._lines.Sum(x => x.Debit.Amount);
@@ -78,7 +86,8 @@ public sealed class JournalEntry
         if (sumDebits != sumCredits)
         {
             throw new InvalidOperationException(
-                $"Journal entry for {sourceDocumentNumber} is unbalanced: debits {sumDebits:F2} vs credits {sumCredits:F2}. Double-entry requires equality.");
+                $"Journal entry for {sourceDocumentNumber} is unbalanced: debits {sumDebits:F2} vs credits {sumCredits:F2}. Double-entry requires equality."
+            );
         }
 
         return entry;

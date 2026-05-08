@@ -40,7 +40,9 @@ public class BundleRegisterPdfsTests(SqlServerFixture fixture) : IDisposable
 {
     private readonly SqlServerFixture _fixture = fixture;
     private readonly string _tempRoot = Path.Combine(
-        Path.GetTempPath(), $"egypttax-bundle-registers-{Guid.NewGuid():N}");
+        Path.GetTempPath(),
+        $"egypttax-bundle-registers-{Guid.NewGuid():N}"
+    );
 
     [Fact]
     public async Task Bundle_Carries_All_Five_Register_Pdfs_AtDocumentedPaths_AndCategories()
@@ -58,43 +60,76 @@ public class BundleRegisterPdfsTests(SqlServerFixture fixture) : IDisposable
         var auditStore = new SqlAuditLogStore(db);
         var allocator = new SqlSequentialNumberAllocator(db);
 
-        var salesDraft = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile,
-            new DateOnly(2026, 5, 5));
-        salesDraft.AddLine(itemId: Guid.NewGuid(), quantity: 1m,
-            unitPrice: MoneyEgp.From(200m), vatCategoryId: vat.Id,
-            vatRatePercent: vat.RatePercent);
+        var salesDraft = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 5)
+        );
+        salesDraft.AddLine(
+            itemId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(200m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: vat.RatePercent
+        );
         db.Add(salesDraft);
         await db.SaveChangesAsync();
 
         var emitter = new SalesInvoiceJournalEmitter(db);
         var postSales = new PostSalesInvoiceHandler(db, allocator, clock, auditStore, emitter);
-        await postSales.HandleAsync(new PostSalesInvoiceCommand(salesDraft.Id, user.Id), CancellationToken.None);
+        await postSales.HandleAsync(
+            new PostSalesInvoiceCommand(salesDraft.Id, user.Id),
+            CancellationToken.None
+        );
 
         // Reload posted sales invoice + create credit note via the handler.
-        var postedSales = await db.Set<SalesInvoice>().AsNoTracking()
+        var postedSales = await db.Set<SalesInvoice>()
+            .AsNoTracking()
             .FirstAsync(i => i.Id == salesDraft.Id);
-        var cnDraft = SalesInvoice.CreateCreditNoteFor(postedSales,
-            reason: "Goods returned by customer", documentDate: new DateOnly(2026, 5, 12));
-        cnDraft.AddLine(itemId: Guid.NewGuid(), quantity: -1m,
-            unitPrice: MoneyEgp.From(200m), vatCategoryId: vat.Id,
-            vatRatePercent: vat.RatePercent);
+        var cnDraft = SalesInvoice.CreateCreditNoteFor(
+            postedSales,
+            reason: "Goods returned by customer",
+            documentDate: new DateOnly(2026, 5, 12)
+        );
+        cnDraft.AddLine(
+            itemId: Guid.NewGuid(),
+            quantity: -1m,
+            unitPrice: MoneyEgp.From(200m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: vat.RatePercent
+        );
         db.Add(cnDraft);
         await db.SaveChangesAsync();
-        await postSales.HandleAsync(new PostSalesInvoiceCommand(cnDraft.Id, user.Id), CancellationToken.None);
+        await postSales.HandleAsync(
+            new PostSalesInvoiceCommand(cnDraft.Id, user.Id),
+            CancellationToken.None
+        );
 
         // Purchase invoice — no attachment for simplicity.
-        var purchaseDraft = PurchaseInvoice.CreateDraft(supplier.Id, supplier.TaxProfile,
-            "SUP-INV-T233", new DateOnly(2026, 5, 8));
+        var purchaseDraft = PurchaseInvoice.CreateDraft(
+            supplier.Id,
+            supplier.TaxProfile,
+            "SUP-INV-T233",
+            new DateOnly(2026, 5, 8)
+        );
         // Non-deductible to skip the FR-016 attachment-required guard
         // (we just need a posted purchase to exist for the register).
-        purchaseDraft.AddLine(itemId: null, expenseCategoryId: expenseCategory.Id,
-            quantity: 1m, unitPrice: MoneyEgp.From(150m),
-            vatCategoryId: vat.Id, vatRatePercent: vat.RatePercent,
-            deductibleFlag: false);
+        purchaseDraft.AddLine(
+            itemId: null,
+            expenseCategoryId: expenseCategory.Id,
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(150m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: vat.RatePercent,
+            deductibleFlag: false
+        );
         db.Add(purchaseDraft);
         await db.SaveChangesAsync();
         var postPurchase = new PostPurchaseInvoiceHandler(db, allocator, clock, auditStore);
-        await postPurchase.HandleAsync(new PostPurchaseInvoiceCommand(purchaseDraft.Id, user.Id), CancellationToken.None);
+        await postPurchase.HandleAsync(
+            new PostPurchaseInvoiceCommand(purchaseDraft.Id, user.Id),
+            CancellationToken.None
+        );
 
         // Expense — non-deductible so it doesn't trigger the
         // attachment-required guard.
@@ -103,38 +138,52 @@ public class BundleRegisterPdfsTests(SqlServerFixture fixture) : IDisposable
             categoryId: expenseCategory.Id,
             amount: MoneyEgp.From(75m),
             deductibleFlag: false,
-            description: new ArabicEnglishText("مصاريف عامة", "Office supplies"));
+            description: new ArabicEnglishText("مصاريف عامة", "Office supplies")
+        );
         db.Add(expense);
         await db.SaveChangesAsync();
         var postExpense = new PostExpenseHandler(db, allocator, clock, auditStore);
         await postExpense.HandleAsync(
-            new PostExpenseCommand(expense.Id, user.Id), CancellationToken.None);
+            new PostExpenseCommand(expense.Id, user.Id),
+            CancellationToken.None
+        );
 
         // Build the bundle.
         var store = new FileSystemAttachmentStore(_tempRoot, clock);
-        var builder = new InspectionBundleBuilder(db, store, clock,
-            new SqlTrialBalanceReportQuery(db));
-        var result = await builder.BuildAsync(new InspectionBundleRequest(
-            PeriodStart: new DateOnly(2026, 5, 1),
-            PeriodEnd: new DateOnly(2026, 5, 31),
-            GeneratedByUserId: user.Id,
-            AllowDrafts: false), CancellationToken.None);
+        var builder = new InspectionBundleBuilder(
+            db,
+            store,
+            clock,
+            new SqlTrialBalanceReportQuery(db)
+        );
+        var result = await builder.BuildAsync(
+            new InspectionBundleRequest(
+                PeriodStart: new DateOnly(2026, 5, 1),
+                PeriodEnd: new DateOnly(2026, 5, 31),
+                GeneratedByUserId: user.Id,
+                AllowDrafts: false
+            ),
+            CancellationToken.None
+        );
 
         // Manifest sanity: every register MUST appear at the
         // documented path + with the schema-mandated category.
         var registerExpectations = new (string Path, string Category)[]
         {
-            ("registers/sales-invoice-register.pdf",          "SalesInvoiceRegister"),
-            ("registers/purchase-and-expense-register.pdf",   "PurchaseInvoiceAndExpenseRegister"),
+            ("registers/sales-invoice-register.pdf", "SalesInvoiceRegister"),
+            ("registers/purchase-and-expense-register.pdf", "PurchaseInvoiceAndExpenseRegister"),
             ("registers/credit-note-and-reversal-register.pdf", "CreditNoteAndReversalRegister"),
-            ("registers/general-journal-listing.pdf",         "GeneralJournalListing"),
-            ("registers/trial-balance.pdf",                   "TrialBalance"),
+            ("registers/general-journal-listing.pdf", "GeneralJournalListing"),
+            ("registers/trial-balance.pdf", "TrialBalance"),
         };
         foreach (var (path, category) in registerExpectations)
         {
-            result.Manifest.Files.Should().Contain(
-                f => f.RelativePath == path && f.Category == category,
-                because: $"the bundle MUST carry {path} ({category}) — that's the FR-048 promise the inspector reads first");
+            result
+                .Manifest.Files.Should()
+                .Contain(
+                    f => f.RelativePath == path && f.Category == category,
+                    because: $"the bundle MUST carry {path} ({category}) — that's the FR-048 promise the inspector reads first"
+                );
         }
 
         // Each PDF in the ZIP MUST start with the %PDF magic header
@@ -153,63 +202,103 @@ public class BundleRegisterPdfsTests(SqlServerFixture fixture) : IDisposable
             using var ms = new MemoryStream();
             await s.CopyToAsync(ms);
             var bytes = ms.ToArray();
-            bytes.Length.Should().BeGreaterThan(500,
-                because: $"{path} should be a real PDF, not an empty / stub file");
-            bytes.Take(4).Should().Equal(pdfMagic,
-                because: $"{path} must start with the %PDF magic header");
+            bytes
+                .Length.Should()
+                .BeGreaterThan(
+                    500,
+                    because: $"{path} should be a real PDF, not an empty / stub file"
+                );
+            bytes
+                .Take(4)
+                .Should()
+                .Equal(pdfMagic, because: $"{path} must start with the %PDF magic header");
         }
     }
 
-    private static async Task<(VatCategory, Customer, Supplier, DeductibleExpenseCategory, User)> SeedMastersAsync(
-        AppDbContext db)
+    private static async Task<(
+        VatCategory,
+        Customer,
+        Supplier,
+        DeductibleExpenseCategory,
+        User
+    )> SeedMastersAsync(AppDbContext db)
     {
         var vat = new VatCategory(
-            code: "Standard", name: new ArabicEnglishText("قياسي", "Standard"),
-            ratePercent: 14m, effectiveFromDate: new DateOnly(2026, 1, 1),
-            effectiveToDate: null, recoverableInputVat: true);
+            code: "Standard",
+            name: new ArabicEnglishText("قياسي", "Standard"),
+            ratePercent: 14m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: true
+        );
         var customer = new Customer(
             code: $"CUS-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("عميل", "Customer LLC"),
             address: PostalAddress.Create(
                 new ArabicEnglishText("القاهرة", "Cairo"),
-                "Cairo", "Downtown", "Tahrir", "10", postalCode: "11511"),
+                "Cairo",
+                "Downtown",
+                "Tahrir",
+                "10",
+                postalCode: "11511"
+            ),
             taxProfile: CustomerTaxProfile.B2BRegistered(
                 EgyptianTin.Parse("987654321"),
                 vatExemption: false,
-                defaultSalesVatCategoryId: null));
+                defaultSalesVatCategoryId: null
+            )
+        );
         var supplier = new Supplier(
             code: $"SUP-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("مورد", "Supplier"),
             address: new ArabicEnglishText("القاهرة", "Cairo"),
-            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("123456789"), vat.Id));
+            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(
+                EgyptianTin.Parse("123456789"),
+                vat.Id
+            )
+        );
         var expenseCategory = new DeductibleExpenseCategory(
             code: $"EC-{Guid.NewGuid():N}".Substring(0, 8),
             name: new ArabicEnglishText("مصاريف عامة", "Office supplies"),
             defaultDeductible: false,
-            defaultAccountId: Guid.NewGuid());
+            defaultAccountId: Guid.NewGuid()
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        db.Add(vat); db.Add(customer); db.Add(supplier);
-        db.Add(expenseCategory); db.Add(user);
+            passwordMustChange: false
+        );
+        db.Add(vat);
+        db.Add(customer);
+        db.Add(supplier);
+        db.Add(expenseCategory);
+        db.Add(user);
         await db.SaveChangesAsync();
         return (vat, customer, supplier, expenseCategory, user);
     }
 
     private static async Task EnsureCompanyAsync(AppDbContext db)
     {
-        if (await db.Set<Company>().AnyAsync()) return;
-        db.Add(new Company(
-            legalName: new ArabicEnglishText("شركة", "Test Company SAE"),
-            taxRegistrationNumber: EgyptianTin.Parse("123456789"),
-            commercialRegistrationNumber: "CR-1",
-            address: PostalAddress.Create(
-                new ArabicEnglishText("القاهرة", "Cairo"),
-                "Cairo", "Downtown", "Tahrir", "12", postalCode: "11511"),
-            taxpayerActivityCode: "0001"));
+        if (await db.Set<Company>().AnyAsync())
+            return;
+        db.Add(
+            new Company(
+                legalName: new ArabicEnglishText("شركة", "Test Company SAE"),
+                taxRegistrationNumber: EgyptianTin.Parse("123456789"),
+                commercialRegistrationNumber: "CR-1",
+                address: PostalAddress.Create(
+                    new ArabicEnglishText("القاهرة", "Cairo"),
+                    "Cairo",
+                    "Downtown",
+                    "Tahrir",
+                    "12",
+                    postalCode: "11511"
+                ),
+                taxpayerActivityCode: "0001"
+            )
+        );
         await db.SaveChangesAsync();
     }
 

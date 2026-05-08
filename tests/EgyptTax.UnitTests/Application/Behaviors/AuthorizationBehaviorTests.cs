@@ -10,11 +10,17 @@ public class AuthorizationBehaviorTests
     [Fact]
     public async Task AuthorizedRequest_AuthenticatedUser_CallsHandler()
     {
-        var sut = new AuthorizationBehavior<AuthorizedPingCommand, string>(FakeCurrentUser.Authenticated());
+        var sut = new AuthorizationBehavior<AuthorizedPingCommand, string>(
+            FakeCurrentUser.Authenticated()
+        );
         var next = Substitute.For<RequestHandlerDelegate<string>>();
         next().Returns(Task.FromResult("ok"));
 
-        var result = await sut.Handle(new AuthorizedPingCommand("hi"), next, CancellationToken.None);
+        var result = await sut.Handle(
+            new AuthorizedPingCommand("hi"),
+            next,
+            CancellationToken.None
+        );
 
         result.Should().Be("ok");
         await next.Received(1)();
@@ -23,10 +29,13 @@ public class AuthorizationBehaviorTests
     [Fact]
     public async Task AuthorizedRequest_AnonymousUser_ThrowsUnauthorized()
     {
-        var sut = new AuthorizationBehavior<AuthorizedPingCommand, string>(FakeCurrentUser.Anonymous);
+        var sut = new AuthorizationBehavior<AuthorizedPingCommand, string>(
+            FakeCurrentUser.Anonymous
+        );
         var next = Substitute.For<RequestHandlerDelegate<string>>();
 
-        var act = async () => await sut.Handle(new AuthorizedPingCommand("hi"), next, CancellationToken.None);
+        var act = async () =>
+            await sut.Handle(new AuthorizedPingCommand("hi"), next, CancellationToken.None);
 
         await act.Should().ThrowAsync<UnauthorizedException>();
         await next.DidNotReceiveWithAnyArgs()();

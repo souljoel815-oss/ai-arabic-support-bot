@@ -22,7 +22,8 @@ public sealed class DeductibleExpenseCategory
     public ArabicEnglishText Name { get; init; }
     public bool DefaultDeductible { get; private set; }
     public Guid DefaultAccountId { get; private set; }
-    public DeductibleExpenseCategoryStatus Status { get; private set; } = DeductibleExpenseCategoryStatus.Active;
+    public DeductibleExpenseCategoryStatus Status { get; private set; } =
+        DeductibleExpenseCategoryStatus.Active;
 
     private DeductibleExpenseCategory() { }
 
@@ -30,7 +31,8 @@ public sealed class DeductibleExpenseCategory
         string code,
         ArabicEnglishText name,
         bool defaultDeductible,
-        Guid defaultAccountId)
+        Guid defaultAccountId
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         Code = code;
@@ -46,6 +48,7 @@ public sealed class DeductibleExpenseCategory
     }
 
     public void Deactivate() => Status = DeductibleExpenseCategoryStatus.Inactive;
+
     public void Reactivate() => Status = DeductibleExpenseCategoryStatus.Active;
 }
 

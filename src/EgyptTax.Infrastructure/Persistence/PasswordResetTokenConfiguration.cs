@@ -21,9 +21,19 @@ internal sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration
             .IsRequired();
         b.HasIndex(t => t.TokenHash).IsUnique().HasDatabaseName("ux_password_reset_tokens_hash");
 
-        b.Property(t => t.IssuedAtUtc).HasColumnName("issued_at_utc").HasColumnType("datetime2(3)").IsRequired();
-        b.Property(t => t.ExpiresAtUtc).HasColumnName("expires_at_utc").HasColumnType("datetime2(3)").IsRequired();
-        b.Property(t => t.RedeemedAtUtc).HasColumnName("redeemed_at_utc").HasColumnType("datetime2(3)");
-        b.Property(t => t.IssuedByAdminUserId).HasColumnName("issued_by_admin_user_id").IsRequired();
+        b.Property(t => t.IssuedAtUtc)
+            .HasColumnName("issued_at_utc")
+            .HasColumnType("datetime2(3)")
+            .IsRequired();
+        b.Property(t => t.ExpiresAtUtc)
+            .HasColumnName("expires_at_utc")
+            .HasColumnType("datetime2(3)")
+            .IsRequired();
+        b.Property(t => t.RedeemedAtUtc)
+            .HasColumnName("redeemed_at_utc")
+            .HasColumnType("datetime2(3)");
+        b.Property(t => t.IssuedByAdminUserId)
+            .HasColumnName("issued_by_admin_user_id")
+            .IsRequired();
     }
 }

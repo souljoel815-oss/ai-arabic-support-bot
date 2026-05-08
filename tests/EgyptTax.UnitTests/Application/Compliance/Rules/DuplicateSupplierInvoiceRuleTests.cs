@@ -15,8 +15,12 @@ public class DuplicateSupplierInvoiceRuleTests
     [Fact]
     public void Silent_When_No_Fingerprints_Loaded()
     {
-        var ctx = BuildContext("SUP-INV-001", new DateOnly(2026, 5, 7), 1140m,
-            fingerprints: Array.Empty<PurchaseInvoiceFingerprint>());
+        var ctx = BuildContext(
+            "SUP-INV-001",
+            new DateOnly(2026, 5, 7),
+            1140m,
+            fingerprints: Array.Empty<PurchaseInvoiceFingerprint>()
+        );
         new DuplicateSupplierInvoiceRule().Evaluate(ctx).Should().BeEmpty();
     }
 
@@ -28,15 +32,27 @@ public class DuplicateSupplierInvoiceRuleTests
         // the row itself). The rule must ignore self via the Id
         // filter. Build the draft first; then construct the
         // fingerprint with the draft's Id.
-        var ctx = BuildContext("SUP-INV-001", new DateOnly(2026, 5, 7), 1140m,
-            fingerprints: Array.Empty<PurchaseInvoiceFingerprint>());
+        var ctx = BuildContext(
+            "SUP-INV-001",
+            new DateOnly(2026, 5, 7),
+            1140m,
+            fingerprints: Array.Empty<PurchaseInvoiceFingerprint>()
+        );
         var selfFingerprint = new PurchaseInvoiceFingerprint(
-            ctx.Invoice.Id, "PI-2026-000001", "SUP-INV-001",
-            new DateOnly(2026, 5, 7), MoneyEgp.From(1140m));
+            ctx.Invoice.Id,
+            "PI-2026-000001",
+            "SUP-INV-001",
+            new DateOnly(2026, 5, 7),
+            MoneyEgp.From(1140m)
+        );
         var ctxWithSelf = ctx with { SupplierInvoiceFingerprints = new[] { selfFingerprint } };
 
-        new DuplicateSupplierInvoiceRule().Evaluate(ctxWithSelf).Should().BeEmpty(
-            because: "the rule's `Where(f => f.Id != subject.Id)` filter must not flag the subject against itself");
+        new DuplicateSupplierInvoiceRule()
+            .Evaluate(ctxWithSelf)
+            .Should()
+            .BeEmpty(
+                because: "the rule's `Where(f => f.Id != subject.Id)` filter must not flag the subject against itself"
+            );
     }
 
     [Fact]
@@ -45,18 +61,30 @@ public class DuplicateSupplierInvoiceRuleTests
         var fingerprints = new[]
         {
             new PurchaseInvoiceFingerprint(
-                Guid.NewGuid(), "PI-2026-000099", "SUP-INV-001",
-                new DateOnly(2026, 5, 7), MoneyEgp.From(1140m)),
+                Guid.NewGuid(),
+                "PI-2026-000099",
+                "SUP-INV-001",
+                new DateOnly(2026, 5, 7),
+                MoneyEgp.From(1140m)
+            ),
         };
         var ctx = BuildContext("SUP-INV-001", new DateOnly(2026, 5, 7), 1140m, fingerprints);
 
         var findings = new DuplicateSupplierInvoiceRule().Evaluate(ctx);
         findings.Should().HaveCount(1);
-        findings[0].Severity.Should().Be(RiskSeverity.Blocker,
-            because: "all four fingerprint columns match — almost certainly the same physical document keyed in twice");
+        findings[0]
+            .Severity.Should()
+            .Be(
+                RiskSeverity.Blocker,
+                because: "all four fingerprint columns match — almost certainly the same physical document keyed in twice"
+            );
         findings[0].RuleId.Should().Be("PURCHASE_INVOICE.DUPLICATE_SUPPLIER_INVOICE");
-        findings[0].Description.English.Should().Contain("PI-2026-000099",
-            because: "the operator needs the prior document number to drill into it");
+        findings[0]
+            .Description.English.Should()
+            .Contain(
+                "PI-2026-000099",
+                because: "the operator needs the prior document number to drill into it"
+            );
     }
 
     [Fact]
@@ -65,14 +93,22 @@ public class DuplicateSupplierInvoiceRuleTests
         var fingerprints = new[]
         {
             new PurchaseInvoiceFingerprint(
-                Guid.NewGuid(), "PI-2026-000099", "SUP-INV-001",
-                new DateOnly(2026, 5, 7), MoneyEgp.From(2000m)), // different amount
+                Guid.NewGuid(),
+                "PI-2026-000099",
+                "SUP-INV-001",
+                new DateOnly(2026, 5, 7),
+                MoneyEgp.From(2000m)
+            ), // different amount
         };
         var ctx = BuildContext("SUP-INV-001", new DateOnly(2026, 5, 7), 1140m, fingerprints);
 
         var finding = new DuplicateSupplierInvoiceRule().Evaluate(ctx).Single();
-        finding.Severity.Should().Be(RiskSeverity.MustFixBeforeFiling,
-            because: "supplier reference number reused but amount differs — could be a re-issue, but operator must verify");
+        finding
+            .Severity.Should()
+            .Be(
+                RiskSeverity.MustFixBeforeFiling,
+                because: "supplier reference number reused but amount differs — could be a re-issue, but operator must verify"
+            );
     }
 
     [Fact]
@@ -81,13 +117,22 @@ public class DuplicateSupplierInvoiceRuleTests
         var fingerprints = new[]
         {
             new PurchaseInvoiceFingerprint(
-                Guid.NewGuid(), "PI-2026-000099", "  sup-inv-001  ",
-                new DateOnly(2026, 5, 7), MoneyEgp.From(1140m)),
+                Guid.NewGuid(),
+                "PI-2026-000099",
+                "  sup-inv-001  ",
+                new DateOnly(2026, 5, 7),
+                MoneyEgp.From(1140m)
+            ),
         };
         var ctx = BuildContext("SUP-INV-001", new DateOnly(2026, 5, 7), 1140m, fingerprints);
 
-        new DuplicateSupplierInvoiceRule().Evaluate(ctx).Should().HaveCount(1,
-            because: "operators routinely typo whitespace + casing on supplier numbers; the dedup signal must survive trivial differences");
+        new DuplicateSupplierInvoiceRule()
+            .Evaluate(ctx)
+            .Should()
+            .HaveCount(
+                1,
+                because: "operators routinely typo whitespace + casing on supplier numbers; the dedup signal must survive trivial differences"
+            );
     }
 
     [Fact]
@@ -95,25 +140,46 @@ public class DuplicateSupplierInvoiceRuleTests
     {
         var fingerprints = new[]
         {
-            new PurchaseInvoiceFingerprint(Guid.NewGuid(), "PI-2026-000050", "SUP-INV-001",
-                new DateOnly(2026, 5, 7), MoneyEgp.From(1140m)),
-            new PurchaseInvoiceFingerprint(Guid.NewGuid(), "PI-2026-000099", "SUP-INV-001",
-                new DateOnly(2026, 5, 7), MoneyEgp.From(1140m)),
+            new PurchaseInvoiceFingerprint(
+                Guid.NewGuid(),
+                "PI-2026-000050",
+                "SUP-INV-001",
+                new DateOnly(2026, 5, 7),
+                MoneyEgp.From(1140m)
+            ),
+            new PurchaseInvoiceFingerprint(
+                Guid.NewGuid(),
+                "PI-2026-000099",
+                "SUP-INV-001",
+                new DateOnly(2026, 5, 7),
+                MoneyEgp.From(1140m)
+            ),
         };
         var ctx = BuildContext("SUP-INV-001", new DateOnly(2026, 5, 7), 1140m, fingerprints);
 
-        new DuplicateSupplierInvoiceRule().Evaluate(ctx).Should().HaveCount(1,
-            because: "one finding is enough to surface the issue — the rule shouldn't spam the badge with N near-identical entries");
+        new DuplicateSupplierInvoiceRule()
+            .Evaluate(ctx)
+            .Should()
+            .HaveCount(
+                1,
+                because: "one finding is enough to surface the issue — the rule shouldn't spam the badge with N near-identical entries"
+            );
     }
 
     private static PurchaseDocumentRiskContext BuildContext(
         string supplierInvoiceNumber,
         DateOnly dateReceived,
         decimal grandTotal,
-        IReadOnlyList<PurchaseInvoiceFingerprint> fingerprints)
+        IReadOnlyList<PurchaseInvoiceFingerprint> fingerprints
+    )
     {
         var profile = SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("123456789"), VatId);
-        var draft = PurchaseInvoice.CreateDraft(SupplierId, profile, supplierInvoiceNumber, dateReceived);
+        var draft = PurchaseInvoice.CreateDraft(
+            SupplierId,
+            profile,
+            supplierInvoiceNumber,
+            dateReceived
+        );
 
         // Compute the unit price that yields the requested grand
         // total under 14% VAT so the rule's exact-match path can be
@@ -121,13 +187,22 @@ public class DuplicateSupplierInvoiceRuleTests
         // means 1140 EGP / 1.14 = 1000.00 exact; for 2000 EGP we get
         // 1754.39, grand-total 2000.00 — close enough for the test.
         var subtotal = grandTotal / 1.14m;
-        draft.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 1m, unitPrice: MoneyEgp.From(subtotal),
-            vatCategoryId: VatId, vatRatePercent: 14m, deductibleFlag: false);
+        draft.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(subtotal),
+            vatCategoryId: VatId,
+            vatRatePercent: 14m,
+            deductibleFlag: false
+        );
 
         return new PurchaseDocumentRiskContext(
-            draft, Supplier: null, Attachments: Array.Empty<Attachment>(),
+            draft,
+            Supplier: null,
+            Attachments: Array.Empty<Attachment>(),
             SupplierInvoiceFingerprints: fingerprints,
-            NowUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
+            NowUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc)
+        );
     }
 }

@@ -20,11 +20,13 @@ public sealed class PurchaseDocumentRiskScorer
     {
         ArgumentNullException.ThrowIfNull(context);
         var findings = _rules.SelectMany(r => r.Evaluate(context)).ToList();
-        findings.Sort((a, b) =>
-        {
-            var s = b.Severity.CompareTo(a.Severity);
-            return s != 0 ? s : string.CompareOrdinal(a.RuleId, b.RuleId);
-        });
+        findings.Sort(
+            (a, b) =>
+            {
+                var s = b.Severity.CompareTo(a.Severity);
+                return s != 0 ? s : string.CompareOrdinal(a.RuleId, b.RuleId);
+            }
+        );
         return findings;
     }
 }

@@ -15,4 +15,5 @@ public sealed record PurchaseInvoiceFingerprint(
     string? DocumentNumber,
     string SupplierInvoiceNumber,
     DateOnly DateReceived,
-    MoneyEgp GrandTotal);
+    MoneyEgp GrandTotal
+);

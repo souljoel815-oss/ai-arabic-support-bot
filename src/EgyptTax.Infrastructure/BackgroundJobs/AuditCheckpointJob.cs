@@ -21,7 +21,8 @@ namespace EgyptTax.Infrastructure.BackgroundJobs;
 public sealed class AuditCheckpointJob(
     AppDbContext db,
     IAuditCheckpointStore checkpoints,
-    IClock clock)
+    IClock clock
+)
 {
     /// <summary>FR-028 — write at every 1,000 entries.</summary>
     public const int EntryCountThreshold = 1_000;
@@ -33,7 +34,9 @@ public sealed class AuditCheckpointJob(
     private readonly IAuditCheckpointStore _checkpoints = checkpoints;
     private readonly IClock _clock = clock;
 
-    public async Task<AuditCheckpointJobResult> RunOnceAsync(CancellationToken cancellationToken = default)
+    public async Task<AuditCheckpointJobResult> RunOnceAsync(
+        CancellationToken cancellationToken = default
+    )
     {
         var tail = await _db.Set<AuditLogEntry>()
             .AsNoTracking()

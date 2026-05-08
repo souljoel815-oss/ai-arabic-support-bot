@@ -33,8 +33,9 @@ public class AuditCheckpointJobTests(SqlServerFixture fixture)
 
         var result = await job.RunOnceAsync(CancellationToken.None);
 
-        result.EmittedNewCheckpoint.Should().BeFalse(
-            because: "no audit entries exist yet; the job MUST be a no-op");
+        result
+            .EmittedNewCheckpoint.Should()
+            .BeFalse(because: "no audit entries exist yet; the job MUST be a no-op");
         result.LastIndex.Should().BeNull();
 
         var written = await checkpoints.ReadLatestAsync();
@@ -53,18 +54,24 @@ public class AuditCheckpointJobTests(SqlServerFixture fixture)
 
         for (var i = 0; i < 5; i++)
         {
-            await auditStore.AppendAsync(new AuditLogPayload(
-                Kind: "test.event",
-                ActorUserId: null,
-                ActorFirmName: null,
-                CompanyId: Guid.Empty,
-                PayloadJson: $$"""{"i":{{i}}}"""));
+            await auditStore.AppendAsync(
+                new AuditLogPayload(
+                    Kind: "test.event",
+                    ActorUserId: null,
+                    ActorFirmName: null,
+                    CompanyId: Guid.Empty,
+                    PayloadJson: $$"""{"i":{{i}}}"""
+                )
+            );
         }
 
         var result = await job.RunOnceAsync(CancellationToken.None);
 
-        result.EmittedNewCheckpoint.Should().BeTrue(
-            because: "the first checkpoint MUST be written even though the 1k threshold is unmet");
+        result
+            .EmittedNewCheckpoint.Should()
+            .BeTrue(
+                because: "the first checkpoint MUST be written even though the 1k threshold is unmet"
+            );
         result.LastIndex.Should().Be(5);
 
         var written = await checkpoints.ReadLatestAsync();
@@ -85,7 +92,9 @@ public class AuditCheckpointJobTests(SqlServerFixture fixture)
         // Emit a baseline checkpoint after 10 entries.
         for (var i = 0; i < 10; i++)
         {
-            await auditStore.AppendAsync(new AuditLogPayload("test.event", null, null, Guid.Empty, "{}"));
+            await auditStore.AppendAsync(
+                new AuditLogPayload("test.event", null, null, Guid.Empty, "{}")
+            );
         }
         var first = await job.RunOnceAsync(CancellationToken.None);
         first.EmittedNewCheckpoint.Should().BeTrue();
@@ -94,13 +103,16 @@ public class AuditCheckpointJobTests(SqlServerFixture fixture)
         // the clock by 5 minutes (well below the 15-min threshold).
         for (var i = 0; i < 100; i++)
         {
-            await auditStore.AppendAsync(new AuditLogPayload("test.event", null, null, Guid.Empty, "{}"));
+            await auditStore.AppendAsync(
+                new AuditLogPayload("test.event", null, null, Guid.Empty, "{}")
+            );
         }
         clock.Advance(TimeSpan.FromMinutes(5));
 
         var second = await job.RunOnceAsync(CancellationToken.None);
-        second.EmittedNewCheckpoint.Should().BeFalse(
-            because: "neither the 1k-entry nor the 15-min trigger has fired");
+        second
+            .EmittedNewCheckpoint.Should()
+            .BeFalse(because: "neither the 1k-entry nor the 15-min trigger has fired");
 
         var written = await checkpoints.ReadLatestAsync();
         written!.LastIndex.Should().Be(10, because: "the prior checkpoint should remain unchanged");
@@ -118,17 +130,24 @@ public class AuditCheckpointJobTests(SqlServerFixture fixture)
 
         for (var i = 0; i < 10; i++)
         {
-            await auditStore.AppendAsync(new AuditLogPayload("test.event", null, null, Guid.Empty, "{}"));
+            await auditStore.AppendAsync(
+                new AuditLogPayload("test.event", null, null, Guid.Empty, "{}")
+            );
         }
         await job.RunOnceAsync(CancellationToken.None);
 
         // Add a single entry then jump past the 15-min window.
-        await auditStore.AppendAsync(new AuditLogPayload("test.event", null, null, Guid.Empty, "{}"));
+        await auditStore.AppendAsync(
+            new AuditLogPayload("test.event", null, null, Guid.Empty, "{}")
+        );
         clock.Advance(TimeSpan.FromMinutes(16));
 
         var second = await job.RunOnceAsync(CancellationToken.None);
-        second.EmittedNewCheckpoint.Should().BeTrue(
-            because: "the 15-min time window MUST trigger a fresh checkpoint even with only 1 new entry");
+        second
+            .EmittedNewCheckpoint.Should()
+            .BeTrue(
+                because: "the 15-min time window MUST trigger a fresh checkpoint even with only 1 new entry"
+            );
         second.LastIndex.Should().Be(11);
     }
 
@@ -145,26 +164,34 @@ public class AuditCheckpointJobTests(SqlServerFixture fixture)
         // Establish a baseline checkpoint at index 5.
         for (var i = 0; i < 5; i++)
         {
-            await auditStore.AppendAsync(new AuditLogPayload("test.event", null, null, Guid.Empty, "{}"));
+            await auditStore.AppendAsync(
+                new AuditLogPayload("test.event", null, null, Guid.Empty, "{}")
+            );
         }
         await job.RunOnceAsync(CancellationToken.None);
 
         // Append exactly 1,000 more entries, all within the 15-min window.
         for (var i = 0; i < 1_000; i++)
         {
-            await auditStore.AppendAsync(new AuditLogPayload("test.event", null, null, Guid.Empty, "{}"));
+            await auditStore.AppendAsync(
+                new AuditLogPayload("test.event", null, null, Guid.Empty, "{}")
+            );
         }
         clock.Advance(TimeSpan.FromMinutes(2));
 
         var second = await job.RunOnceAsync(CancellationToken.None);
-        second.EmittedNewCheckpoint.Should().BeTrue(
-            because: "the 1k-entry trigger MUST fire even when the time window has not lapsed");
+        second
+            .EmittedNewCheckpoint.Should()
+            .BeTrue(
+                because: "the 1k-entry trigger MUST fire even when the time window has not lapsed"
+            );
         second.LastIndex.Should().Be(1_005);
     }
 
     private sealed class TestClock(DateTime initial) : IClock
     {
         public DateTime UtcNow { get; private set; } = initial;
+
         public void Advance(TimeSpan delta) => UtcNow = UtcNow.Add(delta);
     }
 }

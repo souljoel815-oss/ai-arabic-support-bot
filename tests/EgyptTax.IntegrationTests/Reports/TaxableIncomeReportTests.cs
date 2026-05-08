@@ -44,29 +44,47 @@ public class TaxableIncomeReportTests(SqlServerFixture fixture)
         var (customer, _, item, vat, category, user) = await SeedAsync(db);
 
         // Revenue: 10,000 EGP sale.
-        await PostSalesAsync(db, customer, item, vat, user,
-            new DateOnly(2026, 3, 5), 10_000m);
+        await PostSalesAsync(db, customer, item, vat, user, new DateOnly(2026, 3, 5), 10_000m);
 
         // Non-deductible expense: 500 EGP entertainment.
-        await PostExpenseAsync(db, category, user,
-            new DateOnly(2026, 3, 10), 500m, deductible: false);
+        await PostExpenseAsync(
+            db,
+            category,
+            user,
+            new DateOnly(2026, 3, 10),
+            500m,
+            deductible: false
+        );
 
         var report = await new SqlTaxableIncomeReportQuery(db).RunAsync(
-            new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31));
+            new DateOnly(2026, 1, 1),
+            new DateOnly(2026, 12, 31)
+        );
 
         report.Revenue.Amount.Should().Be(10_000m);
         report.DeductibleExpenses.Amount.Should().Be(0m);
         report.NonDeductibleAdjustments.Amount.Should().Be(500m);
 
-        report.ManagementProfitLoss.Amount.Should().Be(9_500m,
-            because: "10,000 revenue - 500 non-deductible expense = 9,500 management P&L (the internal view)");
-        report.TaxableIncome.Amount.Should().Be(10_000m,
-            because: "the non-deductible 500 is ADDED BACK when computing taxable profit, so taxable income equals revenue (no deductible expenses subtracted)");
+        report
+            .ManagementProfitLoss.Amount.Should()
+            .Be(
+                9_500m,
+                because: "10,000 revenue - 500 non-deductible expense = 9,500 management P&L (the internal view)"
+            );
+        report
+            .TaxableIncome.Amount.Should()
+            .Be(
+                10_000m,
+                because: "the non-deductible 500 is ADDED BACK when computing taxable profit, so taxable income equals revenue (no deductible expenses subtracted)"
+            );
 
         // The arithmetic identity that defines the "add-back".
         (report.ManagementProfitLoss.Amount + report.NonDeductibleAdjustments.Amount)
-            .Should().Be(report.TaxableIncome.Amount,
-                because: "TaxableIncome = ManagementPL + NonDeductibleAdjustments is the algebraic form of the add-back");
+            .Should()
+            .Be(
+                report.TaxableIncome.Amount,
+                because: "TaxableIncome = ManagementPL + NonDeductibleAdjustments is the algebraic form of the add-back"
+            );
     }
 
     [Fact]
@@ -79,15 +97,30 @@ public class TaxableIncomeReportTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var (customer, supplier, item, vat, category, user) = await SeedAsync(db);
 
-        await PostSalesAsync(db, customer, item, vat, user,
-            new DateOnly(2026, 4, 1), 10_000m);
-        await PostPurchaseAsync(db, supplier, vat, user,
-            new DateOnly(2026, 4, 5), 2_000m, deductible: true, "SUP-A");
-        await PostExpenseAsync(db, category, user,
-            new DateOnly(2026, 4, 10), 800m, deductible: false);
+        await PostSalesAsync(db, customer, item, vat, user, new DateOnly(2026, 4, 1), 10_000m);
+        await PostPurchaseAsync(
+            db,
+            supplier,
+            vat,
+            user,
+            new DateOnly(2026, 4, 5),
+            2_000m,
+            deductible: true,
+            "SUP-A"
+        );
+        await PostExpenseAsync(
+            db,
+            category,
+            user,
+            new DateOnly(2026, 4, 10),
+            800m,
+            deductible: false
+        );
 
         var report = await new SqlTaxableIncomeReportQuery(db).RunAsync(
-            new DateOnly(2026, 4, 1), new DateOnly(2026, 4, 30));
+            new DateOnly(2026, 4, 1),
+            new DateOnly(2026, 4, 30)
+        );
 
         report.Revenue.Amount.Should().Be(10_000m);
         report.DeductibleExpenses.Amount.Should().Be(2_000m);
@@ -108,106 +141,218 @@ public class TaxableIncomeReportTests(SqlServerFixture fixture)
         await PostSalesAsync(db, customer, item, vat, user, new DateOnly(2026, 5, 31), 200m);
 
         var report = await new SqlTaxableIncomeReportQuery(db).RunAsync(
-            new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 31));
+            new DateOnly(2026, 5, 1),
+            new DateOnly(2026, 5, 31)
+        );
 
-        report.Revenue.Amount.Should().Be(300m,
-            because: "documents on PeriodStart AND PeriodEnd are both inside the inclusive window");
+        report
+            .Revenue.Amount.Should()
+            .Be(
+                300m,
+                because: "documents on PeriodStart AND PeriodEnd are both inside the inclusive window"
+            );
         report.Rows.Should().HaveCount(2);
     }
 
-    private static async Task PostSalesAsync(AppDbContext db, Customer customer, Item item,
-        VatCategory vat, User user, DateOnly date, decimal unitPrice)
+    private static async Task PostSalesAsync(
+        AppDbContext db,
+        Customer customer,
+        Item item,
+        VatCategory vat,
+        User user,
+        DateOnly date,
+        decimal unitPrice
+    )
     {
         var draft = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, date);
         draft.AddLine(item.Id, 1m, MoneyEgp.From(unitPrice), vat.Id, vat.RatePercent);
         db.Add(draft);
         await db.SaveChangesAsync();
         var clock = new TestClock(date.ToDateTime(new TimeOnly(11, 0)).ToUniversalTime());
-        var handler = new PostSalesInvoiceHandler(db,
-            new SqlSequentialNumberAllocator(db), clock, new CaptureAuditLogStore());
-        await handler.HandleAsync(new PostSalesInvoiceCommand(draft.Id, user.Id), CancellationToken.None);
+        var handler = new PostSalesInvoiceHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            clock,
+            new CaptureAuditLogStore()
+        );
+        await handler.HandleAsync(
+            new PostSalesInvoiceCommand(draft.Id, user.Id),
+            CancellationToken.None
+        );
     }
 
-    private static async Task PostPurchaseAsync(AppDbContext db, Supplier supplier, VatCategory vat,
-        User user, DateOnly date, decimal unitPrice, bool deductible, string supplierInvoiceNumber)
+    private static async Task PostPurchaseAsync(
+        AppDbContext db,
+        Supplier supplier,
+        VatCategory vat,
+        User user,
+        DateOnly date,
+        decimal unitPrice,
+        bool deductible,
+        string supplierInvoiceNumber
+    )
     {
-        var draft = PurchaseInvoice.CreateDraft(supplier.Id, supplier.TaxProfile, supplierInvoiceNumber, date);
-        draft.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 1m, unitPrice: MoneyEgp.From(unitPrice),
-            vatCategoryId: vat.Id, vatRatePercent: vat.RatePercent,
-            deductibleFlag: deductible);
+        var draft = PurchaseInvoice.CreateDraft(
+            supplier.Id,
+            supplier.TaxProfile,
+            supplierInvoiceNumber,
+            date
+        );
+        draft.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(unitPrice),
+            vatCategoryId: vat.Id,
+            vatRatePercent: vat.RatePercent,
+            deductibleFlag: deductible
+        );
         db.Add(draft);
         if (deductible)
         {
-            db.Add(new Attachment(draft.Id, DocumentType.PurchaseInvoice,
-                "r.pdf", $"{Guid.NewGuid():N}.pdf",
-                $"attachments/2026/{date.Month:D2}/{draft.Id:D}/r.pdf",
-                new byte[32], "application/pdf", 1, user.Id,
-                date.ToDateTime(new TimeOnly(9, 0)).ToUniversalTime()));
+            db.Add(
+                new Attachment(
+                    draft.Id,
+                    DocumentType.PurchaseInvoice,
+                    "r.pdf",
+                    $"{Guid.NewGuid():N}.pdf",
+                    $"attachments/2026/{date.Month:D2}/{draft.Id:D}/r.pdf",
+                    new byte[32],
+                    "application/pdf",
+                    1,
+                    user.Id,
+                    date.ToDateTime(new TimeOnly(9, 0)).ToUniversalTime()
+                )
+            );
         }
         await db.SaveChangesAsync();
         var clock = new TestClock(date.ToDateTime(new TimeOnly(11, 0)).ToUniversalTime());
-        var handler = new PostPurchaseInvoiceHandler(db,
-            new SqlSequentialNumberAllocator(db), clock, new CaptureAuditLogStore());
-        await handler.HandleAsync(new PostPurchaseInvoiceCommand(draft.Id, user.Id), CancellationToken.None);
+        var handler = new PostPurchaseInvoiceHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            clock,
+            new CaptureAuditLogStore()
+        );
+        await handler.HandleAsync(
+            new PostPurchaseInvoiceCommand(draft.Id, user.Id),
+            CancellationToken.None
+        );
     }
 
-    private static async Task PostExpenseAsync(AppDbContext db, DeductibleExpenseCategory category,
-        User user, DateOnly date, decimal amount, bool deductible)
+    private static async Task PostExpenseAsync(
+        AppDbContext db,
+        DeductibleExpenseCategory category,
+        User user,
+        DateOnly date,
+        decimal amount,
+        bool deductible
+    )
     {
-        var draft = Expense.CreateDraft(date, category.Id, MoneyEgp.From(amount),
+        var draft = Expense.CreateDraft(
+            date,
+            category.Id,
+            MoneyEgp.From(amount),
             deductibleFlag: deductible,
-            description: new ArabicEnglishText("وصف", "Description"));
+            description: new ArabicEnglishText("وصف", "Description")
+        );
         db.Add(draft);
         if (deductible)
         {
-            db.Add(new Attachment(draft.Id, DocumentType.Expense,
-                "r.pdf", $"{Guid.NewGuid():N}.pdf",
-                $"attachments/2026/{date.Month:D2}/{draft.Id:D}/r.pdf",
-                new byte[32], "application/pdf", 1, user.Id,
-                date.ToDateTime(new TimeOnly(9, 0)).ToUniversalTime()));
+            db.Add(
+                new Attachment(
+                    draft.Id,
+                    DocumentType.Expense,
+                    "r.pdf",
+                    $"{Guid.NewGuid():N}.pdf",
+                    $"attachments/2026/{date.Month:D2}/{draft.Id:D}/r.pdf",
+                    new byte[32],
+                    "application/pdf",
+                    1,
+                    user.Id,
+                    date.ToDateTime(new TimeOnly(9, 0)).ToUniversalTime()
+                )
+            );
         }
         await db.SaveChangesAsync();
         var clock = new TestClock(date.ToDateTime(new TimeOnly(11, 0)).ToUniversalTime());
-        var handler = new PostExpenseHandler(db,
-            new SqlSequentialNumberAllocator(db), clock, new CaptureAuditLogStore());
-        await handler.HandleAsync(new PostExpenseCommand(draft.Id, user.Id), CancellationToken.None);
+        var handler = new PostExpenseHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            clock,
+            new CaptureAuditLogStore()
+        );
+        await handler.HandleAsync(
+            new PostExpenseCommand(draft.Id, user.Id),
+            CancellationToken.None
+        );
     }
 
-    private static async Task<(Customer customer, Supplier supplier, Item item, VatCategory vat, DeductibleExpenseCategory category, User user)>
-        SeedAsync(AppDbContext db)
+    private static async Task<(
+        Customer customer,
+        Supplier supplier,
+        Item item,
+        VatCategory vat,
+        DeductibleExpenseCategory category,
+        User user
+    )> SeedAsync(AppDbContext db)
     {
         var vat = new VatCategory(
-            code: "Standard", name: new ArabicEnglishText("قياسي", "Standard"),
-            ratePercent: 14m, effectiveFromDate: new DateOnly(2026, 1, 1),
-            effectiveToDate: null, recoverableInputVat: true);
+            code: "Standard",
+            name: new ArabicEnglishText("قياسي", "Standard"),
+            ratePercent: 14m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: true
+        );
         var customer = new Customer(
             code: $"CUST-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("عميل", "Customer"),
-            address: PostalAddress.Create(new ArabicEnglishText("القاهرة", "Cairo"),
-                "Cairo", "Downtown", "Tahrir", "1"),
-            taxProfile: CustomerTaxProfile.B2BRegistered(EgyptianTin.Parse("987654321"), false, vat.Id));
+            address: PostalAddress.Create(
+                new ArabicEnglishText("القاهرة", "Cairo"),
+                "Cairo",
+                "Downtown",
+                "Tahrir",
+                "1"
+            ),
+            taxProfile: CustomerTaxProfile.B2BRegistered(
+                EgyptianTin.Parse("987654321"),
+                false,
+                vat.Id
+            )
+        );
         var supplier = new Supplier(
             code: $"SUP-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("مورد", "Supplier"),
             address: new ArabicEnglishText("القاهرة", "Cairo"),
-            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("123456789"), vat.Id));
+            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(
+                EgyptianTin.Parse("123456789"),
+                vat.Id
+            )
+        );
         var item = new Item(
             code: $"ITEM-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("صنف", "Item"),
-            defaultVatCategoryId: vat.Id);
+            defaultVatCategoryId: vat.Id
+        );
         var category = new DeductibleExpenseCategory(
             code: $"CAT-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("ترفيه", "Entertainment"),
             defaultDeductible: false,
-            defaultAccountId: Guid.NewGuid());
+            defaultAccountId: Guid.NewGuid()
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        db.Add(vat); db.Add(customer); db.Add(supplier); db.Add(item); db.Add(category); db.Add(user);
+            passwordMustChange: false
+        );
+        db.Add(vat);
+        db.Add(customer);
+        db.Add(supplier);
+        db.Add(item);
+        db.Add(category);
+        db.Add(user);
         await db.SaveChangesAsync();
         return (customer, supplier, item, vat, category, user);
     }
@@ -219,14 +364,25 @@ public class TaxableIncomeReportTests(SqlServerFixture fixture)
 
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
-            return Task.FromResult(new AuditLogEntry(
-                index: 1, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]));
+            return Task.FromResult(
+                new AuditLogEntry(
+                    index: 1,
+                    tsUtc: DateTime.UtcNow,
+                    actorUserId: payload.ActorUserId,
+                    actorFirmName: payload.ActorFirmName,
+                    companyId: payload.CompanyId,
+                    kind: payload.Kind,
+                    payloadJson: payload.PayloadJson,
+                    prevHash: new byte[32],
+                    thisHash: new byte[32]
+                )
+            );
         }
     }
 }

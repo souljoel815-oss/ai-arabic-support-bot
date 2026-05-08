@@ -20,7 +20,8 @@ public class CockpitCachingDecoratorTests
     public async Task SecondCall_ForSameMonth_ServesFromCache_WithoutHittingInner()
     {
         var inner = Substitute.For<IMonthlyTaxClosingCockpitQuery>();
-        inner.RunAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        inner
+            .RunAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult(BuildEmptyCockpit(2026, 4)));
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var decorator = new CockpitCachingDecorator(inner, cache);
@@ -29,8 +30,12 @@ public class CockpitCachingDecoratorTests
         var second = await decorator.RunAsync(2026, 4, CancellationToken.None);
 
         first.Should().NotBeNull();
-        second.Should().BeSameAs(first,
-            because: "the cached entry is returned by reference for identical (year, month) calls within the sliding window");
+        second
+            .Should()
+            .BeSameAs(
+                first,
+                because: "the cached entry is returned by reference for identical (year, month) calls within the sliding window"
+            );
         await inner.Received(1).RunAsync(2026, 4, Arg.Any<CancellationToken>());
     }
 
@@ -38,7 +43,8 @@ public class CockpitCachingDecoratorTests
     public async Task DifferentMonths_DontShareCacheEntries()
     {
         var inner = Substitute.For<IMonthlyTaxClosingCockpitQuery>();
-        inner.RunAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        inner
+            .RunAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(ci => Task.FromResult(BuildEmptyCockpit(ci.ArgAt<int>(0), ci.ArgAt<int>(1))));
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var decorator = new CockpitCachingDecorator(inner, cache);
@@ -56,7 +62,8 @@ public class CockpitCachingDecoratorTests
     public async Task InvalidateForMonth_BustsTheEntry_NextCallReHitsInner()
     {
         var inner = Substitute.For<IMonthlyTaxClosingCockpitQuery>();
-        inner.RunAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        inner
+            .RunAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult(BuildEmptyCockpit(2026, 4)));
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var decorator = new CockpitCachingDecorator(inner, cache);
@@ -73,7 +80,8 @@ public class CockpitCachingDecoratorTests
     public async Task InvalidateForMonth_OnlyAffectsTheTargetedMonth()
     {
         var inner = Substitute.For<IMonthlyTaxClosingCockpitQuery>();
-        inner.RunAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+        inner
+            .RunAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(ci => Task.FromResult(BuildEmptyCockpit(ci.ArgAt<int>(0), ci.ArgAt<int>(1))));
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var decorator = new CockpitCachingDecorator(inner, cache);
@@ -107,5 +115,6 @@ public class CockpitCachingDecoratorTests
             FailedEtaSubmissionTotalGrand: MoneyEgp.Zero,
             DraftsInPeriodCount: 0,
             NonRecoverableInputVat: MoneyEgp.Zero,
-            PeriodLockChecklist: Array.Empty<PeriodLockChecklistItem>());
+            PeriodLockChecklist: Array.Empty<PeriodLockChecklistItem>()
+        );
 }

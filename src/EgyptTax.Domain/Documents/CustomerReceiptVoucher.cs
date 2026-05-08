@@ -49,8 +49,13 @@ public sealed class CustomerReceiptVoucher
     private CustomerReceiptVoucher() { }
 
     private CustomerReceiptVoucher(
-        Guid customerId, DateOnly receiptDate, PaymentMethod paymentMethod,
-        string paymentReference, string? note, MoneyEgp grossReceiptAmount)
+        Guid customerId,
+        DateOnly receiptDate,
+        PaymentMethod paymentMethod,
+        string paymentReference,
+        string? note,
+        MoneyEgp grossReceiptAmount
+    )
     {
         CustomerId = customerId;
         ReceiptDate = receiptDate;
@@ -67,7 +72,8 @@ public sealed class CustomerReceiptVoucher
         PaymentMethod paymentMethod,
         string paymentReference,
         MoneyEgp grossReceiptAmount,
-        string? note = null)
+        string? note = null
+    )
     {
         if (customerId == Guid.Empty)
         {
@@ -76,34 +82,48 @@ public sealed class CustomerReceiptVoucher
         ArgumentException.ThrowIfNullOrWhiteSpace(paymentReference);
         if (grossReceiptAmount.Amount <= 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(grossReceiptAmount),
-                "Gross receipt amount must be positive.");
+            throw new ArgumentOutOfRangeException(
+                nameof(grossReceiptAmount),
+                "Gross receipt amount must be positive."
+            );
         }
-        return new CustomerReceiptVoucher(customerId, receiptDate, paymentMethod,
-            paymentReference, note, grossReceiptAmount);
+        return new CustomerReceiptVoucher(
+            customerId,
+            receiptDate,
+            paymentMethod,
+            paymentReference,
+            note,
+            grossReceiptAmount
+        );
     }
 
-    public PaymentAllocation AddAllocation(Guid salesInvoiceId, MoneyEgp amount,
-        DocumentType targetType = DocumentType.SalesInvoice)
+    public PaymentAllocation AddAllocation(
+        Guid salesInvoiceId,
+        MoneyEgp amount,
+        DocumentType targetType = DocumentType.SalesInvoice
+    )
     {
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot add allocation to customer receipt voucher {Id}: state {State} is not Draft.");
+                $"Cannot add allocation to customer receipt voucher {Id}: state {State} is not Draft."
+            );
         }
         var allocatedSoFar = _allocations.Sum(a => a.AllocatedAmount.Amount);
         if (allocatedSoFar + amount.Amount > GrossReceiptAmount.Amount)
         {
             throw new InvalidOperationException(
-                $"Cannot allocate {amount.Amount:F2} to invoice {salesInvoiceId}: " +
-                $"would push voucher's allocated total {allocatedSoFar + amount.Amount:F2} past the gross receipt {GrossReceiptAmount.Amount:F2} (FR-053 voucher cap).");
+                $"Cannot allocate {amount.Amount:F2} to invoice {salesInvoiceId}: "
+                    + $"would push voucher's allocated total {allocatedSoFar + amount.Amount:F2} past the gross receipt {GrossReceiptAmount.Amount:F2} (FR-053 voucher cap)."
+            );
         }
         var allocation = new PaymentAllocation(
             supplierPaymentVoucherId: null,
             customerReceiptVoucherId: Id,
             targetDocumentId: salesInvoiceId,
             targetDocumentType: targetType,
-            allocatedAmount: amount);
+            allocatedAmount: amount
+        );
         _allocations.Add(allocation);
         return allocation;
     }
@@ -113,32 +133,44 @@ public sealed class CustomerReceiptVoucher
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot remove allocation from customer receipt voucher {Id}: state {State} is not Draft.");
+                $"Cannot remove allocation from customer receipt voucher {Id}: state {State} is not Draft."
+            );
         }
-        var found = _allocations.FirstOrDefault(a => a.Id == allocationId)
-            ?? throw new InvalidOperationException($"Allocation {allocationId} is not on voucher {Id}.");
+        var found =
+            _allocations.FirstOrDefault(a => a.Id == allocationId)
+            ?? throw new InvalidOperationException(
+                $"Allocation {allocationId} is not on voucher {Id}."
+            );
         _allocations.Remove(found);
     }
 
     /// <summary>FR-052 / US7 — record the customer-issued WHT
     /// certificate on this receipt. Splits the gross into cash +
     /// WHT receivable. Phase 9 callers don't invoke this.</summary>
-    public void ApplyCustomerWhtCertificate(MoneyEgp whtReceivableAmount, Guid customerWhtCertificateId)
+    public void ApplyCustomerWhtCertificate(
+        MoneyEgp whtReceivableAmount,
+        Guid customerWhtCertificateId
+    )
     {
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot apply customer WHT certificate to receipt voucher {Id}: state {State} is not Draft.");
+                $"Cannot apply customer WHT certificate to receipt voucher {Id}: state {State} is not Draft."
+            );
         }
         if (whtReceivableAmount.Amount < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(whtReceivableAmount),
-                "WHT receivable amount cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(whtReceivableAmount),
+                "WHT receivable amount cannot be negative."
+            );
         }
         if (whtReceivableAmount.Amount > GrossReceiptAmount.Amount)
         {
-            throw new ArgumentOutOfRangeException(nameof(whtReceivableAmount),
-                $"WHT receivable {whtReceivableAmount.Amount:F2} cannot exceed gross receipt {GrossReceiptAmount.Amount:F2}.");
+            throw new ArgumentOutOfRangeException(
+                nameof(whtReceivableAmount),
+                $"WHT receivable {whtReceivableAmount.Amount:F2} cannot exceed gross receipt {GrossReceiptAmount.Amount:F2}."
+            );
         }
         WhtReceivableAmount = whtReceivableAmount;
         NetCashReceived = MoneyEgp.From(GrossReceiptAmount.Amount - whtReceivableAmount.Amount);
@@ -151,18 +183,21 @@ public sealed class CustomerReceiptVoucher
         if (State != DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot post customer receipt voucher {Id}: state {State} is not Draft.");
+                $"Cannot post customer receipt voucher {Id}: state {State} is not Draft."
+            );
         }
         if (_allocations.Count == 0)
         {
             throw new InvalidOperationException(
-                $"Cannot post customer receipt voucher {Id}: at least one allocation is required.");
+                $"Cannot post customer receipt voucher {Id}: at least one allocation is required."
+            );
         }
         var allocatedTotal = _allocations.Sum(a => a.AllocatedAmount.Amount);
         if (allocatedTotal > GrossReceiptAmount.Amount)
         {
             throw new InvalidOperationException(
-                $"Cannot post customer receipt voucher {Id}: allocations total {allocatedTotal:F2} exceeds gross receipt {GrossReceiptAmount.Amount:F2} (FR-053).");
+                $"Cannot post customer receipt voucher {Id}: allocations total {allocatedTotal:F2} exceeds gross receipt {GrossReceiptAmount.Amount:F2} (FR-053)."
+            );
         }
         DocumentNumber = documentNumber;
         PostedByUserId = postedByUserId;

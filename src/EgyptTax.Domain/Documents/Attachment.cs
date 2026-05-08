@@ -42,7 +42,8 @@ public sealed class Attachment
         string mimeType,
         long sizeBytes,
         Guid uploadedByUserId,
-        DateTime uploadedAtUtc)
+        DateTime uploadedAtUtc
+    )
     {
         if (documentId == Guid.Empty)
         {
@@ -55,13 +56,14 @@ public sealed class Attachment
         ArgumentNullException.ThrowIfNull(sha256);
         if (sha256.Length != 32)
         {
-            throw new ArgumentException(
-                "SHA-256 digest must be exactly 32 bytes.", nameof(sha256));
+            throw new ArgumentException("SHA-256 digest must be exactly 32 bytes.", nameof(sha256));
         }
         if (sizeBytes <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(sizeBytes),
-                "Attachment size must be positive.");
+            throw new ArgumentOutOfRangeException(
+                nameof(sizeBytes),
+                "Attachment size must be positive."
+            );
         }
 
         DocumentId = documentId;

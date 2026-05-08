@@ -43,13 +43,15 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
         var draft = SalesInvoice.CreateDraft(
             customerId: customer.Id,
             customerTaxProfileSnapshot: customer.TaxProfile,
-            documentDate: new DateOnly(2026, 5, 7));
+            documentDate: new DateOnly(2026, 5, 7)
+        );
         draft.AddLine(
             itemId: item.Id,
             quantity: 1m,
             unitPrice: MoneyEgp.From(1_000m),
             vatCategoryId: vat.Id,
-            vatRatePercent: vat.RatePercent);
+            vatRatePercent: vat.RatePercent
+        );
         db.Add(draft);
         await db.SaveChangesAsync();
 
@@ -60,10 +62,15 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
 
         var posted = await handler.HandleAsync(
             new PostSalesInvoiceCommand(draft.Id, operatorUser.Id),
-            CancellationToken.None);
+            CancellationToken.None
+        );
 
-        posted.State.Should().Be(DocumentState.Posted,
-            because: "FR-026 — sales invoices have approval disabled by Phase-1 default; Draft→Posted directly is allowed");
+        posted
+            .State.Should()
+            .Be(
+                DocumentState.Posted,
+                because: "FR-026 — sales invoices have approval disabled by Phase-1 default; Draft→Posted directly is allowed"
+            );
         posted.PostingMode.Should().Be(DocumentPostingMode.UnapprovedDirect);
         posted.PostedByUserId.Should().Be(operatorUser.Id);
         posted.PostedAtUtc.Should().Be(clock.UtcNow);
@@ -81,8 +88,12 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
 
         auditCapture.Captured.Should().ContainSingle(e => e.Kind == "sales_invoice.posted");
         var audit = auditCapture.Captured.Single(e => e.Kind == "sales_invoice.posted");
-        audit.PayloadJson.Should().Contain("UnapprovedDirect",
-            because: "the posting_mode discriminator MUST be in the audit payload per FR-026");
+        audit
+            .PayloadJson.Should()
+            .Contain(
+                "UnapprovedDirect",
+                because: "the posting_mode discriminator MUST be in the audit payload per FR-026"
+            );
         audit.PayloadJson.Should().Contain("INV-2026-000001");
     }
 
@@ -100,14 +111,16 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
             ratePercent: 0m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            recoverableInputVat: true);
+            recoverableInputVat: true
+        );
         db.Add(zeroRated);
         await db.SaveChangesAsync();
 
         var draft = SalesInvoice.CreateDraft(
             customerId: customer.Id,
             customerTaxProfileSnapshot: customer.TaxProfile,
-            documentDate: new DateOnly(2026, 5, 7));
+            documentDate: new DateOnly(2026, 5, 7)
+        );
         draft.AddLine(item.Id, 2m, MoneyEgp.From(500m), standardVat.Id, standardVat.RatePercent);
         draft.AddLine(item.Id, 1m, MoneyEgp.From(200m), zeroRated.Id, zeroRated.RatePercent);
         db.Add(draft);
@@ -115,11 +128,16 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
 
         var clock = new TestClock(new DateTime(2026, 5, 7, 0, 0, 0, DateTimeKind.Utc));
         var handler = new PostSalesInvoiceHandler(
-            db, new SqlSequentialNumberAllocator(db), clock, new CaptureAuditLogStore());
+            db,
+            new SqlSequentialNumberAllocator(db),
+            clock,
+            new CaptureAuditLogStore()
+        );
 
         var posted = await handler.HandleAsync(
             new PostSalesInvoiceCommand(draft.Id, operatorUser.Id),
-            CancellationToken.None);
+            CancellationToken.None
+        );
 
         // Standard line: 1000 sub, 140 vat, 1140 total
         // Zero line:    200 sub,   0 vat,  200 total
@@ -128,7 +146,9 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
         posted.GrandTotal.Amount.Should().Be(1_340m);
     }
 
-    private static async Task<(Customer customer, Item item, VatCategory vat)> SeedMasterDataAsync(AppDbContext db)
+    private static async Task<(Customer customer, Item item, VatCategory vat)> SeedMasterDataAsync(
+        AppDbContext db
+    )
     {
         var vat = new VatCategory(
             code: "Standard",
@@ -136,7 +156,8 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
             ratePercent: 14m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            recoverableInputVat: true);
+            recoverableInputVat: true
+        );
 
         var customer = new Customer(
             code: "CUST-001",
@@ -146,16 +167,20 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
                 governorate: "Cairo",
                 regionCity: "Downtown",
                 street: "Tahrir",
-                buildingNumber: "1"),
+                buildingNumber: "1"
+            ),
             taxProfile: CustomerTaxProfile.B2BRegistered(
                 tin: EgyptianTin.Parse("987654321"),
                 vatExemption: false,
-                defaultSalesVatCategoryId: vat.Id));
+                defaultSalesVatCategoryId: vat.Id
+            )
+        );
 
         var item = new Item(
             code: "ITEM-001",
             name: new ArabicEnglishText("ساعة استشارة", "Consulting Hour"),
-            defaultVatCategoryId: vat.Id);
+            defaultVatCategoryId: vat.Id
+        );
 
         db.Add(vat);
         db.Add(customer);
@@ -171,7 +196,8 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
             displayName: new ArabicEnglishText("مشغل", "Operator"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
         db.Add(user);
         await db.SaveChangesAsync();
         return user;
@@ -188,7 +214,8 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
 
         public Task<EgyptTax.Domain.Audit.AuditLogEntry> AppendAsync(
             EgyptTax.Domain.Audit.AuditLogPayload payload,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
@@ -201,7 +228,8 @@ public class PostSalesInvoiceTests(SqlServerFixture fixture)
                 kind: payload.Kind,
                 payloadJson: payload.PayloadJson,
                 prevHash: new byte[32],
-                thisHash: new byte[32]);
+                thisHash: new byte[32]
+            );
             return Task.FromResult(entry);
         }
     }

@@ -17,16 +17,19 @@ public interface IInspectionBundleBuilder
 {
     Task<InspectionBundleResult> BuildAsync(
         InspectionBundleRequest request,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }
 
 public sealed record InspectionBundleRequest(
     DateOnly PeriodStart,
     DateOnly PeriodEnd,
     Guid GeneratedByUserId,
-    bool AllowDrafts);
+    bool AllowDrafts
+);
 
 public sealed record InspectionBundleResult(
     byte[] ZipBytes,
     InspectionBundleManifest Manifest,
-    string SuggestedFilename);
+    string SuggestedFilename
+);

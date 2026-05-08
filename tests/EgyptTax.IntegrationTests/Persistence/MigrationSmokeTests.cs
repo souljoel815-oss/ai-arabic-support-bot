@@ -21,53 +21,96 @@ public class MigrationSmokeTests(SqlServerFixture fixture)
         // CreateContextAsync calls MigrateAsync; if it returned, migrations applied.
         var auditTableExists = await ScalarBoolAsync(
             db,
-            "SELECT CASE WHEN OBJECT_ID('[audit].[audit_log]', 'U') IS NULL THEN 0 ELSE 1 END");
+            "SELECT CASE WHEN OBJECT_ID('[audit].[audit_log]', 'U') IS NULL THEN 0 ELSE 1 END"
+        );
         var checkpointTableExists = await ScalarBoolAsync(
             db,
-            "SELECT CASE WHEN OBJECT_ID('[audit_meta].[checkpoint]', 'U') IS NULL THEN 0 ELSE 1 END");
+            "SELECT CASE WHEN OBJECT_ID('[audit_meta].[checkpoint]', 'U') IS NULL THEN 0 ELSE 1 END"
+        );
         var triggerExists = await ScalarBoolAsync(
             db,
-            "SELECT CASE WHEN OBJECT_ID('[audit].[trg_audit_log_append_only]', 'TR') IS NULL THEN 0 ELSE 1 END");
+            "SELECT CASE WHEN OBJECT_ID('[audit].[trg_audit_log_append_only]', 'TR') IS NULL THEN 0 ELSE 1 END"
+        );
         var usersTableExists = await ScalarBoolAsync(
             db,
-            "SELECT CASE WHEN OBJECT_ID('[identity].[users]', 'U') IS NULL THEN 0 ELSE 1 END");
+            "SELECT CASE WHEN OBJECT_ID('[identity].[users]', 'U') IS NULL THEN 0 ELSE 1 END"
+        );
         var rolesTableExists = await ScalarBoolAsync(
             db,
-            "SELECT CASE WHEN OBJECT_ID('[identity].[roles]', 'U') IS NULL THEN 0 ELSE 1 END");
+            "SELECT CASE WHEN OBJECT_ID('[identity].[roles]', 'U') IS NULL THEN 0 ELSE 1 END"
+        );
         var permissionsTableExists = await ScalarBoolAsync(
             db,
-            "SELECT CASE WHEN OBJECT_ID('[identity].[permissions]', 'U') IS NULL THEN 0 ELSE 1 END");
+            "SELECT CASE WHEN OBJECT_ID('[identity].[permissions]', 'U') IS NULL THEN 0 ELSE 1 END"
+        );
 
-        auditTableExists.Should().BeTrue("audit.audit_log table must be created by the Initial migration");
-        checkpointTableExists.Should().BeTrue("audit_meta.checkpoint must be created by the AuditCheckpoint migration");
-        triggerExists.Should().BeTrue("audit.trg_audit_log_append_only must be created by the AuditAppendOnlyTrigger migration");
-        usersTableExists.Should().BeTrue("identity.users must be created by the IdentityCore migration");
-        rolesTableExists.Should().BeTrue("identity.roles must be created by the IdentityCore migration");
-        permissionsTableExists.Should().BeTrue("identity.permissions must be created by the IdentityCore migration");
+        auditTableExists
+            .Should()
+            .BeTrue("audit.audit_log table must be created by the Initial migration");
+        checkpointTableExists
+            .Should()
+            .BeTrue("audit_meta.checkpoint must be created by the AuditCheckpoint migration");
+        triggerExists
+            .Should()
+            .BeTrue(
+                "audit.trg_audit_log_append_only must be created by the AuditAppendOnlyTrigger migration"
+            );
+        usersTableExists
+            .Should()
+            .BeTrue("identity.users must be created by the IdentityCore migration");
+        rolesTableExists
+            .Should()
+            .BeTrue("identity.roles must be created by the IdentityCore migration");
+        permissionsTableExists
+            .Should()
+            .BeTrue("identity.permissions must be created by the IdentityCore migration");
 
         var allocatorTableExists = await ScalarBoolAsync(
             db,
-            "SELECT CASE WHEN OBJECT_ID('[numbering].[document_number_allocator]', 'U') IS NULL THEN 0 ELSE 1 END");
+            "SELECT CASE WHEN OBJECT_ID('[numbering].[document_number_allocator]', 'U') IS NULL THEN 0 ELSE 1 END"
+        );
         var seriesSeedCount = await ScalarIntAsync(
             db,
-            "SELECT COUNT(*) FROM [numbering].[document_series]");
+            "SELECT COUNT(*) FROM [numbering].[document_series]"
+        );
 
-        allocatorTableExists.Should().BeTrue("numbering.document_number_allocator must be created by the NumberingCore migration");
-        seriesSeedCount.Should().Be(8, "the NumberingCore migration must seed one DocumentSeries per DocumentType");
+        allocatorTableExists
+            .Should()
+            .BeTrue(
+                "numbering.document_number_allocator must be created by the NumberingCore migration"
+            );
+        seriesSeedCount
+            .Should()
+            .Be(8, "the NumberingCore migration must seed one DocumentSeries per DocumentType");
 
         var sessionsTableExists = await ScalarBoolAsync(
             db,
-            "SELECT CASE WHEN OBJECT_ID('[identity].[sessions]', 'U') IS NULL THEN 0 ELSE 1 END");
+            "SELECT CASE WHEN OBJECT_ID('[identity].[sessions]', 'U') IS NULL THEN 0 ELSE 1 END"
+        );
         var passwordResetTableExists = await ScalarBoolAsync(
             db,
-            "SELECT CASE WHEN OBJECT_ID('[identity].[password_reset_tokens]', 'U') IS NULL THEN 0 ELSE 1 END");
+            "SELECT CASE WHEN OBJECT_ID('[identity].[password_reset_tokens]', 'U') IS NULL THEN 0 ELSE 1 END"
+        );
         var adminRecoveryTableExists = await ScalarBoolAsync(
             db,
-            "SELECT CASE WHEN OBJECT_ID('[identity].[admin_recovery_log]', 'U') IS NULL THEN 0 ELSE 1 END");
+            "SELECT CASE WHEN OBJECT_ID('[identity].[admin_recovery_log]', 'U') IS NULL THEN 0 ELSE 1 END"
+        );
 
-        sessionsTableExists.Should().BeTrue("identity.sessions must be created by the SessionsPasswordResetAndAdminRecovery migration");
-        passwordResetTableExists.Should().BeTrue("identity.password_reset_tokens must be created by the SessionsPasswordResetAndAdminRecovery migration");
-        adminRecoveryTableExists.Should().BeTrue("identity.admin_recovery_log must be created by the SessionsPasswordResetAndAdminRecovery migration");
+        sessionsTableExists
+            .Should()
+            .BeTrue(
+                "identity.sessions must be created by the SessionsPasswordResetAndAdminRecovery migration"
+            );
+        passwordResetTableExists
+            .Should()
+            .BeTrue(
+                "identity.password_reset_tokens must be created by the SessionsPasswordResetAndAdminRecovery migration"
+            );
+        adminRecoveryTableExists
+            .Should()
+            .BeTrue(
+                "identity.admin_recovery_log must be created by the SessionsPasswordResetAndAdminRecovery migration"
+            );
     }
 
     private static async Task<bool> ScalarBoolAsync(DbContext db, string sql)

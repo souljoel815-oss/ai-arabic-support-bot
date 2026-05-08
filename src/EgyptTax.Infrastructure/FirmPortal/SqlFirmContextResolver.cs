@@ -18,13 +18,17 @@ public sealed class SqlFirmContextResolver(AppDbContext db) : IFirmContextResolv
 {
     private readonly AppDbContext _db = db;
 
-    public async Task<string?> ResolveFirmNameAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<string?> ResolveFirmNameAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default
+    )
     {
         if (userId == Guid.Empty)
         {
             return null;
         }
-        var row = await _db.Set<AccountantFirmUser>().AsNoTracking()
+        var row = await _db.Set<AccountantFirmUser>()
+            .AsNoTracking()
             .Where(a => a.UserId == userId && a.RevokedAtUtc == null)
             .Select(a => new { a.FirmName })
             .FirstOrDefaultAsync(cancellationToken);

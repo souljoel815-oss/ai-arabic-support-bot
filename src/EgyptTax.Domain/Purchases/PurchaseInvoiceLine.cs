@@ -43,7 +43,8 @@ public sealed class PurchaseInvoiceLine
         MoneyEgp unitPrice,
         Guid vatCategoryId,
         decimal vatRatePercent,
-        bool deductibleFlag)
+        bool deductibleFlag
+    )
     {
         // Exactly one of ItemId / ExpenseCategoryId — enforces the
         // C2 data-model invariant. Caller decides which side based
@@ -51,7 +52,8 @@ public sealed class PurchaseInvoiceLine
         if ((itemId is null) == (expenseCategoryId is null))
         {
             throw new ArgumentException(
-                "Exactly one of ItemId / ExpenseCategoryId must be supplied (XOR).");
+                "Exactly one of ItemId / ExpenseCategoryId must be supplied (XOR)."
+            );
         }
         if (quantity <= 0m)
         {
@@ -59,11 +61,17 @@ public sealed class PurchaseInvoiceLine
         }
         if (unitPrice.Amount < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(unitPrice), "Unit price cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(unitPrice),
+                "Unit price cannot be negative."
+            );
         }
         if (vatRatePercent < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(vatRatePercent), "VAT rate cannot be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(vatRatePercent),
+                "VAT rate cannot be negative."
+            );
         }
 
         PurchaseInvoiceId = purchaseInvoiceId;

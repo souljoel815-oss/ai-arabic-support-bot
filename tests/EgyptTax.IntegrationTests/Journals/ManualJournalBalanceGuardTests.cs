@@ -44,19 +44,32 @@ public class ManualJournalBalanceGuardTests(SqlServerFixture fixture)
             Lines: new[]
             {
                 new ManualJournalLineInput("1200", MoneyEgp.From(100m), MoneyEgp.Zero, "AR debit"),
-                new ManualJournalLineInput("4000", MoneyEgp.Zero, MoneyEgp.From(50m), "Revenue credit (wrong amount)"),
-            });
+                new ManualJournalLineInput(
+                    "4000",
+                    MoneyEgp.Zero,
+                    MoneyEgp.From(50m),
+                    "Revenue credit (wrong amount)"
+                ),
+            }
+        );
 
         var act = async () => await handler.HandleAsync(command, CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .Where(ex => ex.Message.Contains("unbalanced", StringComparison.OrdinalIgnoreCase)
-                || ex.Message.Contains("FR-030", StringComparison.OrdinalIgnoreCase));
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .Where(ex =>
+                ex.Message.Contains("unbalanced", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("FR-030", StringComparison.OrdinalIgnoreCase)
+            );
 
         // Critical regression guard: nothing persisted.
         var voucherCount = await db.Set<JournalVoucher>().AsNoTracking().CountAsync();
-        voucherCount.Should().Be(0,
-            because: "FR-030 — an unbalanced voucher MUST be refused at the aggregate factory; no JournalVoucher row should exist");
+        voucherCount
+            .Should()
+            .Be(
+                0,
+                because: "FR-030 — an unbalanced voucher MUST be refused at the aggregate factory; no JournalVoucher row should exist"
+            );
     }
 
     [Fact]
@@ -72,9 +85,20 @@ public class ManualJournalBalanceGuardTests(SqlServerFixture fixture)
             CreatedByUserId: accountant.Id,
             Lines: new[]
             {
-                new ManualJournalLineInput("5200", MoneyEgp.From(10_000m), MoneyEgp.Zero, "Salary expense"),
-                new ManualJournalLineInput("2200", MoneyEgp.Zero, MoneyEgp.From(10_000m), "Salaries payable"),
-            });
+                new ManualJournalLineInput(
+                    "5200",
+                    MoneyEgp.From(10_000m),
+                    MoneyEgp.Zero,
+                    "Salary expense"
+                ),
+                new ManualJournalLineInput(
+                    "2200",
+                    MoneyEgp.Zero,
+                    MoneyEgp.From(10_000m),
+                    "Salaries payable"
+                ),
+            }
+        );
 
         var voucher = await handler.HandleAsync(command, CancellationToken.None);
 
@@ -87,7 +111,8 @@ public class ManualJournalBalanceGuardTests(SqlServerFixture fixture)
         // Round-trip the voucher to confirm EF persisted both header
         // + lines correctly.
         db.ChangeTracker.Clear();
-        var reloaded = await db.Set<JournalVoucher>().AsNoTracking()
+        var reloaded = await db.Set<JournalVoucher>()
+            .AsNoTracking()
             .Include(v => v.Lines)
             .FirstAsync(v => v.Id == voucher.Id);
         reloaded.Lines.Should().HaveCount(2);
@@ -110,31 +135,51 @@ public class ManualJournalBalanceGuardTests(SqlServerFixture fixture)
             CreatedByUserId: accountant.Id,
             Lines: new[]
             {
-                new ManualJournalLineInput("1200", MoneyEgp.From(100m), MoneyEgp.Zero, "Lonely debit"),
-            });
+                new ManualJournalLineInput(
+                    "1200",
+                    MoneyEgp.From(100m),
+                    MoneyEgp.Zero,
+                    "Lonely debit"
+                ),
+            }
+        );
 
         var act = async () => await handler.HandleAsync(command, CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .Where(ex => ex.Message.Contains("at least 2 lines", StringComparison.OrdinalIgnoreCase));
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .Where(ex =>
+                ex.Message.Contains("at least 2 lines", StringComparison.OrdinalIgnoreCase)
+            );
     }
 
     private static CreateManualAdjustingJournalHandler BuildHandler(AppDbContext db) =>
-        new(db,
+        new(
+            db,
             new TestClock(new DateTime(2026, 5, 8, 11, 0, 0, DateTimeKind.Utc)),
-            new CaptureAuditLogStore());
+            new CaptureAuditLogStore()
+        );
 
-    private static async Task<User> SeedUserWithRolesAsync(AppDbContext db, params string[] roleCodes)
+    private static async Task<User> SeedUserWithRolesAsync(
+        AppDbContext db,
+        params string[] roleCodes
+    )
     {
-        var roles = roleCodes.Select(c => new Role(
-            code: c, name: new ArabicEnglishText(c, c), requiresMfa: false)).ToList();
+        var roles = roleCodes
+            .Select(c => new Role(code: c, name: new ArabicEnglishText(c, c), requiresMfa: false))
+            .ToList();
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        foreach (var r in roles) { user.Roles.Add(r); db.Add(r); }
+            passwordMustChange: false
+        );
+        foreach (var r in roles)
+        {
+            user.Roles.Add(r);
+            db.Add(r);
+        }
         db.Add(user);
         await db.SaveChangesAsync();
         return user;
@@ -148,15 +193,27 @@ public class ManualJournalBalanceGuardTests(SqlServerFixture fixture)
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
         public List<AuditLogPayload> Captured { get; } = [];
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
-            return Task.FromResult(new AuditLogEntry(
-                index: Captured.Count, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]));
+            return Task.FromResult(
+                new AuditLogEntry(
+                    index: Captured.Count,
+                    tsUtc: DateTime.UtcNow,
+                    actorUserId: payload.ActorUserId,
+                    actorFirmName: payload.ActorFirmName,
+                    companyId: payload.CompanyId,
+                    kind: payload.Kind,
+                    payloadJson: payload.PayloadJson,
+                    prevHash: new byte[32],
+                    thisHash: new byte[32]
+                )
+            );
         }
     }
 }

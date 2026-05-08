@@ -39,7 +39,8 @@ public sealed class EtaSubmission
         Guid salesInvoiceId,
         DateTime postedAtUtc,
         DateTime nowUtc,
-        TimeSpan? submissionWindow = null)
+        TimeSpan? submissionWindow = null
+    )
     {
         if (salesInvoiceId == Guid.Empty)
         {
@@ -48,7 +49,8 @@ public sealed class EtaSubmission
 
         SalesInvoiceId = salesInvoiceId;
         SubmissionWindowExpiresAtUtc = postedAtUtc.Add(
-            submissionWindow ?? TimeSpan.FromDays(DefaultSubmissionWindowDays));
+            submissionWindow ?? TimeSpan.FromDays(DefaultSubmissionWindowDays)
+        );
         CreatedAtUtc = nowUtc;
     }
 
@@ -57,14 +59,16 @@ public sealed class EtaSubmission
         string? submissionUuid,
         string? errorCode,
         string? errorMessage,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         if (Status == EtaSubmissionStatus.Submitted)
         {
             // Submitted is terminal — re-submitting an already-submitted
             // document is a programming error.
             throw new InvalidOperationException(
-                $"EtaSubmission {Id} is already Submitted; cannot record another attempt.");
+                $"EtaSubmission {Id} is already Submitted; cannot record another attempt."
+            );
         }
 
         Status = status;

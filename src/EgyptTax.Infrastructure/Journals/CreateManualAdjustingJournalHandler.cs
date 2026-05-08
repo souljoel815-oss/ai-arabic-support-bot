@@ -33,15 +33,23 @@ public sealed class CreateManualAdjustingJournalHandler
     /// journals. Bookkeeper is intentionally excluded; that's the
     /// regression guarded by T167a.
     /// </summary>
-    public static readonly IReadOnlySet<string> AllowedRoleCodes =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Administrator", "Accountant" };
+    public static readonly IReadOnlySet<string> AllowedRoleCodes = new HashSet<string>(
+        StringComparer.OrdinalIgnoreCase
+    )
+    {
+        "Administrator",
+        "Accountant",
+    };
 
     private readonly AppDbContext _db;
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
 
     public CreateManualAdjustingJournalHandler(
-        AppDbContext db, IClock clock, IAuditLogStore auditLog)
+        AppDbContext db,
+        IClock clock,
+        IAuditLogStore auditLog
+    )
     {
         _db = db;
         _clock = clock;
@@ -50,24 +58,28 @@ public sealed class CreateManualAdjustingJournalHandler
 
     public async Task<JournalVoucher> HandleAsync(
         CreateManualAdjustingJournalCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
         if (command.Lines is null || command.Lines.Count == 0)
         {
             throw new InvalidOperationException(
-                "CreateManualAdjustingJournalCommand requires at least one line; the JournalVoucher invariant requires at least two.");
+                "CreateManualAdjustingJournalCommand requires at least one line; the JournalVoucher invariant requires at least two."
+            );
         }
 
         // FR-031 role check. Loaded with .Include(u.Roles) so we can
         // inspect role codes WITHOUT trusting any caller-supplied
         // role list (the command only carries a user id; the truth
         // lives in the user_roles table).
-        var user = await _db.Set<User>()
-            .Include(u => u.Roles)
-            .FirstOrDefaultAsync(u => u.Id == command.CreatedByUserId, cancellationToken)
+        var user =
+            await _db.Set<User>()
+                .Include(u => u.Roles)
+                .FirstOrDefaultAsync(u => u.Id == command.CreatedByUserId, cancellationToken)
             ?? throw new InvalidOperationException(
-                $"User {command.CreatedByUserId} not found; cannot create a manual adjusting journal.");
+                $"User {command.CreatedByUserId} not found; cannot create a manual adjusting journal."
+            );
 
         var heldCodes = user.Roles.Select(r => r.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (!heldCodes.Overlaps(AllowedRoleCodes))
@@ -75,17 +87,21 @@ public sealed class CreateManualAdjustingJournalHandler
             // The audit chain captures the rejection so an inspector
             // can see the attempt + the held roles (FR-031 violation
             // attempts are themselves auditable).
-            await _auditLog.AppendAsync(new AuditLogPayload(
-                Kind: "journal_voucher.manual.permission_denied",
-                ActorUserId: command.CreatedByUserId,
-                ActorFirmName: null,
-                CompanyId: Guid.Empty,
-                PayloadJson: $$"""{"user_id":"{{command.CreatedByUserId:D}}","held_roles":[{{string.Join(",", heldCodes.Select(c => "\"" + c + "\""))}}],"required_any_of":[{{string.Join(",", AllowedRoleCodes.Select(c => "\"" + c + "\""))}}]}"""),
-                cancellationToken);
+            await _auditLog.AppendAsync(
+                new AuditLogPayload(
+                    Kind: "journal_voucher.manual.permission_denied",
+                    ActorUserId: command.CreatedByUserId,
+                    ActorFirmName: null,
+                    CompanyId: Guid.Empty,
+                    PayloadJson: $$"""{"user_id":"{{command.CreatedByUserId:D}}","held_roles":[{{string.Join(",", heldCodes.Select(c => "\"" + c + "\""))}}],"required_any_of":[{{string.Join(",", AllowedRoleCodes.Select(c => "\"" + c + "\""))}}]}"""
+                ),
+                cancellationToken
+            );
 
             throw new UnauthorizedAccessException(
-                $"User {command.CreatedByUserId} cannot create a manual adjusting journal voucher: " +
-                $"FR-031 requires one of [{string.Join(", ", AllowedRoleCodes)}]; user holds [{string.Join(", ", heldCodes)}].");
+                $"User {command.CreatedByUserId} cannot create a manual adjusting journal voucher: "
+                    + $"FR-031 requires one of [{string.Join(", ", AllowedRoleCodes)}]; user holds [{string.Join(", ", heldCodes)}]."
+            );
         }
 
         var nowUtc = _clock.UtcNow;
@@ -94,18 +110,22 @@ public sealed class CreateManualAdjustingJournalHandler
             narration: command.Narration,
             createdByUserId: command.CreatedByUserId,
             createdAtUtc: nowUtc,
-            lines: command.Lines.Select(l => (l.AccountCode, l.Debit, l.Credit, l.Description)));
+            lines: command.Lines.Select(l => (l.AccountCode, l.Debit, l.Credit, l.Description))
+        );
 
         _db.Add(voucher);
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "journal_voucher.manual.created",
-            ActorUserId: command.CreatedByUserId,
-            ActorFirmName: null,
-            CompanyId: Guid.Empty,
-            PayloadJson: BuildPayloadJson(voucher)),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "journal_voucher.manual.created",
+                ActorUserId: command.CreatedByUserId,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: BuildPayloadJson(voucher)
+            ),
+            cancellationToken
+        );
 
         return voucher;
     }

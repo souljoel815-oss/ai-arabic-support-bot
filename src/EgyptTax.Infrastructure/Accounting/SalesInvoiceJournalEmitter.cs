@@ -36,18 +36,21 @@ public sealed class SalesInvoiceJournalEmitter : IJournalEntryEmitter
     public Task EmitForSalesInvoiceAsync(
         SalesInvoice invoice,
         DateTime postedAtUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(invoice);
         if (invoice.State != DocumentState.Posted)
         {
             throw new InvalidOperationException(
-                $"Cannot emit journal for invoice {invoice.Id}: state is {invoice.State}, not Posted.");
+                $"Cannot emit journal for invoice {invoice.Id}: state is {invoice.State}, not Posted."
+            );
         }
         if (string.IsNullOrWhiteSpace(invoice.DocumentNumber))
         {
             throw new InvalidOperationException(
-                $"Cannot emit journal for invoice {invoice.Id}: document number is empty.");
+                $"Cannot emit journal for invoice {invoice.Id}: document number is empty."
+            );
         }
 
         // Take magnitudes — sign meaning is conveyed by the
@@ -59,15 +62,45 @@ public sealed class SalesInvoiceJournalEmitter : IJournalEntryEmitter
         var lines = invoice.IsCreditNote
             ? new[]
             {
-                (ChartOfAccountCodes.AccountsReceivable, MoneyEgp.Zero, arAmount, $"Credit note {invoice.DocumentNumber} — release receivable"),
-                (ChartOfAccountCodes.SalesRevenue,       revenueAmount, MoneyEgp.Zero, $"Credit note {invoice.DocumentNumber} — reverse revenue"),
-                (ChartOfAccountCodes.OutputVatPayable,   vatAmount, MoneyEgp.Zero, $"Credit note {invoice.DocumentNumber} — claw back output VAT"),
+                (
+                    ChartOfAccountCodes.AccountsReceivable,
+                    MoneyEgp.Zero,
+                    arAmount,
+                    $"Credit note {invoice.DocumentNumber} — release receivable"
+                ),
+                (
+                    ChartOfAccountCodes.SalesRevenue,
+                    revenueAmount,
+                    MoneyEgp.Zero,
+                    $"Credit note {invoice.DocumentNumber} — reverse revenue"
+                ),
+                (
+                    ChartOfAccountCodes.OutputVatPayable,
+                    vatAmount,
+                    MoneyEgp.Zero,
+                    $"Credit note {invoice.DocumentNumber} — claw back output VAT"
+                ),
             }
             : new[]
             {
-                (ChartOfAccountCodes.AccountsReceivable, arAmount, MoneyEgp.Zero, $"Invoice {invoice.DocumentNumber} — book receivable"),
-                (ChartOfAccountCodes.SalesRevenue,       MoneyEgp.Zero, revenueAmount, $"Invoice {invoice.DocumentNumber} — recognise revenue"),
-                (ChartOfAccountCodes.OutputVatPayable,   MoneyEgp.Zero, vatAmount, $"Invoice {invoice.DocumentNumber} — accrue output VAT"),
+                (
+                    ChartOfAccountCodes.AccountsReceivable,
+                    arAmount,
+                    MoneyEgp.Zero,
+                    $"Invoice {invoice.DocumentNumber} — book receivable"
+                ),
+                (
+                    ChartOfAccountCodes.SalesRevenue,
+                    MoneyEgp.Zero,
+                    revenueAmount,
+                    $"Invoice {invoice.DocumentNumber} — recognise revenue"
+                ),
+                (
+                    ChartOfAccountCodes.OutputVatPayable,
+                    MoneyEgp.Zero,
+                    vatAmount,
+                    $"Invoice {invoice.DocumentNumber} — accrue output VAT"
+                ),
             };
 
         var documentType = invoice.IsCreditNote
@@ -79,7 +112,8 @@ public sealed class SalesInvoiceJournalEmitter : IJournalEntryEmitter
             sourceDocumentNumber: invoice.DocumentNumber!,
             sourceDocumentType: documentType,
             postedAtUtc: postedAtUtc,
-            lines: lines);
+            lines: lines
+        );
 
         _db.Add(entry);
         return Task.CompletedTask;

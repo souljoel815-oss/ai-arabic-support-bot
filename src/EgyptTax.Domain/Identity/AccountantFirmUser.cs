@@ -45,7 +45,8 @@ public sealed class AccountantFirmUser
         string firmName,
         string firmExternalIdentifier,
         DateTime invitedAtUtc,
-        Guid invitedByUserId)
+        Guid invitedByUserId
+    )
     {
         if (userId == Guid.Empty)
         {
@@ -55,7 +56,10 @@ public sealed class AccountantFirmUser
         ArgumentException.ThrowIfNullOrWhiteSpace(firmExternalIdentifier);
         if (invitedByUserId == Guid.Empty)
         {
-            throw new ArgumentException("InvitedByUserId must be a non-empty Guid.", nameof(invitedByUserId));
+            throw new ArgumentException(
+                "InvitedByUserId must be a non-empty Guid.",
+                nameof(invitedByUserId)
+            );
         }
 
         UserId = userId;
@@ -79,7 +83,8 @@ public sealed class AccountantFirmUser
         if (RevokedAtUtc is not null)
         {
             throw new InvalidOperationException(
-                "Cannot accept an invitation that was already revoked. Re-invite to issue a fresh handshake.");
+                "Cannot accept an invitation that was already revoked. Re-invite to issue a fresh handshake."
+            );
         }
         AcceptedAtUtc ??= acceptedAtUtc;
     }
@@ -95,7 +100,10 @@ public sealed class AccountantFirmUser
     {
         if (revokedByUserId == Guid.Empty)
         {
-            throw new ArgumentException("RevokedByUserId must be a non-empty Guid.", nameof(revokedByUserId));
+            throw new ArgumentException(
+                "RevokedByUserId must be a non-empty Guid.",
+                nameof(revokedByUserId)
+            );
         }
         RevokedAtUtc ??= revokedAtUtc;
         RevokedByUserId ??= revokedByUserId;

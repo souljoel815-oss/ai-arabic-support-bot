@@ -30,7 +30,8 @@ public sealed class Session
         DateTime nowUtc,
         TimeSpan absoluteLifetime,
         string? ipAddress,
-        string? userAgent)
+        string? userAgent
+    )
     {
         if (userId == Guid.Empty)
         {

@@ -33,10 +33,13 @@ public class ManualJournalRolePermissionTests(SqlServerFixture fixture)
         var user = await SeedUserWithRolesAsync(db, roleCode);
         var handler = BuildHandler(db);
 
-        var voucher = await handler.HandleAsync(
-            BalancedCommand(user.Id), CancellationToken.None);
+        var voucher = await handler.HandleAsync(BalancedCommand(user.Id), CancellationToken.None);
 
-        voucher.Should().NotBeNull(because: $"FR-031 — {roleCode} MUST be allowed to create manual adjusting journals");
+        voucher
+            .Should()
+            .NotBeNull(
+                because: $"FR-031 — {roleCode} MUST be allowed to create manual adjusting journals"
+            );
         var persistedCount = await db.Set<JournalVoucher>().AsNoTracking().CountAsync();
         persistedCount.Should().Be(1);
     }
@@ -47,25 +50,38 @@ public class ManualJournalRolePermissionTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var bookkeeper = await SeedUserWithRolesAsync(db, "Bookkeeper");
         var audit = new CaptureAuditLogStore();
-        var handler = new CreateManualAdjustingJournalHandler(db,
+        var handler = new CreateManualAdjustingJournalHandler(
+            db,
             new TestClock(new DateTime(2026, 5, 8, 11, 0, 0, DateTimeKind.Utc)),
-            audit);
+            audit
+        );
 
-        var act = async () => await handler.HandleAsync(
-            BalancedCommand(bookkeeper.Id), CancellationToken.None);
+        var act = async () =>
+            await handler.HandleAsync(BalancedCommand(bookkeeper.Id), CancellationToken.None);
 
-        await act.Should().ThrowAsync<UnauthorizedAccessException>()
-            .Where(ex => ex.Message.Contains("FR-031", StringComparison.OrdinalIgnoreCase)
-                && ex.Message.Contains("Bookkeeper", StringComparison.OrdinalIgnoreCase));
+        await act.Should()
+            .ThrowAsync<UnauthorizedAccessException>()
+            .Where(ex =>
+                ex.Message.Contains("FR-031", StringComparison.OrdinalIgnoreCase)
+                && ex.Message.Contains("Bookkeeper", StringComparison.OrdinalIgnoreCase)
+            );
 
         // No voucher persisted.
         var voucherCount = await db.Set<JournalVoucher>().AsNoTracking().CountAsync();
-        voucherCount.Should().Be(0,
-            because: "FR-031 — a permission-denied rejection MUST happen BEFORE the voucher is constructed");
+        voucherCount
+            .Should()
+            .Be(
+                0,
+                because: "FR-031 — a permission-denied rejection MUST happen BEFORE the voucher is constructed"
+            );
 
         // The rejection itself is an auditable event.
-        audit.Captured.Should().Contain(p => p.Kind == "journal_voucher.manual.permission_denied",
-            because: "an inspector MUST be able to see attempted FR-031 violations in the audit chain");
+        audit
+            .Captured.Should()
+            .Contain(
+                p => p.Kind == "journal_voucher.manual.permission_denied",
+                because: "an inspector MUST be able to see attempted FR-031 violations in the audit chain"
+            );
     }
 
     [Fact]
@@ -78,8 +94,8 @@ public class ManualJournalRolePermissionTests(SqlServerFixture fixture)
         var user = await SeedUserWithRolesAsync(db, "Approver");
         var handler = BuildHandler(db);
 
-        var act = async () => await handler.HandleAsync(
-            BalancedCommand(user.Id), CancellationToken.None);
+        var act = async () =>
+            await handler.HandleAsync(BalancedCommand(user.Id), CancellationToken.None);
 
         await act.Should().ThrowAsync<UnauthorizedAccessException>();
     }
@@ -93,8 +109,7 @@ public class ManualJournalRolePermissionTests(SqlServerFixture fixture)
         var user = await SeedUserWithRolesAsync(db, "Bookkeeper", "Accountant");
         var handler = BuildHandler(db);
 
-        var voucher = await handler.HandleAsync(
-            BalancedCommand(user.Id), CancellationToken.None);
+        var voucher = await handler.HandleAsync(BalancedCommand(user.Id), CancellationToken.None);
 
         voucher.Should().NotBeNull();
     }
@@ -108,24 +123,36 @@ public class ManualJournalRolePermissionTests(SqlServerFixture fixture)
             {
                 new ManualJournalLineInput("5200", MoneyEgp.From(500m), MoneyEgp.Zero, "Expense"),
                 new ManualJournalLineInput("2200", MoneyEgp.Zero, MoneyEgp.From(500m), "Payable"),
-            });
+            }
+        );
 
     private static CreateManualAdjustingJournalHandler BuildHandler(AppDbContext db) =>
-        new(db,
+        new(
+            db,
             new TestClock(new DateTime(2026, 5, 8, 11, 0, 0, DateTimeKind.Utc)),
-            new CaptureAuditLogStore());
+            new CaptureAuditLogStore()
+        );
 
-    private static async Task<User> SeedUserWithRolesAsync(AppDbContext db, params string[] roleCodes)
+    private static async Task<User> SeedUserWithRolesAsync(
+        AppDbContext db,
+        params string[] roleCodes
+    )
     {
-        var roles = roleCodes.Select(c => new Role(
-            code: c, name: new ArabicEnglishText(c, c), requiresMfa: false)).ToList();
+        var roles = roleCodes
+            .Select(c => new Role(code: c, name: new ArabicEnglishText(c, c), requiresMfa: false))
+            .ToList();
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        foreach (var r in roles) { user.Roles.Add(r); db.Add(r); }
+            passwordMustChange: false
+        );
+        foreach (var r in roles)
+        {
+            user.Roles.Add(r);
+            db.Add(r);
+        }
         db.Add(user);
         await db.SaveChangesAsync();
         return user;
@@ -139,15 +166,27 @@ public class ManualJournalRolePermissionTests(SqlServerFixture fixture)
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
         public List<AuditLogPayload> Captured { get; } = [];
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
-            return Task.FromResult(new AuditLogEntry(
-                index: Captured.Count, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]));
+            return Task.FromResult(
+                new AuditLogEntry(
+                    index: Captured.Count,
+                    tsUtc: DateTime.UtcNow,
+                    actorUserId: payload.ActorUserId,
+                    actorFirmName: payload.ActorFirmName,
+                    companyId: payload.CompanyId,
+                    kind: payload.Kind,
+                    payloadJson: payload.PayloadJson,
+                    prevHash: new byte[32],
+                    thisHash: new byte[32]
+                )
+            );
         }
     }
 }

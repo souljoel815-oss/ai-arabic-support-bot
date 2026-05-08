@@ -29,7 +29,9 @@ public sealed class SqlMasterDataDeletionGuard : IMasterDataDeletionGuard
     }
 
     public async Task<MasterDataReferenceCheck> CheckSupplierAsync(
-        Guid supplierId, CancellationToken cancellationToken = default)
+        Guid supplierId,
+        CancellationToken cancellationToken = default
+    )
     {
         var purchaseCount = await _db.Set<PurchaseInvoice>()
             .CountAsync(p => p.SupplierId == supplierId, cancellationToken);
@@ -37,7 +39,9 @@ public sealed class SqlMasterDataDeletionGuard : IMasterDataDeletionGuard
     }
 
     public async Task<MasterDataReferenceCheck> CheckCustomerAsync(
-        Guid customerId, CancellationToken cancellationToken = default)
+        Guid customerId,
+        CancellationToken cancellationToken = default
+    )
     {
         var salesCount = await _db.Set<SalesInvoice>()
             .CountAsync(s => s.CustomerId == customerId, cancellationToken);
@@ -45,7 +49,9 @@ public sealed class SqlMasterDataDeletionGuard : IMasterDataDeletionGuard
     }
 
     public async Task<MasterDataReferenceCheck> CheckItemAsync(
-        Guid itemId, CancellationToken cancellationToken = default)
+        Guid itemId,
+        CancellationToken cancellationToken = default
+    )
     {
         // Item lines live on both sales and purchase docs; both
         // reference the row, both block deletion.
@@ -55,23 +61,26 @@ public sealed class SqlMasterDataDeletionGuard : IMasterDataDeletionGuard
             .CountAsync(l => l.ItemId == itemId, cancellationToken);
         return Decide(
             ("SalesInvoiceLine", salesLineCount),
-            ("PurchaseInvoiceLine", purchaseLineCount));
+            ("PurchaseInvoiceLine", purchaseLineCount)
+        );
     }
 
     public async Task<MasterDataReferenceCheck> CheckExpenseCategoryAsync(
-        Guid categoryId, CancellationToken cancellationToken = default)
+        Guid categoryId,
+        CancellationToken cancellationToken = default
+    )
     {
         var expenseCount = await _db.Set<Expense>()
             .CountAsync(e => e.CategoryId == categoryId, cancellationToken);
         var purchaseLineCount = await _db.Set<PurchaseInvoiceLine>()
             .CountAsync(l => l.ExpenseCategoryId == categoryId, cancellationToken);
-        return Decide(
-            ("Expense", expenseCount),
-            ("PurchaseInvoiceLine", purchaseLineCount));
+        return Decide(("Expense", expenseCount), ("PurchaseInvoiceLine", purchaseLineCount));
     }
 
     public async Task<MasterDataReferenceCheck> CheckVatCategoryAsync(
-        Guid vatCategoryId, CancellationToken cancellationToken = default)
+        Guid vatCategoryId,
+        CancellationToken cancellationToken = default
+    )
     {
         var salesLineCount = await _db.Set<SalesInvoiceLine>()
             .CountAsync(l => l.VatCategoryId == vatCategoryId, cancellationToken);
@@ -79,7 +88,8 @@ public sealed class SqlMasterDataDeletionGuard : IMasterDataDeletionGuard
             .CountAsync(l => l.VatCategoryId == vatCategoryId, cancellationToken);
         return Decide(
             ("SalesInvoiceLine", salesLineCount),
-            ("PurchaseInvoiceLine", purchaseLineCount));
+            ("PurchaseInvoiceLine", purchaseLineCount)
+        );
     }
 
     private static MasterDataReferenceCheck Decide(params (string Type, int Count)[] counts)

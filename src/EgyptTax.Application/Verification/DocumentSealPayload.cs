@@ -15,7 +15,8 @@ public sealed record DocumentSealPayload(
     byte[] AuditEntryHash,
     long AuditEntryIndex,
     string VerifyUrl,
-    string IssuerTin);
+    string IssuerTin
+);
 
 public enum SealedDocumentType
 {
@@ -31,13 +32,15 @@ public sealed record ResolvedDocument(
     string DocumentNumber,
     long GrandTotalPiastres,
     byte[] AuditEntryHash,
-    long AuditEntryIndex);
+    long AuditEntryIndex
+);
 
 public sealed record SealVerificationResult(
     SealOutcome Outcome,
     string? DocumentNumber,
     string? DocumentType,
-    IReadOnlyList<SealMismatch> Mismatches);
+    IReadOnlyList<SealMismatch> Mismatches
+);
 
 public enum SealOutcome
 {

@@ -30,7 +30,12 @@ public class SessionTimeoutTests(SqlServerFixture fixture)
         var sessions = new SessionService(db, clock, auditCapture);
         var userId = await SeedUserAsync(db);
 
-        var session = await sessions.BeginAsync(userId, "127.0.0.1", "xunit", CancellationToken.None);
+        var session = await sessions.BeginAsync(
+            userId,
+            "127.0.0.1",
+            "xunit",
+            CancellationToken.None
+        );
 
         // 10 min later — still valid.
         clock.Advance(TimeSpan.FromMinutes(10));
@@ -46,14 +51,20 @@ public class SessionTimeoutTests(SqlServerFixture fixture)
         expired.Status.Should().Be(SessionValidationStatus.Expired);
         expired.Reason.Should().Be(SessionRevocationReason.InactivityTimeout);
 
-        auditCapture.Captured.Should().ContainSingle(e => e.Kind == "session.expired",
-            because: "FR-028 + FR-039 — exactly one audit event MUST be emitted on the first observation of expiry");
+        auditCapture
+            .Captured.Should()
+            .ContainSingle(
+                e => e.Kind == "session.expired",
+                because: "FR-028 + FR-039 — exactly one audit event MUST be emitted on the first observation of expiry"
+            );
 
         // Subsequent validations stay Expired but do not duplicate the event.
         var second = await sessions.ValidateAsync(session.Id, CancellationToken.None);
         second.Status.Should().Be(SessionValidationStatus.Expired);
-        auditCapture.Captured.Count(e => e.Kind == "session.expired").Should().Be(1,
-            because: "duplicate logout events would pollute the audit trail");
+        auditCapture
+            .Captured.Count(e => e.Kind == "session.expired")
+            .Should()
+            .Be(1, because: "duplicate logout events would pollute the audit trail");
     }
 
     [Fact]
@@ -66,7 +77,12 @@ public class SessionTimeoutTests(SqlServerFixture fixture)
         var sessions = new SessionService(db, clock, auditCapture);
         var userId = await SeedUserAsync(db);
 
-        var session = await sessions.BeginAsync(userId, "127.0.0.1", "xunit", CancellationToken.None);
+        var session = await sessions.BeginAsync(
+            userId,
+            "127.0.0.1",
+            "xunit",
+            CancellationToken.None
+        );
 
         // Simulate a busy user — touch every 5 min for 12+ hours. The absolute
         // expiry SHOULD still fire because it is anchored at issuance, not last
@@ -81,18 +97,25 @@ public class SessionTimeoutTests(SqlServerFixture fixture)
         validation.Status.Should().Be(SessionValidationStatus.Expired);
         validation.Reason.Should().Be(SessionRevocationReason.AbsoluteTimeout);
 
-        auditCapture.Captured.Should().ContainSingle(e => e.Kind == "session.expired",
-            because: "absolute-timeout expiry MUST also emit the FR-039 session.expired event");
+        auditCapture
+            .Captured.Should()
+            .ContainSingle(
+                e => e.Kind == "session.expired",
+                because: "absolute-timeout expiry MUST also emit the FR-039 session.expired event"
+            );
     }
 
-    private static async Task<Guid> SeedUserAsync(EgyptTax.Infrastructure.Persistence.AppDbContext db)
+    private static async Task<Guid> SeedUserAsync(
+        EgyptTax.Infrastructure.Persistence.AppDbContext db
+    )
     {
         var user = new User(
             email: $"u-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مستخدم", "User"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
         db.Add(user);
         await db.SaveChangesAsync();
         return user.Id;
@@ -101,6 +124,7 @@ public class SessionTimeoutTests(SqlServerFixture fixture)
     private sealed class TestClock(DateTime initial) : EgyptTax.SharedKernel.Time.IClock
     {
         public DateTime UtcNow { get; private set; } = initial;
+
         public void Advance(TimeSpan delta) => UtcNow = UtcNow.Add(delta);
     }
 
@@ -108,7 +132,10 @@ public class SessionTimeoutTests(SqlServerFixture fixture)
     {
         public List<AuditLogPayload> Captured { get; } = [];
 
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
@@ -121,7 +148,8 @@ public class SessionTimeoutTests(SqlServerFixture fixture)
                 kind: payload.Kind,
                 payloadJson: payload.PayloadJson,
                 prevHash: new byte[32],
-                thisHash: new byte[32]);
+                thisHash: new byte[32]
+            );
             return Task.FromResult(entry);
         }
     }

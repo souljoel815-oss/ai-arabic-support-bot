@@ -57,15 +57,18 @@ public class MoneyEgpTests
 
     [Theory]
     // Banker's rounding (MidpointRounding.ToEven): 0.5 rounds to nearest even.
-    [InlineData(1.005, 1.00)]   // halfway to 1.00 (even)
-    [InlineData(1.015, 1.02)]   // halfway to 1.02 (even)
-    [InlineData(1.025, 1.02)]   // halfway to 1.02 (even)
-    [InlineData(1.035, 1.04)]   // halfway to 1.04 (even)
-    [InlineData(1.045, 1.04)]   // halfway to 1.04 (even)
-    [InlineData(1.055, 1.06)]   // halfway to 1.06 (even)
-    [InlineData(1.234, 1.23)]   // ordinary round-down
-    [InlineData(1.236, 1.24)]   // ordinary round-up
-    public void AmountRoundedToCents_AppliesBankersRoundingPerSpecEdgeCase(decimal raw, decimal expected)
+    [InlineData(1.005, 1.00)] // halfway to 1.00 (even)
+    [InlineData(1.015, 1.02)] // halfway to 1.02 (even)
+    [InlineData(1.025, 1.02)] // halfway to 1.02 (even)
+    [InlineData(1.035, 1.04)] // halfway to 1.04 (even)
+    [InlineData(1.045, 1.04)] // halfway to 1.04 (even)
+    [InlineData(1.055, 1.06)] // halfway to 1.06 (even)
+    [InlineData(1.234, 1.23)] // ordinary round-down
+    [InlineData(1.236, 1.24)] // ordinary round-up
+    public void AmountRoundedToCents_AppliesBankersRoundingPerSpecEdgeCase(
+        decimal raw,
+        decimal expected
+    )
     {
         MoneyEgp.From(raw).AmountRoundedToCents.Should().Be(expected);
     }

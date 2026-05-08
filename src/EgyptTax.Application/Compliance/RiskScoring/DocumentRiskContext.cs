@@ -16,4 +16,5 @@ public sealed record DocumentRiskContext(
     SalesInvoice Invoice,
     IReadOnlyDictionary<Guid, Item> Items,
     EtaSubmission? EtaSubmission,
-    DateTime NowUtc);
+    DateTime NowUtc
+);

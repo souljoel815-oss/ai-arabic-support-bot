@@ -14,18 +14,24 @@ public class NonRecoverableInputVatRuleTests
     [Fact]
     public void Silent_When_Supplier_Is_Registered()
     {
-        var ctx = BuildContext(SupplierTaxProfile.RegisteredTaxpayer(
-            EgyptianTin.Parse("123456789"), VatId), deductible: true);
-        new NonRecoverableInputVatRule().Evaluate(ctx).Should().BeEmpty(
-            because: "registered taxpayer → input VAT IS recoverable per FR-020");
+        var ctx = BuildContext(
+            SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("123456789"), VatId),
+            deductible: true
+        );
+        new NonRecoverableInputVatRule()
+            .Evaluate(ctx)
+            .Should()
+            .BeEmpty(because: "registered taxpayer → input VAT IS recoverable per FR-020");
     }
 
     [Fact]
     public void Silent_When_Unregistered_But_No_Deductible_Lines()
     {
         var ctx = BuildContext(SupplierTaxProfile.Unregistered(VatId), deductible: false);
-        new NonRecoverableInputVatRule().Evaluate(ctx).Should().BeEmpty(
-            because: "operator hasn't claimed deductibility — there's nothing to flag");
+        new NonRecoverableInputVatRule()
+            .Evaluate(ctx)
+            .Should()
+            .BeEmpty(because: "operator hasn't claimed deductibility — there's nothing to flag");
     }
 
     [Fact]
@@ -45,8 +51,12 @@ public class NonRecoverableInputVatRuleTests
         var ctx = BuildContext(SupplierTaxProfile.ForeignSupplier(VatId), deductible: true);
         var finding = new NonRecoverableInputVatRule().Evaluate(ctx).Single();
         finding.Title.English.Should().Contain("Foreign supplier");
-        finding.FixHint.Should().Contain("reverse-charge",
-            because: "the FixHint should steer the operator to the right surface for foreign suppliers");
+        finding
+            .FixHint.Should()
+            .Contain(
+                "reverse-charge",
+                because: "the FixHint should steer the operator to the right surface for foreign suppliers"
+            );
     }
 
     [Fact]
@@ -60,34 +70,68 @@ public class NonRecoverableInputVatRuleTests
             Guid.NewGuid(),
             SupplierTaxProfile.Unregistered(VatId), // snapshot
             "SUP-INV-99",
-            new DateOnly(2026, 5, 7));
-        draft.AddLine(null, Guid.NewGuid(), 1m, MoneyEgp.From(500m), VatId, 14m, deductibleFlag: true);
+            new DateOnly(2026, 5, 7)
+        );
+        draft.AddLine(
+            null,
+            Guid.NewGuid(),
+            1m,
+            MoneyEgp.From(500m),
+            VatId,
+            14m,
+            deductibleFlag: true
+        );
 
         var laterRegisteredSupplier = new Supplier(
             code: "SUP-99",
             name: new ArabicEnglishText("مورد", "Supplier"),
             address: new ArabicEnglishText("القاهرة", "Cairo"),
-            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("999999999"), VatId));
+            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("999999999"), VatId)
+        );
 
         var ctx = new PurchaseDocumentRiskContext(
-            draft, laterRegisteredSupplier, Array.Empty<Attachment>(),
+            draft,
+            laterRegisteredSupplier,
+            Array.Empty<Attachment>(),
             SupplierInvoiceFingerprints: Array.Empty<PurchaseInvoiceFingerprint>(),
-            NowUtc: new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc));
+            NowUtc: new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)
+        );
 
-        new NonRecoverableInputVatRule().Evaluate(ctx).Should().HaveCount(1,
-            because: "the rule reads invoice.SupplierTaxProfileSnapshot, not the live supplier — historical decisions stay stable");
+        new NonRecoverableInputVatRule()
+            .Evaluate(ctx)
+            .Should()
+            .HaveCount(
+                1,
+                because: "the rule reads invoice.SupplierTaxProfileSnapshot, not the live supplier — historical decisions stay stable"
+            );
     }
 
-    private static PurchaseDocumentRiskContext BuildContext(SupplierTaxProfile profile, bool deductible)
+    private static PurchaseDocumentRiskContext BuildContext(
+        SupplierTaxProfile profile,
+        bool deductible
+    )
     {
         var draft = PurchaseInvoice.CreateDraft(
-            Guid.NewGuid(), profile, "SUP-INV-1", new DateOnly(2026, 5, 7));
-        draft.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 1m, unitPrice: MoneyEgp.From(1_000m),
-            vatCategoryId: VatId, vatRatePercent: 14m, deductibleFlag: deductible);
+            Guid.NewGuid(),
+            profile,
+            "SUP-INV-1",
+            new DateOnly(2026, 5, 7)
+        );
+        draft.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(1_000m),
+            vatCategoryId: VatId,
+            vatRatePercent: 14m,
+            deductibleFlag: deductible
+        );
         return new PurchaseDocumentRiskContext(
-            draft, Supplier: null, Attachments: Array.Empty<Attachment>(),
+            draft,
+            Supplier: null,
+            Attachments: Array.Empty<Attachment>(),
             SupplierInvoiceFingerprints: Array.Empty<PurchaseInvoiceFingerprint>(),
-            NowUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
+            NowUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc)
+        );
     }
 }

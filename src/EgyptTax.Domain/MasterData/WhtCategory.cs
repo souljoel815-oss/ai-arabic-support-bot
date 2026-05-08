@@ -30,19 +30,23 @@ public sealed class WhtCategory
         decimal ratePercent,
         DateOnly effectiveFromDate,
         DateOnly? effectiveToDate,
-        WhtApplicableTo applicableTo)
+        WhtApplicableTo applicableTo
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         if (ratePercent < 0m || ratePercent > 100m)
         {
-            throw new ArgumentOutOfRangeException(nameof(ratePercent),
-                "WHT rate must be in the range [0, 100] percent.");
+            throw new ArgumentOutOfRangeException(
+                nameof(ratePercent),
+                "WHT rate must be in the range [0, 100] percent."
+            );
         }
         if (effectiveToDate is { } end && end < effectiveFromDate)
         {
             throw new ArgumentException(
                 $"EffectiveToDate {end:yyyy-MM-dd} cannot precede EffectiveFromDate {effectiveFromDate:yyyy-MM-dd}.",
-                nameof(effectiveToDate));
+                nameof(effectiveToDate)
+            );
         }
 
         Code = code;
@@ -57,8 +61,7 @@ public sealed class WhtCategory
     /// category's effective window. Both bounds inclusive; null
     /// upper bound means "open-ended".</summary>
     public bool IsEffectiveOn(DateOnly date) =>
-        date >= EffectiveFromDate
-        && (EffectiveToDate is null || date <= EffectiveToDate.Value);
+        date >= EffectiveFromDate && (EffectiveToDate is null || date <= EffectiveToDate.Value);
 }
 
 /// <summary>FR-045 — which side(s) of a payment a WHT category

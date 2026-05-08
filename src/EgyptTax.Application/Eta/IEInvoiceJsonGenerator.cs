@@ -28,4 +28,5 @@ public sealed record EInvoiceRenderRequest(
     Company Issuer,
     Customer Receiver,
     IReadOnlyDictionary<Guid, string> ItemCodes,
-    IReadOnlyDictionary<Guid, string> VatCategoryCodes);
+    IReadOnlyDictionary<Guid, string> VatCategoryCodes
+);

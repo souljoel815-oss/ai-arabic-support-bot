@@ -26,16 +26,21 @@ public class TerminologyKeyParityTests
         if (missingFromArabic.Length > 0)
         {
             failures.Add(
-                $"Keys present in terminology.en.json but missing from terminology.ar.json: {string.Join(", ", missingFromArabic)}");
+                $"Keys present in terminology.en.json but missing from terminology.ar.json: {string.Join(", ", missingFromArabic)}"
+            );
         }
         if (missingFromEnglish.Length > 0)
         {
             failures.Add(
-                $"Keys present in terminology.ar.json but missing from terminology.en.json: {string.Join(", ", missingFromEnglish)}");
+                $"Keys present in terminology.ar.json but missing from terminology.en.json: {string.Join(", ", missingFromEnglish)}"
+            );
         }
 
-        failures.Should().BeEmpty(
-            because: "R-19 — both terminology files MUST cover the same key set so the bilingual UI never falls back to a missing translation");
+        failures
+            .Should()
+            .BeEmpty(
+                because: "R-19 — both terminology files MUST cover the same key set so the bilingual UI never falls back to a missing translation"
+            );
     }
 
     [Fact]
@@ -56,16 +61,27 @@ public class TerminologyKeyParityTests
         // deletion as well as missing-key drift.
         var requiredKeys = new[]
         {
-            "vat", "salesInvoice", "creditNote", "tin",
-            "customer", "supplier", "invoice", "post",
-            "draft", "submitted", "approved", "posted", "voided",
+            "vat",
+            "salesInvoice",
+            "creditNote",
+            "tin",
+            "customer",
+            "supplier",
+            "invoice",
+            "post",
+            "draft",
+            "submitted",
+            "approved",
+            "posted",
+            "voided",
         };
 
         var arabic = LoadKeys("terminology.ar.json");
         foreach (var key in requiredKeys)
         {
-            arabic.Should().Contain(key,
-                because: $"required core key '{key}' MUST be in terminology.ar.json");
+            arabic
+                .Should()
+                .Contain(key, because: $"required core key '{key}' MUST be in terminology.ar.json");
         }
     }
 
@@ -75,10 +91,14 @@ public class TerminologyKeyParityTests
         if (!File.Exists(path))
         {
             throw new FileNotFoundException(
-                $"Terminology file not found at {path}. The .csproj must copy it via the Localization/*.json glob.");
+                $"Terminology file not found at {path}. The .csproj must copy it via the Localization/*.json glob."
+            );
         }
         using var stream = File.OpenRead(path);
         using var doc = JsonDocument.Parse(stream);
-        return doc.RootElement.EnumerateObject().Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+        return doc
+            .RootElement.EnumerateObject()
+            .Select(p => p.Name)
+            .ToHashSet(StringComparer.Ordinal);
     }
 }

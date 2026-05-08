@@ -31,7 +31,8 @@ public sealed record InvoicePdfRequest(
     IReadOnlyDictionary<Guid, VatCategoryRenderInfo> VatCategories,
     string PostedByUserDisplayName,
     string SealQrPayload,
-    OriginalInvoiceReference? OriginalInvoiceReference = null);
+    OriginalInvoiceReference? OriginalInvoiceReference = null
+);
 
 /// <summary>
 /// FR-013 — populated only when the rendered document is a credit
@@ -39,10 +40,12 @@ public sealed record InvoicePdfRequest(
 /// canonical document number + posting date so the credit note's
 /// PDF clearly identifies which invoice it corrects.
 /// </summary>
-public sealed record OriginalInvoiceReference(
-    string DocumentNumber,
-    DateOnly DocumentDate);
+public sealed record OriginalInvoiceReference(string DocumentNumber, DateOnly DocumentDate);
 
 public sealed record ItemRenderInfo(string Code, ArabicEnglishText Name);
 
-public sealed record VatCategoryRenderInfo(string Code, ArabicEnglishText Name, decimal RatePercent);
+public sealed record VatCategoryRenderInfo(
+    string Code,
+    ArabicEnglishText Name,
+    decimal RatePercent
+);

@@ -29,13 +29,15 @@ public sealed class SqlTrialBalanceReportQuery : ITrialBalanceReportQuery
     public async Task<TrialBalanceReport> RunAsync(
         DateOnly periodStart,
         DateOnly periodEnd,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         if (periodEnd < periodStart)
         {
             throw new ArgumentException(
                 $"PeriodEnd ({periodEnd:yyyy-MM-dd}) cannot be before PeriodStart ({periodStart:yyyy-MM-dd}).",
-                nameof(periodEnd));
+                nameof(periodEnd)
+            );
         }
 
         // Convert the inclusive date window to a UTC datetime range.
@@ -54,15 +56,20 @@ public sealed class SqlTrialBalanceReportQuery : ITrialBalanceReportQuery
                 AccountCode = g.Key,
                 TotalDebit = g.Sum(x => x.Debit.Amount),
                 TotalCredit = g.Sum(x => x.Credit.Amount),
-            }).ToListAsync(cancellationToken);
+            }
+        ).ToListAsync(cancellationToken);
 
-        var ordered = rows
-            .OrderBy(r => r.AccountCode, StringComparer.Ordinal)
+        var ordered = rows.OrderBy(r => r.AccountCode, StringComparer.Ordinal)
             .Select(r => new TrialBalanceRow(
                 AccountCode: r.AccountCode,
                 TotalDebit: MoneyEgp.From(decimal.Round(r.TotalDebit, 2, MidpointRounding.ToEven)),
-                TotalCredit: MoneyEgp.From(decimal.Round(r.TotalCredit, 2, MidpointRounding.ToEven)),
-                NetBalance: MoneyEgp.From(decimal.Round(r.TotalDebit - r.TotalCredit, 2, MidpointRounding.ToEven))))
+                TotalCredit: MoneyEgp.From(
+                    decimal.Round(r.TotalCredit, 2, MidpointRounding.ToEven)
+                ),
+                NetBalance: MoneyEgp.From(
+                    decimal.Round(r.TotalDebit - r.TotalCredit, 2, MidpointRounding.ToEven)
+                )
+            ))
             .ToList();
 
         var totalDebits = decimal.Round(rows.Sum(r => r.TotalDebit), 2, MidpointRounding.ToEven);
@@ -74,6 +81,7 @@ public sealed class SqlTrialBalanceReportQuery : ITrialBalanceReportQuery
             TotalDebits: MoneyEgp.From(totalDebits),
             TotalCredits: MoneyEgp.From(totalCredits),
             IsBalanced: totalDebits == totalCredits,
-            Rows: ordered);
+            Rows: ordered
+        );
     }
 }

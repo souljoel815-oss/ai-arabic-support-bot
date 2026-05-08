@@ -42,60 +42,86 @@ public sealed class AllocatePaymentHandler
 
     public async Task<PaymentAllocation> HandleAsync(
         AllocateSupplierPaymentCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var voucher = await _db.Set<SupplierPaymentVoucher>()
-            .Include(v => v.Allocations)
-            .FirstOrDefaultAsync(v => v.Id == command.SupplierPaymentVoucherId, cancellationToken)
+        var voucher =
+            await _db.Set<SupplierPaymentVoucher>()
+                .Include(v => v.Allocations)
+                .FirstOrDefaultAsync(
+                    v => v.Id == command.SupplierPaymentVoucherId,
+                    cancellationToken
+                )
             ?? throw new InvalidOperationException(
-                $"SupplierPaymentVoucher {command.SupplierPaymentVoucherId} not found.");
+                $"SupplierPaymentVoucher {command.SupplierPaymentVoucherId} not found."
+            );
 
-        var invoice = await _db.Set<PurchaseInvoice>().AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == command.TargetPurchaseInvoiceId, cancellationToken)
+        var invoice =
+            await _db.Set<PurchaseInvoice>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    p => p.Id == command.TargetPurchaseInvoiceId,
+                    cancellationToken
+                )
             ?? throw new InvalidOperationException(
-                $"Target PurchaseInvoice {command.TargetPurchaseInvoiceId} not found.");
+                $"Target PurchaseInvoice {command.TargetPurchaseInvoiceId} not found."
+            );
 
         if (invoice.State != DocumentState.Posted)
         {
             throw new InvalidOperationException(
-                $"Cannot allocate to PurchaseInvoice {invoice.Id}: state is {invoice.State}, not Posted. Allocations only apply to posted invoices with an open balance.");
+                $"Cannot allocate to PurchaseInvoice {invoice.Id}: state is {invoice.State}, not Posted. Allocations only apply to posted invoices with an open balance."
+            );
         }
 
         await EnsureWithinOpenBalanceAsync(
             command.TargetPurchaseInvoiceId,
             invoice.GrandTotal.Amount,
             command.AllocatedAmount.Amount,
-            cancellationToken);
+            cancellationToken
+        );
 
         var allocation = voucher.AddAllocation(
-            command.TargetPurchaseInvoiceId, command.AllocatedAmount);
+            command.TargetPurchaseInvoiceId,
+            command.AllocatedAmount
+        );
         await _db.SaveChangesAsync(cancellationToken);
         return allocation;
     }
 
     public async Task<PaymentAllocation> HandleAsync(
         AllocateCustomerReceiptCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var voucher = await _db.Set<CustomerReceiptVoucher>()
-            .Include(v => v.Allocations)
-            .FirstOrDefaultAsync(v => v.Id == command.CustomerReceiptVoucherId, cancellationToken)
+        var voucher =
+            await _db.Set<CustomerReceiptVoucher>()
+                .Include(v => v.Allocations)
+                .FirstOrDefaultAsync(
+                    v => v.Id == command.CustomerReceiptVoucherId,
+                    cancellationToken
+                )
             ?? throw new InvalidOperationException(
-                $"CustomerReceiptVoucher {command.CustomerReceiptVoucherId} not found.");
+                $"CustomerReceiptVoucher {command.CustomerReceiptVoucherId} not found."
+            );
 
-        var invoice = await _db.Set<SalesInvoice>().AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Id == command.TargetSalesInvoiceId, cancellationToken)
+        var invoice =
+            await _db.Set<SalesInvoice>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == command.TargetSalesInvoiceId, cancellationToken)
             ?? throw new InvalidOperationException(
-                $"Target SalesInvoice {command.TargetSalesInvoiceId} not found.");
+                $"Target SalesInvoice {command.TargetSalesInvoiceId} not found."
+            );
 
         if (invoice.State != DocumentState.Posted)
         {
             throw new InvalidOperationException(
-                $"Cannot allocate to SalesInvoice {invoice.Id}: state is {invoice.State}, not Posted. Allocations only apply to posted invoices with an open balance.");
+                $"Cannot allocate to SalesInvoice {invoice.Id}: state is {invoice.State}, not Posted. Allocations only apply to posted invoices with an open balance."
+            );
         }
 
         await EnsureWithinOpenBalanceAsync(
@@ -106,11 +132,15 @@ public sealed class AllocatePaymentHandler
             // a no-op for the common path.
             Math.Abs(invoice.GrandTotal.Amount),
             command.AllocatedAmount.Amount,
-            cancellationToken);
+            cancellationToken
+        );
 
         var targetType = invoice.IsCreditNote ? DocumentType.CreditNote : DocumentType.SalesInvoice;
         var allocation = voucher.AddAllocation(
-            command.TargetSalesInvoiceId, command.AllocatedAmount, targetType);
+            command.TargetSalesInvoiceId,
+            command.AllocatedAmount,
+            targetType
+        );
         await _db.SaveChangesAsync(cancellationToken);
         return allocation;
     }
@@ -119,9 +149,11 @@ public sealed class AllocatePaymentHandler
         Guid targetDocumentId,
         decimal grandTotal,
         decimal newAllocationAmount,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
-        var alreadyAllocated = await _db.Set<PaymentAllocation>().AsNoTracking()
+        var alreadyAllocated = await _db.Set<PaymentAllocation>()
+            .AsNoTracking()
             .Where(a => a.TargetDocumentId == targetDocumentId)
             .Select(a => a.AllocatedAmount.Amount)
             .ToListAsync(cancellationToken);
@@ -131,9 +163,10 @@ public sealed class AllocatePaymentHandler
         if (newAllocationAmount > openBalance)
         {
             throw new InvalidOperationException(
-                $"Cannot allocate {newAllocationAmount:F2} to invoice {targetDocumentId}: " +
-                $"open balance is {openBalance:F2} (grand total {grandTotal:F2} − already allocated {alreadySum:F2}). " +
-                "FR-053 — no allocation may exceed the target's open balance.");
+                $"Cannot allocate {newAllocationAmount:F2} to invoice {targetDocumentId}: "
+                    + $"open balance is {openBalance:F2} (grand total {grandTotal:F2} − already allocated {alreadySum:F2}). "
+                    + "FR-053 — no allocation may exceed the target's open balance."
+            );
         }
     }
 }

@@ -13,7 +13,8 @@ public static class AuditChainVerifier
 {
     public static AuditChainReport Verify(
         IReadOnlyList<AuditLogEntry> entries,
-        AuditCheckpoint? checkpoint = null)
+        AuditCheckpoint? checkpoint = null
+    )
     {
         ArgumentNullException.ThrowIfNull(entries);
 
@@ -25,25 +26,34 @@ public static class AuditChainVerifier
         {
             if (entry.Index != expectedIndex)
             {
-                findings.Add(new AuditChainFinding(
-                    Kind: AuditChainFindingKind.MissingIndex,
-                    AtIndex: expectedIndex,
-                    Notes: $"Expected index {expectedIndex} but observed {entry.Index}."));
+                findings.Add(
+                    new AuditChainFinding(
+                        Kind: AuditChainFindingKind.MissingIndex,
+                        AtIndex: expectedIndex,
+                        Notes: $"Expected index {expectedIndex} but observed {entry.Index}."
+                    )
+                );
             }
 
             if (!entry.PrevHash.AsSpan().SequenceEqual(expectedPrevHash))
             {
-                findings.Add(new AuditChainFinding(
-                    Kind: AuditChainFindingKind.PrevHashMismatch,
-                    AtIndex: entry.Index));
+                findings.Add(
+                    new AuditChainFinding(
+                        Kind: AuditChainFindingKind.PrevHashMismatch,
+                        AtIndex: entry.Index
+                    )
+                );
             }
 
             var recomputed = AuditChainHasher.ComputeHash(entry.PayloadJson, entry.PrevHash);
             if (!entry.ThisHash.AsSpan().SequenceEqual(recomputed))
             {
-                findings.Add(new AuditChainFinding(
-                    Kind: AuditChainFindingKind.ThisHashMismatch,
-                    AtIndex: entry.Index));
+                findings.Add(
+                    new AuditChainFinding(
+                        Kind: AuditChainFindingKind.ThisHashMismatch,
+                        AtIndex: entry.Index
+                    )
+                );
             }
 
             expectedIndex = entry.Index + 1;
@@ -61,16 +71,20 @@ public static class AuditChainVerifier
     private static void VerifyCheckpoint(
         IReadOnlyList<AuditLogEntry> entries,
         AuditCheckpoint checkpoint,
-        List<AuditChainFinding> findings)
+        List<AuditChainFinding> findings
+    )
     {
         var maxIndex = entries.Count > 0 ? entries[^1].Index : 0;
 
         if (maxIndex < checkpoint.LastIndex)
         {
-            findings.Add(new AuditChainFinding(
-                Kind: AuditChainFindingKind.TailTruncation,
-                AtIndex: checkpoint.LastIndex,
-                Notes: $"Checkpoint last_index={checkpoint.LastIndex} but chain head is {maxIndex}."));
+            findings.Add(
+                new AuditChainFinding(
+                    Kind: AuditChainFindingKind.TailTruncation,
+                    AtIndex: checkpoint.LastIndex,
+                    Notes: $"Checkpoint last_index={checkpoint.LastIndex} but chain head is {maxIndex}."
+                )
+            );
             return;
         }
 
@@ -86,19 +100,25 @@ public static class AuditChainVerifier
 
         if (entryAtCheckpoint is null)
         {
-            findings.Add(new AuditChainFinding(
-                Kind: AuditChainFindingKind.CheckpointMismatch,
-                AtIndex: checkpoint.LastIndex,
-                Notes: $"No entry found at checkpoint index {checkpoint.LastIndex}."));
+            findings.Add(
+                new AuditChainFinding(
+                    Kind: AuditChainFindingKind.CheckpointMismatch,
+                    AtIndex: checkpoint.LastIndex,
+                    Notes: $"No entry found at checkpoint index {checkpoint.LastIndex}."
+                )
+            );
             return;
         }
 
         if (!entryAtCheckpoint.ThisHash.AsSpan().SequenceEqual(checkpoint.LastHash))
         {
-            findings.Add(new AuditChainFinding(
-                Kind: AuditChainFindingKind.CheckpointMismatch,
-                AtIndex: checkpoint.LastIndex,
-                Notes: "Chain entry hash at checkpoint index does not match the checkpoint hash."));
+            findings.Add(
+                new AuditChainFinding(
+                    Kind: AuditChainFindingKind.CheckpointMismatch,
+                    AtIndex: checkpoint.LastIndex,
+                    Notes: "Chain entry hash at checkpoint index does not match the checkpoint hash."
+                )
+            );
         }
     }
 }
@@ -110,7 +130,8 @@ public sealed record AuditChainFinding(
     long AtIndex,
     string? Expected = null,
     string? Actual = null,
-    string? Notes = null);
+    string? Notes = null
+);
 
 public enum AuditChainFindingKind
 {

@@ -15,12 +15,12 @@ public class EgyptianTinTests
     }
 
     [Theory]
-    [InlineData("12345678")]      // 8 digits
-    [InlineData("1234567890")]    // 10 digits
-    [InlineData("12345678a")]     // contains a letter
-    [InlineData("12345 6789")]    // contains a space
-    [InlineData("")]              // empty
-    [InlineData("   ")]           // whitespace
+    [InlineData("12345678")] // 8 digits
+    [InlineData("1234567890")] // 10 digits
+    [InlineData("12345678a")] // contains a letter
+    [InlineData("12345 6789")] // contains a space
+    [InlineData("")] // empty
+    [InlineData("   ")] // whitespace
     public void TryParse_RejectsAnythingElse(string raw)
     {
         EgyptianTin.TryParse(raw, out _).Should().BeFalse();

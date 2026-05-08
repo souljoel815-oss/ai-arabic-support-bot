@@ -11,7 +11,8 @@ internal sealed class AuditCheckpointRowConfiguration : IEntityTypeConfiguration
         b.ToTable(
             "checkpoint",
             schema: "audit_meta",
-            t => t.HasCheckConstraint("ck_audit_checkpoint_single_row", "[id] = 1"));
+            t => t.HasCheckConstraint("ck_audit_checkpoint_single_row", "[id] = 1")
+        );
 
         b.HasKey(c => c.Id);
         b.Property(c => c.Id).HasColumnName("id").ValueGeneratedNever();

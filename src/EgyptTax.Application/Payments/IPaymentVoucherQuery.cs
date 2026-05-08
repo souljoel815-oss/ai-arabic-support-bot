@@ -18,13 +18,20 @@ namespace EgyptTax.Application.Payments;
 public interface IPaymentVoucherQuery
 {
     Task<IReadOnlyList<OutstandingInvoiceRow>> ListOutstandingPurchaseInvoicesAsync(
-        Guid? supplierFilter = null, CancellationToken cancellationToken = default);
+        Guid? supplierFilter = null,
+        CancellationToken cancellationToken = default
+    );
 
     Task<IReadOnlyList<OutstandingInvoiceRow>> ListOutstandingSalesInvoicesAsync(
-        Guid? customerFilter = null, CancellationToken cancellationToken = default);
+        Guid? customerFilter = null,
+        CancellationToken cancellationToken = default
+    );
 
     Task<InvoiceAllocationView?> GetInvoiceAllocationsAsync(
-        Guid invoiceId, DocumentType invoiceType, CancellationToken cancellationToken = default);
+        Guid invoiceId,
+        DocumentType invoiceType,
+        CancellationToken cancellationToken = default
+    );
 }
 
 public sealed record OutstandingInvoiceRow(
@@ -35,7 +42,8 @@ public sealed record OutstandingInvoiceRow(
     string CounterpartyName,
     MoneyEgp GrandTotal,
     MoneyEgp AllocatedToDate,
-    MoneyEgp OpenBalance);
+    MoneyEgp OpenBalance
+);
 
 public sealed record InvoiceAllocationView(
     Guid InvoiceId,
@@ -45,7 +53,8 @@ public sealed record InvoiceAllocationView(
     MoneyEgp GrandTotal,
     MoneyEgp AllocatedToDate,
     MoneyEgp OpenBalance,
-    IReadOnlyList<AllocationRow> Allocations);
+    IReadOnlyList<AllocationRow> Allocations
+);
 
 public sealed record AllocationRow(
     Guid AllocationId,
@@ -53,4 +62,5 @@ public sealed record AllocationRow(
     Guid? CustomerReceiptVoucherId,
     string? VoucherDocumentNumber,
     DateOnly VoucherDate,
-    MoneyEgp AllocatedAmount);
+    MoneyEgp AllocatedAmount
+);

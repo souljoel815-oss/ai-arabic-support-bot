@@ -44,29 +44,46 @@ public class SalesPostingJournalTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var (customer, item, vat, user) = await SeedAsync(db);
 
-        var draft = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 9));
-        draft.AddLine(item.Id, quantity: 1m, unitPrice: MoneyEgp.From(1_000m),
-            vatCategoryId: vat.Id, vatRatePercent: vat.RatePercent);
+        var draft = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 9)
+        );
+        draft.AddLine(
+            item.Id,
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(1_000m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: vat.RatePercent
+        );
         db.Add(draft);
         await db.SaveChangesAsync();
 
         var clock = new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc));
         var emitter = new SalesInvoiceJournalEmitter(db);
-        var handler = new PostSalesInvoiceHandler(db,
-            new SqlSequentialNumberAllocator(db), clock,
-            new CaptureAuditLogStore(), emitter);
+        var handler = new PostSalesInvoiceHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            clock,
+            new CaptureAuditLogStore(),
+            emitter
+        );
         var posted = await handler.HandleAsync(
-            new PostSalesInvoiceCommand(draft.Id, user.Id), CancellationToken.None);
+            new PostSalesInvoiceCommand(draft.Id, user.Id),
+            CancellationToken.None
+        );
 
         // Reload the journal entry that was emitted alongside the post.
         db.ChangeTracker.Clear();
-        var je = await db.Set<JournalEntry>().AsNoTracking()
+        var je = await db.Set<JournalEntry>()
+            .AsNoTracking()
             .Include(e => e.Lines)
             .FirstAsync(e => e.SourceDocumentId == posted.Id);
 
         je.Lines.Sum(l => l.Debit.Amount).Should().Be(1_140m);
-        je.Lines.Sum(l => l.Credit.Amount).Should().Be(1_140m,
-            because: "US4 scenario 1 — debits MUST equal credits to the cent");
+        je.Lines.Sum(l => l.Credit.Amount)
+            .Should()
+            .Be(1_140m, because: "US4 scenario 1 — debits MUST equal credits to the cent");
 
         var ar = je.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.AccountsReceivable);
         var revenue = je.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.SalesRevenue);
@@ -83,29 +100,45 @@ public class SalesPostingJournalTests(SqlServerFixture fixture)
     private static async Task<(Customer, Item, VatCategory, User)> SeedAsync(AppDbContext db)
     {
         var vat = new VatCategory(
-            code: "Standard", name: new ArabicEnglishText("قياسي", "Standard"),
-            ratePercent: 14m, effectiveFromDate: new DateOnly(2026, 1, 1),
-            effectiveToDate: null, recoverableInputVat: true);
+            code: "Standard",
+            name: new ArabicEnglishText("قياسي", "Standard"),
+            ratePercent: 14m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: true
+        );
         var customer = new Customer(
             code: $"CUS-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("عميل", "Customer"),
             address: PostalAddress.Create(
                 new ArabicEnglishText("القاهرة", "Cairo"),
-                "Cairo", "Downtown", "Tahrir", "1"),
+                "Cairo",
+                "Downtown",
+                "Tahrir",
+                "1"
+            ),
             taxProfile: CustomerTaxProfile.B2BRegistered(
                 EgyptianTin.Parse("987654321"),
-                vatExemption: false, defaultSalesVatCategoryId: vat.Id));
+                vatExemption: false,
+                defaultSalesVatCategoryId: vat.Id
+            )
+        );
         var item = new Item(
             code: $"IT-{Guid.NewGuid():N}".Substring(0, 8),
             name: new ArabicEnglishText("بند", "Item"),
-            defaultVatCategoryId: vat.Id);
+            defaultVatCategoryId: vat.Id
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        db.Add(vat); db.Add(customer); db.Add(item); db.Add(user);
+            passwordMustChange: false
+        );
+        db.Add(vat);
+        db.Add(customer);
+        db.Add(item);
+        db.Add(user);
         await db.SaveChangesAsync();
         return (customer, item, vat, user);
     }
@@ -118,15 +151,27 @@ public class SalesPostingJournalTests(SqlServerFixture fixture)
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
         public List<AuditLogPayload> Captured { get; } = [];
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
-            return Task.FromResult(new AuditLogEntry(
-                index: Captured.Count, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]));
+            return Task.FromResult(
+                new AuditLogEntry(
+                    index: Captured.Count,
+                    tsUtc: DateTime.UtcNow,
+                    actorUserId: payload.ActorUserId,
+                    actorFirmName: payload.ActorFirmName,
+                    companyId: payload.CompanyId,
+                    kind: payload.Kind,
+                    payloadJson: payload.PayloadJson,
+                    prevHash: new byte[32],
+                    thisHash: new byte[32]
+                )
+            );
         }
     }
 }

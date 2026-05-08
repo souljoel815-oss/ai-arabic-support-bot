@@ -10,13 +10,19 @@ namespace EgyptTax.Infrastructure.Compliance;
 /// </summary>
 public sealed class AlwaysValidTinRevalidator : ISupplierTinRevalidator
 {
-    public Task<TinRevalidationResult> RevalidateAsync(string tin, CancellationToken cancellationToken = default)
+    public Task<TinRevalidationResult> RevalidateAsync(
+        string tin,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tin);
-        return Task.FromResult(new TinRevalidationResult(
-            Tin: tin,
-            IsValid: true,
-            RegistryName: "stub:always-valid",
-            Reason: null));
+        return Task.FromResult(
+            new TinRevalidationResult(
+                Tin: tin,
+                IsValid: true,
+                RegistryName: "stub:always-valid",
+                Reason: null
+            )
+        );
     }
 }

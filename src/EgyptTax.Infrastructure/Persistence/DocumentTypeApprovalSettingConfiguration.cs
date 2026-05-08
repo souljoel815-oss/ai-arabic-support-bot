@@ -4,7 +4,8 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace EgyptTax.Infrastructure.Persistence;
 
-internal sealed class DocumentTypeApprovalSettingConfiguration : IEntityTypeConfiguration<DocumentTypeApprovalSetting>
+internal sealed class DocumentTypeApprovalSettingConfiguration
+    : IEntityTypeConfiguration<DocumentTypeApprovalSetting>
 {
     public void Configure(EntityTypeBuilder<DocumentTypeApprovalSetting> b)
     {
@@ -25,8 +26,15 @@ internal sealed class DocumentTypeApprovalSettingConfiguration : IEntityTypeConf
             new DocumentTypeApprovalSetting(DocumentType.PurchaseInvoice, approvalRequired: true),
             new DocumentTypeApprovalSetting(DocumentType.Expense, approvalRequired: true),
             new DocumentTypeApprovalSetting(DocumentType.JournalVoucher, approvalRequired: true),
-            new DocumentTypeApprovalSetting(DocumentType.SupplierPaymentVoucher, approvalRequired: true),
-            new DocumentTypeApprovalSetting(DocumentType.CustomerReceiptVoucher, approvalRequired: true),
-            new DocumentTypeApprovalSetting(DocumentType.FixedAsset, approvalRequired: true));
+            new DocumentTypeApprovalSetting(
+                DocumentType.SupplierPaymentVoucher,
+                approvalRequired: true
+            ),
+            new DocumentTypeApprovalSetting(
+                DocumentType.CustomerReceiptVoucher,
+                approvalRequired: true
+            ),
+            new DocumentTypeApprovalSetting(DocumentType.FixedAsset, approvalRequired: true)
+        );
     }
 }

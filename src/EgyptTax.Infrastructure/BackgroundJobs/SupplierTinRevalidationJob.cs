@@ -41,7 +41,8 @@ public sealed class SupplierTinRevalidationJob
         ISupplierTinSource source,
         ISupplierTinRevalidator revalidator,
         IAuditLogStore auditLog,
-        IClock clock)
+        IClock clock
+    )
     {
         _source = source;
         _revalidator = revalidator;
@@ -49,7 +50,9 @@ public sealed class SupplierTinRevalidationJob
         _clock = clock;
     }
 
-    public async Task<SupplierTinRevalidationJobResult> RunOnceAsync(CancellationToken cancellationToken = default)
+    public async Task<SupplierTinRevalidationJobResult> RunOnceAsync(
+        CancellationToken cancellationToken = default
+    )
     {
         var suppliers = await _source.GetSuppliersToRevalidateAsync(cancellationToken);
 
@@ -72,11 +75,16 @@ public sealed class SupplierTinRevalidationJob
                 // Single-row failure: audit + continue. The summary
                 // event below shows checked > (valid + invalid) so
                 // operators can spot when the registry is flaky.
-                await _auditLog.AppendAsync(new AuditLogPayload(
-                    Kind: "supplier.tin_revalidation_failed",
-                    ActorUserId: null, ActorFirmName: null, CompanyId: Guid.Empty,
-                    PayloadJson: $$"""{"supplier_id":"{{row.SupplierId:D}}","tin":"{{row.Tin}}","error":"{{Escape(ex.GetType().FullName ?? "Exception")}}","message":"{{Escape(ex.Message)}}"}"""),
-                    cancellationToken);
+                await _auditLog.AppendAsync(
+                    new AuditLogPayload(
+                        Kind: "supplier.tin_revalidation_failed",
+                        ActorUserId: null,
+                        ActorFirmName: null,
+                        CompanyId: Guid.Empty,
+                        PayloadJson: $$"""{"supplier_id":"{{row.SupplierId:D}}","tin":"{{row.Tin}}","error":"{{Escape(ex.GetType().FullName ?? "Exception")}}","message":"{{Escape(ex.Message)}}"}"""
+                    ),
+                    cancellationToken
+                );
                 continue;
             }
 
@@ -87,23 +95,34 @@ public sealed class SupplierTinRevalidationJob
             }
 
             invalidCount++;
-            await _auditLog.AppendAsync(new AuditLogPayload(
-                Kind: "supplier.tin_invalidated",
-                ActorUserId: null, ActorFirmName: null, CompanyId: Guid.Empty,
-                PayloadJson: $$"""{"supplier_id":"{{row.SupplierId:D}}","tin":"{{row.Tin}}","display_name":"{{Escape(row.DisplayName)}}","registry":"{{Escape(result.RegistryName ?? "")}}","reason":"{{Escape(result.Reason ?? "")}}"}"""),
-                cancellationToken);
+            await _auditLog.AppendAsync(
+                new AuditLogPayload(
+                    Kind: "supplier.tin_invalidated",
+                    ActorUserId: null,
+                    ActorFirmName: null,
+                    CompanyId: Guid.Empty,
+                    PayloadJson: $$"""{"supplier_id":"{{row.SupplierId:D}}","tin":"{{row.Tin}}","display_name":"{{Escape(row.DisplayName)}}","registry":"{{Escape(result.RegistryName ?? "")}}","reason":"{{Escape(result.Reason ?? "")}}"}"""
+                ),
+                cancellationToken
+            );
         }
 
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "supplier.tin_revalidation_run",
-            ActorUserId: null, ActorFirmName: null, CompanyId: Guid.Empty,
-            PayloadJson: $$"""{"checked":{{checkedCount.ToString(CultureInfo.InvariantCulture)}},"valid":{{validCount.ToString(CultureInfo.InvariantCulture)}},"invalid":{{invalidCount.ToString(CultureInfo.InvariantCulture)}},"ran_at_utc":"{{_clock.UtcNow.ToString("o", CultureInfo.InvariantCulture)}}"}"""),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "supplier.tin_revalidation_run",
+                ActorUserId: null,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: $$"""{"checked":{{checkedCount.ToString(CultureInfo.InvariantCulture)}},"valid":{{validCount.ToString(CultureInfo.InvariantCulture)}},"invalid":{{invalidCount.ToString(CultureInfo.InvariantCulture)}},"ran_at_utc":"{{_clock.UtcNow.ToString("o", CultureInfo.InvariantCulture)}}"}"""
+            ),
+            cancellationToken
+        );
 
         return new SupplierTinRevalidationJobResult(
             CheckedCount: checkedCount,
             ValidCount: validCount,
-            InvalidCount: invalidCount);
+            InvalidCount: invalidCount
+        );
     }
 
     private static string Escape(string value) =>
@@ -117,4 +136,5 @@ public sealed class SupplierTinRevalidationJob
 public sealed record SupplierTinRevalidationJobResult(
     int CheckedCount,
     int ValidCount,
-    int InvalidCount);
+    int InvalidCount
+);

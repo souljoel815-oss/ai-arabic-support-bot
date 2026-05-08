@@ -33,34 +33,53 @@ public sealed class SupplierPaymentVoucherJournalEmitter : ISupplierPaymentVouch
     public Task EmitForSupplierPaymentAsync(
         SupplierPaymentVoucher voucher,
         DateTime postedAtUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(voucher);
         if (voucher.State != DocumentState.Posted)
         {
             throw new InvalidOperationException(
-                $"Cannot emit journal for supplier payment voucher {voucher.Id}: state is {voucher.State}, not Posted.");
+                $"Cannot emit journal for supplier payment voucher {voucher.Id}: state is {voucher.State}, not Posted."
+            );
         }
         if (string.IsNullOrWhiteSpace(voucher.DocumentNumber))
         {
             throw new InvalidOperationException(
-                $"Cannot emit journal for supplier payment voucher {voucher.Id}: document number is empty.");
+                $"Cannot emit journal for supplier payment voucher {voucher.Id}: document number is empty."
+            );
         }
 
-        var lines = new List<(string AccountCode, MoneyEgp Debit, MoneyEgp Credit, string Description)>(3)
+        var lines = new List<(
+            string AccountCode,
+            MoneyEgp Debit,
+            MoneyEgp Credit,
+            string Description
+        )>(3)
         {
-            (ChartOfAccountCodes.AccountsPayable,
-                voucher.GrossPaymentAmount, MoneyEgp.Zero,
-                $"Payment {voucher.DocumentNumber} — settle supplier"),
-            (ChartOfAccountCodes.Cash,
-                MoneyEgp.Zero, voucher.NetCashPaid,
-                $"Payment {voucher.DocumentNumber} — cash leg"),
+            (
+                ChartOfAccountCodes.AccountsPayable,
+                voucher.GrossPaymentAmount,
+                MoneyEgp.Zero,
+                $"Payment {voucher.DocumentNumber} — settle supplier"
+            ),
+            (
+                ChartOfAccountCodes.Cash,
+                MoneyEgp.Zero,
+                voucher.NetCashPaid,
+                $"Payment {voucher.DocumentNumber} — cash leg"
+            ),
         };
         if (voucher.WhtPayableAmount.Amount > 0m)
         {
-            lines.Add((ChartOfAccountCodes.WhtPayable,
-                MoneyEgp.Zero, voucher.WhtPayableAmount,
-                $"Payment {voucher.DocumentNumber} — WHT withheld from supplier"));
+            lines.Add(
+                (
+                    ChartOfAccountCodes.WhtPayable,
+                    MoneyEgp.Zero,
+                    voucher.WhtPayableAmount,
+                    $"Payment {voucher.DocumentNumber} — WHT withheld from supplier"
+                )
+            );
         }
 
         var entry = JournalEntry.Create(
@@ -68,7 +87,8 @@ public sealed class SupplierPaymentVoucherJournalEmitter : ISupplierPaymentVouch
             sourceDocumentNumber: voucher.DocumentNumber!,
             sourceDocumentType: DocumentType.SupplierPaymentVoucher,
             postedAtUtc: postedAtUtc,
-            lines: lines);
+            lines: lines
+        );
 
         _db.Add(entry);
         return Task.CompletedTask;

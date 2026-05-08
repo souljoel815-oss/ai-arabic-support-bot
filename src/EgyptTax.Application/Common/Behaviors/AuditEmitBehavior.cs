@@ -30,8 +30,8 @@ namespace EgyptTax.Application.Common.Behaviors;
 public sealed class AuditEmitBehavior<TRequest, TResponse>(
     IAuditLogStore store,
     ICurrentUser currentUser,
-    IFirmContextResolver firmContextResolver)
-    : IPipelineBehavior<TRequest, TResponse>
+    IFirmContextResolver firmContextResolver
+) : IPipelineBehavior<TRequest, TResponse>
     where TRequest : notnull
 {
     private readonly IAuditLogStore _store = store;
@@ -41,7 +41,8 @@ public sealed class AuditEmitBehavior<TRequest, TResponse>(
     public async Task<TResponse> Handle(
         TRequest request,
         RequestHandlerDelegate<TResponse> next,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         ArgumentNullException.ThrowIfNull(next);
 
@@ -51,9 +52,16 @@ public sealed class AuditEmitBehavior<TRequest, TResponse>(
         {
             var payload = auditable.BuildAuditPayload(response, _currentUser);
 
-            if (payload.ActorFirmName is null && payload.ActorUserId is { } actorUserId && actorUserId != Guid.Empty)
+            if (
+                payload.ActorFirmName is null
+                && payload.ActorUserId is { } actorUserId
+                && actorUserId != Guid.Empty
+            )
             {
-                var firmName = await _firmContextResolver.ResolveFirmNameAsync(actorUserId, cancellationToken);
+                var firmName = await _firmContextResolver.ResolveFirmNameAsync(
+                    actorUserId,
+                    cancellationToken
+                );
                 if (firmName is not null)
                 {
                     payload = payload with { ActorFirmName = firmName };

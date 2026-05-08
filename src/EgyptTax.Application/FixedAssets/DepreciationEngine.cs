@@ -84,9 +84,12 @@ public static class DepreciationEngine
         if (asset.Convention == DepreciationConvention.MidMonth)
         {
             var tailAmount = decimal.Round(monthlyRounded / 2m, 2, MidpointRounding.ToEven);
-            schedule.Add(new DepreciationLine(
-                firstMonth.AddMonths(asset.UsefulLifeMonths),
-                MoneyEgp.From(tailAmount)));
+            schedule.Add(
+                new DepreciationLine(
+                    firstMonth.AddMonths(asset.UsefulLifeMonths),
+                    MoneyEgp.From(tailAmount)
+                )
+            );
             allocated += tailAmount;
         }
 
@@ -100,7 +103,10 @@ public static class DepreciationEngine
             var last = schedule[^1];
             schedule[^1] = new DepreciationLine(
                 last.Period,
-                MoneyEgp.From(decimal.Round(last.Amount.Amount + remainder, 2, MidpointRounding.ToEven)));
+                MoneyEgp.From(
+                    decimal.Round(last.Amount.Amount + remainder, 2, MidpointRounding.ToEven)
+                )
+            );
         }
 
         // Trim by disposal date (depreciation stops at the disposal
@@ -122,7 +128,10 @@ public static class DepreciationEngine
     /// normalised to first-of-month.
     /// </summary>
     public static IReadOnlyList<DepreciationLine> ComputeMonthlySchedule(
-        FixedAsset asset, DateOnly fromMonth, DateOnly throughMonth)
+        FixedAsset asset,
+        DateOnly fromMonth,
+        DateOnly throughMonth
+    )
     {
         var from = MonthOf(fromMonth);
         var through = MonthOf(throughMonth);
@@ -130,7 +139,8 @@ public static class DepreciationEngine
         {
             throw new ArgumentException(
                 $"throughMonth {through:yyyy-MM-dd} cannot precede fromMonth {from:yyyy-MM-dd}.",
-                nameof(throughMonth));
+                nameof(throughMonth)
+            );
         }
         return ComputeFullSchedule(asset)
             .Where(l => l.Period >= from && l.Period <= through)
@@ -151,7 +161,8 @@ public static class DepreciationEngine
             .Where(l => l.Period <= asOfMonth)
             .Sum(l => l.Amount.Amount);
         var nbv = asset.Cost.Amount - depreciatedToDate;
-        if (nbv < asset.SalvageValue.Amount) nbv = asset.SalvageValue.Amount;
+        if (nbv < asset.SalvageValue.Amount)
+            nbv = asset.SalvageValue.Amount;
         return MoneyEgp.From(decimal.Round(nbv, 2, MidpointRounding.ToEven));
     }
 

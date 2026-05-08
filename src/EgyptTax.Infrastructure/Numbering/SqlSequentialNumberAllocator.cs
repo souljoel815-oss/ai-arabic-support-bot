@@ -25,17 +25,22 @@ public sealed class SqlSequentialNumberAllocator(AppDbContext db) : IDocumentNum
     public async Task<string> AllocateAsync(
         DocumentType type,
         int fiscalYear,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
-        var series = await _db.Set<DocumentSeries>()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.DocumentType == type, cancellationToken)
-            ?? throw new InvalidOperationException($"No DocumentSeries seeded for document type {type}.");
+        var series =
+            await _db.Set<DocumentSeries>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.DocumentType == type, cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"No DocumentSeries seeded for document type {type}."
+            );
 
         var assigned = await UpsertAndBumpAsync(series.Id, fiscalYear, cancellationToken);
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{series.Code}-{fiscalYear:D4}-{assigned:D6}");
+            $"{series.Code}-{fiscalYear:D4}-{assigned:D6}"
+        );
     }
 
     private async Task<int> UpsertAndBumpAsync(Guid seriesId, int fiscalYear, CancellationToken ct)
@@ -43,7 +48,8 @@ public sealed class SqlSequentialNumberAllocator(AppDbContext db) : IDocumentNum
         // MERGE WITH (HOLDLOCK) is the SQL-Server-recommended atomic-upsert
         // pattern. The OUTPUT clause returns the assigned (= pre-update or
         // bootstrapped 1) value back to the caller in a single round-trip.
-        const string MergeSql = @"
+        const string MergeSql =
+            @"
 MERGE INTO [numbering].[document_number_allocator] WITH (HOLDLOCK) AS target
 USING (SELECT @SeriesId AS series_id, @FiscalYear AS fiscal_year) AS src
 ON target.series_id = src.series_id AND target.fiscal_year = src.fiscal_year
@@ -54,11 +60,12 @@ WHEN NOT MATCHED THEN
 OUTPUT
     CASE WHEN $action = N'UPDATE' THEN deleted.next_number ELSE 1 END AS [Value];";
 
-        var assigned = await _db.Database
-            .SqlQueryRaw<int>(
+        var assigned = await _db
+            .Database.SqlQueryRaw<int>(
                 MergeSql,
                 new SqlParameter("@SeriesId", seriesId),
-                new SqlParameter("@FiscalYear", fiscalYear))
+                new SqlParameter("@FiscalYear", fiscalYear)
+            )
             .ToListAsync(ct);
 
         return assigned.Single();

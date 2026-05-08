@@ -15,7 +15,8 @@ namespace EgyptTax.Application.Common.Guards;
 /// </summary>
 public sealed record MasterDataReferenceCheck(
     bool CanDelete,
-    IReadOnlyList<MasterDataReference> References)
+    IReadOnlyList<MasterDataReference> References
+)
 {
     public static MasterDataReferenceCheck Allowed { get; } =
         new(CanDelete: true, References: Array.Empty<MasterDataReference>());
@@ -28,6 +29,4 @@ public sealed record MasterDataReferenceCheck(
 /// One per (referencing-table, count) pair so a Supplier with both
 /// posted PurchaseInvoices AND draft ones surfaces both rows.
 /// </summary>
-public sealed record MasterDataReference(
-    string ReferencingDocumentType,
-    long ReferenceCount);
+public sealed record MasterDataReference(string ReferencingDocumentType, long ReferenceCount);

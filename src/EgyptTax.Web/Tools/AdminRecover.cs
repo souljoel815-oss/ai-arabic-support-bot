@@ -27,7 +27,8 @@ public static class AdminRecover
     /// exit instead of starting the web server in that case.
     /// </summary>
     public static bool IsRecoveryInvocation(string[] args) =>
-        args.Length > 0 && string.Equals(args[0], "recover-admin", StringComparison.OrdinalIgnoreCase);
+        args.Length > 0
+        && string.Equals(args[0], "recover-admin", StringComparison.OrdinalIgnoreCase);
 
     public static async Task<int> RunAsync(
         string[] args,
@@ -36,7 +37,8 @@ public static class AdminRecover
         IClock clock,
         TextWriter stdout,
         TextWriter stderr,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(db);
@@ -49,8 +51,8 @@ public static class AdminRecover
         var newPassword = ExtractFlag(args, "--new-password");
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(newPassword))
         {
-            await stderr.WriteLineAsync(
-                "Usage: recover-admin --email <email> --new-password <password>")
+            await stderr
+                .WriteLineAsync("Usage: recover-admin --email <email> --new-password <password>")
                 .WaitAsync(cancellationToken);
             return 2;
         }
@@ -58,10 +60,12 @@ public static class AdminRecover
 #pragma warning disable CA1308 // Email canonical form is lowercase per RFC 5321 §2.3.11; CA1308's uppercase guidance does not apply.
         var canonicalEmail = email.Trim().ToLowerInvariant();
 #pragma warning restore CA1308
-        var user = await db.Set<User>().FirstOrDefaultAsync(u => u.Email == canonicalEmail, cancellationToken);
+        var user = await db.Set<User>()
+            .FirstOrDefaultAsync(u => u.Email == canonicalEmail, cancellationToken);
         if (user is null)
         {
-            await stderr.WriteLineAsync($"User with email '{canonicalEmail}' not found.")
+            await stderr
+                .WriteLineAsync($"User with email '{canonicalEmail}' not found.")
                 .WaitAsync(cancellationToken);
             return 3;
         }
@@ -75,13 +79,16 @@ public static class AdminRecover
             targetEmail: user.Email,
             recoveredAtUtc: clock.UtcNow,
             machineName: Environment.MachineName,
-            operatorIdentity: Environment.UserName);
+            operatorIdentity: Environment.UserName
+        );
         db.Add(record);
 
         await db.SaveChangesAsync(cancellationToken);
 
-        await stdout.WriteLineAsync(
-            $"Admin recovery completed for {user.Email}. Audit event will be emitted on next application start.")
+        await stdout
+            .WriteLineAsync(
+                $"Admin recovery completed for {user.Email}. Audit event will be emitted on next application start."
+            )
             .WaitAsync(cancellationToken);
         return 0;
     }

@@ -25,15 +25,21 @@ public sealed class MissingAttachmentRule : IPurchaseDocumentRiskRule
             return Array.Empty<RiskFinding>();
         }
 
-        return [new RiskFinding(
-            RuleId,
-            RiskSeverity.Blocker,
-            new ArabicEnglishText(
-                "مرفقات مفقودة لخصم ضريبي",
-                "Missing attachment for deductible expense"),
-            new ArabicEnglishText(
-                $"تحتوي الفاتورة على {deductibleLineCount} سطر(أسطر) قابل(ة) للخصم ولكن لا توجد مرفقات. لن يقبل النظام النشر دون مستند داعم (FR-016).",
-                $"Invoice has {deductibleLineCount} deductible line(s) but no attachments. Per FR-016 the post will be blocked until at least one supporting document is uploaded."),
-            FixHint: "Upload the supplier's PDF / scanned receipt before posting.")];
+        return
+        [
+            new RiskFinding(
+                RuleId,
+                RiskSeverity.Blocker,
+                new ArabicEnglishText(
+                    "مرفقات مفقودة لخصم ضريبي",
+                    "Missing attachment for deductible expense"
+                ),
+                new ArabicEnglishText(
+                    $"تحتوي الفاتورة على {deductibleLineCount} سطر(أسطر) قابل(ة) للخصم ولكن لا توجد مرفقات. لن يقبل النظام النشر دون مستند داعم (FR-016).",
+                    $"Invoice has {deductibleLineCount} deductible line(s) but no attachments. Per FR-016 the post will be blocked until at least one supporting document is uploaded."
+                ),
+                FixHint: "Upload the supplier's PDF / scanned receipt before posting."
+            ),
+        ];
     }
 }

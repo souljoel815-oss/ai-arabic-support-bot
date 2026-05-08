@@ -13,29 +13,79 @@ internal sealed class PurchaseInvoiceConfiguration : IEntityTypeConfiguration<Pu
         b.Property(p => p.Id).HasColumnName("id").ValueGeneratedNever();
 
         b.Property(p => p.SupplierId).HasColumnName("supplier_id").IsRequired();
-        b.Property(p => p.SupplierInvoiceNumber).HasColumnName("supplier_invoice_number").HasMaxLength(64).IsUnicode(false).IsRequired();
-        b.Property(p => p.DateReceived).HasColumnName("date_received").HasColumnType("date").IsRequired();
-        b.Property(p => p.State).HasColumnName("state").HasConversion<string>().HasMaxLength(16).IsRequired();
+        b.Property(p => p.SupplierInvoiceNumber)
+            .HasColumnName("supplier_invoice_number")
+            .HasMaxLength(64)
+            .IsUnicode(false)
+            .IsRequired();
+        b.Property(p => p.DateReceived)
+            .HasColumnName("date_received")
+            .HasColumnType("date")
+            .IsRequired();
+        b.Property(p => p.State)
+            .HasColumnName("state")
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .IsRequired();
 
-        b.Property(p => p.DocumentNumber).HasColumnName("document_number").HasMaxLength(32).IsUnicode(false);
+        b.Property(p => p.DocumentNumber)
+            .HasColumnName("document_number")
+            .HasMaxLength(32)
+            .IsUnicode(false);
         b.Property(p => p.PostedAtUtc).HasColumnName("posted_at_utc").HasColumnType("datetime2(3)");
         b.Property(p => p.PostedByUserId).HasColumnName("posted_by_user_id");
-        b.Property(p => p.PostingMode).HasColumnName("posting_mode").HasConversion<string>().HasMaxLength(32);
+        b.Property(p => p.PostingMode)
+            .HasColumnName("posting_mode")
+            .HasConversion<string>()
+            .HasMaxLength(32);
 
-        b.ComplexProperty(p => p.SupplierTaxProfileSnapshot, t =>
-        {
-            t.Property(x => x.ProfileType).HasColumnName("supplier_tax_profile_snapshot_type")
-                .HasConversion<string>().HasMaxLength(32).IsRequired();
-            t.Property(x => x.TinValue).HasColumnName("supplier_tax_profile_snapshot_tin")
-                .HasMaxLength(9).IsUnicode(false);
-            t.Property(x => x.ReverseChargeFlag).HasColumnName("supplier_tax_profile_snapshot_reverse_charge").IsRequired();
-            t.Property(x => x.DefaultPurchaseVatCategoryId)
-                .HasColumnName("supplier_tax_profile_snapshot_default_purchase_vat_category_id");
-        });
+        b.ComplexProperty(
+            p => p.SupplierTaxProfileSnapshot,
+            t =>
+            {
+                t.Property(x => x.ProfileType)
+                    .HasColumnName("supplier_tax_profile_snapshot_type")
+                    .HasConversion<string>()
+                    .HasMaxLength(32)
+                    .IsRequired();
+                t.Property(x => x.TinValue)
+                    .HasColumnName("supplier_tax_profile_snapshot_tin")
+                    .HasMaxLength(9)
+                    .IsUnicode(false);
+                t.Property(x => x.ReverseChargeFlag)
+                    .HasColumnName("supplier_tax_profile_snapshot_reverse_charge")
+                    .IsRequired();
+                t.Property(x => x.DefaultPurchaseVatCategoryId)
+                    .HasColumnName(
+                        "supplier_tax_profile_snapshot_default_purchase_vat_category_id"
+                    );
+            }
+        );
 
-        b.ComplexProperty(p => p.Subtotal,   p2 => p2.Property(x => x.Amount).HasColumnName("subtotal").HasColumnType("decimal(19,2)").IsRequired());
-        b.ComplexProperty(p => p.VatTotal,   p2 => p2.Property(x => x.Amount).HasColumnName("vat_total").HasColumnType("decimal(19,2)").IsRequired());
-        b.ComplexProperty(p => p.GrandTotal, p2 => p2.Property(x => x.Amount).HasColumnName("grand_total").HasColumnType("decimal(19,2)").IsRequired());
+        b.ComplexProperty(
+            p => p.Subtotal,
+            p2 =>
+                p2.Property(x => x.Amount)
+                    .HasColumnName("subtotal")
+                    .HasColumnType("decimal(19,2)")
+                    .IsRequired()
+        );
+        b.ComplexProperty(
+            p => p.VatTotal,
+            p2 =>
+                p2.Property(x => x.Amount)
+                    .HasColumnName("vat_total")
+                    .HasColumnType("decimal(19,2)")
+                    .IsRequired()
+        );
+        b.ComplexProperty(
+            p => p.GrandTotal,
+            p2 =>
+                p2.Property(x => x.Amount)
+                    .HasColumnName("grand_total")
+                    .HasColumnType("decimal(19,2)")
+                    .IsRequired()
+        );
 
         b.HasMany(p => p.Lines)
             .WithOne()

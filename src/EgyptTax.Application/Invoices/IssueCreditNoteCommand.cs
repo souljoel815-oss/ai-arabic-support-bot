@@ -17,11 +17,13 @@ public sealed record IssueCreditNoteCommand(
     Guid OriginalSalesInvoiceId,
     IReadOnlyCollection<IssueCreditNoteLine> Lines,
     string Reason,
-    DateOnly DocumentDate);
+    DateOnly DocumentDate
+);
 
 public sealed record IssueCreditNoteLine(
     Guid ItemId,
     decimal Quantity,
     MoneyEgp UnitPrice,
     Guid VatCategoryId,
-    decimal VatRatePercent);
+    decimal VatRatePercent
+);

@@ -16,13 +16,15 @@ public readonly struct Result<T>
     public bool IsSuccess { get; }
     public bool IsFailure => !IsSuccess;
 
-    public T Value => IsSuccess
-        ? _value!
-        : throw new InvalidOperationException("Cannot read Value on a failed Result.");
+    public T Value =>
+        IsSuccess
+            ? _value!
+            : throw new InvalidOperationException("Cannot read Value on a failed Result.");
 
-    public Error Error => IsFailure
-        ? _error
-        : throw new InvalidOperationException("Cannot read Error on a successful Result.");
+    public Error Error =>
+        IsFailure
+            ? _error
+            : throw new InvalidOperationException("Cannot read Error on a successful Result.");
 
     private Result(T value)
     {
@@ -39,9 +41,11 @@ public readonly struct Result<T>
     }
 
     public static Result<T> Success(T value) => new(value);
+
     public static Result<T> Failure(Error error) => new(error);
 
     public static implicit operator Result<T>(T value) => Success(value);
+
     public static implicit operator Result<T>(Error error) => Failure(error);
 }
 #pragma warning restore CA1000

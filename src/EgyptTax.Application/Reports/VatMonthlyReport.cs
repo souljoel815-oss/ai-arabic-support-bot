@@ -32,7 +32,8 @@ public sealed record VatMonthlyReport(
     MoneyEgp OutputVat,
     MoneyEgp InputVatRecoverable,
     MoneyEgp NetPayable,
-    IReadOnlyList<VatMonthlyReportRow> Rows);
+    IReadOnlyList<VatMonthlyReportRow> Rows
+);
 
 /// <summary>
 /// One contributing document in <see cref="VatMonthlyReport.Rows"/>.
@@ -47,4 +48,5 @@ public sealed record VatMonthlyReportRow(
     string CounterpartyName,
     MoneyEgp NetAmount,
     MoneyEgp VatAmount,
-    bool ContributesToOutput);
+    bool ContributesToOutput
+);

@@ -35,16 +35,28 @@ public sealed class TaxPeriod
     {
         if (year is < 1900 or > 9999)
         {
-            throw new ArgumentOutOfRangeException(nameof(year), "Year must be a 4-digit calendar year.");
+            throw new ArgumentOutOfRangeException(
+                nameof(year),
+                "Year must be a 4-digit calendar year."
+            );
         }
         switch (periodKind)
         {
             case TaxPeriodKind.VatMonth when monthOrQuarter is < 1 or > 12:
-                throw new ArgumentOutOfRangeException(nameof(monthOrQuarter), "VAT month must be in [1, 12].");
+                throw new ArgumentOutOfRangeException(
+                    nameof(monthOrQuarter),
+                    "VAT month must be in [1, 12]."
+                );
             case TaxPeriodKind.WhtQuarter when monthOrQuarter is < 1 or > 4:
-                throw new ArgumentOutOfRangeException(nameof(monthOrQuarter), "WHT quarter must be in [1, 4].");
+                throw new ArgumentOutOfRangeException(
+                    nameof(monthOrQuarter),
+                    "WHT quarter must be in [1, 4]."
+                );
             case TaxPeriodKind.IncomeFiscalYear when monthOrQuarter != 0:
-                throw new ArgumentOutOfRangeException(nameof(monthOrQuarter), "IncomeFiscalYear uses 0 as the month_or_quarter sentinel.");
+                throw new ArgumentOutOfRangeException(
+                    nameof(monthOrQuarter),
+                    "IncomeFiscalYear uses 0 as the month_or_quarter sentinel."
+                );
         }
 
         PeriodKind = periodKind;
@@ -83,7 +95,8 @@ public sealed class TaxPeriod
         if (Status == TaxPeriodStatus.Open)
         {
             throw new InvalidOperationException(
-                $"Tax period {PeriodKind} {Year}-{MonthOrQuarter:D2} is already Open.");
+                $"Tax period {PeriodKind} {Year}-{MonthOrQuarter:D2} is already Open."
+            );
         }
         Status = TaxPeriodStatus.Open;
         ReopenedByUserId = reopenedByUserId;

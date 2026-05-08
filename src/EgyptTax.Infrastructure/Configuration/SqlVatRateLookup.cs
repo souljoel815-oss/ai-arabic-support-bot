@@ -21,22 +21,31 @@ public sealed class SqlVatRateLookup : IVatRateLookup
     }
 
     public Task<VatCategory?> GetEffectiveAsync(
-        string code, DateOnly date, CancellationToken cancellationToken = default)
+        string code,
+        DateOnly date,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
-        return _db.Set<VatCategory>().AsNoTracking()
-            .Where(c => c.Code == code
+        return _db.Set<VatCategory>()
+            .AsNoTracking()
+            .Where(c =>
+                c.Code == code
                 && c.EffectiveFromDate <= date
-                && (c.EffectiveToDate == null || c.EffectiveToDate >= date))
+                && (c.EffectiveToDate == null || c.EffectiveToDate >= date)
+            )
             .OrderByDescending(c => c.EffectiveFromDate)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<VatCategory>> ListByCodeAsync(
-        string code, CancellationToken cancellationToken = default)
+        string code,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
-        return await _db.Set<VatCategory>().AsNoTracking()
+        return await _db.Set<VatCategory>()
+            .AsNoTracking()
             .Where(c => c.Code == code)
             .OrderBy(c => c.EffectiveFromDate)
             .ToListAsync(cancellationToken);

@@ -27,16 +27,17 @@ public static class DocumentTypeExtensions
     /// journal vouchers, payment vouchers) are corrected via reversal
     /// vouchers that reference the original.
     /// </summary>
-    public static bool IsTaxImpacting(this DocumentType type) => type switch
-    {
-        DocumentType.SalesInvoice => true,
-        DocumentType.CreditNote => true,
-        DocumentType.PurchaseInvoice => true,
-        DocumentType.Expense => true,
-        DocumentType.FixedAsset => true,
-        DocumentType.JournalVoucher => false,
-        DocumentType.SupplierPaymentVoucher => false,
-        DocumentType.CustomerReceiptVoucher => false,
-        _ => false,
-    };
+    public static bool IsTaxImpacting(this DocumentType type) =>
+        type switch
+        {
+            DocumentType.SalesInvoice => true,
+            DocumentType.CreditNote => true,
+            DocumentType.PurchaseInvoice => true,
+            DocumentType.Expense => true,
+            DocumentType.FixedAsset => true,
+            DocumentType.JournalVoucher => false,
+            DocumentType.SupplierPaymentVoucher => false,
+            DocumentType.CustomerReceiptVoucher => false,
+            _ => false,
+        };
 }

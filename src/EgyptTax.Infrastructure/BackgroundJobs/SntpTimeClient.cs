@@ -10,7 +10,8 @@ namespace EgyptTax.Infrastructure.BackgroundJobs;
 /// short receive timeout so a misconfigured firewall surfaces as a
 /// <c>SocketException</c> rather than a hanging job.
 /// </summary>
-public sealed class SntpTimeClient(string ntpServer = "pool.ntp.org", int port = 123) : INtpTimeClient
+public sealed class SntpTimeClient(string ntpServer = "pool.ntp.org", int port = 123)
+    : INtpTimeClient
 {
     private const int NtpPacketSize = 48;
     private const byte LiNoWarning_VnV4_ModeClient = 0x1B;
@@ -26,7 +27,9 @@ public sealed class SntpTimeClient(string ntpServer = "pool.ntp.org", int port =
         var addresses = await Dns.GetHostAddressesAsync(_ntpServer, cancellationToken);
         if (addresses.Length == 0)
         {
-            throw new InvalidOperationException($"DNS lookup for '{_ntpServer}' returned no addresses.");
+            throw new InvalidOperationException(
+                $"DNS lookup for '{_ntpServer}' returned no addresses."
+            );
         }
         var endpoint = new IPEndPoint(addresses[0], _port);
 
@@ -41,12 +44,24 @@ public sealed class SntpTimeClient(string ntpServer = "pool.ntp.org", int port =
         var receive = await udp.ReceiveAsync(cancellationToken);
         if (receive.Buffer.Length < NtpPacketSize)
         {
-            throw new InvalidOperationException($"NTP response too short: {receive.Buffer.Length} bytes.");
+            throw new InvalidOperationException(
+                $"NTP response too short: {receive.Buffer.Length} bytes."
+            );
         }
 
         // Transmit timestamp lives at offset 40, big-endian 64-bit fixed-point.
-        var integer = (uint)((receive.Buffer[40] << 24) | (receive.Buffer[41] << 16) | (receive.Buffer[42] << 8) | receive.Buffer[43]);
-        var fraction = (uint)((receive.Buffer[44] << 24) | (receive.Buffer[45] << 16) | (receive.Buffer[46] << 8) | receive.Buffer[47]);
+        var integer = (uint)(
+            (receive.Buffer[40] << 24)
+            | (receive.Buffer[41] << 16)
+            | (receive.Buffer[42] << 8)
+            | receive.Buffer[43]
+        );
+        var fraction = (uint)(
+            (receive.Buffer[44] << 24)
+            | (receive.Buffer[45] << 16)
+            | (receive.Buffer[46] << 8)
+            | receive.Buffer[47]
+        );
         var milliseconds = (long)(integer * 1000L) + (fraction * 1000L / 0x100000000L);
         return NtpEpoch.AddMilliseconds(milliseconds);
     }

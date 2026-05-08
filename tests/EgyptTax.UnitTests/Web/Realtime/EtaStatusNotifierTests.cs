@@ -30,11 +30,13 @@ public class EtaStatusNotifierTests
         var evt = NewEvent();
         await notifier.NotifyAsync(evt);
 
-        await clientProxy.Received(1).SendCoreAsync(
-            EtaStatusHub.StatusChangedMethod,
-            Arg.Is<object?[]>(args => args.Length == 1
-                && ReferenceEquals(args[0], evt)),
-            Arg.Any<CancellationToken>());
+        await clientProxy
+            .Received(1)
+            .SendCoreAsync(
+                EtaStatusHub.StatusChangedMethod,
+                Arg.Is<object?[]>(args => args.Length == 1 && ReferenceEquals(args[0], evt)),
+                Arg.Any<CancellationToken>()
+            );
     }
 
     [Fact]
@@ -60,17 +62,21 @@ public class EtaStatusNotifierTests
         var hubContext = Substitute.For<IHubContext<EtaStatusHub>>();
         hubContext.Clients.Returns(clients);
         var notifier = new EtaStatusNotifier(hubContext);
-        notifier.StatusChanged += (_, _) => throw new InvalidOperationException("subscriber explosion");
+        notifier.StatusChanged += (_, _) =>
+            throw new InvalidOperationException("subscriber explosion");
 
         var act = async () => await notifier.NotifyAsync(NewEvent());
 
         // The subscriber's exception propagates (we want it loud, not
         // swallowed) but the hub broadcast already happened.
         await act.Should().ThrowAsync<InvalidOperationException>();
-        await clientProxy.Received(1).SendCoreAsync(
-            EtaStatusHub.StatusChangedMethod,
-            Arg.Any<object?[]>(),
-            Arg.Any<CancellationToken>());
+        await clientProxy
+            .Received(1)
+            .SendCoreAsync(
+                EtaStatusHub.StatusChangedMethod,
+                Arg.Any<object?[]>(),
+                Arg.Any<CancellationToken>()
+            );
     }
 
     [Fact]
@@ -81,14 +87,16 @@ public class EtaStatusNotifierTests
         await act.Should().ThrowAsync<ArgumentNullException>();
     }
 
-    private static EtaStatusChangedEvent NewEvent() => new(
-        SalesInvoiceId: Guid.NewGuid(),
-        EtaSubmissionId: Guid.NewGuid(),
-        DocumentNumber: "INV-2026-000001",
-        PreviousStatus: EtaSubmissionStatus.Pending,
-        NewStatus: EtaSubmissionStatus.Submitted,
-        AttemptCount: 1,
-        AtUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc));
+    private static EtaStatusChangedEvent NewEvent() =>
+        new(
+            SalesInvoiceId: Guid.NewGuid(),
+            EtaSubmissionId: Guid.NewGuid(),
+            DocumentNumber: "INV-2026-000001",
+            PreviousStatus: EtaSubmissionStatus.Pending,
+            NewStatus: EtaSubmissionStatus.Submitted,
+            AttemptCount: 1,
+            AtUtc: new DateTime(2026, 5, 7, 12, 0, 0, DateTimeKind.Utc)
+        );
 
     private static IHubContext<EtaStatusHub> NewBenignHubContext()
     {

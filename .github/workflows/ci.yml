@@ -44,6 +44,9 @@ jobs:
       - name: Restore tools
         run: dotnet tool restore
 
+      - name: csharpier format check (T259 guard)
+        run: dotnet csharpier --check src/ tests/
+
       - name: Restore
         run: dotnet restore EgyptTax.sln
 

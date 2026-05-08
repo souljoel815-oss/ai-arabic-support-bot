@@ -20,11 +20,13 @@ public sealed class MissingEtaCodeRule : IDocumentRiskRule
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var missing = context.Invoice.Lines
-            .Select(l => l.ItemId)
+        var missing = context
+            .Invoice.Lines.Select(l => l.ItemId)
             .Distinct()
-            .Where(id => context.Items.TryGetValue(id, out var item)
-                && string.IsNullOrWhiteSpace(item.EtaItemCode))
+            .Where(id =>
+                context.Items.TryGetValue(id, out var item)
+                && string.IsNullOrWhiteSpace(item.EtaItemCode)
+            )
             .Select(id => context.Items[id])
             .ToList();
 
@@ -34,15 +36,21 @@ public sealed class MissingEtaCodeRule : IDocumentRiskRule
         }
 
         var codes = string.Join(", ", missing.Select(i => i.Code));
-        return [new RiskFinding(
-            RuleId,
-            RiskSeverity.MustFixBeforeFiling,
-            new ArabicEnglishText(
-                $"كود ETA مفقود ({missing.Count})",
-                $"ETA item code missing on {missing.Count} item(s)"),
-            new ArabicEnglishText(
-                $"الأصناف التالية ليس لها كود ETA: {codes}. سترفض مصلحة الضرائب الإرسال.",
-                $"The following items have no ETA item code and will be rejected by the regulator: {codes}."),
-            FixHint: "Open Master data → Items and supply the GS1/commodity code from ETA's master list.")];
+        return
+        [
+            new RiskFinding(
+                RuleId,
+                RiskSeverity.MustFixBeforeFiling,
+                new ArabicEnglishText(
+                    $"كود ETA مفقود ({missing.Count})",
+                    $"ETA item code missing on {missing.Count} item(s)"
+                ),
+                new ArabicEnglishText(
+                    $"الأصناف التالية ليس لها كود ETA: {codes}. سترفض مصلحة الضرائب الإرسال.",
+                    $"The following items have no ETA item code and will be rejected by the regulator: {codes}."
+                ),
+                FixHint: "Open Master data → Items and supply the GS1/commodity code from ETA's master list."
+            ),
+        ];
     }
 }

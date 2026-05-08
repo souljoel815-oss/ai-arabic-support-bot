@@ -30,7 +30,8 @@ public sealed class ChangePasswordModel : PageModel
         _hasher = hasher;
     }
 
-    [BindProperty] public InputModel Input { get; set; } = new();
+    [BindProperty]
+    public InputModel Input { get; set; } = new();
     public string? ErrorMessage { get; private set; }
 
     public sealed class InputModel
@@ -44,7 +45,10 @@ public sealed class ChangePasswordModel : PageModel
 
     public IActionResult OnGet() => Page();
 
-    public async Task<IActionResult> OnPostAsync(string? returnUrl = null, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> OnPostAsync(
+        string? returnUrl = null,
+        CancellationToken cancellationToken = default
+    )
     {
         if (!ModelState.IsValid)
         {

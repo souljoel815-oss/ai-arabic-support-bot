@@ -38,19 +38,24 @@ public sealed class PeriodReviewLockHandler
     }
 
     public async Task<PeriodReviewLock> LockAsync(
-        LockForReviewCommand command, CancellationToken cancellationToken = default)
+        LockForReviewCommand command,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
         var existing = await _db.Set<PeriodReviewLock>()
-            .Where(l => l.PeriodYear == command.PeriodYear
+            .Where(l =>
+                l.PeriodYear == command.PeriodYear
                 && l.PeriodMonth == command.PeriodMonth
-                && l.ReleasedAtUtc == null)
+                && l.ReleasedAtUtc == null
+            )
             .FirstOrDefaultAsync(cancellationToken);
         if (existing is not null)
         {
             throw new InvalidOperationException(
-                $"Period {command.PeriodYear}-{command.PeriodMonth:D2} is already locked for review by user {existing.LockedByUserId:D} since {existing.LockedAtUtc:o}.");
+                $"Period {command.PeriodYear}-{command.PeriodMonth:D2} is already locked for review by user {existing.LockedByUserId:D} since {existing.LockedAtUtc:o}."
+            );
         }
 
         var nowUtc = _clock.UtcNow;
@@ -59,30 +64,38 @@ public sealed class PeriodReviewLockHandler
             periodMonth: command.PeriodMonth,
             lockedAtUtc: nowUtc,
             lockedByUserId: command.LockedByUserId,
-            lockedNote: command.Note);
+            lockedNote: command.Note
+        );
         _db.Add(review);
         await _db.SaveChangesAsync(cancellationToken);
 
-        await _auditLog.AppendAsync(new AuditLogPayload(
-            Kind: "period_review.locked",
-            ActorUserId: command.LockedByUserId,
-            ActorFirmName: null,
-            CompanyId: Guid.Empty,
-            PayloadJson: $$"""{"id":"{{review.Id:D}}","period_year":{{command.PeriodYear.ToString(CultureInfo.InvariantCulture)}},"period_month":{{command.PeriodMonth.ToString(CultureInfo.InvariantCulture)}},"locked_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}","note":{{(command.Note is null ? "null" : "\"" + Escape(command.Note) + "\"")}}}"""),
-            cancellationToken);
+        await _auditLog.AppendAsync(
+            new AuditLogPayload(
+                Kind: "period_review.locked",
+                ActorUserId: command.LockedByUserId,
+                ActorFirmName: null,
+                CompanyId: Guid.Empty,
+                PayloadJson: $$"""{"id":"{{review.Id:D}}","period_year":{{command.PeriodYear.ToString(CultureInfo.InvariantCulture)}},"period_month":{{command.PeriodMonth.ToString(CultureInfo.InvariantCulture)}},"locked_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}","note":{{(command.Note is null ? "null" : "\"" + Escape(command.Note) + "\"")}}}"""
+            ),
+            cancellationToken
+        );
 
         return review;
     }
 
     public async Task<PeriodReviewLock> ReleaseAsync(
-        ReleaseReviewCommand command, CancellationToken cancellationToken = default)
+        ReleaseReviewCommand command,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var review = await _db.Set<PeriodReviewLock>()
-            .FirstOrDefaultAsync(l => l.Id == command.PeriodReviewLockId, cancellationToken)
+        var review =
+            await _db.Set<PeriodReviewLock>()
+                .FirstOrDefaultAsync(l => l.Id == command.PeriodReviewLockId, cancellationToken)
             ?? throw new InvalidOperationException(
-                $"No review-lock found with id {command.PeriodReviewLockId:D}.");
+                $"No review-lock found with id {command.PeriodReviewLockId:D}."
+            );
 
         var alreadyReleased = review.ReleasedAtUtc is not null;
         var nowUtc = _clock.UtcNow;
@@ -91,19 +104,23 @@ public sealed class PeriodReviewLockHandler
 
         if (!alreadyReleased)
         {
-            await _auditLog.AppendAsync(new AuditLogPayload(
-                Kind: "period_review.released",
-                ActorUserId: command.ReleasedByUserId,
-                ActorFirmName: null,
-                CompanyId: Guid.Empty,
-                PayloadJson: $$"""{"id":"{{review.Id:D}}","period_year":{{review.PeriodYear.ToString(CultureInfo.InvariantCulture)}},"period_month":{{review.PeriodMonth.ToString(CultureInfo.InvariantCulture)}},"released_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}","accountant_actions_during_lock":{{review.AccountantActionsDuringLock.ToString(CultureInfo.InvariantCulture)}}}"""),
-                cancellationToken);
+            await _auditLog.AppendAsync(
+                new AuditLogPayload(
+                    Kind: "period_review.released",
+                    ActorUserId: command.ReleasedByUserId,
+                    ActorFirmName: null,
+                    CompanyId: Guid.Empty,
+                    PayloadJson: $$"""{"id":"{{review.Id:D}}","period_year":{{review.PeriodYear.ToString(CultureInfo.InvariantCulture)}},"period_month":{{review.PeriodMonth.ToString(CultureInfo.InvariantCulture)}},"released_at_utc":"{{nowUtc.ToString("o", CultureInfo.InvariantCulture)}}","accountant_actions_during_lock":{{review.AccountantActionsDuringLock.ToString(CultureInfo.InvariantCulture)}}}"""
+                ),
+                cancellationToken
+            );
         }
 
         return review;
     }
 
     private static string Escape(string value) =>
-        value.Replace("\\", "\\\\", StringComparison.Ordinal)
-             .Replace("\"", "\\\"", StringComparison.Ordinal);
+        value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal);
 }

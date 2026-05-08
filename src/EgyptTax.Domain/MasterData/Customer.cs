@@ -27,7 +27,8 @@ public sealed class Customer
         PostalAddress address,
         CustomerTaxProfile taxProfile,
         string? phone = null,
-        string? email = null)
+        string? email = null
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         Code = code;
@@ -41,6 +42,7 @@ public sealed class Customer
     public void UpdateAddress(PostalAddress address) => Address = address;
 
     public void Deactivate() => Status = CustomerStatus.Inactive;
+
     public void Reactivate() => Status = CustomerStatus.Active;
 
     public void UpdateContact(string? phone, string? email)

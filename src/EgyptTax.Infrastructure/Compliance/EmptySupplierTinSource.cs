@@ -13,6 +13,7 @@ public sealed class EmptySupplierTinSource : ISupplierTinSource
 {
     private static readonly IReadOnlyList<SupplierTinRow> Empty = Array.Empty<SupplierTinRow>();
 
-    public Task<IReadOnlyList<SupplierTinRow>> GetSuppliersToRevalidateAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(Empty);
+    public Task<IReadOnlyList<SupplierTinRow>> GetSuppliersToRevalidateAsync(
+        CancellationToken cancellationToken = default
+    ) => Task.FromResult(Empty);
 }

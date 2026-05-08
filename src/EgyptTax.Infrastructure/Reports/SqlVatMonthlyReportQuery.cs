@@ -31,11 +31,17 @@ public sealed class SqlVatMonthlyReportQuery : IVatMonthlyReportQuery
     }
 
     public async Task<VatMonthlyReport> RunAsync(
-        int year, int month, CancellationToken cancellationToken = default)
+        int year,
+        int month,
+        CancellationToken cancellationToken = default
+    )
     {
         if (year is < 1900 or > 9999)
         {
-            throw new ArgumentOutOfRangeException(nameof(year), "Year must be a 4-digit calendar year.");
+            throw new ArgumentOutOfRangeException(
+                nameof(year),
+                "Year must be a 4-digit calendar year."
+            );
         }
         if (month is < 1 or > 12)
         {
@@ -51,9 +57,11 @@ public sealed class SqlVatMonthlyReportQuery : IVatMonthlyReportQuery
         // the net VAT charged.
         var salesRows = await _db.Set<SalesInvoice>()
             .AsNoTracking()
-            .Where(s => s.State == DocumentState.Posted
+            .Where(s =>
+                s.State == DocumentState.Posted
                 && s.DocumentDate >= periodStart
-                && s.DocumentDate <= periodEnd)
+                && s.DocumentDate <= periodEnd
+            )
             .Select(s => new
             {
                 s.Id,
@@ -75,11 +83,13 @@ public sealed class SqlVatMonthlyReportQuery : IVatMonthlyReportQuery
         var purchaseLines = await (
             from p in _db.Set<PurchaseInvoice>().AsNoTracking()
             from l in p.Lines
-            where p.State == DocumentState.Posted
+            where
+                p.State == DocumentState.Posted
                 && p.DateReceived >= periodStart
                 && p.DateReceived <= periodEnd
                 && l.DeductibleFlag
-                && p.SupplierTaxProfileSnapshot.ProfileType == SupplierTaxProfileType.RegisteredTaxpayer
+                && p.SupplierTaxProfileSnapshot.ProfileType
+                    == SupplierTaxProfileType.RegisteredTaxpayer
             select new
             {
                 p.Id,
@@ -88,37 +98,54 @@ public sealed class SqlVatMonthlyReportQuery : IVatMonthlyReportQuery
                 p.SupplierId,
                 LineSubtotal = l.LineSubtotal.Amount,
                 LineVat = l.LineVat.Amount,
-            }).ToListAsync(cancellationToken);
+            }
+        ).ToListAsync(cancellationToken);
 
         // Bulk-resolve counterparty names so the row builder is
         // single-pass.
         var customerIds = salesRows.Select(r => r.CustomerId).Distinct().ToArray();
-        var customerNames = await _db.Set<Customer>().AsNoTracking()
+        var customerNames = await _db.Set<Customer>()
+            .AsNoTracking()
             .Where(c => customerIds.Contains(c.Id))
             .ToDictionaryAsync(c => c.Id, c => c.Name.English, cancellationToken);
         var supplierIds = purchaseLines.Select(r => r.SupplierId).Distinct().ToArray();
-        var supplierNames = await _db.Set<Supplier>().AsNoTracking()
+        var supplierNames = await _db.Set<Supplier>()
+            .AsNoTracking()
             .Where(s => supplierIds.Contains(s.Id))
             .ToDictionaryAsync(s => s.Id, s => s.Name.English, cancellationToken);
 
         var rows = new List<VatMonthlyReportRow>();
         foreach (var s in salesRows)
         {
-            rows.Add(new VatMonthlyReportRow(
-                DocumentId: s.Id,
-                DocumentType: s.IsCreditNote ? DocumentType.CreditNote : DocumentType.SalesInvoice,
-                DocumentNumber: s.DocumentNumber,
-                DocumentDate: s.DocumentDate,
-                CounterpartyName: customerNames.GetValueOrDefault(s.CustomerId, s.CustomerId.ToString("D")),
-                NetAmount: MoneyEgp.From(s.NetAmount),
-                VatAmount: MoneyEgp.From(s.VatAmount),
-                ContributesToOutput: true));
+            rows.Add(
+                new VatMonthlyReportRow(
+                    DocumentId: s.Id,
+                    DocumentType: s.IsCreditNote
+                        ? DocumentType.CreditNote
+                        : DocumentType.SalesInvoice,
+                    DocumentNumber: s.DocumentNumber,
+                    DocumentDate: s.DocumentDate,
+                    CounterpartyName: customerNames.GetValueOrDefault(
+                        s.CustomerId,
+                        s.CustomerId.ToString("D")
+                    ),
+                    NetAmount: MoneyEgp.From(s.NetAmount),
+                    VatAmount: MoneyEgp.From(s.VatAmount),
+                    ContributesToOutput: true
+                )
+            );
         }
 
         // Group purchase lines back into per-document rows so the
         // report shows one row per invoice rather than one per line.
         var purchaseGrouped = purchaseLines
-            .GroupBy(r => new { r.Id, r.DocumentNumber, r.DateReceived, r.SupplierId })
+            .GroupBy(r => new
+            {
+                r.Id,
+                r.DocumentNumber,
+                r.DateReceived,
+                r.SupplierId,
+            })
             .Select(g => new
             {
                 g.Key.Id,
@@ -130,24 +157,33 @@ public sealed class SqlVatMonthlyReportQuery : IVatMonthlyReportQuery
             });
         foreach (var p in purchaseGrouped)
         {
-            rows.Add(new VatMonthlyReportRow(
-                DocumentId: p.Id,
-                DocumentType: DocumentType.PurchaseInvoice,
-                DocumentNumber: p.DocumentNumber,
-                DocumentDate: p.DateReceived,
-                CounterpartyName: supplierNames.GetValueOrDefault(p.SupplierId, p.SupplierId.ToString("D")),
-                NetAmount: MoneyEgp.From(p.NetAmount),
-                VatAmount: MoneyEgp.From(p.VatAmount),
-                ContributesToOutput: false));
+            rows.Add(
+                new VatMonthlyReportRow(
+                    DocumentId: p.Id,
+                    DocumentType: DocumentType.PurchaseInvoice,
+                    DocumentNumber: p.DocumentNumber,
+                    DocumentDate: p.DateReceived,
+                    CounterpartyName: supplierNames.GetValueOrDefault(
+                        p.SupplierId,
+                        p.SupplierId.ToString("D")
+                    ),
+                    NetAmount: MoneyEgp.From(p.NetAmount),
+                    VatAmount: MoneyEgp.From(p.VatAmount),
+                    ContributesToOutput: false
+                )
+            );
         }
 
-        var orderedRows = rows
-            .OrderBy(r => r.DocumentDate)
+        var orderedRows = rows.OrderBy(r => r.DocumentDate)
             .ThenBy(r => r.DocumentNumber, StringComparer.Ordinal)
             .ToList();
 
-        var outputVat = MoneyEgp.From(decimal.Round(salesRows.Sum(s => s.VatAmount), 2, MidpointRounding.ToEven));
-        var inputVat = MoneyEgp.From(decimal.Round(purchaseLines.Sum(l => l.LineVat), 2, MidpointRounding.ToEven));
+        var outputVat = MoneyEgp.From(
+            decimal.Round(salesRows.Sum(s => s.VatAmount), 2, MidpointRounding.ToEven)
+        );
+        var inputVat = MoneyEgp.From(
+            decimal.Round(purchaseLines.Sum(l => l.LineVat), 2, MidpointRounding.ToEven)
+        );
         var net = outputVat - inputVat;
 
         return new VatMonthlyReport(
@@ -158,6 +194,7 @@ public sealed class SqlVatMonthlyReportQuery : IVatMonthlyReportQuery
             OutputVat: outputVat,
             InputVatRecoverable: inputVat,
             NetPayable: net,
-            Rows: orderedRows);
+            Rows: orderedRows
+        );
     }
 }

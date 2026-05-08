@@ -39,7 +39,8 @@ public sealed class EnrollMfaModel : PageModel
         _protector = protector;
     }
 
-    [BindProperty] public InputModel Input { get; set; } = new();
+    [BindProperty]
+    public InputModel Input { get; set; } = new();
     public string? ProvisioningUri { get; private set; }
     public string? Secret { get; private set; }
     public string? StagedSecretCipher { get; private set; }

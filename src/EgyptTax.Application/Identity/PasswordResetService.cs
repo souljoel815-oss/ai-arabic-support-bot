@@ -16,12 +16,14 @@ public interface IPasswordResetService
     Task<PasswordResetIssued> IssueAsync(
         Guid targetUserId,
         Guid issuingAdminUserId,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     Task<PasswordResetRedeemResult> RedeemAsync(
         string plaintextToken,
         string newPassword,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }
 
 public sealed record PasswordResetIssued(string PlaintextToken, DateTime ExpiresAtUtc);
@@ -45,9 +47,6 @@ public static class PasswordResetTokenHasher
     {
         // 256-bit URL-safe token. Length 43 base64url chars (no padding).
         var bytes = RandomNumberGenerator.GetBytes(32);
-        return Convert.ToBase64String(bytes)
-            .Replace('+', '-')
-            .Replace('/', '_')
-            .TrimEnd('=');
+        return Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=');
     }
 }

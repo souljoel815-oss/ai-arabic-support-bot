@@ -7,5 +7,9 @@ namespace EgyptTax.Application.Reports;
 /// </summary>
 public interface IVatMonthlyReportQuery
 {
-    Task<VatMonthlyReport> RunAsync(int year, int month, CancellationToken cancellationToken = default);
+    Task<VatMonthlyReport> RunAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken = default
+    );
 }

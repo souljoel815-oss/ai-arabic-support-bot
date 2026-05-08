@@ -23,12 +23,18 @@ public sealed class InspectionBundleProgressNotifier : IInspectionBundleProgress
 
     public event EventHandler<InspectionBundleProgressEvent>? ProgressChanged;
 
-    public async Task NotifyAsync(InspectionBundleProgressEvent e, CancellationToken cancellationToken = default)
+    public async Task NotifyAsync(
+        InspectionBundleProgressEvent e,
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(e);
 
         await _hubContext.Clients.All.SendAsync(
-            InspectionBundleHub.ProgressChangedMethod, e, cancellationToken);
+            InspectionBundleHub.ProgressChangedMethod,
+            e,
+            cancellationToken
+        );
 
         ProgressChanged?.Invoke(this, e);
     }

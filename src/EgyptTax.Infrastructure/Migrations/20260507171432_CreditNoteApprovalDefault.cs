@@ -22,14 +22,16 @@ namespace EgyptTax.Infrastructure.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql(
-                "UPDATE [workflow].[document_type_approval_settings] SET [approval_required] = 0 WHERE [document_type] = N'CreditNote';");
+                "UPDATE [workflow].[document_type_approval_settings] SET [approval_required] = 0 WHERE [document_type] = N'CreditNote';"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql(
-                "UPDATE [workflow].[document_type_approval_settings] SET [approval_required] = 1 WHERE [document_type] = N'CreditNote';");
+                "UPDATE [workflow].[document_type_approval_settings] SET [approval_required] = 1 WHERE [document_type] = N'CreditNote';"
+            );
         }
     }
 }

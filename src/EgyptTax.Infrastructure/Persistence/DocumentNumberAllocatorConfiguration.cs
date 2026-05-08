@@ -4,7 +4,8 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace EgyptTax.Infrastructure.Persistence;
 
-internal sealed class DocumentNumberAllocatorConfiguration : IEntityTypeConfiguration<DocumentNumberAllocator>
+internal sealed class DocumentNumberAllocatorConfiguration
+    : IEntityTypeConfiguration<DocumentNumberAllocator>
 {
     public void Configure(EntityTypeBuilder<DocumentNumberAllocator> b)
     {

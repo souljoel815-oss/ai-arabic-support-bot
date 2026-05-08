@@ -31,11 +31,20 @@ public class MasterDataDeletionGuardTests(SqlServerFixture fixture)
         var (supplier, _, vat) = await SeedAsync(db);
 
         var draft = PurchaseInvoice.CreateDraft(
-            supplier.Id, supplier.TaxProfile, "SUP-INV-X", new DateOnly(2026, 5, 7));
-        draft.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 1m, unitPrice: MoneyEgp.From(100m),
-            vatCategoryId: vat.Id, vatRatePercent: vat.RatePercent,
-            deductibleFlag: false);
+            supplier.Id,
+            supplier.TaxProfile,
+            "SUP-INV-X",
+            new DateOnly(2026, 5, 7)
+        );
+        draft.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(100m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: vat.RatePercent,
+            deductibleFlag: false
+        );
         db.Add(draft);
         await db.SaveChangesAsync();
 
@@ -43,8 +52,11 @@ public class MasterDataDeletionGuardTests(SqlServerFixture fixture)
         var result = await guard.CheckSupplierAsync(supplier.Id);
 
         result.CanDelete.Should().BeFalse();
-        result.References.Should().ContainSingle(r => r.ReferencingDocumentType == "PurchaseInvoice"
-            && r.ReferenceCount == 1);
+        result
+            .References.Should()
+            .ContainSingle(r =>
+                r.ReferencingDocumentType == "PurchaseInvoice" && r.ReferenceCount == 1
+            );
     }
 
     [Fact]
@@ -67,7 +79,10 @@ public class MasterDataDeletionGuardTests(SqlServerFixture fixture)
         var (_, customer, vat) = await SeedAsync(db);
 
         var draft = SalesInvoice.CreateDraft(
-            customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         draft.AddLine(Guid.NewGuid(), 1m, MoneyEgp.From(500m), vat.Id, vat.RatePercent);
         db.Add(draft);
         await db.SaveChangesAsync();
@@ -87,14 +102,18 @@ public class MasterDataDeletionGuardTests(SqlServerFixture fixture)
             code: $"CAT-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("فئة", "Category"),
             defaultDeductible: true,
-            defaultAccountId: Guid.NewGuid());
+            defaultAccountId: Guid.NewGuid()
+        );
         db.Add(category);
         await db.SaveChangesAsync();
 
         var expense = Expense.CreateDraft(
-            new DateOnly(2026, 5, 7), category.Id, MoneyEgp.From(200m),
+            new DateOnly(2026, 5, 7),
+            category.Id,
+            MoneyEgp.From(200m),
             deductibleFlag: false,
-            description: new ArabicEnglishText("وصف", "Desc"));
+            description: new ArabicEnglishText("وصف", "Desc")
+        );
         db.Add(expense);
         await db.SaveChangesAsync();
 
@@ -102,8 +121,9 @@ public class MasterDataDeletionGuardTests(SqlServerFixture fixture)
         var result = await guard.CheckExpenseCategoryAsync(category.Id);
 
         result.CanDelete.Should().BeFalse();
-        result.References.Should().Contain(r => r.ReferencingDocumentType == "Expense"
-            && r.ReferenceCount == 1);
+        result
+            .References.Should()
+            .Contain(r => r.ReferencingDocumentType == "Expense" && r.ReferenceCount == 1);
     }
 
     [Fact]
@@ -116,15 +136,29 @@ public class MasterDataDeletionGuardTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var (supplier, customer, vat) = await SeedAsync(db);
 
-        var sales = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 7));
+        var sales = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         sales.AddLine(Guid.NewGuid(), 1m, MoneyEgp.From(100m), vat.Id, vat.RatePercent);
         db.Add(sales);
 
-        var purchase = PurchaseInvoice.CreateDraft(supplier.Id, supplier.TaxProfile, "SUP-INV-Y", new DateOnly(2026, 5, 7));
-        purchase.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 2m, unitPrice: MoneyEgp.From(50m),
-            vatCategoryId: vat.Id, vatRatePercent: vat.RatePercent,
-            deductibleFlag: true);
+        var purchase = PurchaseInvoice.CreateDraft(
+            supplier.Id,
+            supplier.TaxProfile,
+            "SUP-INV-Y",
+            new DateOnly(2026, 5, 7)
+        );
+        purchase.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 2m,
+            unitPrice: MoneyEgp.From(50m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: vat.RatePercent,
+            deductibleFlag: true
+        );
         db.Add(purchase);
         await db.SaveChangesAsync();
 
@@ -136,27 +170,46 @@ public class MasterDataDeletionGuardTests(SqlServerFixture fixture)
         result.References.Should().Contain(r => r.ReferencingDocumentType == "PurchaseInvoiceLine");
     }
 
-    private static async Task<(Supplier supplier, Customer customer, VatCategory vat)> SeedAsync(AppDbContext db)
+    private static async Task<(Supplier supplier, Customer customer, VatCategory vat)> SeedAsync(
+        AppDbContext db
+    )
     {
         var vat = new VatCategory(
-            code: "Standard", name: new ArabicEnglishText("قياسي", "Standard"),
-            ratePercent: 14m, effectiveFromDate: new DateOnly(2026, 1, 1),
-            effectiveToDate: null, recoverableInputVat: true);
+            code: "Standard",
+            name: new ArabicEnglishText("قياسي", "Standard"),
+            ratePercent: 14m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: true
+        );
         var supplier = new Supplier(
             code: $"SUP-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("مورد", "Supplier"),
             address: new ArabicEnglishText("القاهرة", "Cairo"),
             taxProfile: SupplierTaxProfile.RegisteredTaxpayer(
-                EgyptianTin.Parse("123456789"), vat.Id));
+                EgyptianTin.Parse("123456789"),
+                vat.Id
+            )
+        );
         var customer = new Customer(
             code: $"CUST-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("عميل", "Customer"),
             address: PostalAddress.Create(
                 new ArabicEnglishText("القاهرة", "Cairo"),
-                "Cairo", "Downtown", "Tahrir", "1"),
+                "Cairo",
+                "Downtown",
+                "Tahrir",
+                "1"
+            ),
             taxProfile: CustomerTaxProfile.B2BRegistered(
-                EgyptianTin.Parse("987654321"), false, vat.Id));
-        db.Add(vat); db.Add(supplier); db.Add(customer);
+                EgyptianTin.Parse("987654321"),
+                false,
+                vat.Id
+            )
+        );
+        db.Add(vat);
+        db.Add(supplier);
+        db.Add(customer);
         await db.SaveChangesAsync();
         return (supplier, customer, vat);
     }

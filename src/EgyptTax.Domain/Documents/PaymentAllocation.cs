@@ -37,7 +37,8 @@ public sealed class PaymentAllocation
         Guid? customerReceiptVoucherId,
         Guid targetDocumentId,
         DocumentType targetDocumentType,
-        MoneyEgp allocatedAmount)
+        MoneyEgp allocatedAmount
+    )
     {
         var parentSet =
             (supplierPaymentVoucherId.HasValue ? 1 : 0)
@@ -45,7 +46,8 @@ public sealed class PaymentAllocation
         if (parentSet != 1)
         {
             throw new ArgumentException(
-                "Exactly one of {SupplierPaymentVoucherId, CustomerReceiptVoucherId} MUST be non-null.");
+                "Exactly one of {SupplierPaymentVoucherId, CustomerReceiptVoucherId} MUST be non-null."
+            );
         }
         if (targetDocumentId == Guid.Empty)
         {
@@ -53,27 +55,35 @@ public sealed class PaymentAllocation
         }
         if (allocatedAmount.Amount <= 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(allocatedAmount),
-                "Allocated amount must be positive.");
+            throw new ArgumentOutOfRangeException(
+                nameof(allocatedAmount),
+                "Allocated amount must be positive."
+            );
         }
         // Symmetry: a supplier-payment allocation MUST target a
         // PurchaseInvoice; a customer-receipt allocation MUST target
         // a SalesInvoice or CreditNote. Wrong-side combos are
         // structural bugs the application would never produce
         // intentionally; refuse them at construction.
-        if (supplierPaymentVoucherId.HasValue
-            && targetDocumentType is not DocumentType.PurchaseInvoice)
+        if (
+            supplierPaymentVoucherId.HasValue
+            && targetDocumentType is not DocumentType.PurchaseInvoice
+        )
         {
             throw new ArgumentException(
                 $"Supplier-payment allocations MUST target PurchaseInvoice; got {targetDocumentType}.",
-                nameof(targetDocumentType));
+                nameof(targetDocumentType)
+            );
         }
-        if (customerReceiptVoucherId.HasValue
-            && targetDocumentType is not (DocumentType.SalesInvoice or DocumentType.CreditNote))
+        if (
+            customerReceiptVoucherId.HasValue
+            && targetDocumentType is not (DocumentType.SalesInvoice or DocumentType.CreditNote)
+        )
         {
             throw new ArgumentException(
                 $"Customer-receipt allocations MUST target SalesInvoice or CreditNote; got {targetDocumentType}.",
-                nameof(targetDocumentType));
+                nameof(targetDocumentType)
+            );
         }
 
         SupplierPaymentVoucherId = supplierPaymentVoucherId;

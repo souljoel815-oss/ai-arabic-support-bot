@@ -21,4 +21,5 @@ public sealed record PurchaseDocumentRiskContext(
     Supplier? Supplier,
     IReadOnlyList<Attachment> Attachments,
     IReadOnlyList<PurchaseInvoiceFingerprint> SupplierInvoiceFingerprints,
-    DateTime NowUtc);
+    DateTime NowUtc
+);

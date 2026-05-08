@@ -11,7 +11,9 @@ public class ValidationBehaviorTests
     [Fact]
     public async Task NoValidators_PassesThroughToHandler()
     {
-        var sut = new ValidationBehavior<PingCommand, string>(Array.Empty<IValidator<PingCommand>>());
+        var sut = new ValidationBehavior<PingCommand, string>(
+            Array.Empty<IValidator<PingCommand>>()
+        );
         var next = Substitute.For<RequestHandlerDelegate<string>>();
         next().Returns(Task.FromResult("ok"));
 

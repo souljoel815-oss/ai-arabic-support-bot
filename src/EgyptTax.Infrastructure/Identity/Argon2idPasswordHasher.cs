@@ -27,16 +27,26 @@ public sealed class Argon2idPasswordHasher : IPasswordHasher
         ArgumentException.ThrowIfNullOrEmpty(password);
 
         var salt = RandomNumberGenerator.GetBytes(SaltLengthBytes);
-        var hash = ComputeHash(password, salt, DefaultMemoryKiB, DefaultIterations, DefaultParallelism);
+        var hash = ComputeHash(
+            password,
+            salt,
+            DefaultMemoryKiB,
+            DefaultIterations,
+            DefaultParallelism
+        );
 
-        var paramsSegment = string.Create(CultureInfo.InvariantCulture,
-            $"m={DefaultMemoryKiB},t={DefaultIterations},p={DefaultParallelism}");
+        var paramsSegment = string.Create(
+            CultureInfo.InvariantCulture,
+            $"m={DefaultMemoryKiB},t={DefaultIterations},p={DefaultParallelism}"
+        );
 
-        return string.Join('$',
+        return string.Join(
+            '$',
             Algorithm,
             paramsSegment,
             Convert.ToBase64String(salt),
-            Convert.ToBase64String(hash));
+            Convert.ToBase64String(hash)
+        );
     }
 
     public bool Verify(string password, string hash)
@@ -73,7 +83,13 @@ public sealed class Argon2idPasswordHasher : IPasswordHasher
         return CryptographicOperations.FixedTimeEquals(actual, expected);
     }
 
-    private static byte[] ComputeHash(string password, byte[] salt, int memoryKiB, int iterations, int parallelism)
+    private static byte[] ComputeHash(
+        string password,
+        byte[] salt,
+        int memoryKiB,
+        int iterations,
+        int parallelism
+    )
     {
         using var argon = new Argon2id(Encoding.UTF8.GetBytes(password))
         {
@@ -85,11 +101,17 @@ public sealed class Argon2idPasswordHasher : IPasswordHasher
         return argon.GetBytes(HashLengthBytes);
     }
 
-    private static bool TryParseParams(string paramSegment, out int memKiB, out int iterations, out int parallelism)
+    private static bool TryParseParams(
+        string paramSegment,
+        out int memKiB,
+        out int iterations,
+        out int parallelism
+    )
     {
         memKiB = iterations = parallelism = 0;
         var values = paramSegment.Split(',');
-        if (values.Length != 3) return false;
+        if (values.Length != 3)
+            return false;
 
         return TryParseKv(values[0], "m", out memKiB)
             && TryParseKv(values[1], "t", out iterations)
@@ -100,9 +122,11 @@ public sealed class Argon2idPasswordHasher : IPasswordHasher
     {
         value = 0;
         var eq = segment.IndexOf('=', StringComparison.Ordinal);
-        if (eq < 1) return false;
+        if (eq < 1)
+            return false;
         var key = segment[..eq];
         var raw = segment[(eq + 1)..];
-        return key == expectedKey && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+        return key == expectedKey
+            && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
     }
 }

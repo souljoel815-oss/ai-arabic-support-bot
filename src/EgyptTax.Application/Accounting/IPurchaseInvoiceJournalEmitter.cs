@@ -22,5 +22,6 @@ public interface IPurchaseInvoiceJournalEmitter
     Task EmitForPurchaseInvoiceAsync(
         PurchaseInvoice invoice,
         DateTime postedAtUtc,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }

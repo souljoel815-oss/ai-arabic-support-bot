@@ -45,31 +45,49 @@ public class InvoicePdfFieldsTests
 
         var (text, imageCount) = ReadPdf(pdf);
 
-        text.Should().Contain("Tax Invoice", because: "section A — document type label MUST be present");
-        text.Should().Contain(fixture.Invoice.DocumentNumber!,
-            because: "section A — canonical document number MUST appear");
-        text.Should().Contain(fixture.Issuer.LegalName.English,
-            because: "section B — issuer legal name");
-        text.Should().Contain(fixture.Issuer.TaxRegistrationNumber,
-            because: "section B — issuer TIN MUST appear");
-        text.Should().Contain(fixture.Issuer.CommercialRegistrationNumber,
-            because: "section B — commercial registration number");
-        text.Should().Contain(fixture.Receiver.Name.English,
-            because: "section C — customer name");
-        text.Should().Contain(fixture.Invoice.CustomerTaxProfileSnapshot.TinValue!,
-            because: "section C — customer TIN MUST appear because customer is B2BRegistered (FR-040)");
-        text.Should().Contain(fixture.Invoice.GrandTotal.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
-            because: "section E — grand total numeric");
-        text.Should().Contain("Subtotal",
-            because: "section E — invoice subtotal label");
-        text.Should().Contain("VAT total",
-            because: "section E — VAT total label");
-        text.Should().Contain("In words",
-            because: "section E — Arabic-words rendering label");
-        text.Should().Contain("Posted by",
-            because: "section F — posted-by user identity");
-        imageCount.Should().BeGreaterThan(0,
-            because: "section F — Document Verification Seal QR MUST be embedded as an image");
+        text.Should()
+            .Contain("Tax Invoice", because: "section A — document type label MUST be present");
+        text.Should()
+            .Contain(
+                fixture.Invoice.DocumentNumber!,
+                because: "section A — canonical document number MUST appear"
+            );
+        text.Should()
+            .Contain(fixture.Issuer.LegalName.English, because: "section B — issuer legal name");
+        text.Should()
+            .Contain(
+                fixture.Issuer.TaxRegistrationNumber,
+                because: "section B — issuer TIN MUST appear"
+            );
+        text.Should()
+            .Contain(
+                fixture.Issuer.CommercialRegistrationNumber,
+                because: "section B — commercial registration number"
+            );
+        text.Should().Contain(fixture.Receiver.Name.English, because: "section C — customer name");
+        text.Should()
+            .Contain(
+                fixture.Invoice.CustomerTaxProfileSnapshot.TinValue!,
+                because: "section C — customer TIN MUST appear because customer is B2BRegistered (FR-040)"
+            );
+        text.Should()
+            .Contain(
+                fixture.Invoice.GrandTotal.Amount.ToString(
+                    "F2",
+                    System.Globalization.CultureInfo.InvariantCulture
+                ),
+                because: "section E — grand total numeric"
+            );
+        text.Should().Contain("Subtotal", because: "section E — invoice subtotal label");
+        text.Should().Contain("VAT total", because: "section E — VAT total label");
+        text.Should().Contain("In words", because: "section E — Arabic-words rendering label");
+        text.Should().Contain("Posted by", because: "section F — posted-by user identity");
+        imageCount
+            .Should()
+            .BeGreaterThan(
+                0,
+                because: "section F — Document Verification Seal QR MUST be embedded as an image"
+            );
     }
 
     [Fact]
@@ -81,10 +99,16 @@ public class InvoicePdfFieldsTests
         var (text, _) = ReadPdf(pdf);
 
         text.Should().Contain("Tax Invoice");
-        text.Should().NotContain("Simplified",
-            because: "B2BUnregistered receivers receive a regular Tax Invoice, not a Simplified one");
-        text.Should().NotContain("Customer TIN:",
-            because: "FR-040 — only B2BRegistered receivers carry a customer TIN line");
+        text.Should()
+            .NotContain(
+                "Simplified",
+                because: "B2BUnregistered receivers receive a regular Tax Invoice, not a Simplified one"
+            );
+        text.Should()
+            .NotContain(
+                "Customer TIN:",
+                because: "FR-040 — only B2BRegistered receivers carry a customer TIN line"
+            );
     }
 
     [Fact]
@@ -95,25 +119,36 @@ public class InvoicePdfFieldsTests
 
         var (text, _) = ReadPdf(pdf);
 
-        text.Should().Contain("Simplified Tax Invoice",
-            because: "section A — document type label MUST switch to Simplified for B2C receivers");
-        text.Should().NotContain("Customer TIN:",
-            because: "FR-040 — only B2BRegistered receivers carry a customer TIN line");
+        text.Should()
+            .Contain(
+                "Simplified Tax Invoice",
+                because: "section A — document type label MUST switch to Simplified for B2C receivers"
+            );
+        text.Should()
+            .NotContain(
+                "Customer TIN:",
+                because: "FR-040 — only B2BRegistered receivers carry a customer TIN line"
+            );
     }
 
     [Fact]
     public void Qr_Seal_Image_Present_On_Every_Invoice()
     {
-        foreach (var profile in new[] {
-            CustomerTaxProfileType.B2BRegistered,
-            CustomerTaxProfileType.B2BUnregistered,
-            CustomerTaxProfileType.B2CConsumer })
+        foreach (
+            var profile in new[]
+            {
+                CustomerTaxProfileType.B2BRegistered,
+                CustomerTaxProfileType.B2BUnregistered,
+                CustomerTaxProfileType.B2CConsumer,
+            }
+        )
         {
             var fixture = NewFixture(profile);
             var pdf = _renderer.Render(fixture.Request);
             var (_, imageCount) = ReadPdf(pdf);
-            imageCount.Should().BeGreaterThan(0,
-                because: $"section F — QR seal MUST be embedded for {profile}");
+            imageCount
+                .Should()
+                .BeGreaterThan(0, because: $"section F — QR seal MUST be embedded for {profile}");
         }
     }
 
@@ -128,8 +163,9 @@ public class InvoicePdfFieldsTests
         // round-trip from the rendered PDF needs OCR-level QR scanning
         // and is left for the print-fidelity test in T078's spec list.)
         var decoded = DocumentSealCodec.Decode(fixture.Request.SealQrPayload);
-        decoded.Should().NotBeNull(
-            because: "the seal handed to the renderer MUST be a valid EGT1 seal");
+        decoded
+            .Should()
+            .NotBeNull(because: "the seal handed to the renderer MUST be a valid EGT1 seal");
         decoded!.DocumentNumber.Should().Be(fixture.Invoice.DocumentNumber);
     }
 
@@ -140,27 +176,37 @@ public class InvoicePdfFieldsTests
         var pdf = _renderer.Render(fixture.Request);
 
         pdf.Should().NotBeNull();
-        pdf.Length.Should().BeGreaterThan(1000,
-            because: "a real bilingual invoice PDF is several KB at minimum");
+        pdf.Length.Should()
+            .BeGreaterThan(1000, because: "a real bilingual invoice PDF is several KB at minimum");
 
         // PDF magic header.
-        pdf.AsSpan(0, 4).ToArray().Should().Equal(new byte[] { 0x25, 0x50, 0x44, 0x46 },
-            because: "the file MUST start with the PDF magic %PDF");
+        pdf.AsSpan(0, 4)
+            .ToArray()
+            .Should()
+            .Equal(
+                new byte[] { 0x25, 0x50, 0x44, 0x46 },
+                because: "the file MUST start with the PDF magic %PDF"
+            );
     }
 
     [Fact]
     public void Render_Throws_For_Unposted_Draft()
     {
         var fixture = NewFixture(CustomerTaxProfileType.B2BRegistered);
-        var draft = SalesInvoice.CreateDraft(fixture.Receiver.Id, fixture.Receiver.TaxProfile,
-            new DateOnly(2026, 5, 7));
+        var draft = SalesInvoice.CreateDraft(
+            fixture.Receiver.Id,
+            fixture.Receiver.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         draft.AddLine(Guid.NewGuid(), 1m, MoneyEgp.From(100m), Guid.NewGuid(), 14m);
         var bad = fixture.Request with { Invoice = draft };
 
         var act = () => _renderer.Render(bad);
 
-        act.Should().Throw<InvalidOperationException>(
-            because: "FR-027 / INV-002 — only Posted documents have a stable canonical form to render");
+        act.Should()
+            .Throw<InvalidOperationException>(
+                because: "FR-027 / INV-002 — only Posted documents have a stable canonical form to render"
+            );
     }
 
     private static (string Text, int ImageCount) ReadPdf(byte[] pdf)
@@ -180,8 +226,7 @@ public class InvoicePdfFieldsTests
     /// equivalents.
     /// </summary>
     private static string NormalizeLigatures(string text) =>
-        text
-            .Replace("ﬀ", "ff", StringComparison.Ordinal)
+        text.Replace("ﬀ", "ff", StringComparison.Ordinal)
             .Replace("ﬁ", "fi", StringComparison.Ordinal)
             .Replace("ﬂ", "fl", StringComparison.Ordinal)
             .Replace("ﬃ", "ffi", StringComparison.Ordinal)
@@ -189,7 +234,12 @@ public class InvoicePdfFieldsTests
             .Replace("ﬅ", "st", StringComparison.Ordinal)
             .Replace("ﬆ", "st", StringComparison.Ordinal);
 
-    private sealed record Fixture(SalesInvoice Invoice, Company Issuer, Customer Receiver, InvoicePdfRequest Request);
+    private sealed record Fixture(
+        SalesInvoice Invoice,
+        Company Issuer,
+        Customer Receiver,
+        InvoicePdfRequest Request
+    );
 
     private static Fixture NewFixture(CustomerTaxProfileType profileType)
     {
@@ -203,8 +253,10 @@ public class InvoicePdfFieldsTests
                 regionCity: "Downtown",
                 street: "Tahrir",
                 buildingNumber: "12",
-                postalCode: "11511"),
-            taxpayerActivityCode: "0001");
+                postalCode: "11511"
+            ),
+            taxpayerActivityCode: "0001"
+        );
 
         var vat = new VatCategory(
             code: "Standard",
@@ -212,28 +264,35 @@ public class InvoicePdfFieldsTests
             ratePercent: 14m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            recoverableInputVat: true);
+            recoverableInputVat: true
+        );
 
         var item = new Item(
             code: "ITEM-001",
             name: new ArabicEnglishText("ساعة استشارة", "Consulting Hour"),
-            defaultVatCategoryId: vat.Id);
+            defaultVatCategoryId: vat.Id
+        );
 
         var customerAddress = PostalAddress.Create(
             display: new ArabicEnglishText("شارع النيل ٤٥", "45 Nile Street"),
             governorate: "Giza",
             regionCity: "Dokki",
             street: "Nile",
-            buildingNumber: "45");
+            buildingNumber: "45"
+        );
 
         var taxProfile = profileType switch
         {
-            CustomerTaxProfileType.B2BRegistered =>
-                CustomerTaxProfile.B2BRegistered(EgyptianTin.Parse("987654321"), false, vat.Id),
-            CustomerTaxProfileType.B2BUnregistered =>
-                CustomerTaxProfile.B2BUnregistered(false, vat.Id),
-            CustomerTaxProfileType.B2CConsumer =>
-                CustomerTaxProfile.B2CConsumer(false, vat.Id),
+            CustomerTaxProfileType.B2BRegistered => CustomerTaxProfile.B2BRegistered(
+                EgyptianTin.Parse("987654321"),
+                false,
+                vat.Id
+            ),
+            CustomerTaxProfileType.B2BUnregistered => CustomerTaxProfile.B2BUnregistered(
+                false,
+                vat.Id
+            ),
+            CustomerTaxProfileType.B2CConsumer => CustomerTaxProfile.B2CConsumer(false, vat.Id),
             _ => throw new ArgumentOutOfRangeException(nameof(profileType)),
         };
         var receiver = new Customer(
@@ -241,27 +300,41 @@ public class InvoicePdfFieldsTests
             name: new ArabicEnglishText("عميل تجريبي", "Test Customer LLC"),
             address: customerAddress,
             taxProfile: taxProfile,
-            phone: "+20 10 1234 5678");
+            phone: "+20 10 1234 5678"
+        );
 
-        var draft = SalesInvoice.CreateDraft(receiver.Id, receiver.TaxProfile, new DateOnly(2026, 5, 7));
-        draft.AddLine(item.Id, quantity: 1m, unitPrice: MoneyEgp.From(1_000m),
-            vatCategoryId: vat.Id, vatRatePercent: vat.RatePercent);
+        var draft = SalesInvoice.CreateDraft(
+            receiver.Id,
+            receiver.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
+        draft.AddLine(
+            item.Id,
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(1_000m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: vat.RatePercent
+        );
         draft.MarkPosted(
             documentNumber: "INV-2026-000123",
             postedByUserId: Guid.NewGuid(),
             postedAtUtc: new DateTime(2026, 5, 7, 11, 0, 0, DateTimeKind.Utc),
             postingMode: DocumentPostingMode.UnapprovedDirect,
-            approvalEnabled: false);
+            approvalEnabled: false
+        );
 
-        var sealPayload = DocumentSealCodec.Encode(new DocumentSealPayload(
-            DocumentType: SealedDocumentType.SalesInvoice,
-            DocumentNumber: draft.DocumentNumber!,
-            DocumentId: draft.Id,
-            GrandTotalPiastres: (long)(draft.GrandTotal.Amount * 100m),
-            AuditEntryHash: new byte[32],
-            AuditEntryIndex: 1L,
-            VerifyUrl: "/verify",
-            IssuerTin: issuer.TaxRegistrationNumber));
+        var sealPayload = DocumentSealCodec.Encode(
+            new DocumentSealPayload(
+                DocumentType: SealedDocumentType.SalesInvoice,
+                DocumentNumber: draft.DocumentNumber!,
+                DocumentId: draft.Id,
+                GrandTotalPiastres: (long)(draft.GrandTotal.Amount * 100m),
+                AuditEntryHash: new byte[32],
+                AuditEntryIndex: 1L,
+                VerifyUrl: "/verify",
+                IssuerTin: issuer.TaxRegistrationNumber
+            )
+        );
 
         var items = new Dictionary<Guid, ItemRenderInfo> { [item.Id] = new(item.Code, item.Name) };
         var vats = new Dictionary<Guid, VatCategoryRenderInfo>
@@ -275,7 +348,8 @@ public class InvoicePdfFieldsTests
             Items: items,
             VatCategories: vats,
             PostedByUserDisplayName: "Test Operator",
-            SealQrPayload: sealPayload);
+            SealQrPayload: sealPayload
+        );
 
         return new Fixture(draft, issuer, receiver, request);
     }

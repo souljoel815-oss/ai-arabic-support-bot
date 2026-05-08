@@ -16,7 +16,8 @@ public sealed record InviteAccountantFirmUserCommand(
     string FirmExternalIdentifier,
     string TemporaryPasswordHash,
     Guid InvitedByUserId,
-    Language PreferredLanguage = Language.Ar);
+    Language PreferredLanguage = Language.Ar
+);
 
 /// <summary>US8 / FR-049 — invitee accepts. Idempotent.</summary>
 public sealed record AcceptInvitationCommand(Guid UserId);

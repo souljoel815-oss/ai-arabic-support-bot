@@ -17,10 +17,10 @@ public readonly record struct SupplierTaxProfile(
     SupplierTaxProfileType ProfileType,
     string? TinValue,
     bool ReverseChargeFlag,
-    Guid? DefaultPurchaseVatCategoryId)
+    Guid? DefaultPurchaseVatCategoryId
+)
 {
-    public EgyptianTin? Tin =>
-        string.IsNullOrEmpty(TinValue) ? null : EgyptianTin.Parse(TinValue);
+    public EgyptianTin? Tin => string.IsNullOrEmpty(TinValue) ? null : EgyptianTin.Parse(TinValue);
 
     /// <summary>
     /// FR-020 / FR-041 — input VAT is recoverable only when the
@@ -33,14 +33,25 @@ public readonly record struct SupplierTaxProfile(
 
     public static SupplierTaxProfile RegisteredTaxpayer(
         EgyptianTin tin,
-        Guid? defaultPurchaseVatCategoryId) =>
-        new(SupplierTaxProfileType.RegisteredTaxpayer, tin.Value, false, defaultPurchaseVatCategoryId);
+        Guid? defaultPurchaseVatCategoryId
+    ) =>
+        new(
+            SupplierTaxProfileType.RegisteredTaxpayer,
+            tin.Value,
+            false,
+            defaultPurchaseVatCategoryId
+        );
 
     public static SupplierTaxProfile Unregistered(Guid? defaultPurchaseVatCategoryId) =>
         new(SupplierTaxProfileType.Unregistered, null, false, defaultPurchaseVatCategoryId);
 
     public static SupplierTaxProfile ForeignSupplier(Guid? defaultPurchaseVatCategoryId) =>
-        new(SupplierTaxProfileType.ForeignSupplier, null, ReverseChargeFlag: true, defaultPurchaseVatCategoryId);
+        new(
+            SupplierTaxProfileType.ForeignSupplier,
+            null,
+            ReverseChargeFlag: true,
+            defaultPurchaseVatCategoryId
+        );
 }
 
 public enum SupplierTaxProfileType

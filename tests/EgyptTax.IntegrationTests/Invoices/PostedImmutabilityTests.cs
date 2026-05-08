@@ -38,15 +38,19 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var posted = await PostInvoiceAsync(db);
 
-        var act = () => posted.AddLine(
-            itemId: Guid.NewGuid(),
-            quantity: 1m,
-            unitPrice: MoneyEgp.From(50m),
-            vatCategoryId: Guid.NewGuid(),
-            vatRatePercent: 14m);
+        var act = () =>
+            posted.AddLine(
+                itemId: Guid.NewGuid(),
+                quantity: 1m,
+                unitPrice: MoneyEgp.From(50m),
+                vatCategoryId: Guid.NewGuid(),
+                vatRatePercent: 14m
+            );
 
-        act.Should().Throw<InvalidOperationException>(
-            because: "the entity-level invariant rejects mutation of any non-Draft state per the SalesInvoice aggregate root design");
+        act.Should()
+            .Throw<InvalidOperationException>(
+                because: "the entity-level invariant rejects mutation of any non-Draft state per the SalesInvoice aggregate root design"
+            );
     }
 
     [Fact]
@@ -55,15 +59,20 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var posted = await PostInvoiceAsync(db);
 
-        var act = () => PostedDocumentImmutabilityGuard.EnsureNotPosted(
-            state: posted.State,
-            documentType: DocumentType.SalesInvoice,
-            documentId: posted.Id,
-            operation: "edit");
+        var act = () =>
+            PostedDocumentImmutabilityGuard.EnsureNotPosted(
+                state: posted.State,
+                documentType: DocumentType.SalesInvoice,
+                documentId: posted.Id,
+                operation: "edit"
+            );
 
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*credit note*",
-               because: "FR-012 + FR-013 — the rejection MUST surface the credit-note correction path for tax-impacting documents");
+        act.Should()
+            .Throw<InvalidOperationException>()
+            .WithMessage(
+                "*credit note*",
+                because: "FR-012 + FR-013 — the rejection MUST surface the credit-note correction path for tax-impacting documents"
+            );
     }
 
     [Fact]
@@ -72,19 +81,30 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var posted = await PostInvoiceAsync(db);
 
-        var act = () => PostedDocumentImmutabilityGuard.EnsureNotPosted(
-            state: posted.State,
-            documentType: DocumentType.SalesInvoice,
-            documentId: posted.Id,
-            operation: "delete");
+        var act = () =>
+            PostedDocumentImmutabilityGuard.EnsureNotPosted(
+                state: posted.State,
+                documentType: DocumentType.SalesInvoice,
+                documentId: posted.Id,
+                operation: "delete"
+            );
 
         var ex = act.Should().Throw<InvalidOperationException>().Which;
-        ex.Message.Should().Contain("credit note (FR-013)",
-            because: "tax-impacting documents are corrected via credit note per FR-013");
-        ex.Message.Should().Contain("delete",
-            because: "the message MUST name the rejected operation so the audit trail is unambiguous");
-        ex.Message.Should().Contain(posted.Id.ToString("D"),
-            because: "the message MUST identify the document so an operator can locate it");
+        ex.Message.Should()
+            .Contain(
+                "credit note (FR-013)",
+                because: "tax-impacting documents are corrected via credit note per FR-013"
+            );
+        ex.Message.Should()
+            .Contain(
+                "delete",
+                because: "the message MUST name the rejected operation so the audit trail is unambiguous"
+            );
+        ex.Message.Should()
+            .Contain(
+                posted.Id.ToString("D"),
+                because: "the message MUST identify the document so an operator can locate it"
+            );
     }
 
     [Fact]
@@ -93,15 +113,20 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var posted = await PostInvoiceAsync(db);
 
-        var act = () => PostedDocumentImmutabilityGuard.EnsureNotPosted(
-            state: posted.State,
-            documentType: DocumentType.SalesInvoice,
-            documentId: posted.Id,
-            operation: "void");
+        var act = () =>
+            PostedDocumentImmutabilityGuard.EnsureNotPosted(
+                state: posted.State,
+                documentType: DocumentType.SalesInvoice,
+                documentId: posted.Id,
+                operation: "void"
+            );
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*Posted and immutable*",
-                because: "FR-027 — voiding a Posted document is forbidden; only the credit-note path corrects it");
+        act.Should()
+            .Throw<InvalidOperationException>()
+            .WithMessage(
+                "*Posted and immutable*",
+                because: "FR-027 — voiding a Posted document is forbidden; only the credit-note path corrects it"
+            );
     }
 
     [Fact]
@@ -119,14 +144,22 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
             .Include(i => i.Lines)
             .FirstAsync(i => i.Id == invoiceId);
 
-        reloaded.State.Should().Be(DocumentState.Posted,
-            because: "the State column MUST round-trip as Posted after T080's posting flow");
+        reloaded
+            .State.Should()
+            .Be(
+                DocumentState.Posted,
+                because: "the State column MUST round-trip as Posted after T080's posting flow"
+            );
 
-        var act = () => PostedDocumentImmutabilityGuard.EnsureNotPosted(
-            reloaded.State, DocumentType.SalesInvoice, reloaded.Id, "edit");
+        var act = () =>
+            PostedDocumentImmutabilityGuard.EnsureNotPosted(
+                reloaded.State,
+                DocumentType.SalesInvoice,
+                reloaded.Id,
+                "edit"
+            );
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*credit note*");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*credit note*");
     }
 
     [Fact]
@@ -136,9 +169,18 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
         var posted = await PostInvoiceAsync(db);
 
         // FR-026: Posted is terminal regardless of approval setting.
-        DocumentStateMachine.CanTransition(posted.State, DocumentState.Voided, approvalEnabled: false).Should().BeFalse();
-        DocumentStateMachine.CanTransition(posted.State, DocumentState.Voided, approvalEnabled: true).Should().BeFalse();
-        DocumentStateMachine.CanTransition(posted.State, DocumentState.Draft, approvalEnabled: false).Should().BeFalse();
+        DocumentStateMachine
+            .CanTransition(posted.State, DocumentState.Voided, approvalEnabled: false)
+            .Should()
+            .BeFalse();
+        DocumentStateMachine
+            .CanTransition(posted.State, DocumentState.Voided, approvalEnabled: true)
+            .Should()
+            .BeFalse();
+        DocumentStateMachine
+            .CanTransition(posted.State, DocumentState.Draft, approvalEnabled: false)
+            .Should()
+            .BeFalse();
     }
 
     private static async Task<SalesInvoice> PostInvoiceAsync(AppDbContext db)
@@ -149,13 +191,15 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
         var draft = SalesInvoice.CreateDraft(
             customerId: customer.Id,
             customerTaxProfileSnapshot: customer.TaxProfile,
-            documentDate: new DateOnly(2026, 5, 7));
+            documentDate: new DateOnly(2026, 5, 7)
+        );
         draft.AddLine(
             itemId: item.Id,
             quantity: 1m,
             unitPrice: MoneyEgp.From(1_000m),
             vatCategoryId: vat.Id,
-            vatRatePercent: vat.RatePercent);
+            vatRatePercent: vat.RatePercent
+        );
         db.Add(draft);
         await db.SaveChangesAsync();
 
@@ -166,10 +210,13 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
 
         return await handler.HandleAsync(
             new PostSalesInvoiceCommand(draft.Id, operatorUser.Id),
-            CancellationToken.None);
+            CancellationToken.None
+        );
     }
 
-    private static async Task<(Customer customer, Item item, VatCategory vat)> SeedMasterDataAsync(AppDbContext db)
+    private static async Task<(Customer customer, Item item, VatCategory vat)> SeedMasterDataAsync(
+        AppDbContext db
+    )
     {
         var vat = new VatCategory(
             code: "Standard",
@@ -177,7 +224,8 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
             ratePercent: 14m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            recoverableInputVat: true);
+            recoverableInputVat: true
+        );
 
         var customer = new Customer(
             code: "CUST-001",
@@ -187,16 +235,20 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
                 governorate: "Cairo",
                 regionCity: "Downtown",
                 street: "Tahrir",
-                buildingNumber: "1"),
+                buildingNumber: "1"
+            ),
             taxProfile: CustomerTaxProfile.B2BRegistered(
                 tin: EgyptianTin.Parse("987654321"),
                 vatExemption: false,
-                defaultSalesVatCategoryId: vat.Id));
+                defaultSalesVatCategoryId: vat.Id
+            )
+        );
 
         var item = new Item(
             code: "ITEM-001",
             name: new ArabicEnglishText("ساعة استشارة", "Consulting Hour"),
-            defaultVatCategoryId: vat.Id);
+            defaultVatCategoryId: vat.Id
+        );
 
         db.Add(vat);
         db.Add(customer);
@@ -212,7 +264,8 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
             displayName: new ArabicEnglishText("مشغل", "Operator"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
+            passwordMustChange: false
+        );
         db.Add(user);
         await db.SaveChangesAsync();
         return user;
@@ -227,7 +280,10 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
     {
         public List<AuditLogPayload> Captured { get; } = [];
 
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
@@ -240,7 +296,8 @@ public class PostedImmutabilityTests(SqlServerFixture fixture)
                 kind: payload.Kind,
                 payloadJson: payload.PayloadJson,
                 prevHash: new byte[32],
-                thisHash: new byte[32]);
+                thisHash: new byte[32]
+            );
             return Task.FromResult(entry);
         }
     }

@@ -58,10 +58,13 @@ public class AuditChainPerformanceTests(SqlServerFixture fixture)
         // Assert.
         report.IsValid.Should().BeTrue($"clean chain of {RowCount} entries should verify clean");
         report.Findings.Should().BeEmpty();
-        verifyStopwatch.Elapsed.Should().BeLessThan(
-            TimeSpan.FromSeconds(30),
-            $"SC-010 requires < 30 s for 1,000,000 entries; verify took {verifyStopwatch.Elapsed.TotalSeconds:F1} s "
-            + $"(seed {seedStopwatch.Elapsed.TotalSeconds:F1} s, load {loadStopwatch.Elapsed.TotalSeconds:F1} s)");
+        verifyStopwatch
+            .Elapsed.Should()
+            .BeLessThan(
+                TimeSpan.FromSeconds(30),
+                $"SC-010 requires < 30 s for 1,000,000 entries; verify took {verifyStopwatch.Elapsed.TotalSeconds:F1} s "
+                    + $"(seed {seedStopwatch.Elapsed.TotalSeconds:F1} s, load {loadStopwatch.Elapsed.TotalSeconds:F1} s)"
+            );
     }
 
     /// <summary>

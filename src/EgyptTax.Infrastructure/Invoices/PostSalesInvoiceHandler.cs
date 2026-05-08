@@ -43,7 +43,8 @@ public sealed class PostSalesInvoiceHandler
         IClock clock,
         IAuditLogStore auditLog,
         IJournalEntryEmitter? journalEmitter = null,
-        ITaxPeriodLockGuard? periodLockGuard = null)
+        ITaxPeriodLockGuard? periodLockGuard = null
+    )
     {
         _db = db;
         _allocator = allocator;
@@ -55,15 +56,18 @@ public sealed class PostSalesInvoiceHandler
 
     public async Task<SalesInvoice> HandleAsync(
         PostSalesInvoiceCommand command,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var invoice = await _db.Set<SalesInvoice>()
-            .Include(i => i.Lines)
-            .FirstOrDefaultAsync(i => i.Id == command.SalesInvoiceId, cancellationToken)
+        var invoice =
+            await _db.Set<SalesInvoice>()
+                .Include(i => i.Lines)
+                .FirstOrDefaultAsync(i => i.Id == command.SalesInvoiceId, cancellationToken)
             ?? throw new InvalidOperationException(
-                $"Sales invoice {command.SalesInvoiceId} not found.");
+                $"Sales invoice {command.SalesInvoiceId} not found."
+            );
 
         // FR-037 — reject backdated posts into a Locked tax period
         // BEFORE the document number is allocated. The audit chain
@@ -73,16 +77,24 @@ public sealed class PostSalesInvoiceHandler
         if (_periodLockGuard is not null)
         {
             var lockCheck = await _periodLockGuard.CheckVatMonthAsync(
-                invoice.DocumentDate, cancellationToken);
+                invoice.DocumentDate,
+                cancellationToken
+            );
             if (lockCheck.IsLocked)
             {
-                await _auditLog.AppendAsync(new AuditLogPayload(
-                    Kind: "tax_period.post_rejected",
-                    ActorUserId: command.PostedByUserId, ActorFirmName: null, CompanyId: Guid.Empty,
-                    PayloadJson: $$"""{"invoice_id":"{{invoice.Id:D}}","document_type":"SalesInvoice","document_date":"{{invoice.DocumentDate:yyyy-MM-dd}}","period_year":{{lockCheck.Year}},"period_month":{{lockCheck.MonthOrQuarter}}}"""),
-                    cancellationToken);
+                await _auditLog.AppendAsync(
+                    new AuditLogPayload(
+                        Kind: "tax_period.post_rejected",
+                        ActorUserId: command.PostedByUserId,
+                        ActorFirmName: null,
+                        CompanyId: Guid.Empty,
+                        PayloadJson: $$"""{"invoice_id":"{{invoice.Id:D}}","document_type":"SalesInvoice","document_date":"{{invoice.DocumentDate:yyyy-MM-dd}}","period_year":{{lockCheck.Year}},"period_month":{{lockCheck.MonthOrQuarter}}}"""
+                    ),
+                    cancellationToken
+                );
                 throw new InvalidOperationException(
-                    $"Cannot post sales invoice {invoice.Id}: document date {invoice.DocumentDate:yyyy-MM-dd} falls inside Locked VAT period {lockCheck.Year}-{lockCheck.MonthOrQuarter:D2} (FR-037). An Administrator must reopen the period before backdated posts are allowed.");
+                    $"Cannot post sales invoice {invoice.Id}: document date {invoice.DocumentDate:yyyy-MM-dd} falls inside Locked VAT period {lockCheck.Year}-{lockCheck.MonthOrQuarter:D2} (FR-037). An Administrator must reopen the period before backdated posts are allowed."
+                );
             }
         }
 
@@ -90,7 +102,9 @@ public sealed class PostSalesInvoiceHandler
         // CreditNote approval setting; regular invoices use SalesInvoice.
         // Derived from the entity rather than the command so the
         // call-site is the same regardless of document type.
-        var documentType = invoice.IsCreditNote ? DocumentType.CreditNote : DocumentType.SalesInvoice;
+        var documentType = invoice.IsCreditNote
+            ? DocumentType.CreditNote
+            : DocumentType.SalesInvoice;
         var approvalSetting = await _db.Set<DocumentTypeApprovalSetting>()
             .FirstOrDefaultAsync(s => s.DocumentType == documentType, cancellationToken);
         var approvalRequired = approvalSetting?.ApprovalRequired ?? true;
@@ -105,13 +119,17 @@ public sealed class PostSalesInvoiceHandler
         if (approvalRequired && invoice.State == DocumentState.Draft)
         {
             throw new InvalidOperationException(
-                $"Cannot post {documentType} {invoice.Id}: this document type requires approval (FR-026). " +
-                "Submit the document for approval, then have an Approver approve it before posting.");
+                $"Cannot post {documentType} {invoice.Id}: this document type requires approval (FR-026). "
+                    + "Submit the document for approval, then have an Approver approve it before posting."
+            );
         }
 
         var fiscalYear = invoice.DocumentDate.Year;
         var documentNumber = await _allocator.AllocateAsync(
-            documentType, fiscalYear, cancellationToken);
+            documentType,
+            fiscalYear,
+            cancellationToken
+        );
 
         var postingMode = approvalRequired
             ? DocumentPostingMode.ApprovedThenPosted
@@ -123,7 +141,8 @@ public sealed class PostSalesInvoiceHandler
             postedByUserId: command.PostedByUserId,
             postedAtUtc: nowUtc,
             postingMode: postingMode,
-            approvalEnabled: approvalRequired);
+            approvalEnabled: approvalRequired
+        );
 
         // FR-035 — open the ETA submission row in Pending state with
         // the regulator-imposed 7-day window so the dashboard (T083
@@ -134,7 +153,8 @@ public sealed class PostSalesInvoiceHandler
         var etaSubmission = new EtaSubmission(
             salesInvoiceId: invoice.Id,
             postedAtUtc: nowUtc,
-            nowUtc: nowUtc);
+            nowUtc: nowUtc
+        );
         _db.Add(etaSubmission);
 
         // T095 — emit the balanced journal entry IN THE SAME
@@ -155,8 +175,10 @@ public sealed class PostSalesInvoiceHandler
                 ActorUserId: command.PostedByUserId,
                 ActorFirmName: null,
                 CompanyId: Guid.Empty,
-                PayloadJson: BuildPayloadJson(invoice, postingMode)),
-            cancellationToken);
+                PayloadJson: BuildPayloadJson(invoice, postingMode)
+            ),
+            cancellationToken
+        );
 
         return invoice;
     }

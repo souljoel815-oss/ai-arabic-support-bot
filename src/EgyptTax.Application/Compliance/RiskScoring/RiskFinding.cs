@@ -14,7 +14,8 @@ public sealed record RiskFinding(
     RiskSeverity Severity,
     ArabicEnglishText Title,
     ArabicEnglishText Description,
-    string? FixHint = null);
+    string? FixHint = null
+);
 
 /// <summary>
 /// Per R-18: 4-level severity ladder. The bare ladder is sufficient

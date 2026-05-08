@@ -146,6 +146,28 @@ eval harness if production-grade SC-001/002/003 sign-offs are needed.
 - SC-005 KB-update timing under 10 minutes
 - SC-006 first-time visitor 3-turn UX
 
+## Sibling feature in this repo: Crypto Trading Bot
+
+This repository also hosts a second Spec-Kit-driven feature — a single-user,
+self-hosted crypto trading bot (Streamlit UI, CCXT exchange abstraction,
+SQLite persistence, Telegram alerts). It is currently in **Phase 1 scaffold**
+on the `003-crypto-trading-bot` branch. The full spec, plan, contracts,
+and 145-task implementation plan live at:
+
+- [`specs/003-crypto-trading-bot/spec.md`](specs/003-crypto-trading-bot/spec.md) — what it does and why
+- [`specs/003-crypto-trading-bot/plan.md`](specs/003-crypto-trading-bot/plan.md) — how it's built
+- [`specs/003-crypto-trading-bot/quickstart.md`](specs/003-crypto-trading-bot/quickstart.md) — install + run the MVP path
+- [`specs/003-crypto-trading-bot/tasks.md`](specs/003-crypto-trading-bot/tasks.md) — 145 dependency-ordered, story-grouped tasks
+
+To work on the trading bot, switch to its branch and follow the quickstart:
+
+```sh
+git switch 003-crypto-trading-bot
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+bot start
+```
+
 ## License
 
 This is a personal portfolio project. No license file is included; please

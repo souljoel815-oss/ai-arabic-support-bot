@@ -37,7 +37,7 @@ public static class DocumentStateMachine
             // Approval-enabled lifecycle.
             (DocumentState.Draft, DocumentState.Submitted) => true,
             (DocumentState.Submitted, DocumentState.Approved) => true,
-            (DocumentState.Submitted, DocumentState.Draft) => true,    // reject returns to Draft
+            (DocumentState.Submitted, DocumentState.Draft) => true, // reject returns to Draft
             (DocumentState.Approved, DocumentState.Posted) => true,
 
             // Direct-post lifecycle: only when approval is NOT required.
@@ -51,12 +51,17 @@ public static class DocumentStateMachine
     /// Performs the transition or throws if it is not allowed. Returns
     /// <paramref name="to"/> on success so call-sites can chain.
     /// </summary>
-    public static DocumentState Transition(DocumentState from, DocumentState to, bool approvalEnabled)
+    public static DocumentState Transition(
+        DocumentState from,
+        DocumentState to,
+        bool approvalEnabled
+    )
     {
         if (!CanTransition(from, to, approvalEnabled))
         {
             throw new InvalidOperationException(
-                $"Document state transition from {from} to {to} is not allowed (approvalEnabled={approvalEnabled}).");
+                $"Document state transition from {from} to {to} is not allowed (approvalEnabled={approvalEnabled})."
+            );
         }
         return to;
     }

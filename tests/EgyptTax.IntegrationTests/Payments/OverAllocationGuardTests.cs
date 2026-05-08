@@ -54,29 +54,38 @@ public class OverAllocationGuardTests(SqlServerFixture fixture)
         // allocate 1,500 to the invoice → exceeds the 1,140 open
         // balance.
         var voucher = CustomerReceiptVoucher.CreateDraft(
-            customer.Id, new DateOnly(2026, 5, 9),
-            PaymentMethod.BankTransfer, "RCV-OVER",
-            MoneyEgp.From(1_500m));
+            customer.Id,
+            new DateOnly(2026, 5, 9),
+            PaymentMethod.BankTransfer,
+            "RCV-OVER",
+            MoneyEgp.From(1_500m)
+        );
         db.Add(voucher);
         await db.SaveChangesAsync();
 
         var allocateHandler = new AllocatePaymentHandler(db);
-        var act = async () => await allocateHandler.HandleAsync(
-            new AllocateCustomerReceiptCommand(
-                CustomerReceiptVoucherId: voucher.Id,
-                TargetSalesInvoiceId: posted.Id,
-                AllocatedAmount: MoneyEgp.From(1_500m)),
-            CancellationToken.None);
+        var act = async () =>
+            await allocateHandler.HandleAsync(
+                new AllocateCustomerReceiptCommand(
+                    CustomerReceiptVoucherId: voucher.Id,
+                    TargetSalesInvoiceId: posted.Id,
+                    AllocatedAmount: MoneyEgp.From(1_500m)
+                ),
+                CancellationToken.None
+            );
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .Where(ex => ex.Message.Contains("FR-053", StringComparison.OrdinalIgnoreCase)
-                && ex.Message.Contains("open balance", StringComparison.OrdinalIgnoreCase));
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .Where(ex =>
+                ex.Message.Contains("FR-053", StringComparison.OrdinalIgnoreCase)
+                && ex.Message.Contains("open balance", StringComparison.OrdinalIgnoreCase)
+            );
 
         // No allocation row persisted.
-        var count = await db.Set<PaymentAllocation>().AsNoTracking()
+        var count = await db.Set<PaymentAllocation>()
+            .AsNoTracking()
             .CountAsync(a => a.CustomerReceiptVoucherId == voucher.Id);
-        count.Should().Be(0,
-            because: "the rejection MUST happen BEFORE the allocation lands");
+        count.Should().Be(0, because: "the rejection MUST happen BEFORE the allocation lands");
     }
 
     [Fact]
@@ -89,27 +98,39 @@ public class OverAllocationGuardTests(SqlServerFixture fixture)
         var (customer, item, vat, user) = await SeedSalesAsync(db);
         var posted = await PostSalesAsync(db, customer, item, vat, user, unitPrice: 1_000m);
 
-        var v1 = CustomerReceiptVoucher.CreateDraft(customer.Id,
-            new DateOnly(2026, 5, 9), PaymentMethod.Cash, "RCV-1",
-            MoneyEgp.From(1_000m));
+        var v1 = CustomerReceiptVoucher.CreateDraft(
+            customer.Id,
+            new DateOnly(2026, 5, 9),
+            PaymentMethod.Cash,
+            "RCV-1",
+            MoneyEgp.From(1_000m)
+        );
         db.Add(v1);
         await db.SaveChangesAsync();
         await new AllocatePaymentHandler(db).HandleAsync(
             new AllocateCustomerReceiptCommand(v1.Id, posted.Id, MoneyEgp.From(1_000m)),
-            CancellationToken.None);
+            CancellationToken.None
+        );
 
         // Second voucher tries 200 — only 140 of open balance remains.
-        var v2 = CustomerReceiptVoucher.CreateDraft(customer.Id,
-            new DateOnly(2026, 5, 10), PaymentMethod.Cash, "RCV-2",
-            MoneyEgp.From(500m));
+        var v2 = CustomerReceiptVoucher.CreateDraft(
+            customer.Id,
+            new DateOnly(2026, 5, 10),
+            PaymentMethod.Cash,
+            "RCV-2",
+            MoneyEgp.From(500m)
+        );
         db.Add(v2);
         await db.SaveChangesAsync();
 
-        var act = async () => await new AllocatePaymentHandler(db).HandleAsync(
-            new AllocateCustomerReceiptCommand(v2.Id, posted.Id, MoneyEgp.From(200m)),
-            CancellationToken.None);
+        var act = async () =>
+            await new AllocatePaymentHandler(db).HandleAsync(
+                new AllocateCustomerReceiptCommand(v2.Id, posted.Id, MoneyEgp.From(200m)),
+                CancellationToken.None
+            );
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
             .Where(ex => ex.Message.Contains("open balance", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -122,26 +143,45 @@ public class OverAllocationGuardTests(SqlServerFixture fixture)
         await using var db = await _fixture.CreateContextAsync();
         var (supplier, vat, user) = await SeedPurchaseAsync(db);
 
-        var draftInvoice = PurchaseInvoice.CreateDraft(supplier.Id, supplier.TaxProfile,
-            "SUP-DRAFT", new DateOnly(2026, 5, 9));
-        draftInvoice.AddLine(itemId: null, expenseCategoryId: Guid.NewGuid(),
-            quantity: 1m, unitPrice: MoneyEgp.From(500m),
-            vatCategoryId: vat.Id, vatRatePercent: vat.RatePercent,
-            deductibleFlag: false);
+        var draftInvoice = PurchaseInvoice.CreateDraft(
+            supplier.Id,
+            supplier.TaxProfile,
+            "SUP-DRAFT",
+            new DateOnly(2026, 5, 9)
+        );
+        draftInvoice.AddLine(
+            itemId: null,
+            expenseCategoryId: Guid.NewGuid(),
+            quantity: 1m,
+            unitPrice: MoneyEgp.From(500m),
+            vatCategoryId: vat.Id,
+            vatRatePercent: vat.RatePercent,
+            deductibleFlag: false
+        );
         db.Add(draftInvoice);
 
         var voucher = SupplierPaymentVoucher.CreateDraft(
-            supplier.Id, new DateOnly(2026, 5, 9),
-            PaymentMethod.BankTransfer, "PAY-X",
-            MoneyEgp.From(500m));
+            supplier.Id,
+            new DateOnly(2026, 5, 9),
+            PaymentMethod.BankTransfer,
+            "PAY-X",
+            MoneyEgp.From(500m)
+        );
         db.Add(voucher);
         await db.SaveChangesAsync();
 
-        var act = async () => await new AllocatePaymentHandler(db).HandleAsync(
-            new AllocateSupplierPaymentCommand(voucher.Id, draftInvoice.Id, MoneyEgp.From(100m)),
-            CancellationToken.None);
+        var act = async () =>
+            await new AllocatePaymentHandler(db).HandleAsync(
+                new AllocateSupplierPaymentCommand(
+                    voucher.Id,
+                    draftInvoice.Id,
+                    MoneyEgp.From(100m)
+                ),
+                CancellationToken.None
+            );
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
             .Where(ex => ex.Message.Contains("not Posted", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -159,70 +199,112 @@ public class OverAllocationGuardTests(SqlServerFixture fixture)
         var inv1 = await PostSalesAsync(db, customer, item, vat, user, unitPrice: 1_000m);
         var inv2 = await PostSalesAsync(db, customer, item, vat, user, unitPrice: 1_000m);
 
-        var voucher = CustomerReceiptVoucher.CreateDraft(customer.Id,
-            new DateOnly(2026, 5, 9), PaymentMethod.Cash, "RCV-CAP",
-            MoneyEgp.From(1_000m));
+        var voucher = CustomerReceiptVoucher.CreateDraft(
+            customer.Id,
+            new DateOnly(2026, 5, 9),
+            PaymentMethod.Cash,
+            "RCV-CAP",
+            MoneyEgp.From(1_000m)
+        );
         db.Add(voucher);
         await db.SaveChangesAsync();
 
         // First 800 OK.
         await new AllocatePaymentHandler(db).HandleAsync(
             new AllocateCustomerReceiptCommand(voucher.Id, inv1.Id, MoneyEgp.From(800m)),
-            CancellationToken.None);
+            CancellationToken.None
+        );
 
         // Second 300 would push voucher total to 1,100 > gross 1,000.
-        var act = async () => await new AllocatePaymentHandler(db).HandleAsync(
-            new AllocateCustomerReceiptCommand(voucher.Id, inv2.Id, MoneyEgp.From(300m)),
-            CancellationToken.None);
+        var act = async () =>
+            await new AllocatePaymentHandler(db).HandleAsync(
+                new AllocateCustomerReceiptCommand(voucher.Id, inv2.Id, MoneyEgp.From(300m)),
+                CancellationToken.None
+            );
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .Where(ex => ex.Message.Contains("FR-053", StringComparison.OrdinalIgnoreCase)
-                && ex.Message.Contains("voucher cap", StringComparison.OrdinalIgnoreCase));
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .Where(ex =>
+                ex.Message.Contains("FR-053", StringComparison.OrdinalIgnoreCase)
+                && ex.Message.Contains("voucher cap", StringComparison.OrdinalIgnoreCase)
+            );
     }
 
     private static async Task<SalesInvoice> PostSalesAsync(
-        AppDbContext db, Customer customer, Item item, VatCategory vat, User user, decimal unitPrice)
+        AppDbContext db,
+        Customer customer,
+        Item item,
+        VatCategory vat,
+        User user,
+        decimal unitPrice
+    )
     {
-        var draft = SalesInvoice.CreateDraft(customer.Id, customer.TaxProfile, new DateOnly(2026, 5, 9));
+        var draft = SalesInvoice.CreateDraft(
+            customer.Id,
+            customer.TaxProfile,
+            new DateOnly(2026, 5, 9)
+        );
         draft.AddLine(item.Id, 1m, MoneyEgp.From(unitPrice), vat.Id, vat.RatePercent);
         db.Add(draft);
         await db.SaveChangesAsync();
 
         var clock = new TestClock(new DateTime(2026, 5, 9, 11, 0, 0, DateTimeKind.Utc));
         var emitter = new SalesInvoiceJournalEmitter(db);
-        var handler = new PostSalesInvoiceHandler(db,
-            new SqlSequentialNumberAllocator(db), clock,
-            new CaptureAuditLogStore(), emitter);
+        var handler = new PostSalesInvoiceHandler(
+            db,
+            new SqlSequentialNumberAllocator(db),
+            clock,
+            new CaptureAuditLogStore(),
+            emitter
+        );
         return await handler.HandleAsync(
-            new PostSalesInvoiceCommand(draft.Id, user.Id), CancellationToken.None);
+            new PostSalesInvoiceCommand(draft.Id, user.Id),
+            CancellationToken.None
+        );
     }
 
     private static async Task<(Customer, Item, VatCategory, User)> SeedSalesAsync(AppDbContext db)
     {
         var vat = new VatCategory(
-            code: "Standard", name: new ArabicEnglishText("قياسي", "Standard"),
-            ratePercent: 14m, effectiveFromDate: new DateOnly(2026, 1, 1),
-            effectiveToDate: null, recoverableInputVat: true);
+            code: "Standard",
+            name: new ArabicEnglishText("قياسي", "Standard"),
+            ratePercent: 14m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: true
+        );
         var customer = new Customer(
             code: $"CUS-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("عميل", "Customer"),
             address: PostalAddress.Create(
                 new ArabicEnglishText("القاهرة", "Cairo"),
-                "Cairo", "Downtown", "Tahrir", "1"),
+                "Cairo",
+                "Downtown",
+                "Tahrir",
+                "1"
+            ),
             taxProfile: CustomerTaxProfile.B2BRegistered(
                 EgyptianTin.Parse("987654321"),
-                vatExemption: false, defaultSalesVatCategoryId: vat.Id));
+                vatExemption: false,
+                defaultSalesVatCategoryId: vat.Id
+            )
+        );
         var item = new Item(
             code: $"IT-{Guid.NewGuid():N}".Substring(0, 8),
             name: new ArabicEnglishText("بند", "Item"),
-            defaultVatCategoryId: vat.Id);
+            defaultVatCategoryId: vat.Id
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        db.Add(vat); db.Add(customer); db.Add(item); db.Add(user);
+            passwordMustChange: false
+        );
+        db.Add(vat);
+        db.Add(customer);
+        db.Add(item);
+        db.Add(user);
         await db.SaveChangesAsync();
         return (customer, item, vat, user);
     }
@@ -230,21 +312,32 @@ public class OverAllocationGuardTests(SqlServerFixture fixture)
     private static async Task<(Supplier, VatCategory, User)> SeedPurchaseAsync(AppDbContext db)
     {
         var vat = new VatCategory(
-            code: "Standard", name: new ArabicEnglishText("قياسي", "Standard"),
-            ratePercent: 14m, effectiveFromDate: new DateOnly(2026, 1, 1),
-            effectiveToDate: null, recoverableInputVat: true);
+            code: "Standard",
+            name: new ArabicEnglishText("قياسي", "Standard"),
+            ratePercent: 14m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: true
+        );
         var supplier = new Supplier(
             code: $"SUP-{Guid.NewGuid():N}".Substring(0, 12),
             name: new ArabicEnglishText("مورد", "Supplier"),
             address: new ArabicEnglishText("القاهرة", "Cairo"),
-            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(EgyptianTin.Parse("123456789"), vat.Id));
+            taxProfile: SupplierTaxProfile.RegisteredTaxpayer(
+                EgyptianTin.Parse("123456789"),
+                vat.Id
+            )
+        );
         var user = new User(
             email: $"op-{Guid.NewGuid():N}@firm.eg",
             displayName: new ArabicEnglishText("مشغل", "Op"),
             passwordHash: "argon2id$m=65536,t=3,p=4$AAAA$BBBB",
             preferredLanguage: Language.Ar,
-            passwordMustChange: false);
-        db.Add(vat); db.Add(supplier); db.Add(user);
+            passwordMustChange: false
+        );
+        db.Add(vat);
+        db.Add(supplier);
+        db.Add(user);
         await db.SaveChangesAsync();
         return (supplier, vat, user);
     }
@@ -257,15 +350,27 @@ public class OverAllocationGuardTests(SqlServerFixture fixture)
     private sealed class CaptureAuditLogStore : IAuditLogStore
     {
         public List<AuditLogPayload> Captured { get; } = [];
-        public Task<AuditLogEntry> AppendAsync(AuditLogPayload payload, CancellationToken cancellationToken = default)
+
+        public Task<AuditLogEntry> AppendAsync(
+            AuditLogPayload payload,
+            CancellationToken cancellationToken = default
+        )
         {
             ArgumentNullException.ThrowIfNull(payload);
             Captured.Add(payload);
-            return Task.FromResult(new AuditLogEntry(
-                index: Captured.Count, tsUtc: DateTime.UtcNow,
-                actorUserId: payload.ActorUserId, actorFirmName: payload.ActorFirmName,
-                companyId: payload.CompanyId, kind: payload.Kind, payloadJson: payload.PayloadJson,
-                prevHash: new byte[32], thisHash: new byte[32]));
+            return Task.FromResult(
+                new AuditLogEntry(
+                    index: Captured.Count,
+                    tsUtc: DateTime.UtcNow,
+                    actorUserId: payload.ActorUserId,
+                    actorFirmName: payload.ActorFirmName,
+                    companyId: payload.CompanyId,
+                    kind: payload.Kind,
+                    payloadJson: payload.PayloadJson,
+                    prevHash: new byte[32],
+                    thisHash: new byte[32]
+                )
+            );
         }
     }
 }

@@ -39,24 +39,25 @@ public sealed class SqlServerFixture : IAsyncLifetime
         // parameterized in T-SQL anyway).
         var dbName = $"EgyptTax_Test_{Guid.NewGuid():N}";
         var baseConn = _container.GetConnectionString();
-        var perTestConn = baseConn.Replace("Database=master", $"Database={dbName}", StringComparison.OrdinalIgnoreCase);
+        var perTestConn = baseConn.Replace(
+            "Database=master",
+            $"Database={dbName}",
+            StringComparison.OrdinalIgnoreCase
+        );
 
         // Bootstrap the database against master.
-        var bootstrap = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(baseConn)
-            .Options;
+        var bootstrap = new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(baseConn).Options;
         await using (var bootstrapCtx = new AppDbContext(bootstrap))
         {
 #pragma warning disable EF1002 // dbName is a server-generated GUID, not user input; CREATE DATABASE doesn't accept parameters anyway.
             await bootstrapCtx.Database.ExecuteSqlRawAsync(
-                $"IF DB_ID('{dbName}') IS NULL CREATE DATABASE [{dbName}];");
+                $"IF DB_ID('{dbName}') IS NULL CREATE DATABASE [{dbName}];"
+            );
 #pragma warning restore EF1002
         }
 
         // Open a per-test context against the new database; apply migrations.
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(perTestConn)
-            .Options;
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(perTestConn).Options;
         var ctx = new AppDbContext(options);
         await ctx.Database.MigrateAsync();
         return ctx;

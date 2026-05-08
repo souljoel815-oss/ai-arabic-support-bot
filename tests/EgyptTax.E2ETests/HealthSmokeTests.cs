@@ -48,8 +48,12 @@ public class HealthSmokeTests : IClassFixture<EgyptTaxE2EFactory>
         using var client = _factory.CreateClient();
 
         var response = await client.GetAsync(new Uri("/api/v1/health/ready", UriKind.Relative));
-        response.StatusCode.Should().Be(HttpStatusCode.OK,
-            because: "the InMemory EF provider is reachable and the checkpoint store is writable");
+        response
+            .StatusCode.Should()
+            .Be(
+                HttpStatusCode.OK,
+                because: "the InMemory EF provider is reachable and the checkpoint store is writable"
+            );
 
         var body = await response.Content.ReadFromJsonAsync<ReadyResponse>();
         body.Should().NotBeNull();
@@ -60,9 +64,22 @@ public class HealthSmokeTests : IClassFixture<EgyptTaxE2EFactory>
     }
 
     private sealed record LiveResponse(string Status, string Version);
-    private sealed record ReadyResponse(string Status, DbBlock Db, int NtpSkewSeconds, AuditCheckpointBlock AuditCheckpoint);
+
+    private sealed record ReadyResponse(
+        string Status,
+        DbBlock Db,
+        int NtpSkewSeconds,
+        AuditCheckpointBlock AuditCheckpoint
+    );
+
     private sealed record DbBlock(bool Reachable, int LatencyMs);
-    private sealed record AuditCheckpointBlock(string Mode, bool Writable, long LastIndex, DateTime LastWrittenAt);
+
+    private sealed record AuditCheckpointBlock(
+        string Mode,
+        bool Writable,
+        long LastIndex,
+        DateTime LastWrittenAt
+    );
 }
 
 /// <summary>
@@ -77,12 +94,16 @@ public sealed class EgyptTaxE2EFactory : WebApplicationFactory<Program>
     {
         builder.ConfigureServices(services =>
         {
-            var existing = services.Where(d => d.ServiceType == typeof(DbContextOptions<AppDbContext>)).ToList();
+            var existing = services
+                .Where(d => d.ServiceType == typeof(DbContextOptions<AppDbContext>))
+                .ToList();
             foreach (var d in existing)
             {
                 services.Remove(d);
             }
-            services.AddDbContext<AppDbContext>(opt => opt.UseInMemoryDatabase($"E2E_{Guid.NewGuid():N}"));
+            services.AddDbContext<AppDbContext>(opt =>
+                opt.UseInMemoryDatabase($"E2E_{Guid.NewGuid():N}")
+            );
         });
     }
 }

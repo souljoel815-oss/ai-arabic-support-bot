@@ -27,12 +27,14 @@ public static class InvoiceRenderingPipeline
         Company Issuer,
         Customer Receiver,
         InvoicePdfRequest PdfRequest,
-        EInvoiceRenderRequest EInvoiceRequest);
+        EInvoiceRenderRequest EInvoiceRequest
+    );
 
     public static async Task<Bundle?> LoadAsync(
         AppDbContext db,
         Guid invoiceId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var invoice = await db.Set<SalesInvoice>()
             .Include(i => i.Lines)
@@ -49,7 +51,8 @@ public static class InvoiceRenderingPipeline
             return null;
         }
 
-        var receiver = await db.Set<Customer>().AsNoTracking()
+        var receiver = await db.Set<Customer>()
+            .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == invoice.CustomerId, cancellationToken);
         if (receiver is null)
         {
@@ -57,31 +60,38 @@ public static class InvoiceRenderingPipeline
         }
 
         var itemIds = invoice.Lines.Select(l => l.ItemId).Distinct().ToArray();
-        var items = await db.Set<Item>().AsNoTracking()
+        var items = await db.Set<Item>()
+            .AsNoTracking()
             .Where(i => itemIds.Contains(i.Id))
             .ToDictionaryAsync(i => i.Id, cancellationToken);
 
         var vatIds = invoice.Lines.Select(l => l.VatCategoryId).Distinct().ToArray();
-        var vatCategories = await db.Set<VatCategory>().AsNoTracking()
+        var vatCategories = await db.Set<VatCategory>()
+            .AsNoTracking()
             .Where(v => vatIds.Contains(v.Id))
             .ToDictionaryAsync(v => v.Id, cancellationToken);
 
         var itemRender = items.ToDictionary(
             kv => kv.Key,
-            kv => new ItemRenderInfo(kv.Value.Code, kv.Value.Name));
+            kv => new ItemRenderInfo(kv.Value.Code, kv.Value.Name)
+        );
         var vatRender = vatCategories.ToDictionary(
             kv => kv.Key,
-            kv => new VatCategoryRenderInfo(kv.Value.Code, kv.Value.Name, kv.Value.RatePercent));
+            kv => new VatCategoryRenderInfo(kv.Value.Code, kv.Value.Name, kv.Value.RatePercent)
+        );
 
-        var sealPayload = DocumentSealCodec.Encode(new DocumentSealPayload(
-            DocumentType: SealedDocumentType.SalesInvoice,
-            DocumentNumber: invoice.DocumentNumber!,
-            DocumentId: invoice.Id,
-            GrandTotalPiastres: (long)(invoice.GrandTotal.Amount * 100m),
-            AuditEntryHash: new byte[32],
-            AuditEntryIndex: 1L,
-            VerifyUrl: "/api/v1/verify",
-            IssuerTin: issuer.TaxRegistrationNumber));
+        var sealPayload = DocumentSealCodec.Encode(
+            new DocumentSealPayload(
+                DocumentType: SealedDocumentType.SalesInvoice,
+                DocumentNumber: invoice.DocumentNumber!,
+                DocumentId: invoice.Id,
+                GrandTotalPiastres: (long)(invoice.GrandTotal.Amount * 100m),
+                AuditEntryHash: new byte[32],
+                AuditEntryIndex: 1L,
+                VerifyUrl: "/api/v1/verify",
+                IssuerTin: issuer.TaxRegistrationNumber
+            )
+        );
 
         OriginalInvoiceReference? originalRef = null;
         if (invoice.IsCreditNote && invoice.CreditNoteOfInvoiceId is { } sourceId)
@@ -93,7 +103,10 @@ public static class InvoiceRenderingPipeline
                 .FirstOrDefaultAsync(cancellationToken);
             if (source is not null && source.DocumentNumber is not null)
             {
-                originalRef = new OriginalInvoiceReference(source.DocumentNumber, source.DocumentDate);
+                originalRef = new OriginalInvoiceReference(
+                    source.DocumentNumber,
+                    source.DocumentDate
+                );
             }
         }
 
@@ -105,14 +118,16 @@ public static class InvoiceRenderingPipeline
             VatCategories: vatRender,
             PostedByUserDisplayName: "(unknown)",
             SealQrPayload: sealPayload,
-            OriginalInvoiceReference: originalRef);
+            OriginalInvoiceReference: originalRef
+        );
 
         var eInvoiceRequest = new EInvoiceRenderRequest(
             Invoice: invoice,
             Issuer: issuer,
             Receiver: receiver,
             ItemCodes: items.ToDictionary(kv => kv.Key, kv => kv.Value.Code),
-            VatCategoryCodes: vatCategories.ToDictionary(kv => kv.Key, kv => kv.Value.Code));
+            VatCategoryCodes: vatCategories.ToDictionary(kv => kv.Key, kv => kv.Value.Code)
+        );
 
         return new Bundle(invoice, issuer, receiver, pdfRequest, eInvoiceRequest);
     }

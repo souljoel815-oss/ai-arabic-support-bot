@@ -34,26 +34,42 @@ public class StraightLineDepreciationTests
             usefulLifeMonths: 60,
             depreciationMethod: DepreciationMethod.StraightLine,
             salvageValue: MoneyEgp.Zero,
-            convention: DepreciationConvention.FullMonth);
+            convention: DepreciationConvention.FullMonth
+        );
         asset.PutInService();
 
         // Year-1 schedule (Jan 2026 → Dec 2026 inclusive).
         var year1 = DepreciationEngine.ComputeMonthlySchedule(
             asset,
             fromMonth: new DateOnly(2026, 1, 1),
-            throughMonth: new DateOnly(2026, 12, 1));
+            throughMonth: new DateOnly(2026, 12, 1)
+        );
 
-        year1.Should().HaveCount(12,
-            because: "12 months of straight-line depreciation across the first fiscal year");
+        year1
+            .Should()
+            .HaveCount(
+                12,
+                because: "12 months of straight-line depreciation across the first fiscal year"
+            );
 
         var year1Total = year1.Sum(l => l.Amount.Amount);
-        year1Total.Should().BeApproximately(20_000m, precision: 1m,
-            because: "100k / 5 years = 20k/year (within rounding tolerance — 100k/60 = 1666.67 monthly × 12 ≈ 20,000.04)");
+        year1Total
+            .Should()
+            .BeApproximately(
+                20_000m,
+                precision: 1m,
+                because: "100k / 5 years = 20k/year (within rounding tolerance — 100k/60 = 1666.67 monthly × 12 ≈ 20,000.04)"
+            );
 
         // NBV at end of year 1.
         var nbvAtYearEnd = DepreciationEngine.NetBookValueAt(asset, new DateOnly(2026, 12, 31));
-        nbvAtYearEnd.Amount.Should().BeApproximately(80_000m, precision: 1m,
-            because: "FR-018 — NBV after one year of 5-year SL on a 100k asset is ~80k");
+        nbvAtYearEnd
+            .Amount.Should()
+            .BeApproximately(
+                80_000m,
+                precision: 1m,
+                because: "FR-018 — NBV after one year of 5-year SL on a 100k asset is ~80k"
+            );
     }
 
     [Fact]
@@ -72,13 +88,18 @@ public class StraightLineDepreciationTests
             usefulLifeMonths: 60,
             depreciationMethod: DepreciationMethod.StraightLine,
             salvageValue: MoneyEgp.Zero,
-            convention: DepreciationConvention.FullMonth);
+            convention: DepreciationConvention.FullMonth
+        );
         asset.PutInService();
 
         var full = DepreciationEngine.ComputeFullSchedule(asset);
         full.Should().HaveCount(60);
-        full.Sum(l => l.Amount.Amount).Should().Be(100_000m,
-            because: "the rounding remainder MUST be absorbed into the last period so lifetime depreciation = cost − salvage exactly");
+        full.Sum(l => l.Amount.Amount)
+            .Should()
+            .Be(
+                100_000m,
+                because: "the rounding remainder MUST be absorbed into the last period so lifetime depreciation = cost − salvage exactly"
+            );
 
         // NBV at end of life equals salvage (zero here).
         var nbvAtLifeEnd = DepreciationEngine.NetBookValueAt(asset, new DateOnly(2030, 12, 31));
@@ -99,16 +120,19 @@ public class StraightLineDepreciationTests
             usefulLifeMonths: 60,
             depreciationMethod: DepreciationMethod.StraightLine,
             salvageValue: MoneyEgp.From(10_000m),
-            convention: DepreciationConvention.FullMonth);
+            convention: DepreciationConvention.FullMonth
+        );
         asset.PutInService();
 
         var full = DepreciationEngine.ComputeFullSchedule(asset);
-        full.Sum(l => l.Amount.Amount).Should().Be(90_000m,
-            because: "depreciable base = cost − salvage = 100k − 10k = 90k");
+        full.Sum(l => l.Amount.Amount)
+            .Should()
+            .Be(90_000m, because: "depreciable base = cost − salvage = 100k − 10k = 90k");
 
-        DepreciationEngine.NetBookValueAt(asset, new DateOnly(2030, 12, 31))
-            .Amount.Should().Be(10_000m,
-                because: "FR-018 — NBV bottoms out at salvage value, never below");
+        DepreciationEngine
+            .NetBookValueAt(asset, new DateOnly(2030, 12, 31))
+            .Amount.Should()
+            .Be(10_000m, because: "FR-018 — NBV bottoms out at salvage value, never below");
     }
 
     [Fact]
@@ -124,9 +148,14 @@ public class StraightLineDepreciationTests
             usefulLifeMonths: 60,
             depreciationMethod: DepreciationMethod.StraightLine,
             salvageValue: MoneyEgp.Zero,
-            convention: DepreciationConvention.FullMonth);
+            convention: DepreciationConvention.FullMonth
+        );
 
-        DepreciationEngine.ComputeFullSchedule(asset).Should().BeEmpty(
-            because: "Draft assets aren't depreciable yet — the schedule is empty until PutInService transitions to InService");
+        DepreciationEngine
+            .ComputeFullSchedule(asset)
+            .Should()
+            .BeEmpty(
+                because: "Draft assets aren't depreciable yet — the schedule is empty until PutInService transitions to InService"
+            );
     }
 }

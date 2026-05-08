@@ -24,22 +24,20 @@ public sealed record InspectionBundleManifest(
     string TopLevelArchiveSha256,
     bool DraftsExcluded,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<Guid>? ExcludedDraftIds = null);
+        IReadOnlyList<Guid>? ExcludedDraftIds = null
+);
 
-public sealed record BundleCompany(
-    Guid CompanyId,
-    string Tin,
-    BundleBilingualName LegalName);
+public sealed record BundleCompany(Guid CompanyId, string Tin, BundleBilingualName LegalName);
 
 public sealed record BundleBilingualName(string Ar, string En);
 
 public sealed record BundlePeriod(
     int FiscalYear,
     string Kind,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    int? Quarter,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Quarter,
     string Start,
-    string End);
+    string End
+);
 
 public sealed record BundleFile(
     string RelativePath,
@@ -47,10 +45,12 @@ public sealed record BundleFile(
     long SizeBytes,
     string Category,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    Guid? LinkedDocumentId = null);
+        Guid? LinkedDocumentId = null
+);
 
 public sealed record BundleAuditChainExtract(
     long StartIndex,
     long EndIndex,
     string ExtractSha256,
-    bool VerifiedAtGeneration);
+    bool VerifiedAtGeneration
+);

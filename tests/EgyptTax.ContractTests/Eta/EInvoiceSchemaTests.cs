@@ -24,12 +24,18 @@ public class EInvoiceSchemaTests
     [Fact]
     public void GeneratedJson_ForB2BRegisteredCustomer_ValidatesAgainstContractSchema()
     {
-        var (invoice, issuer, receiver, request) = BuildFixture(CustomerTaxProfileType.B2BRegistered);
+        var (invoice, issuer, receiver, request) = BuildFixture(
+            CustomerTaxProfileType.B2BRegistered
+        );
         var json = new EInvoiceJsonGenerator().GenerateAsJson(request);
 
         var validation = ValidateAgainstSchema(json);
-        validation.IsValid.Should().BeTrue(
-            because: "B2B-Registered receivers MUST yield a schema-valid invoice (with TIN-bearing receiver.id). Errors: " + string.Join("; ", validation.Errors));
+        validation
+            .IsValid.Should()
+            .BeTrue(
+                because: "B2B-Registered receivers MUST yield a schema-valid invoice (with TIN-bearing receiver.id). Errors: "
+                    + string.Join("; ", validation.Errors)
+            );
 
         var node = JsonNode.Parse(json)!.AsObject();
         node["receiver"]!["type"]!.GetValue<string>().Should().Be("B");
@@ -39,17 +45,26 @@ public class EInvoiceSchemaTests
     [Fact]
     public void GeneratedJson_ForB2BUnregisteredCustomer_ValidatesAgainstContractSchema_AndOmitsReceiverId()
     {
-        var (invoice, issuer, receiver, request) = BuildFixture(CustomerTaxProfileType.B2BUnregistered);
+        var (invoice, issuer, receiver, request) = BuildFixture(
+            CustomerTaxProfileType.B2BUnregistered
+        );
         var json = new EInvoiceJsonGenerator().GenerateAsJson(request);
 
         var validation = ValidateAgainstSchema(json);
-        validation.IsValid.Should().BeTrue(
-            because: "B2B-Unregistered receivers MUST yield a schema-valid invoice with no TIN. Errors: " + string.Join("; ", validation.Errors));
+        validation
+            .IsValid.Should()
+            .BeTrue(
+                because: "B2B-Unregistered receivers MUST yield a schema-valid invoice with no TIN. Errors: "
+                    + string.Join("; ", validation.Errors)
+            );
 
         var node = JsonNode.Parse(json)!.AsObject();
         node["receiver"]!["type"]!.GetValue<string>().Should().Be("P");
-        node["receiver"]!.AsObject().ContainsKey("id").Should().BeFalse(
-            because: "FR-040 — only B2BRegistered receivers carry a TIN");
+        node["receiver"]!
+            .AsObject()
+            .ContainsKey("id")
+            .Should()
+            .BeFalse(because: "FR-040 — only B2BRegistered receivers carry a TIN");
     }
 
     [Fact]
@@ -59,8 +74,12 @@ public class EInvoiceSchemaTests
         var json = new EInvoiceJsonGenerator().GenerateAsJson(request);
 
         var validation = ValidateAgainstSchema(json);
-        validation.IsValid.Should().BeTrue(
-            because: "B2C consumer receivers MUST yield a schema-valid invoice. Errors: " + string.Join("; ", validation.Errors));
+        validation
+            .IsValid.Should()
+            .BeTrue(
+                because: "B2C consumer receivers MUST yield a schema-valid invoice. Errors: "
+                    + string.Join("; ", validation.Errors)
+            );
 
         var node = JsonNode.Parse(json)!.AsObject();
         node["receiver"]!["type"]!.GetValue<string>().Should().Be("P");
@@ -87,12 +106,19 @@ public class EInvoiceSchemaTests
     [Fact]
     public void GeneratedJson_LineCount_MatchesInvoiceLineCount()
     {
-        var (invoice, _, _, request) = BuildFixture(CustomerTaxProfileType.B2BRegistered, lineCount: 3);
+        var (invoice, _, _, request) = BuildFixture(
+            CustomerTaxProfileType.B2BRegistered,
+            lineCount: 3
+        );
         var json = new EInvoiceJsonGenerator().GenerateAsJson(request);
 
         var validation = ValidateAgainstSchema(json);
-        validation.IsValid.Should().BeTrue(
-            because: "multi-line invoices MUST validate. Errors: " + string.Join("; ", validation.Errors));
+        validation
+            .IsValid.Should()
+            .BeTrue(
+                because: "multi-line invoices MUST validate. Errors: "
+                    + string.Join("; ", validation.Errors)
+            );
 
         var lines = JsonNode.Parse(json)!.AsObject()["invoiceLines"]!.AsArray();
         lines.Should().HaveCount(invoice.Lines.Count);
@@ -102,32 +128,44 @@ public class EInvoiceSchemaTests
     public void Generate_ForUnpostedDraft_Throws()
     {
         var (issuer, receiver, vat) = BuildIssuerReceiverVat(CustomerTaxProfileType.B2BRegistered);
-        var draft = SalesInvoice.CreateDraft(receiver.Id, receiver.TaxProfile, new DateOnly(2026, 5, 7));
+        var draft = SalesInvoice.CreateDraft(
+            receiver.Id,
+            receiver.TaxProfile,
+            new DateOnly(2026, 5, 7)
+        );
         draft.AddLine(Guid.NewGuid(), 1m, MoneyEgp.From(100m), vat.Id, 14m);
         var request = new EInvoiceRenderRequest(
-            draft, issuer, receiver,
+            draft,
+            issuer,
+            receiver,
             ItemCodes: new Dictionary<Guid, string>(),
-            VatCategoryCodes: new Dictionary<Guid, string> { [vat.Id] = "Standard" });
+            VatCategoryCodes: new Dictionary<Guid, string> { [vat.Id] = "Standard" }
+        );
 
         var act = () => new EInvoiceJsonGenerator().GenerateAsJson(request);
-        act.Should().Throw<InvalidOperationException>(
-            because: "the eInvoice is the post-time wire format; pre-post drafts MUST not be submitted to ETA");
+        act.Should()
+            .Throw<InvalidOperationException>(
+                because: "the eInvoice is the post-time wire format; pre-post drafts MUST not be submitted to ETA"
+            );
     }
 
     private static SchemaValidationOutcome ValidateAgainstSchema(string json)
     {
         var node = JsonNode.Parse(json);
-        var results = Schema.Evaluate(node, new EvaluationOptions
-        {
-            OutputFormat = OutputFormat.List,
-            EvaluateAs = SpecVersion.Draft202012,
-        });
+        var results = Schema.Evaluate(
+            node,
+            new EvaluationOptions
+            {
+                OutputFormat = OutputFormat.List,
+                EvaluateAs = SpecVersion.Draft202012,
+            }
+        );
         if (results.IsValid)
         {
             return new SchemaValidationOutcome(true, Array.Empty<string>());
         }
-        var errors = results.Details
-            .Where(d => d.HasErrors)
+        var errors = results
+            .Details.Where(d => d.HasErrors)
             .SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation}: {e.Key}={e.Value}"))
             .ToArray();
         return new SchemaValidationOutcome(false, errors);
@@ -137,34 +175,49 @@ public class EInvoiceSchemaTests
 
     private static JsonSchema LoadSchema()
     {
-        var schemaPath = Path.Combine(AppContext.BaseDirectory, "contracts", "eta-einvoice.schema.json");
+        var schemaPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "contracts",
+            "eta-einvoice.schema.json"
+        );
         if (!File.Exists(schemaPath))
         {
             throw new FileNotFoundException(
-                $"Contract schema not found at {schemaPath}. The .csproj must copy it via the contracts/**/*.json glob.");
+                $"Contract schema not found at {schemaPath}. The .csproj must copy it via the contracts/**/*.json glob."
+            );
         }
         return JsonSchema.FromFile(schemaPath);
     }
 
-    private static (SalesInvoice invoice, Company issuer, Customer receiver, EInvoiceRenderRequest request)
-        BuildFixture(CustomerTaxProfileType profileType, int lineCount = 1)
+    private static (
+        SalesInvoice invoice,
+        Company issuer,
+        Customer receiver,
+        EInvoiceRenderRequest request
+    ) BuildFixture(CustomerTaxProfileType profileType, int lineCount = 1)
     {
         var (issuer, receiver, vat) = BuildIssuerReceiverVat(profileType);
 
         var item = new Item(
             code: "ITEM-001",
             name: new ArabicEnglishText("ساعة استشارة", "Consulting Hour"),
-            defaultVatCategoryId: vat.Id);
+            defaultVatCategoryId: vat.Id
+        );
 
         var draft = SalesInvoice.CreateDraft(
             customerId: receiver.Id,
             customerTaxProfileSnapshot: receiver.TaxProfile,
-            documentDate: new DateOnly(2026, 5, 7));
+            documentDate: new DateOnly(2026, 5, 7)
+        );
         for (var i = 0; i < lineCount; i++)
         {
-            draft.AddLine(item.Id, quantity: 1m + i,
+            draft.AddLine(
+                item.Id,
+                quantity: 1m + i,
                 unitPrice: MoneyEgp.From(500m + (100 * i)),
-                vatCategoryId: vat.Id, vatRatePercent: vat.RatePercent);
+                vatCategoryId: vat.Id,
+                vatRatePercent: vat.RatePercent
+            );
         }
 
         // Force the invoice into Posted state for the generator.
@@ -173,7 +226,8 @@ public class EInvoiceSchemaTests
             postedByUserId: Guid.NewGuid(),
             postedAtUtc: new DateTime(2026, 5, 7, 11, 0, 0, DateTimeKind.Utc),
             postingMode: DocumentPostingMode.UnapprovedDirect,
-            approvalEnabled: false);
+            approvalEnabled: false
+        );
 
         var itemCodes = new Dictionary<Guid, string> { [item.Id] = item.Code };
         var vatCodes = new Dictionary<Guid, string> { [vat.Id] = vat.Code };
@@ -182,7 +236,8 @@ public class EInvoiceSchemaTests
     }
 
     private static (Company issuer, Customer receiver, VatCategory vat) BuildIssuerReceiverVat(
-        CustomerTaxProfileType profileType)
+        CustomerTaxProfileType profileType
+    )
     {
         var issuer = new Company(
             legalName: new ArabicEnglishText("شركة الاختبار", "Test Company SAE"),
@@ -194,8 +249,10 @@ public class EInvoiceSchemaTests
                 regionCity: "Downtown",
                 street: "Tahrir",
                 buildingNumber: "12",
-                postalCode: "11511"),
-            taxpayerActivityCode: "0001");
+                postalCode: "11511"
+            ),
+            taxpayerActivityCode: "0001"
+        );
 
         var vat = new VatCategory(
             code: "Standard",
@@ -203,23 +260,29 @@ public class EInvoiceSchemaTests
             ratePercent: 14m,
             effectiveFromDate: new DateOnly(2026, 1, 1),
             effectiveToDate: null,
-            recoverableInputVat: true);
+            recoverableInputVat: true
+        );
 
         var customerAddress = PostalAddress.Create(
             display: new ArabicEnglishText("شارع النيل ٤٥", "45 Nile Street"),
             governorate: "Giza",
             regionCity: "Dokki",
             street: "Nile",
-            buildingNumber: "45");
+            buildingNumber: "45"
+        );
 
         var taxProfile = profileType switch
         {
-            CustomerTaxProfileType.B2BRegistered =>
-                CustomerTaxProfile.B2BRegistered(EgyptianTin.Parse("987654321"), false, vat.Id),
-            CustomerTaxProfileType.B2BUnregistered =>
-                CustomerTaxProfile.B2BUnregistered(false, vat.Id),
-            CustomerTaxProfileType.B2CConsumer =>
-                CustomerTaxProfile.B2CConsumer(false, vat.Id),
+            CustomerTaxProfileType.B2BRegistered => CustomerTaxProfile.B2BRegistered(
+                EgyptianTin.Parse("987654321"),
+                false,
+                vat.Id
+            ),
+            CustomerTaxProfileType.B2BUnregistered => CustomerTaxProfile.B2BUnregistered(
+                false,
+                vat.Id
+            ),
+            CustomerTaxProfileType.B2CConsumer => CustomerTaxProfile.B2CConsumer(false, vat.Id),
             _ => throw new ArgumentOutOfRangeException(nameof(profileType)),
         };
 
@@ -227,7 +290,8 @@ public class EInvoiceSchemaTests
             code: "CUST-001",
             name: new ArabicEnglishText("عميل تجريبي", "Test Customer LLC"),
             address: customerAddress,
-            taxProfile: taxProfile);
+            taxProfile: taxProfile
+        );
 
         return (issuer, receiver, vat);
     }
