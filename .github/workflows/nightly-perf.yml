@@ -1,0 +1,76 @@
+name: Nightly perf suite
+
+# T255 — runs the SC-perf gates indexed by
+# tests/EgyptTax.IntegrationTests/Performance/NightlyPerfSuite.cs.
+# Filter is `Category=Slow` so only the perf-tagged classes execute;
+# the meta-assertion in NightlyPerfSuite ensures every nightly perf
+# class actually carries the trait so the filter doesn't silently
+# miss one.
+#
+# Coverage:
+#   SC-002 — Reports.ReportPerformanceTests
+#   SC-006 — Numbering.ConcurrentPostingStressTests
+#   SC-010 — Audit.AuditChainPerformanceTests
+#   SC-012 — Compliance.EtaDashboardPerfTests
+#   SC-014 — Inspection.BundleEndToEndTests (the bundle-perf half;
+#            the firm-switch half stays in the default suite — it's
+#            fast enough that pinning it there catches dev-loop
+#            regressions on the firm-user lookup).
+#
+# SC-013 (QR seal round-trip + tamper) lives in the contract suite,
+# not the integration suite, because the seal is a pure-function
+# codec; it's covered by the regular CI run, not this nightly suite.
+#
+# BundleEndToEndTests requires EGYPTTAX_RUN_PERF=1 to actually
+# execute its assertions (otherwise the seed cost would dominate
+# even the nightly slot). The env is set below.
+
+on:
+  schedule:
+    # Run at 02:00 UTC (~04:00 Cairo) so the suite finishes before
+    # business hours. Cron is in UTC.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    # Allow manual runs via the Actions UI.
+
+jobs:
+  nightly-perf:
+    name: SC-perf gates (--filter Category=Slow)
+    runs-on: windows-2022
+    timeout-minutes: 60
+
+    env:
+      EGYPTTAX_RUN_PERF: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      - name: Restore
+        run: dotnet restore EgyptTax.sln
+
+      - name: Build (Release)
+        run: dotnet build EgyptTax.sln -c Release --no-restore
+
+      - name: Run nightly perf suite
+        run: |
+          dotnet test tests/EgyptTax.IntegrationTests/EgyptTax.IntegrationTests.csproj `
+            -c Release --no-build `
+            --filter "Category=Slow" `
+            --logger "console;verbosity=normal" `
+            --logger "trx;LogFileName=nightly-perf.trx"
+
+      - name: Upload TRX results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-perf-trx
+          path: "**/nightly-perf.trx"

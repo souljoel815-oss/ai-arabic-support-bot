@@ -20,6 +20,7 @@ namespace EgyptTax.IntegrationTests.Compliance;
 /// rows returned) and the perf bar.
 /// </summary>
 [Collection(SqlServerCollection.Name)]
+[Trait("Category", "Slow")]
 public class EtaDashboardPerfTests(SqlServerFixture fixture)
 {
     private readonly SqlServerFixture _fixture = fixture;

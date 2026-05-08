@@ -38,6 +38,7 @@ namespace EgyptTax.IntegrationTests.Inspection;
 /// demand and on the nightly perf suite (T255).
 /// </summary>
 [Collection(SqlServerCollection.Name)]
+[Trait("Category", "Slow")]
 public class BundleEndToEndTests(SqlServerFixture fixture) : IDisposable
 {
     private const int DocumentCount = 5_000;
