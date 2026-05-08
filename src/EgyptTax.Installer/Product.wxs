@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  T247 / R-24 / SC-001 — EgyptTax MSI installer source.
+
+  Built with WiX 5 via:
+    wix build src/EgyptTax.Installer/Product.wxs -o EgyptTax-Setup.msi -arch x64
+
+  Produces an MSI that installs the EgyptTax Web service into
+  Program Files, registers it as an auto-start Windows service,
+  opens HTTPS port 443 in the firewall, and runs the seeder to
+  apply EF migrations + create the first Administrator account.
+
+  Operator-prompted properties (set via the WiX UI dialog
+  sequence — see T247-deferred UI work below):
+    SQL_CONNECTION       — connection string to the SQL Server
+                           database; default uses Trusted_Connection
+                           against local default instance.
+    AUDIT_CHECKPOINT_MODE — "Sql" or "FileSystem" (FR-028 install-time
+                           choice); default "Sql".
+    ATTACHMENTS_ROOT     — directory for receipt uploads (FR-019);
+                           default %ProgramData%\EgyptTax\attachments.
+    NTP_SERVER           — clock-drift defense (FR-042); default
+                           time.windows.com.
+
+  Out of scope for the MVP installer (deferred):
+    * Custom UI dialog pages for the 4 properties above. Today the
+      properties are MSI-public + can be set via msiexec command-
+      line: `msiexec /i EgyptTax-Setup.msi SQL_CONNECTION="..."
+      AUDIT_CHECKPOINT_MODE=Sql ATTACHMENTS_ROOT="D:\..." `.
+      The full WixUI_Mondo dialog set + a custom property page is
+      Near-term.
+    * Per-environment SQL bootstrap (creating the database if it
+      doesn't exist — currently delegated to the Seeder CLI's
+      `--apply-migrations` mode, which uses EF Core's
+      `Database.MigrateAsync()`).
+
+  See docs/operator-runbook.md §1 for the install + bootstrap flow.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="EgyptTax"
+           Manufacturer="EgyptTax"
+           Version="1.0.0.0"
+           UpgradeCode="C8E3D7B6-1F5A-4B2C-9D8E-7F4A6E1B3C2D"
+           Compressed="yes"
+           InstallerVersion="500"
+           Scope="perMachine">
+
+    <SummaryInformation Description="EgyptTax — Egyptian SME accounting + tax compliance"
+                        Manufacturer="EgyptTax" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Operator-prompted properties (see comment above for current
+         msiexec-command-line bootstrap path). -->
+    <Property Id="SQL_CONNECTION"
+              Value="Server=.;Database=EgyptTax;Trusted_Connection=True;TrustServerCertificate=True"
+              Secure="yes" />
+    <Property Id="AUDIT_CHECKPOINT_MODE" Value="Sql" Secure="yes" />
+    <Property Id="ATTACHMENTS_ROOT"
+              Value="[CommonAppDataFolder]EgyptTax\attachments"
+              Secure="yes" />
+    <Property Id="NTP_SERVER" Value="time.windows.com" Secure="yes" />
+
+    <!-- Reject downgrade installs; require uninstall first. -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of EgyptTax is already installed." />
+
+    <!-- The single feature that ships everything. Future near-term
+         batches can split out a "Hangfire dashboard" or "Live ETA
+         client" feature for selective install. -->
+    <Feature Id="ProductFeature"
+             Title="EgyptTax"
+             Description="EgyptTax accounting + tax compliance service"
+             Level="1"
+             AllowAbsent="no">
+      <ComponentGroupRef Id="EgyptTaxComponents" />
+      <ComponentRef Id="ServiceConfigComponent" />
+      <ComponentRef Id="FirewallRuleComponent" />
+    </Feature>
+
+    <!-- Windows service registration. The .NET 8 publish output
+         lands in INSTALLFOLDER; the service runs `dotnet
+         EgyptTax.Web.dll` under the configured account.
+
+         Default account is NetworkService — operators using SQL
+         Windows-auth against a remote DB should change to a
+         dedicated domain account post-install via sc.exe. -->
+    <Component Id="ServiceConfigComponent"
+               Directory="INSTALLFOLDER"
+               Guid="A1B2C3D4-E5F6-7890-ABCD-1234567890AB">
+      <File Id="ServiceConfigStub"
+            Source="$(var.ProjectDir)appsettings.template.json"
+            KeyPath="yes" />
+      <ServiceInstall Id="EgyptTaxService"
+                      Name="EgyptTax"
+                      DisplayName="EgyptTax — Tax compliance service"
+                      Description="EgyptTax accounting + Egyptian tax compliance web service. See docs/operator-runbook.md."
+                      Type="ownProcess"
+                      Start="auto"
+                      ErrorControl="normal"
+                      Account="NT AUTHORITY\NetworkService"
+                      Vital="yes"
+                      Arguments=" " />
+      <ServiceControl Id="EgyptTaxServiceControl"
+                      Name="EgyptTax"
+                      Start="install"
+                      Stop="both"
+                      Remove="uninstall"
+                      Wait="yes" />
+    </Component>
+
+    <!-- HTTPS port 443 inbound rule so accountants on the LAN can
+         reach the web app. Operators running on a non-standard
+         port need to either edit Kestrel config + open that port
+         instead, or expose via IIS reverse-proxy on 443. -->
+    <Component Id="FirewallRuleComponent"
+               Directory="INSTALLFOLDER"
+               Guid="B2C3D4E5-F6A7-8901-BCDE-234567890ABC">
+      <File Id="FirewallStub"
+            Source="$(var.ProjectDir)appsettings.template.json"
+            Name="firewall-stub.json"
+            KeyPath="yes" />
+      <fw:FirewallException Id="EgyptTaxHttps"
+                            Name="EgyptTax HTTPS (443)"
+                            Description="Inbound HTTPS for the EgyptTax web service"
+                            Port="443"
+                            Protocol="tcp"
+                            Scope="any"
+                            Profile="all"
+                            IgnoreFailure="yes" />
+    </Component>
+
+    <!-- Custom action: invoke the EgyptTax.Web seed CLI after
+         install to apply EF migrations + create the first
+         Administrator. The action's exit code is checked; non-zero
+         rolls back the install. -->
+    <CustomAction Id="ApplyMigrationsAndSeed"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="[INSTALLFOLDER]EgyptTax.Web.exe seed --apply-migrations"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <!-- T257 — health-readiness probe gate. After the service starts,
+         the installer polls /api/v1/health/ready up to 10 times with
+         a 1s gap. Non-Healthy exit fails the install (rollback) so
+         the operator's "install complete" screen NEVER lies — it
+         only fires when the service is genuinely serving requests. -->
+    <CustomAction Id="VerifyHealthReady"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File [INSTALLFOLDER]verify-health.ps1"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <!-- Sequence the custom actions:
+         1. ApplyMigrationsAndSeed runs after files are copied but
+            before the service is started (we need the schema in
+            place before the service can connect cleanly).
+         2. VerifyHealthReady runs after the service has started.
+         3. Both run only on fresh install + upgrade, NOT on
+            uninstall. -->
+    <InstallExecuteSequence>
+      <Custom Action="ApplyMigrationsAndSeed"
+              After="InstallFiles"
+              Condition="NOT REMOVE" />
+      <Custom Action="VerifyHealthReady"
+              After="StartServices"
+              Condition="NOT REMOVE" />
+    </InstallExecuteSequence>
+
+    <!-- Standard install directory layout. -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="EgyptTax" />
+    </StandardDirectory>
+
+    <!-- Files: harvested at build time from the publish output via
+         the wixproj's HarvestDirectory call. The ComponentGroup is
+         declared by the harvested .wxs (Components.wxs) so we
+         don't enumerate every DLL by hand. See README.md. -->
+
+  </Package>
+</Wix>
