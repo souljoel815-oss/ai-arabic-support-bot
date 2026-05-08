@@ -51,6 +51,7 @@
 
   <ItemGroup Label="WiX 5 installer (T247)">
     <PackageVersion Include="WixToolset.Firewall.wixext" Version="5.0.2" />
+    <PackageVersion Include="WixToolset.Util.wixext" Version="5.0.2" />
   </ItemGroup>
 
   <ItemGroup Label="Logging (Serilog — operational, distinct from FR-028 audit log)">

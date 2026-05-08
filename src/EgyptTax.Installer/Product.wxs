@@ -44,7 +44,8 @@
   See docs/operator-runbook.md §1 for the install + bootstrap flow.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
   <Package Name="EgyptTax"
            Manufacturer="EgyptTax"
@@ -112,6 +113,12 @@
                  Guid="A2B3C4D5-E6F7-8901-2345-67890ABCDEF1">
         <File Id="VerifyHealthScript"
               Source="$(var.ProjectDir)verify-health.ps1"
+              KeyPath="yes" />
+      </Component>
+      <Component Id="ApplyConfigScriptComponent"
+                 Guid="C3D4E5F6-A7B8-9012-3456-7890ABCDEF12">
+        <File Id="ApplyConfigScript"
+              Source="$(var.ProjectDir)apply-config.ps1"
               KeyPath="yes" />
       </Component>
     </ComponentGroup>
@@ -182,6 +189,47 @@
                             IgnoreFailure="yes" />
     </Component>
 
+    <!-- T247-fix-A: write appsettings.Production.json from the
+         operator-supplied MSI properties BEFORE the seed CLI fires.
+         Without this, the seed CLI's chained config has no
+         connection string + exits with code 4 "No connection
+         string found" + the MSI rolls back. The runtime web
+         service ALSO consumes this file, so the same config bridge
+         covers both the install-time seed AND post-install
+         service operation.
+
+         Uses WixToolset.Util.wixext's WixQuietExec helper: the
+         SetProperty resolves [SQL_CONNECTION] etc. at "execute"
+         sequence time (when public props are available) + writes
+         the resolved command line into the WixQuietExecCmdLine
+         property. The util:WixQuietExec CA reads that property +
+         executes the command as a deferred LocalSystem-context
+         process — sidesteps the deferred-CA can't-read-public-
+         props limitation. -->
+    <!-- Trimmed param list to fit MSI's CustomAction.Target 255-char
+         column (ICE03). Only the connection string is essential —
+         the other properties (audit-checkpoint mode, attachments
+         root, NTP server) all have sensible defaults in the
+         apply-config.ps1 script + can be reconfigured post-install
+         by hand-editing appsettings.Production.json.
+
+         IMPORTANT: SetProperty.Id MUST match the deferred CA's Id
+         (not "WixQuietExecCmdLine" or any other name) — that's how
+         MSI auto-routes the value as the CA's CustomActionData,
+         which is where util:WixQuietExec reads its command line
+         from. Mismatching IDs gives WixQuietExec error 0x80070057
+         "Failed to get command line data". -->
+    <SetProperty Id="ApplyConfig"
+                 Value='"powershell.exe" -ExecutionPolicy Bypass -File "[INSTALLFOLDER]apply-config.ps1" -SqlConnection "[SQL_CONNECTION]"'
+                 Sequence="execute"
+                 Before="ApplyConfig" />
+    <CustomAction Id="ApplyConfig"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
     <!-- Custom action: invoke the EgyptTax.Web seed CLI after
          install to apply EF migrations + create the first
          Administrator. The action's exit code is checked; non-zero
@@ -222,8 +270,11 @@
            2. DeleteService removes the registration from SCM.
            3. Standard RemoveFiles tears down the disk install. -->
     <InstallExecuteSequence>
-      <Custom Action="ApplyMigrationsAndSeed"
+      <Custom Action="ApplyConfig"
               After="InstallFiles"
+              Condition="NOT REMOVE" />
+      <Custom Action="ApplyMigrationsAndSeed"
+              After="ApplyConfig"
               Condition="NOT REMOVE" />
       <Custom Action="CreateService"
               After="ApplyMigrationsAndSeed"

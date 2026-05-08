@@ -60,6 +60,11 @@
        declared in Product.wxs. -->
   <ItemGroup>
     <PackageReference Include="WixToolset.Firewall.wixext" />
+    <!-- Util extension provides WixQuietExec — used by the
+         ApplyConfig CA to run a PowerShell script with a command
+         line resolved from SetProperty (so MSI public properties
+         like SQL_CONNECTION reach the deferred CA's process). -->
+    <PackageReference Include="WixToolset.Util.wixext" />
   </ItemGroup>
 
 </Project>
