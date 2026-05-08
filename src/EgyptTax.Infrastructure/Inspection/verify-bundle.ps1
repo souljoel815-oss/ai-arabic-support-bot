@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Verifies a Tax Inspection Bundle on a clean Windows machine
     without the EgyptTax application installed.
@@ -87,7 +87,7 @@ Write-Host "[verify-bundle] Generated: $($manifest.generatedAt)"
 Write-Host "[verify-bundle] Files: $($manifest.files.Count)"
 if ($manifest.draftsExcluded) {
     $excludedCount = if ($null -ne $manifest.excludedDraftIds) { $manifest.excludedDraftIds.Count } else { 0 }
-    Write-Host "[verify-bundle] WARNING: drafts-excluded bundle ($excludedCount draft(s) omitted)." -ForegroundColor Yellow
+    Write-Host "[verify-bundle] WARNING: drafts-excluded bundle. Drafts omitted: $excludedCount" -ForegroundColor Yellow
 }
 Write-Host ""
 
@@ -146,7 +146,8 @@ foreach ($file in $manifest.files) {
 }
 
 Write-Host ""
-Write-Host "[verify-bundle] Verified: $verified / $($manifest.files.Count) file(s)."
+$totalFiles = $manifest.files.Count
+Write-Host "[verify-bundle] Verified: $verified / $totalFiles files."
 
 if ($failures.Count -eq 0) {
     Write-Host "[verify-bundle] BUNDLE INTEGRITY: PASS" -ForegroundColor Green
@@ -159,7 +160,8 @@ if ($failures.Count -eq 0) {
     exit 0
 }
 
-Write-Host "[verify-bundle] BUNDLE INTEGRITY: FAIL ($($failures.Count) finding(s))" -ForegroundColor Red
+$failureCount = $failures.Count
+Write-Host "[verify-bundle] BUNDLE INTEGRITY: FAIL. Findings: $failureCount" -ForegroundColor Red
 Write-Host ""
 $failures | Format-Table -AutoSize
 exit 1

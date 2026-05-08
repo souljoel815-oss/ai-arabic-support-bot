@@ -1,0 +1,6 @@
+# PowerShell scripts MUST stay CRLF. PowerShell 5.1's parser choked on
+# the LF-only verify-bundle.ps1 with cryptic "The string is missing the
+# terminator" errors. UTF-8 BOM is preserved as file content (Git treats
+# it as bytes). See BundleVerifierScriptRoundTripTests for the regression
+# guard that catches a future re-normalisation.
+*.ps1 text eol=crlf
