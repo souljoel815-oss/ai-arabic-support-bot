@@ -24,6 +24,7 @@ internal sealed class WhtCertificateConfiguration : IEntityTypeConfiguration<Wht
         b.Property(c => c.CertificateNumber).HasColumnName("certificate_number")
             .HasMaxLength(64).IsUnicode(false).IsRequired();
         b.Property(c => c.IssuedAtUtc).HasColumnName("issued_at_utc").HasColumnType("datetime2(3)").IsRequired();
+        b.Property(c => c.IncludedInForm41FilingId).HasColumnName("included_in_form41_filing_id");
 
         b.ComplexProperty(c => c.AmountWithheld,
             p => p.Property(x => x.Amount).HasColumnName("amount_withheld").HasColumnType("decimal(19,2)").IsRequired());
@@ -41,5 +42,12 @@ internal sealed class WhtCertificateConfiguration : IEntityTypeConfiguration<Wht
         b.HasIndex(c => c.SourceInvoiceId).HasDatabaseName("ix_wht_certificates_source_invoice_id");
         b.HasIndex(c => c.CounterpartyId).HasDatabaseName("ix_wht_certificates_counterparty_id");
         b.HasIndex(c => c.Date).HasDatabaseName("ix_wht_certificates_date");
+
+        // Form 41 generator filters on this column to skip
+        // already-included certs; filtered index keeps the index
+        // tiny (most rows have it null until a filing covers them).
+        b.HasIndex(c => c.IncludedInForm41FilingId)
+            .HasFilter("[included_in_form41_filing_id] IS NOT NULL")
+            .HasDatabaseName("ix_wht_certificates_included_in_form41_filing_id");
     }
 }

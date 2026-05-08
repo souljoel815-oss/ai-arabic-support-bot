@@ -34,6 +34,14 @@ public sealed class WhtCertificate
     public string CertificateNumber { get; init; } = "";
     public DateTime IssuedAtUtc { get; init; }
 
+    /// <summary>FR-046 / US7 scenario 3 / T200 — back-pointer to
+    /// the Form 41 filing this cert was included in. Stamped by
+    /// <see cref="MarkIncludedInForm41Filing"/> when MarkForm41Filed
+    /// runs against the cert's quarter; once non-null it can never
+    /// be re-set, so a cert can never appear in two filings
+    /// (US7 scenario 3 immutability).</summary>
+    public Guid? IncludedInForm41FilingId { get; private set; }
+
     private WhtCertificate() { }
 
     public WhtCertificate(
@@ -86,6 +94,27 @@ public sealed class WhtCertificate
         AmountWithheld = amountWithheld;
         CertificateNumber = certificateNumber;
         IssuedAtUtc = issuedAtUtc;
+    }
+
+    /// <summary>FR-046 / US7 scenario 3 / T200 — stamps the back-
+    /// pointer to the Form 41 filing this cert was included in.
+    /// Refuses if already non-null: a cert MUST be included in
+    /// exactly one filing, never two (the inspector would see
+    /// the same withholding accrual counted twice in different
+    /// quarters' Form 41s).</summary>
+    public void MarkIncludedInForm41Filing(Guid form41FilingId)
+    {
+        if (form41FilingId == Guid.Empty)
+        {
+            throw new ArgumentException("Form41FilingId is required.", nameof(form41FilingId));
+        }
+        if (IncludedInForm41FilingId is { } existing)
+        {
+            throw new InvalidOperationException(
+                $"WhtCertificate {Id} is already included in Form 41 filing {existing}; " +
+                "a single cert MAY NOT appear in two filings (FR-046 / US7 scenario 3 immutability).");
+        }
+        IncludedInForm41FilingId = form41FilingId;
     }
 }
 

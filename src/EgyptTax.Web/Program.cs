@@ -89,6 +89,11 @@ builder.Services.AddScoped<EgyptTax.Application.Wht.IWhtCertificatePayloadBuilde
 // US7 / T209 / FR-046 — Form 41 quarterly WHT filing generator.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Wht.GenerateForm41Handler>();
 
+// US7 / T210 / FR-046 / scenario 3 — mark a generated Form 41
+// as Filed; stamps included WHT certs with the filing id so they
+// can never appear in another filing (T200 immutability).
+builder.Services.AddScoped<EgyptTax.Infrastructure.Wht.MarkForm41FiledHandler>();
+
 // Differentiator 1 (Tax Risk Score) — rules registered as singletons
 // because they are stateless; the scorer fans out across every
 // registered rule. Adding a new rule = adding one AddSingleton line.

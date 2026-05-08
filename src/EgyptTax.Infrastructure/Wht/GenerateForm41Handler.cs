@@ -78,10 +78,14 @@ public sealed class GenerateForm41Handler
 
         var (periodStart, periodEnd) = QuarterDates(command.FiscalYear, command.Quarter);
 
-        // Pull supplier-side outbound certificates for the quarter.
+        // Pull supplier-side outbound certificates for the quarter
+        // that haven't been stamped into a prior filing already
+        // (FR-046 / US7 scenario 3 immutability — once a cert is
+        // included in a Filed Form 41, it never appears in another).
         var certs = await _db.Set<WhtCertificate>().AsNoTracking()
             .Where(c => c.Direction == WhtCertificateDirection.OutboundToSupplier
-                && c.Date >= periodStart && c.Date <= periodEnd)
+                && c.Date >= periodStart && c.Date <= periodEnd
+                && c.IncludedInForm41FilingId == null)
             .OrderBy(c => c.Date).ThenBy(c => c.CertificateNumber)
             .ToListAsync(cancellationToken);
 
@@ -143,16 +147,26 @@ public sealed class GenerateForm41Handler
         var totalWithheld = lines.Sum(l => l.AmountWithheld);
 
         // Reconciliation: WHT-payable account balance accrued
-        // inside the quarter (SUM of credits to WhtPayable from
-        // journal entries posted in the period).
+        // inside the quarter, summed across BOTH the auto-emitted
+        // JournalEntry rows (the supplier-payment posts) AND the
+        // manual JournalVoucher rows (operator adjustments). A
+        // missing source would silently let the operator file dirty
+        // — exactly the regression T200 catches.
         var startUtc = periodStart.ToDateTime(TimeOnly.MinValue);
         var endExclusive = periodEnd.AddDays(1).ToDateTime(TimeOnly.MinValue);
-        var whtPayableAccrued = await (
+        var fromJournalEntries = await (
             from e in _db.Set<JournalEntry>().AsNoTracking()
             from l in e.Lines
             where e.PostedAtUtc >= startUtc && e.PostedAtUtc < endExclusive
                 && l.AccountCode == ChartOfAccountCodes.WhtPayable
             select l.Credit.Amount - l.Debit.Amount).SumAsync(cancellationToken);
+        var fromJournalVouchers = await (
+            from v in _db.Set<JournalVoucher>().AsNoTracking()
+            from l in v.Lines
+            where v.Date >= periodStart && v.Date <= periodEnd
+                && l.AccountCode == ChartOfAccountCodes.WhtPayable
+            select l.Credit.Amount - l.Debit.Amount).SumAsync(cancellationToken);
+        var whtPayableAccrued = fromJournalEntries + fromJournalVouchers;
 
         var matches = whtPayableAccrued == totalWithheld;
         var discrepancy = matches ? (decimal?)null : whtPayableAccrued - totalWithheld;
