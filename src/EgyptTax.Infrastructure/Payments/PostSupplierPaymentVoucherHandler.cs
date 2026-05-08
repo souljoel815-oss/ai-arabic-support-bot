@@ -3,8 +3,11 @@ using EgyptTax.Application.Accounting;
 using EgyptTax.Application.Audit;
 using EgyptTax.Application.Numbering;
 using EgyptTax.Application.Payments;
+using EgyptTax.Application.Wht;
 using EgyptTax.Domain.Audit;
 using EgyptTax.Domain.Documents;
+using EgyptTax.Domain.MasterData;
+using EgyptTax.Domain.Tax;
 using EgyptTax.Domain.Workflow;
 using EgyptTax.Infrastructure.Persistence;
 using EgyptTax.SharedKernel.Time;
@@ -29,19 +32,22 @@ public sealed class PostSupplierPaymentVoucherHandler
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
     private readonly ISupplierPaymentVoucherJournalEmitter? _journalEmitter;
+    private readonly IWhtComputeService? _whtCompute;
 
     public PostSupplierPaymentVoucherHandler(
         AppDbContext db,
         IDocumentNumberAllocator allocator,
         IClock clock,
         IAuditLogStore auditLog,
-        ISupplierPaymentVoucherJournalEmitter? journalEmitter = null)
+        ISupplierPaymentVoucherJournalEmitter? journalEmitter = null,
+        IWhtComputeService? whtCompute = null)
     {
         _db = db;
         _allocator = allocator;
         _clock = clock;
         _auditLog = auditLog;
         _journalEmitter = journalEmitter;
+        _whtCompute = whtCompute;
     }
 
     public async Task<SupplierPaymentVoucher> HandleAsync(
@@ -61,6 +67,40 @@ public sealed class PostSupplierPaymentVoucherHandler
             DocumentType.SupplierPaymentVoucher, fiscalYear, cancellationToken);
 
         var nowUtc = _clock.UtcNow;
+
+        // FR-045 / US7 — when the operator supplied a WHT category,
+        // compute the WHT amount, generate an outbound certificate,
+        // and apply the split on the voucher BEFORE MarkPosted so
+        // the emitted JE picks up the 3-line shape.
+        WhtCertificate? cert = null;
+        if (command.WhtCategoryCode is not null
+            && command.WhtSourceInvoiceId is { } invoiceId
+            && _whtCompute is not null)
+        {
+            var compute = await _whtCompute.ComputeAsync(
+                command.WhtCategoryCode, voucher.PaymentDate,
+                voucher.GrossPaymentAmount, WhtApplicableTo.SuppliersServices,
+                cancellationToken);
+            if (compute is null)
+            {
+                throw new InvalidOperationException(
+                    $"WHT category '{command.WhtCategoryCode}' is not effective on payment date {voucher.PaymentDate:yyyy-MM-dd} for SuppliersServices direction. Cannot apply WHT split.");
+            }
+            cert = new WhtCertificate(
+                direction: WhtCertificateDirection.OutboundToSupplier,
+                date: voucher.PaymentDate,
+                counterpartyId: voucher.SupplierId,
+                sourceVoucherId: voucher.Id,
+                sourceInvoiceId: invoiceId,
+                whtCategoryId: compute.WhtCategoryId,
+                rateAppliedPercent: compute.RateAppliedPercent,
+                amountWithheld: compute.AmountWithheld,
+                certificateNumber: $"WHT-{documentNumber}",
+                issuedAtUtc: nowUtc);
+            _db.Add(cert);
+            voucher.ApplyWhtSplit(compute.AmountWithheld, cert.Id);
+        }
+
         voucher.MarkPosted(documentNumber, command.PostedByUserId, nowUtc);
 
         if (_journalEmitter is not null)

@@ -3,10 +3,14 @@ using EgyptTax.Application.Accounting;
 using EgyptTax.Application.Audit;
 using EgyptTax.Application.Numbering;
 using EgyptTax.Application.Payments;
+using EgyptTax.Application.Wht;
 using EgyptTax.Domain.Audit;
 using EgyptTax.Domain.Documents;
+using EgyptTax.Domain.MasterData;
+using EgyptTax.Domain.Tax;
 using EgyptTax.Domain.Workflow;
 using EgyptTax.Infrastructure.Persistence;
+using EgyptTax.SharedKernel;
 using EgyptTax.SharedKernel.Time;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,19 +31,22 @@ public sealed class PostCustomerReceiptVoucherHandler
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
     private readonly ICustomerReceiptVoucherJournalEmitter? _journalEmitter;
+    private readonly IWhtComputeService? _whtCompute;
 
     public PostCustomerReceiptVoucherHandler(
         AppDbContext db,
         IDocumentNumberAllocator allocator,
         IClock clock,
         IAuditLogStore auditLog,
-        ICustomerReceiptVoucherJournalEmitter? journalEmitter = null)
+        ICustomerReceiptVoucherJournalEmitter? journalEmitter = null,
+        IWhtComputeService? whtCompute = null)
     {
         _db = db;
         _allocator = allocator;
         _clock = clock;
         _auditLog = auditLog;
         _journalEmitter = journalEmitter;
+        _whtCompute = whtCompute;
     }
 
     public async Task<CustomerReceiptVoucher> HandleAsync(
@@ -59,6 +66,49 @@ public sealed class PostCustomerReceiptVoucherHandler
             DocumentType.CustomerReceiptVoucher, fiscalYear, cancellationToken);
 
         var nowUtc = _clock.UtcNow;
+
+        // FR-052 / US7 — when the customer issued a WHT certificate
+        // (the customer withheld tax from their payment), record the
+        // inbound certificate row and apply the split on the voucher
+        // BEFORE MarkPosted. The customer-supplied amount is the
+        // authoritative value; we look up the category id for audit
+        // (the WhtComputeService just resolves the row, the amount
+        // it computes is informational here — the customer's number
+        // is what hits the books).
+        WhtCertificate? cert = null;
+        if (command.CustomerWhtCertificateNumber is not null
+            && command.CustomerWhtAmount is { } amount
+            && command.WhtCategoryCode is not null
+            && command.WhtSourceInvoiceId is { } invoiceId
+            && _whtCompute is not null)
+        {
+            // Resolve the category for audit (we record its id on the
+            // certificate row); the amount on the cert is the
+            // customer-supplied number.
+            var compute = await _whtCompute.ComputeAsync(
+                command.WhtCategoryCode, voucher.ReceiptDate,
+                voucher.GrossReceiptAmount, WhtApplicableTo.CustomersServices,
+                cancellationToken);
+            if (compute is null)
+            {
+                throw new InvalidOperationException(
+                    $"WHT category '{command.WhtCategoryCode}' is not effective on receipt date {voucher.ReceiptDate:yyyy-MM-dd} for CustomersServices direction.");
+            }
+            cert = new WhtCertificate(
+                direction: WhtCertificateDirection.InboundFromCustomer,
+                date: voucher.ReceiptDate,
+                counterpartyId: voucher.CustomerId,
+                sourceVoucherId: voucher.Id,
+                sourceInvoiceId: invoiceId,
+                whtCategoryId: compute.WhtCategoryId,
+                rateAppliedPercent: compute.RateAppliedPercent,
+                amountWithheld: MoneyEgp.From(amount),
+                certificateNumber: command.CustomerWhtCertificateNumber,
+                issuedAtUtc: nowUtc);
+            _db.Add(cert);
+            voucher.ApplyCustomerWhtCertificate(MoneyEgp.From(amount), cert.Id);
+        }
+
         voucher.MarkPosted(documentNumber, command.PostedByUserId, nowUtc);
 
         if (_journalEmitter is not null)
