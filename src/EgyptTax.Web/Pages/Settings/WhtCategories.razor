@@ -1,0 +1,160 @@
+@page "/settings/wht-categories"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>WHT categories (FR-045) / فئات الخصم</h1>
+
+<p>
+    <em>
+        Effective-from-dated rate table mirroring VAT categories.
+        Supersede a category by inserting a new row with a later
+        <strong>effective from</strong> date — the old row stays for
+        historical certificates.
+    </em>
+</p>
+
+@if (_categories is null)
+{
+    <p>Loading…</p>
+    return;
+}
+
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th>Code</th>
+            <th>Name (English)</th>
+            <th>Name (Arabic)</th>
+            <th class="num">Rate %</th>
+            <th>Effective from</th>
+            <th>Effective to</th>
+            <th>Applies to</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var c in _categories)
+        {
+            var active = c.IsEffectiveOn(DateOnly.FromDateTime(DateTime.UtcNow.Date));
+            <tr class="@(active ? "active-row" : "inactive-row")">
+                <td><code>@c.Code</code></td>
+                <td>@c.Name.English</td>
+                <td>@c.Name.Arabic</td>
+                <td class="num">@c.RatePercent.ToString("0.##")</td>
+                <td>@c.EffectiveFromDate.ToString("yyyy-MM-dd")</td>
+                <td>@(c.EffectiveToDate?.ToString("yyyy-MM-dd") ?? "(open)")</td>
+                <td>@DirectionLabel(c.ApplicableTo)</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2>+ Add new category (or supersede an existing code)</h2>
+<form @onsubmit="OnCreate" @onsubmit:preventDefault>
+    <div class="invoice-toolbar">
+        <label>
+            <span>Code (e.g., Services)</span>
+            <input type="text" @bind="_code" required />
+        </label>
+        <label>
+            <span>Rate %</span>
+            <input type="number" step="0.01" min="0" max="100" @bind="_rate" required />
+        </label>
+        <label>
+            <span>Applies to</span>
+            <select @bind="_applicableTo">
+                <option value="@WhtApplicableTo.SuppliersServices">Suppliers (services)</option>
+                <option value="@WhtApplicableTo.CustomersServices">Customers (services)</option>
+                <option value="@WhtApplicableTo.Both">Both</option>
+            </select>
+        </label>
+    </div>
+    <div class="invoice-toolbar">
+        <label>
+            <span>Name (English)</span>
+            <input type="text" @bind="_nameEn" required />
+        </label>
+        <label>
+            <span>Name (Arabic)</span>
+            <input type="text" @bind="_nameAr" required dir="rtl" />
+        </label>
+    </div>
+    <div class="invoice-toolbar">
+        <label>
+            <span>Effective from</span>
+            <input type="date" @bind="_effFrom" required />
+        </label>
+        <label>
+            <span>Effective to (optional — leave blank for open-ended)</span>
+            <input type="date" @bind="_effTo" />
+        </label>
+    </div>
+    <p>
+        <button type="submit" class="btn-primary" disabled="@_busy">
+            @(_busy ? "Saving…" : "Add category")
+        </button>
+    </p>
+</form>
+
+@if (_error is not null)
+{
+    <div class="flash-error"><strong>Error:</strong> @_error</div>
+}
+
+@code {
+    private List<WhtCategory>? _categories;
+    private string _code = "";
+    private decimal _rate = 5m;
+    private WhtApplicableTo _applicableTo = WhtApplicableTo.SuppliersServices;
+    private string _nameEn = "";
+    private string _nameAr = "";
+    private DateTime _effFrom = new(DateTime.UtcNow.Year, 1, 1);
+    private DateTime? _effTo;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Refresh();
+
+    private async Task Refresh()
+    {
+        _categories = await Db.Set<WhtCategory>().AsNoTracking()
+            .OrderBy(c => c.Code).ThenBy(c => c.EffectiveFromDate)
+            .ToListAsync();
+    }
+
+    private async Task OnCreate()
+    {
+        _error = null; _busy = true;
+        try
+        {
+            var cat = new WhtCategory(
+                code: _code,
+                name: new ArabicEnglishText(_nameAr, _nameEn),
+                ratePercent: _rate,
+                effectiveFromDate: DateOnly.FromDateTime(_effFrom),
+                effectiveToDate: _effTo is { } d ? DateOnly.FromDateTime(d) : (DateOnly?)null,
+                applicableTo: _applicableTo);
+            Db.Add(cat);
+            await Db.SaveChangesAsync();
+            // Reset form + refresh list.
+            _code = ""; _nameEn = ""; _nameAr = ""; _rate = 5m;
+            _effTo = null;
+            await Refresh();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static string DirectionLabel(WhtApplicableTo a) => a switch
+    {
+        WhtApplicableTo.SuppliersServices => "Suppliers (services)",
+        WhtApplicableTo.CustomersServices => "Customers (services)",
+        WhtApplicableTo.Both => "Both",
+        _ => a.ToString(),
+    };
+}
