@@ -1,0 +1,172 @@
+@using EgyptTax.Application.Workflow
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Workflow
+@using Microsoft.AspNetCore.Components.Authorization
+@inject DocumentApprovalHandler ApprovalHandler
+@inject AuthenticationStateProvider AuthState
+
+@*
+    FR-026 — workflow-action surface dropped onto each per-document
+    detail page (Sales / Purchase / Expense). Renders only the
+    buttons that make sense for the current state:
+      * Draft     → Submit + Void
+      * Submitted → Approve + Reject (FR-004 self-approval guard
+                    enforced server-side; UI also hides the buttons
+                    when the current user submitted).
+      * Approved  → Void (post happens via the existing detail-page
+                    Post button which routes through the
+                    document-type-specific post handler).
+      * Posted / Voided → no actions.
+    Reject opens an inline reason textarea before confirming.
+*@
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status">@_flash</div>
+}
+
+<div class="workflow-actions">
+    @if (CurrentState == DocumentState.Draft)
+    {
+        <button type="button" class="btn-primary" @onclick="OnSubmitAsync" disabled="@_busy">
+            @(_busy ? "Submitting…" : "Submit for approval")
+        </button>
+        <button type="button" @onclick="OnVoidAsync" disabled="@_busy">Void draft</button>
+    }
+    else if (CurrentState == DocumentState.Submitted)
+    {
+        @if (CanApprove)
+        {
+            <button type="button" class="btn-primary" @onclick="OnApproveAsync" disabled="@_busy">
+                Approve
+            </button>
+            <button type="button" @onclick="ToggleRejectInput" disabled="@_busy">
+                @(_showRejectInput ? "Cancel reject" : "Reject")
+            </button>
+        }
+        else
+        {
+            <p><em>Awaiting another approver — FR-004 prevents you from approving your own submission.</em></p>
+        }
+        <button type="button" @onclick="OnVoidAsync" disabled="@_busy">Void</button>
+    }
+    else if (CurrentState == DocumentState.Approved)
+    {
+        <button type="button" @onclick="OnVoidAsync" disabled="@_busy">Void</button>
+    }
+
+    @if (_showRejectInput)
+    {
+        <div class="reject-form">
+            <textarea rows="3" placeholder="Reason for rejection (required)…"
+                      @bind="_rejectReason" @bind:event="oninput"></textarea>
+            <button type="button" class="btn-primary" @onclick="OnRejectAsync" disabled="@_busy">
+                Confirm reject
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid DocumentId { get; set; }
+    [Parameter, EditorRequired] public DocumentType DocumentType { get; set; }
+    [Parameter, EditorRequired] public DocumentState CurrentState { get; set; }
+
+    /// <summary>
+    /// Optional — when supplied, the component hides Approve/Reject
+    /// buttons if the current user matches (so the FR-004 guard
+    /// surfaces as a clear "awaiting another approver" message
+    /// instead of an after-the-click error).
+    /// </summary>
+    [Parameter] public Guid? SubmittedByUserId { get; set; }
+
+    /// <summary>
+    /// Caller passes a callback that reloads the parent page's data
+    /// after a successful action (so the new state and any new
+    /// fields are reflected immediately).
+    /// </summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool _busy;
+    private bool _showRejectInput;
+    private string _rejectReason = "";
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private Guid _currentUserId;
+
+    private bool CanApprove =>
+        SubmittedByUserId is null || _currentUserId != SubmittedByUserId.Value;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var claim = auth.User.FindFirst("sub")?.Value
+            ?? auth.User.FindFirst("userId")?.Value;
+        _currentUserId = Guid.TryParse(claim, out var u) ? u : Guid.Empty;
+    }
+
+    private async Task OnSubmitAsync()
+    {
+        await RunAsync(() => ApprovalHandler.SubmitAsync(
+            new SubmitDocumentCommand(DocumentId, DocumentType, _currentUserId),
+            CancellationToken.None), success: "Submitted for approval.");
+    }
+
+    private async Task OnApproveAsync()
+    {
+        await RunAsync(() => ApprovalHandler.ApproveAsync(
+            new ApproveDocumentCommand(DocumentId, DocumentType, _currentUserId),
+            CancellationToken.None), success: "Approved.");
+    }
+
+    private void ToggleRejectInput()
+    {
+        _showRejectInput = !_showRejectInput;
+        _rejectReason = "";
+        _flash = null;
+    }
+
+    private async Task OnRejectAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_rejectReason))
+        {
+            _flash = "Reason is required to reject.";
+            _flashClass = "flash-error";
+            return;
+        }
+        await RunAsync(() => ApprovalHandler.RejectAsync(
+            new RejectDocumentCommand(DocumentId, DocumentType, _currentUserId, _rejectReason),
+            CancellationToken.None), success: "Rejected; document returned to Draft.");
+        _showRejectInput = false;
+        _rejectReason = "";
+    }
+
+    private async Task OnVoidAsync()
+    {
+        await RunAsync(() => ApprovalHandler.VoidAsync(
+            new VoidDocumentCommand(DocumentId, DocumentType, _currentUserId, Reason: null),
+            CancellationToken.None), success: "Voided.");
+    }
+
+    private async Task RunAsync(Func<Task> action, string success)
+    {
+        _busy = true;
+        _flash = null;
+        try
+        {
+            await action();
+            _flash = success;
+            _flashClass = "flash-success";
+            if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

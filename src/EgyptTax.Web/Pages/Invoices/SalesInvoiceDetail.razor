@@ -88,6 +88,31 @@
     <div class="grand"><strong>Grand total:</strong> <span class="num">@_invoice.GrandTotal.Amount.ToString("F2") EGP</span></div>
 </section>
 
+@if (_invoice.State is DocumentState.Draft or DocumentState.Submitted or DocumentState.Approved)
+{
+    <section class="invoice-actions">
+        <h2>Approval workflow (FR-026)</h2>
+        @if (_latestApproval is not null)
+        {
+            <p>
+                <strong>Latest approval request:</strong> @_latestApproval.Status
+                — submitted by @_latestApproval.SubmittedByUserId.ToString("D")[..8]
+                at @_latestApproval.SubmittedAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC.
+                @if (_latestApproval.RejectionReason is { } reason)
+                {
+                    <br /><em>Rejection reason: @reason</em>
+                }
+            </p>
+        }
+        <WorkflowActions
+            DocumentId="_invoice.Id"
+            DocumentType="_invoice.IsCreditNote ? DocumentType.CreditNote : DocumentType.SalesInvoice"
+            CurrentState="_invoice.State"
+            SubmittedByUserId="_latestApproval?.SubmittedByUserId"
+            OnChanged="ReloadAsync" />
+    </section>
+}
+
 @if (_invoice.State == DocumentState.Posted)
 {
     <section class="invoice-actions">
@@ -136,8 +161,11 @@
     private EtaSubmission? _etaSubmission;
     private string? _seal;
     private IReadOnlyList<RiskFinding>? _riskFindings;
+    private ApprovalRequest? _latestApproval;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
     {
         _invoice = await Db.Set<SalesInvoice>()
             .Include(i => i.Lines)
@@ -150,6 +178,11 @@
 
         _customer = await Db.Set<Customer>().AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == _invoice.CustomerId);
+
+        _latestApproval = await Db.Set<ApprovalRequest>().AsNoTracking()
+            .Where(r => r.DocumentId == _invoice.Id)
+            .OrderByDescending(r => r.SubmittedAtUtc)
+            .FirstOrDefaultAsync();
 
         var itemIds = _invoice.Lines.Select(l => l.ItemId).Distinct().ToArray();
         _items = await Db.Set<Item>().AsNoTracking()

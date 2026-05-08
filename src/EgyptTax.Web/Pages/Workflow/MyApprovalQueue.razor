@@ -1,0 +1,274 @@
+@page "/approvals"
+@using EgyptTax.Application.Workflow
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.Purchases
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Workflow
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject DocumentApprovalHandler ApprovalHandler
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>My approval queue (Differentiator 3)</h1>
+
+<p>
+    Documents your colleagues have submitted that need an approval decision.
+    FR-004 prevents you from approving your own submissions; those are hidden
+    from this list.
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status">@_flash</div>
+}
+
+@if (_rows is null)
+{
+    <p>Loading…</p>
+    return;
+}
+
+@if (_rows.Count == 0)
+{
+    <p><em>No documents awaiting your approval.</em></p>
+    return;
+}
+
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th>Submitted (UTC)</th>
+            <th>Type</th>
+            <th>Document #</th>
+            <th>Counterparty</th>
+            <th class="num">Total</th>
+            <th>Submitted by</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var row in _rows)
+        {
+            <tr>
+                <td>@row.Request.SubmittedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td>@row.Request.DocumentType</td>
+                <td><a href="@DrillDownUrl(row.Request.DocumentType, row.Request.DocumentId)">@(row.DocumentNumber ?? "(draft)")</a></td>
+                <td>@row.CounterpartyName</td>
+                <td class="num">@row.GrandTotal.ToString("F2") EGP</td>
+                <td>@row.SubmitterDisplayName</td>
+                <td>
+                    <button type="button" @onclick="() => OnApproveAsync(row.Request)">Approve</button>
+                    <button type="button" @onclick="() => ToggleRejectFor(row.Request.Id)">
+                        @(_rejectingFor == row.Request.Id ? "Cancel" : "Reject")
+                    </button>
+                    @if (_rejectingFor == row.Request.Id)
+                    {
+                        <div class="reject-form">
+                            <textarea rows="2" placeholder="Reason for rejection (required)…"
+                                      @bind="_rejectReason" @bind:event="oninput"></textarea>
+                            <button type="button" @onclick="() => OnRejectAsync(row.Request)">
+                                Confirm reject
+                            </button>
+                        </div>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private List<Row>? _rows;
+    private Guid? _rejectingFor;
+    private string _rejectReason = "";
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private Guid _currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var claim = auth.User.FindFirst("sub")?.Value
+            ?? auth.User.FindFirst("userId")?.Value;
+        _currentUserId = Guid.TryParse(claim, out var u) ? u : Guid.Empty;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        // Pending = both Approved* and Rejected* fields are null.
+        // Hide rows the current user submitted (FR-004 — they can't
+        // approve their own work, so showing them is just noise).
+        var pending = await Db.Set<ApprovalRequest>()
+            .AsNoTracking()
+            .Where(r => r.ApprovedByUserId == null
+                && r.RejectedByUserId == null
+                && r.SubmittedByUserId != _currentUserId)
+            .OrderBy(r => r.SubmittedAtUtc)
+            .Take(200)
+            .ToListAsync();
+
+        // Bulk-load the source documents per type so the queue can
+        // render document number, counterparty, and total per row
+        // without per-row queries.
+        var salesIds = pending.Where(r => r.DocumentType is DocumentType.SalesInvoice or DocumentType.CreditNote)
+            .Select(r => r.DocumentId).ToArray();
+        var purchaseIds = pending.Where(r => r.DocumentType == DocumentType.PurchaseInvoice)
+            .Select(r => r.DocumentId).ToArray();
+        var expenseIds = pending.Where(r => r.DocumentType == DocumentType.Expense)
+            .Select(r => r.DocumentId).ToArray();
+
+        var sales = salesIds.Length == 0
+            ? new Dictionary<Guid, (string?, decimal, Guid)>()
+            : await Db.Set<SalesInvoice>().AsNoTracking()
+                .Where(s => salesIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id,
+                    s => ((string?)s.DocumentNumber, s.GrandTotal.Amount, s.CustomerId));
+
+        var purchases = purchaseIds.Length == 0
+            ? new Dictionary<Guid, (string?, decimal, Guid)>()
+            : await Db.Set<PurchaseInvoice>().AsNoTracking()
+                .Where(p => purchaseIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id,
+                    p => ((string?)p.DocumentNumber, p.GrandTotal.Amount, p.SupplierId));
+
+        var expenses = expenseIds.Length == 0
+            ? new Dictionary<Guid, (string?, decimal, Guid)>()
+            : await Db.Set<Expense>().AsNoTracking()
+                .Where(e => expenseIds.Contains(e.Id))
+                .ToDictionaryAsync(e => e.Id,
+                    e => ((string?)e.DocumentNumber, e.Amount.Amount, e.CategoryId));
+
+        // Counterparty name lookups — bulk load.
+        var customerIds = sales.Values.Select(t => t.Item3).Distinct().ToArray();
+        var customerNames = customerIds.Length == 0
+            ? new Dictionary<Guid, string>()
+            : await Db.Set<EgyptTax.Domain.MasterData.Customer>().AsNoTracking()
+                .Where(c => customerIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Name.English);
+        var supplierIds = purchases.Values.Select(t => t.Item3).Distinct().ToArray();
+        var supplierNames = supplierIds.Length == 0
+            ? new Dictionary<Guid, string>()
+            : await Db.Set<EgyptTax.Domain.MasterData.Supplier>().AsNoTracking()
+                .Where(s => supplierIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id, s => s.Name.English);
+        var categoryIds = expenses.Values.Select(t => t.Item3).Distinct().ToArray();
+        var categoryNames = categoryIds.Length == 0
+            ? new Dictionary<Guid, string>()
+            : await Db.Set<EgyptTax.Domain.MasterData.DeductibleExpenseCategory>().AsNoTracking()
+                .Where(c => categoryIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Code);
+
+        var submitterIds = pending.Select(r => r.SubmittedByUserId).Distinct().ToArray();
+        var submitterNames = submitterIds.Length == 0
+            ? new Dictionary<Guid, string>()
+            : await Db.Set<EgyptTax.Domain.Identity.User>().AsNoTracking()
+                .Where(u => submitterIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.DisplayName.English);
+
+        _rows = pending.Select(r =>
+        {
+            string? docNumber = null;
+            decimal grandTotal = 0m;
+            string counterparty = "—";
+
+            if (r.DocumentType is DocumentType.SalesInvoice or DocumentType.CreditNote
+                && sales.TryGetValue(r.DocumentId, out var s))
+            {
+                docNumber = s.Item1;
+                grandTotal = s.Item2;
+                counterparty = customerNames.GetValueOrDefault(s.Item3, s.Item3.ToString("D"));
+            }
+            else if (r.DocumentType == DocumentType.PurchaseInvoice
+                && purchases.TryGetValue(r.DocumentId, out var p))
+            {
+                docNumber = p.Item1;
+                grandTotal = p.Item2;
+                counterparty = supplierNames.GetValueOrDefault(p.Item3, p.Item3.ToString("D"));
+            }
+            else if (r.DocumentType == DocumentType.Expense
+                && expenses.TryGetValue(r.DocumentId, out var e))
+            {
+                docNumber = e.Item1;
+                grandTotal = e.Item2;
+                counterparty = categoryNames.GetValueOrDefault(e.Item3, e.Item3.ToString("D"));
+            }
+
+            return new Row(r, docNumber, counterparty, grandTotal,
+                submitterNames.GetValueOrDefault(r.SubmittedByUserId, r.SubmittedByUserId.ToString("D")));
+        }).ToList();
+    }
+
+    private async Task OnApproveAsync(ApprovalRequest request)
+    {
+        try
+        {
+            await ApprovalHandler.ApproveAsync(new ApproveDocumentCommand(
+                request.DocumentId, request.DocumentType, _currentUserId),
+                CancellationToken.None);
+            _flash = $"Approved {request.DocumentType} {request.DocumentId:D}.";
+            _flashClass = "flash-success";
+            _rejectingFor = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+    }
+
+    private void ToggleRejectFor(Guid requestId)
+    {
+        _rejectingFor = _rejectingFor == requestId ? null : requestId;
+        _rejectReason = "";
+    }
+
+    private async Task OnRejectAsync(ApprovalRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(_rejectReason))
+        {
+            _flash = "Reason is required to reject.";
+            _flashClass = "flash-error";
+            return;
+        }
+        try
+        {
+            await ApprovalHandler.RejectAsync(new RejectDocumentCommand(
+                request.DocumentId, request.DocumentType, _currentUserId, _rejectReason),
+                CancellationToken.None);
+            _flash = $"Rejected {request.DocumentType} {request.DocumentId:D}.";
+            _flashClass = "flash-success";
+            _rejectingFor = null;
+            _rejectReason = "";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+    }
+
+    private static string DrillDownUrl(DocumentType type, Guid id) => type switch
+    {
+        DocumentType.SalesInvoice => $"/invoices/{id}",
+        DocumentType.CreditNote => $"/invoices/{id}",
+        DocumentType.PurchaseInvoice => $"/purchase-invoices/{id}",
+        DocumentType.Expense => $"/expenses/{id}",
+        _ => $"/document360/{type.ToString().ToLowerInvariant()}/{id}",
+    };
+
+    private sealed record Row(
+        ApprovalRequest Request,
+        string? DocumentNumber,
+        string CounterpartyName,
+        decimal GrandTotal,
+        string SubmitterDisplayName);
+}
