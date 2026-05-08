@@ -639,7 +639,7 @@ Per [plan.md](plan.md) §"Project Structure":
 - [ ] T257 [P] Add health-readiness probe wiring in WiX installer service registration (the service must report Healthy before the operator's "install complete" screen)
 - [ ] T258 Run [quickstart.md](quickstart.md) §7 end-to-end smoke against a freshly built MSI install on a clean Windows VM
 - [ ] T259 Code cleanup pass: remove TODOs, prune dead code, csharpier format the entire repo
-- [ ] T260 Final Constitution Check re-evaluation against the implemented codebase; record any new Complexity Tracking entries that surfaced during implementation in [plan.md](plan.md)
+- [X] T260 Post-Implementation Constitution Check landed in `specs/008-egypt-tax-accounting/plan.md` as the new "## Post-Implementation Constitution Check (T260)" section. Re-evaluated all 5 principles against the implemented codebase (US1–US9 functional + Phase 9 + Differentiator 2 + R-20 logging; suite 265 unit + 40 contract + 211 integration GREEN). Result: PASS on every principle. Two implementation-phase Complexity Tracking entries appended to the existing 6 in plan.md: (1) `CockpitCachingDecorator + ICockpitCacheInvalidator` for SC-002 cockpit perf with operator-driven invalidation (Round-6 F13); (2) `IFirmContextResolver + SqlFirmContextResolver` for the audit firm-name overlay (INV-015) — both justified above with the rejected simpler alternative. Outstanding 11 polish-phase tasks (T247 / T248–T250 / T252–T255 / T257 / T258 / T259) flagged as informational release-readiness items, not principle gates.
 
 ---
 
