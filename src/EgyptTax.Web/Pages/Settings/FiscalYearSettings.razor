@@ -1,0 +1,112 @@
+@page "/settings/fiscal-year"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Periods
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Fiscal year settings (read-only) / إعدادات السنة المالية</h1>
+
+<p>
+    <em>
+        Fiscal-year configuration drives the <strong>income-tax
+        return</strong> period boundaries, the <strong>monthly
+        depreciation</strong> job's first/last-month logic, and the
+        period-locking enforcement (FR-037). The MVP exposes the
+        start-month on the Company profile page (single-tenant
+        installation = single fiscal calendar); this page surfaces
+        the resolved settings + the open/locked status of recent
+        income-fiscal-year periods so an operator can see at a glance
+        whether prior years have been closed.
+    </em>
+</p>
+
+@if (_company is null)
+{
+    <p>Loading…</p>
+    return;
+}
+
+<section class="master-data-list">
+    <h2>Active fiscal calendar</h2>
+    <table class="data-grid">
+        <tbody>
+            <tr>
+                <th>Fiscal-year start month</th>
+                <td>@_company.FiscalYearStartMonth (@MonthName(_company.FiscalYearStartMonth))</td>
+            </tr>
+            <tr>
+                <th>Default currency</th>
+                <td>@_company.DefaultCurrency</td>
+            </tr>
+            <tr>
+                <th>Default language</th>
+                <td>@_company.DefaultLanguage</td>
+            </tr>
+        </tbody>
+    </table>
+    <p>
+        <a href="/settings/company" class="btn-secondary">Edit on company profile →</a>
+    </p>
+</section>
+
+<section class="master-data-list">
+    <h2>Income-fiscal-year periods (FR-037)</h2>
+    @if (_periods.Count == 0)
+    {
+        <p><em>No income-fiscal-year periods recorded yet.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Year</th>
+                    <th>Status</th>
+                    <th>Locked at (UTC)</th>
+                    <th>Locked by</th>
+                    <th>Locked reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in _periods)
+                {
+                    <tr class="@(p.Status == TaxPeriodStatus.Locked ? "row-muted" : "active-row")">
+                        <td>@p.Year</td>
+                        <td>@p.Status</td>
+                        <td>@(p.LockedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                        <td>@(p.LockedByUserId?.ToString("D") ?? "—")</td>
+                        <td>@(p.LockedReason ?? "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <p>
+            <a href="/settings/tax-periods" class="btn-secondary">Lock / reopen periods →</a>
+        </p>
+    }
+</section>
+
+@code {
+    private Company? _company;
+    private List<TaxPeriod> _periods = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _company = await Db.Set<Company>().AsNoTracking().FirstOrDefaultAsync();
+        _periods = await Db.Set<TaxPeriod>().AsNoTracking()
+            .Where(p => p.PeriodKind == TaxPeriodKind.IncomeFiscalYear)
+            .OrderByDescending(p => p.Year)
+            .ToListAsync();
+    }
+
+    private static string MonthName(int m) => m switch
+    {
+        1 => "January", 2 => "February", 3 => "March", 4 => "April",
+        5 => "May", 6 => "June", 7 => "July", 8 => "August",
+        9 => "September", 10 => "October", 11 => "November", 12 => "December",
+        _ => $"Month {m}",
+    };
+}

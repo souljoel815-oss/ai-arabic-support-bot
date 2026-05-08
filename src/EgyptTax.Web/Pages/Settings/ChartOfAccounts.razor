@@ -1,0 +1,108 @@
+@page "/settings/chart-of-accounts"
+@using EgyptTax.Domain.Accounting
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Chart of accounts (read-only) / دليل الحسابات</h1>
+
+<p>
+    <em>
+        MVP-scope chart of accounts. The post-time journal emitter and
+        the monthly-depreciation Hangfire job touch a fixed set of
+        accounts (the constants below); operator-configurable storage
+        with full hierarchy + GL-balance reporting lands in a
+        follow-up. For now this page is a read-only hierarchy view so
+        an accountant can confirm the codes the system uses match
+        their conventional Egyptian SME chart.
+    </em>
+</p>
+
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th>Code</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Used by</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var grp in _accounts.GroupBy(a => a.Type))
+        {
+            <tr class="row-muted">
+                <td colspan="4"><strong>@TypeLabel(grp.Key)</strong></td>
+            </tr>
+            @foreach (var a in grp.OrderBy(x => x.Code))
+            {
+                <tr class="active-row">
+                    <td><code>@a.Code</code></td>
+                    <td>@a.Name</td>
+                    <td>@a.Type</td>
+                    <td>@a.UsedBy</td>
+                </tr>
+            }
+        }
+    </tbody>
+</table>
+
+<h2>Account-block convention</h2>
+<ul>
+    <li><strong>1xxx</strong> — Assets (cash, receivables, recoverable input VAT, accumulated depreciation contra-asset)</li>
+    <li><strong>2xxx</strong> — Liabilities (payables, output VAT payable, WHT payable)</li>
+    <li><strong>4xxx</strong> — Revenue (sales)</li>
+    <li><strong>5xxx</strong> — Expenses (generic, depreciation)</li>
+</ul>
+
+<p>
+    <em>
+        Operators who need additional sub-accounts can record them in
+        a manual adjusting voucher (FR-031) until the full
+        operator-configurable CoA ships. The auto-emitter's job is to
+        keep the books balanced from minute one against the seeded
+        codes above.
+    </em>
+</p>
+
+@code {
+    private sealed record AccountRow(string Code, string Name, AccountType Type, string UsedBy);
+    private enum AccountType { Asset, Liability, Equity, Revenue, Expense }
+
+    private static readonly AccountRow[] _accounts =
+    [
+        new(ChartOfAccountCodes.Cash, "Operating cash", AccountType.Asset,
+            "Phase 9 — debited on customer-receipt, credited on supplier-payment"),
+        new(ChartOfAccountCodes.InputVatRecoverable, "Input VAT recoverable", AccountType.Asset,
+            "FR-016 / FR-020 — debited on deductible portion of purchase invoices"),
+        new(ChartOfAccountCodes.WhtReceivable, "WHT receivable (customer-withheld)", AccountType.Asset,
+            "FR-052 / US7 — debited on customer-receipt with WHT certificate"),
+        new(ChartOfAccountCodes.AccountsReceivable, "Accounts receivable", AccountType.Asset,
+            "FR-009 — debited on sales invoice grand total"),
+        new(ChartOfAccountCodes.AccumulatedDepreciation, "Accumulated depreciation (contra-asset)", AccountType.Asset,
+            "FR-017 / US6 — credited monthly by depreciation Hangfire job"),
+
+        new(ChartOfAccountCodes.AccountsPayable, "Accounts payable", AccountType.Liability,
+            "FR-009 / FR-016 — credited on purchase invoices + expenses"),
+        new(ChartOfAccountCodes.OutputVatPayable, "Output VAT payable", AccountType.Liability,
+            "FR-009 — credited on sales invoice VAT total (liability owed to ETA)"),
+        new(ChartOfAccountCodes.WhtPayable, "WHT payable (supplier-withheld)", AccountType.Liability,
+            "FR-051 / US7 — credited on supplier-payment carrying WHT"),
+
+        new(ChartOfAccountCodes.SalesRevenue, "Sales revenue", AccountType.Revenue,
+            "FR-009 — credited on sales-invoice net-of-discount subtotal"),
+
+        new(ChartOfAccountCodes.GenericExpense, "Generic expense", AccountType.Expense,
+            "FR-009 / FR-014 — auto-emitter fallback when no specific account routes"),
+        new(ChartOfAccountCodes.DepreciationExpense, "Depreciation expense", AccountType.Expense,
+            "FR-017 / US6 — debited monthly by depreciation job (separate from generic so trial balance shows it)"),
+    ];
+
+    private static string TypeLabel(AccountType t) => t switch
+    {
+        AccountType.Asset => "1xxx — Assets",
+        AccountType.Liability => "2xxx — Liabilities",
+        AccountType.Equity => "3xxx — Equity",
+        AccountType.Revenue => "4xxx — Revenue",
+        AccountType.Expense => "5xxx — Expenses",
+        _ => t.ToString(),
+    };
+}

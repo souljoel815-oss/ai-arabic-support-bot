@@ -1,0 +1,79 @@
+@page "/settings/payment-methods"
+@using EgyptTax.Domain.Documents
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Payment methods (read-only) / طرق الدفع</h1>
+
+<p>
+    <em>
+        MVP scope — the two payment methods an Egyptian SME reaches
+        for first. Cheque + card land in a Near-term batch per the
+        Round 5 carve-out; the
+        <code>PaymentMethod</code> enum on
+        <code>SupplierPaymentVoucher</code> +
+        <code>CustomerReceiptVoucher</code> will gain those values
+        without breaking existing voucher rows because it's
+        EF-mapped as int.
+    </em>
+</p>
+
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th>Method</th>
+            <th>Cash account posted</th>
+            <th>Notes</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var m in Enum.GetValues<PaymentMethod>())
+        {
+            <tr class="active-row">
+                <td><strong>@m</strong></td>
+                <td><code>1100</code> (Operating cash)</td>
+                <td>@Notes(m)</td>
+            </tr>
+        }
+        <tr class="row-muted">
+            <td><em>Cheque</em></td>
+            <td>—</td>
+            <td>Deferred — Round 5 carve-out (Near-term batch)</td>
+        </tr>
+        <tr class="row-muted">
+            <td><em>Card</em></td>
+            <td>—</td>
+            <td>Deferred — Round 5 carve-out (Near-term batch)</td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>How payments post</h2>
+<ul>
+    <li>
+        <strong>SupplierPaymentVoucher</strong> — credits cash
+        (<code>1100</code>), debits accounts payable
+        (<code>2100</code>), credits WHT payable
+        (<code>2120</code>) when the line carries a withholding
+        deduction (FR-051 / US7).
+    </li>
+    <li>
+        <strong>CustomerReceiptVoucher</strong> — debits cash
+        (<code>1100</code>), credits accounts receivable
+        (<code>1200</code>), debits WHT receivable
+        (<code>1120</code>) when the customer attached a withholding
+        certificate (FR-052 / US7).
+    </li>
+</ul>
+
+@code {
+    private static string Notes(PaymentMethod m) => m switch
+    {
+        PaymentMethod.Cash =>
+            "Direct cash leg — voucher posts immediately on Approve.",
+        PaymentMethod.BankTransfer =>
+            "Treated identically to Cash for journal posting in MVP scope; "
+            + "bank-statement reconciliation lands as a separate near-term feature.",
+        _ => "—",
+    };
+}
