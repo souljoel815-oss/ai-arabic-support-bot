@@ -127,6 +127,10 @@ builder.Services.AddScoped<EgyptTax.Application.Compliance.IMonthlyTaxClosingCoc
 // eligible aggregates (SalesInvoice / PurchaseInvoice / Expense).
 builder.Services.AddScoped<EgyptTax.Infrastructure.Workflow.DocumentApprovalHandler>();
 
+// US4 / FR-031 — manual adjusting journal voucher handler. Role-
+// gated to Administrator + Accountant; Bookkeeper rejected.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Journals.CreateManualAdjustingJournalHandler>();
+
 // US9 / FR-048 — period-scoped tax-inspection bundle builder.
 builder.Services.AddScoped<EgyptTax.Application.Inspection.IInspectionBundleBuilder,
     EgyptTax.Infrastructure.Inspection.InspectionBundleBuilder>();
