@@ -1,0 +1,92 @@
+@page "/payments/allocations/{InvoiceType}/{InvoiceId:guid}"
+@using EgyptTax.Application.Payments
+@using EgyptTax.Domain.Workflow
+@using Microsoft.AspNetCore.Authorization
+@inject IPaymentVoucherQuery Query
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<a href="/journals" class="btn-secondary">← Back</a>
+
+<h1>Invoice allocation history (FR-053) / سجل تخصيص الإيصالات</h1>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+    return;
+}
+@if (_view is null)
+{
+    <p class="flash-error">No allocations view found for @InvoiceType @InvoiceId.</p>
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>Invoice:</strong> <code>@_view.DocumentNumber</code> (@_view.InvoiceType)</div>
+    <div><strong>Date:</strong> @_view.DocumentDate.ToString("yyyy-MM-dd")</div>
+    <div><strong>Grand total:</strong> @_view.GrandTotal.Amount.ToString("F2") EGP</div>
+    <div><strong>Allocated to date:</strong> @_view.AllocatedToDate.Amount.ToString("F2") EGP</div>
+    <div>
+        <strong>Open balance:</strong>
+        @if (_view.OpenBalance.Amount == 0m)
+        {
+            <span class="grand">@_view.OpenBalance.Amount.ToString("F2") EGP — fully settled ✓</span>
+        }
+        else
+        {
+            <span class="num">@_view.OpenBalance.Amount.ToString("F2") EGP</span>
+        }
+    </div>
+</section>
+
+@if (_view.Allocations.Count == 0)
+{
+    <p><em>No payment allocations against this invoice yet.</em></p>
+    return;
+}
+
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th>Voucher type</th>
+            <th>Voucher no.</th>
+            <th>Voucher date</th>
+            <th class="num">Allocated (EGP)</th>
+        </tr>
+    </thead>
+    <tbody>
+        @{ var running = 0m; }
+        @foreach (var row in _view.Allocations)
+        {
+            running += row.AllocatedAmount.Amount;
+            <tr>
+                <td>
+                    @(row.SupplierPaymentVoucherId is not null ? "Supplier payment (SPV)" : "Customer receipt (CRV)")
+                </td>
+                <td><code>@(row.VoucherDocumentNumber ?? "(missing)")</code></td>
+                <td>@row.VoucherDate.ToString("yyyy-MM-dd")</td>
+                <td class="num">@row.AllocatedAmount.Amount.ToString("F2")</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    [Parameter] public Guid InvoiceId { get; set; }
+    [Parameter] public string InvoiceType { get; set; } = "PurchaseInvoice";
+
+    private bool _loading;
+    private InvoiceAllocationView? _view;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        try
+        {
+            if (Enum.TryParse<DocumentType>(InvoiceType, ignoreCase: true, out var parsed))
+            {
+                _view = await Query.GetInvoiceAllocationsAsync(InvoiceId, parsed);
+            }
+        }
+        finally { _loading = false; }
+    }
+}

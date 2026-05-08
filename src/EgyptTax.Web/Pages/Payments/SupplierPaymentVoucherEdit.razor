@@ -1,0 +1,223 @@
+@page "/payments/supplier-payments/new"
+@using EgyptTax.Application.Payments
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Payments
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IPaymentVoucherQuery Query
+@inject AllocatePaymentHandler AllocateHandler
+@inject PostSupplierPaymentVoucherHandler PostHandler
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>New supplier payment voucher (FR-051) / إيصال دفع لمورد</h1>
+
+@if (_voucher is null)
+{
+    <h2>Step 1 — Voucher header</h2>
+    <form @onsubmit="OnCreateDraft" @onsubmit:preventDefault>
+        <div class="invoice-toolbar">
+            <label>
+                <span>Supplier</span>
+                <select @bind="_supplierId" required>
+                    <option value="">— pick supplier —</option>
+                    @foreach (var s in _suppliers)
+                    {
+                        <option value="@s.Id">@s.Code — @s.Name.English</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>Payment date</span>
+                <input type="date" @bind="_paymentDate" required />
+            </label>
+            <label>
+                <span>Payment method</span>
+                <select @bind="_paymentMethod">
+                    <option value="@PaymentMethod.BankTransfer">Bank transfer</option>
+                    <option value="@PaymentMethod.Cash">Cash</option>
+                </select>
+            </label>
+        </div>
+        <div class="invoice-toolbar">
+            <label>
+                <span>Reference (cheque #, transfer ref, etc.)</span>
+                <input type="text" @bind="_paymentReference" required />
+            </label>
+            <label>
+                <span>Gross payment (EGP)</span>
+                <input type="number" step="0.01" min="0.01" @bind="_grossAmount" required />
+            </label>
+        </div>
+        <p>
+            <button type="submit" class="btn-primary" disabled="@_busy">
+                @(_busy ? "Saving…" : "Create draft → continue to allocations")
+            </button>
+        </p>
+    </form>
+}
+else
+{
+    <section class="invoice-totals">
+        <div><strong>Voucher (Draft):</strong> @_voucher.Id</div>
+        <div><strong>Gross:</strong> @_voucher.GrossPaymentAmount.Amount.ToString("F2") EGP</div>
+        <div><strong>Allocated:</strong> @_voucher.Allocations.Sum(a => a.AllocatedAmount.Amount).ToString("F2") EGP</div>
+        <div><strong>Remaining to allocate:</strong>
+            <span class="num">@(_voucher.GrossPaymentAmount.Amount - _voucher.Allocations.Sum(a => a.AllocatedAmount.Amount)).ToString("F2") EGP</span>
+        </div>
+    </section>
+
+    <h2>Step 2 — Allocate to outstanding purchase invoices (FR-053)</h2>
+    @if (_outstanding is null || _outstanding.Count == 0)
+    {
+        <p><em>No outstanding purchase invoices for this supplier.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Doc no.</th>
+                    <th>Date received</th>
+                    <th class="num">Grand total</th>
+                    <th class="num">Allocated</th>
+                    <th class="num">Open balance</th>
+                    <th class="num">Allocate</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var inv in _outstanding)
+                {
+                    <tr>
+                        <td><code>@inv.DocumentNumber</code></td>
+                        <td>@inv.DocumentDate.ToString("yyyy-MM-dd")</td>
+                        <td class="num">@inv.GrandTotal.Amount.ToString("F2")</td>
+                        <td class="num">@inv.AllocatedToDate.Amount.ToString("F2")</td>
+                        <td class="num">@inv.OpenBalance.Amount.ToString("F2")</td>
+                        <td class="num">
+                            <input type="number" step="0.01" min="0" max="@inv.OpenBalance.Amount"
+                                   @bind="_allocateInputs[inv.InvoiceId]" />
+                        </td>
+                        <td>
+                            <button type="button" class="btn-secondary" disabled="@_busy"
+                                    @onclick="() => OnAllocate(inv.InvoiceId)">Add</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (_voucher.Allocations.Count > 0)
+    {
+        <h3>Current allocations</h3>
+        <table class="data-grid">
+            <thead><tr><th>Target invoice id</th><th class="num">Amount</th></tr></thead>
+            <tbody>
+                @foreach (var a in _voucher.Allocations)
+                {
+                    <tr>
+                        <td><code>@a.TargetDocumentId</code></td>
+                        <td class="num">@a.AllocatedAmount.Amount.ToString("F2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <p>
+            <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnPost">
+                @(_busy ? "Posting…" : "Post voucher")
+            </button>
+        </p>
+    }
+}
+
+@if (_error is not null)
+{
+    <div class="flash-error"><strong>Error:</strong> @_error</div>
+}
+
+@code {
+    private List<Supplier> _suppliers = new();
+    private Guid _supplierId;
+    private DateTime _paymentDate = DateTime.UtcNow.Date;
+    private PaymentMethod _paymentMethod = PaymentMethod.BankTransfer;
+    private string _paymentReference = "";
+    private decimal _grossAmount;
+    private SupplierPaymentVoucher? _voucher;
+    private IReadOnlyList<OutstandingInvoiceRow>? _outstanding;
+    private readonly Dictionary<Guid, decimal> _allocateInputs = new();
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _suppliers = await Db.Set<Supplier>().AsNoTracking()
+            .OrderBy(s => s.Code).ToListAsync();
+    }
+
+    private async Task OnCreateDraft()
+    {
+        _error = null; _busy = true;
+        try
+        {
+            if (_supplierId == Guid.Empty) { _error = "Pick a supplier."; return; }
+            _voucher = SupplierPaymentVoucher.CreateDraft(
+                supplierId: _supplierId,
+                paymentDate: DateOnly.FromDateTime(_paymentDate),
+                paymentMethod: _paymentMethod,
+                paymentReference: _paymentReference,
+                grossPaymentAmount: MoneyEgp.From(_grossAmount));
+            Db.Add(_voucher);
+            await Db.SaveChangesAsync();
+            _outstanding = await Query.ListOutstandingPurchaseInvoicesAsync(_supplierId);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnAllocate(Guid invoiceId)
+    {
+        if (_voucher is null) return;
+        _error = null; _busy = true;
+        try
+        {
+            if (!_allocateInputs.TryGetValue(invoiceId, out var amount) || amount <= 0m)
+            {
+                _error = "Enter a positive amount to allocate.";
+                return;
+            }
+            await AllocateHandler.HandleAsync(
+                new AllocateSupplierPaymentCommand(_voucher.Id, invoiceId, MoneyEgp.From(amount)));
+            // Refresh state.
+            Db.ChangeTracker.Clear();
+            _voucher = await Db.Set<SupplierPaymentVoucher>()
+                .Include(v => v.Allocations)
+                .FirstAsync(v => v.Id == _voucher.Id);
+            _outstanding = await Query.ListOutstandingPurchaseInvoicesAsync(_supplierId);
+            _allocateInputs[invoiceId] = 0m;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnPost()
+    {
+        if (_voucher is null) return;
+        _error = null; _busy = true;
+        try
+        {
+            var posted = await PostHandler.HandleAsync(
+                new PostSupplierPaymentVoucherCommand(_voucher.Id, Guid.Empty));
+            Nav.NavigateTo($"/journals?periodStart={posted.PaymentDate:yyyy-MM-dd}");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}
