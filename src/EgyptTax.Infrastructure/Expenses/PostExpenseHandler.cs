@@ -1,4 +1,5 @@
 using System.Globalization;
+using EgyptTax.Application.Accounting;
 using EgyptTax.Application.Audit;
 using EgyptTax.Application.Expenses;
 using EgyptTax.Application.Numbering;
@@ -26,6 +27,7 @@ public sealed class PostExpenseHandler
     private readonly IDocumentNumberAllocator _allocator;
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
+    private readonly IExpenseJournalEmitter? _journalEmitter;
     private readonly ITaxPeriodLockGuard? _periodLockGuard;
 
     public PostExpenseHandler(
@@ -33,12 +35,14 @@ public sealed class PostExpenseHandler
         IDocumentNumberAllocator allocator,
         IClock clock,
         IAuditLogStore auditLog,
+        IExpenseJournalEmitter? journalEmitter = null,
         ITaxPeriodLockGuard? periodLockGuard = null)
     {
         _db = db;
         _allocator = allocator;
         _clock = clock;
         _auditLog = auditLog;
+        _journalEmitter = journalEmitter;
         _periodLockGuard = periodLockGuard;
     }
 
@@ -112,6 +116,14 @@ public sealed class PostExpenseHandler
             postedAtUtc: nowUtc,
             postingMode: postingMode,
             approvalEnabled: approvalRequired);
+
+        // US4 / FR-014 — emit the 2-line balanced expense journal
+        // (DR Expense / CR AP) IN THE SAME SaveChangesAsync. Optional
+        // for legacy callers, like the sales + purchase emitters.
+        if (_journalEmitter is not null)
+        {
+            await _journalEmitter.EmitForExpenseAsync(expense, nowUtc, cancellationToken);
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 
