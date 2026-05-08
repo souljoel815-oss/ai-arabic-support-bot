@@ -1,17 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  T247 / R-24 / SC-001 — EgyptTax MSI installer source.
+  T247 + T247-followup / R-24 / SC-001 — EgyptTax MSI installer source.
 
-  Built with WiX 5 via:
-    wix build src/EgyptTax.Installer/Product.wxs -o EgyptTax-Setup.msi -arch x64
+  Build via the wixproj sibling — see README.md for the canonical
+  invocation. TL;DR: `dotnet publish` the EgyptTax.Web project to
+  ./publish/, then `dotnet build EgyptTax.Installer.wixproj
+  -p:PublishDir=path-to-publish`. Output lands at
+  bin/Release/EgyptTax.Installer.msi.
 
-  Produces an MSI that installs the EgyptTax Web service into
-  Program Files, registers it as an auto-start Windows service,
-  opens HTTPS port 443 in the firewall, and runs the seeder to
-  apply EF migrations + create the first Administrator account.
+  The MSI installs the EgyptTax Web service into Program Files,
+  registers it as an auto-start Windows service, opens HTTPS port
+  443 in the firewall, runs the seeder to apply EF migrations + create
+  the first Administrator account, and gates the "install complete"
+  screen on the readiness probe (T257).
 
-  Operator-prompted properties (set via the WiX UI dialog
-  sequence — see T247-deferred UI work below):
+  WiX 5 <Files> element auto-harvests the `publish/` output at
+  build time — there's no separate `wix harvest` step. The Files
+  element generates one Component per file with a stable
+  Guid-from-path so upgrade scenarios work without manual
+  ComponentGuid bookkeeping.
+
+  Operator-prompted properties (set via msiexec command-line):
     SQL_CONNECTION       — connection string to the SQL Server
                            database; default uses Trusted_Connection
                            against local default instance.
@@ -22,23 +31,20 @@
     NTP_SERVER           — clock-drift defense (FR-042); default
                            time.windows.com.
 
-  Out of scope for the MVP installer (deferred):
-    * Custom UI dialog pages for the 4 properties above. Today the
-      properties are MSI-public + can be set via msiexec command-
-      line: `msiexec /i EgyptTax-Setup.msi SQL_CONNECTION="..."
-      AUDIT_CHECKPOINT_MODE=Sql ATTACHMENTS_ROOT="D:\..." `.
+  Out of scope for the MVP installer (deferred — see README.md):
+    * Custom UI dialog pages for the 4 properties above. Properties
+      are MSI-public + can be set via msiexec command-line:
+      `msiexec /i EgyptTax-Setup.msi SQL_CONNECTION="..." ...`
       The full WixUI_Mondo dialog set + a custom property page is
       Near-term.
-    * Per-environment SQL bootstrap (creating the database if it
-      doesn't exist — currently delegated to the Seeder CLI's
-      `--apply-migrations` mode, which uses EF Core's
-      `Database.MigrateAsync()`).
+    * WixUtil's XmlConfig support to write the operator-supplied
+      properties into the published appsettings.json at install time.
+      Today: operator hand-edits per docs/operator-runbook.md §1.2.
 
   See docs/operator-runbook.md §1 for the install + bootstrap flow.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
-     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
 
   <Package Name="EgyptTax"
            Manufacturer="EgyptTax"
@@ -60,7 +66,7 @@
               Secure="yes" />
     <Property Id="AUDIT_CHECKPOINT_MODE" Value="Sql" Secure="yes" />
     <Property Id="ATTACHMENTS_ROOT"
-              Value="[CommonAppDataFolder]EgyptTax\attachments"
+              Value="C:\ProgramData\EgyptTax\attachments"
               Secure="yes" />
     <Property Id="NTP_SERVER" Value="time.windows.com" Secure="yes" />
 
@@ -75,53 +81,97 @@
              Description="EgyptTax accounting + tax compliance service"
              Level="1"
              AllowAbsent="no">
-      <ComponentGroupRef Id="EgyptTaxComponents" />
-      <ComponentRef Id="ServiceConfigComponent" />
-      <ComponentRef Id="FirewallRuleComponent" />
+      <ComponentGroupRef Id="EgyptTaxFiles" />
+      <ComponentGroupRef Id="EgyptTaxScripts" />
+      <ComponentRef Id="FirewallComponent" />
     </Feature>
 
-    <!-- Windows service registration. The .NET 8 publish output
-         lands in INSTALLFOLDER; the service runs `dotnet
-         EgyptTax.Web.dll` under the configured account.
+    <!-- WiX 5 <Files> harvest — single recursive glob covers the
+         entire publish output, including EgyptTax.Web.exe. The
+         harvester auto-generates one Component per file with a
+         stable Guid-from-path so MajorUpgrade scenarios work
+         without manual ComponentGuid bookkeeping.
 
-         Default account is NetworkService — operators using SQL
-         Windows-auth against a remote DB should change to a
-         dedicated domain account post-install via sc.exe. -->
-    <Component Id="ServiceConfigComponent"
-               Directory="INSTALLFOLDER"
-               Guid="A1B2C3D4-E5F6-7890-ABCD-1234567890AB">
-      <File Id="ServiceConfigStub"
-            Source="$(var.ProjectDir)appsettings.template.json"
-            KeyPath="yes" />
-      <ServiceInstall Id="EgyptTaxService"
-                      Name="EgyptTax"
-                      DisplayName="EgyptTax — Tax compliance service"
-                      Description="EgyptTax accounting + Egyptian tax compliance web service. See docs/operator-runbook.md."
-                      Type="ownProcess"
-                      Start="auto"
-                      ErrorControl="normal"
-                      Account="NT AUTHORITY\NetworkService"
-                      Vital="yes"
-                      Arguments=" " />
-      <ServiceControl Id="EgyptTaxServiceControl"
-                      Name="EgyptTax"
-                      Start="install"
-                      Stop="both"
-                      Remove="uninstall"
-                      Wait="yes" />
-    </Component>
+         Note: WiX 5's <Files> element doesn't respect file-extension
+         restrictions in the include glob (each pattern walks the
+         full tree); a single catch-all pattern is the only stable
+         shape. The .exe is harvested here AND the Windows service
+         is registered via sc.exe in custom actions below — no
+         ServiceInstall element used (which would have required the
+         .exe in a dedicated component, conflicting with the
+         catch-all harvest). -->
+    <ComponentGroup Id="EgyptTaxFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)\**" />
+    </ComponentGroup>
+
+    <!-- The verifier script ships with the installer source rather
+         than the published web app (it's an install-time tool, not
+         a runtime artifact). -->
+    <ComponentGroup Id="EgyptTaxScripts" Directory="INSTALLFOLDER">
+      <Component Id="VerifyHealthScriptComponent"
+                 Guid="A2B3C4D5-E6F7-8901-2345-67890ABCDEF1">
+        <File Id="VerifyHealthScript"
+              Source="$(var.ProjectDir)verify-health.ps1"
+              KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Windows service registration via sc.exe in custom actions
+         (CreateService / DeleteService below) instead of a WiX
+         ServiceInstall element. Rationale: ServiceInstall requires
+         the .exe to live in its own dedicated Component, but WiX 5's
+         <Files> harvest catch-all pattern claims the .exe along with
+         everything else — splitting it out hits dup-component
+         errors. The sc.exe path is operationally equivalent (auto-
+         start service registered against [INSTALLFOLDER]EgyptTax.Web.exe
+         under NT AUTHORITY\NetworkService).
+
+         Operators using SQL Windows-auth against a remote DB should
+         re-issue the service registration with a dedicated domain
+         account post-install via:
+           sc.exe config EgyptTax obj= "DOMAIN\acct" password= "..." -->
+    <CustomAction Id="CreateService"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='sc.exe create EgyptTax binPath= "[INSTALLFOLDER]EgyptTax.Web.exe" start= auto DisplayName= "EgyptTax — Tax compliance service" obj= "NT AUTHORITY\NetworkService"'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+    <CustomAction Id="StartService"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='sc.exe start EgyptTax'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+    <CustomAction Id="StopService"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='sc.exe stop EgyptTax'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+    <CustomAction Id="DeleteService"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='sc.exe delete EgyptTax'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
 
     <!-- HTTPS port 443 inbound rule so accountants on the LAN can
          reach the web app. Operators running on a non-standard
          port need to either edit Kestrel config + open that port
-         instead, or expose via IIS reverse-proxy on 443. -->
-    <Component Id="FirewallRuleComponent"
+         instead, or expose via IIS reverse-proxy on 443.
+
+         Uses a registry value as keypath so the firewall rule can
+         live independently of any installed file (the firewall
+         rule is install-state, not file-content). -->
+    <Component Id="FirewallComponent"
                Directory="INSTALLFOLDER"
                Guid="B2C3D4E5-F6A7-8901-BCDE-234567890ABC">
-      <File Id="FirewallStub"
-            Source="$(var.ProjectDir)appsettings.template.json"
-            Name="firewall-stub.json"
-            KeyPath="yes" />
+      <RegistryValue Root="HKLM"
+                     Key="Software\EgyptTax\Install"
+                     Name="FirewallConfigured"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
       <fw:FirewallException Id="EgyptTaxHttps"
                             Name="EgyptTax HTTPS (443)"
                             Description="Inbound HTTPS for the EgyptTax web service"
@@ -156,30 +206,47 @@
                   Return="check" />
 
     <!-- Sequence the custom actions:
-         1. ApplyMigrationsAndSeed runs after files are copied but
-            before the service is started (we need the schema in
-            place before the service can connect cleanly).
-         2. VerifyHealthReady runs after the service has started.
-         3. Both run only on fresh install + upgrade, NOT on
-            uninstall. -->
+         Install path (NOT REMOVE):
+           1. InstallFiles writes everything to disk.
+           2. ApplyMigrationsAndSeed creates the EgyptTax schema +
+              first Administrator (we need the schema in place
+              before the service can connect cleanly).
+           3. CreateService registers the Windows service with
+              sc.exe, pointing at [INSTALLFOLDER]EgyptTax.Web.exe.
+           4. StartService launches it.
+           5. VerifyHealthReady polls /api/v1/health/ready until
+              the service reports Healthy (T257) — non-Healthy
+              fails the install + rollback.
+         Uninstall path (REMOVE="ALL"):
+           1. StopService halts the running instance.
+           2. DeleteService removes the registration from SCM.
+           3. Standard RemoveFiles tears down the disk install. -->
     <InstallExecuteSequence>
       <Custom Action="ApplyMigrationsAndSeed"
               After="InstallFiles"
               Condition="NOT REMOVE" />
-      <Custom Action="VerifyHealthReady"
-              After="StartServices"
+      <Custom Action="CreateService"
+              After="ApplyMigrationsAndSeed"
               Condition="NOT REMOVE" />
+      <Custom Action="StartService"
+              After="CreateService"
+              Condition="NOT REMOVE" />
+      <Custom Action="VerifyHealthReady"
+              After="StartService"
+              Condition="NOT REMOVE" />
+
+      <Custom Action="StopService"
+              Before="RemoveFiles"
+              Condition="REMOVE=&quot;ALL&quot;" />
+      <Custom Action="DeleteService"
+              After="StopService"
+              Condition="REMOVE=&quot;ALL&quot;" />
     </InstallExecuteSequence>
 
     <!-- Standard install directory layout. -->
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="EgyptTax" />
     </StandardDirectory>
-
-    <!-- Files: harvested at build time from the publish output via
-         the wixproj's HarvestDirectory call. The ComponentGroup is
-         declared by the harvested .wxs (Components.wxs) so we
-         don't enumerate every DLL by hand. See README.md. -->
 
   </Package>
 </Wix>

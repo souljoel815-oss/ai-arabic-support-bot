@@ -1,0 +1,65 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <!--
+    T247-followup — MSBuild glue around `wix build` so the
+    installer produces a deterministic .msi via the standard
+    `dotnet build` invocation. See README.md for the full build
+    invocation; output lands at bin/Release/EgyptTax.Installer.msi.
+
+    Intentionally NOT included in EgyptTax.sln: pulling the WiX
+    SDK into every solution-build slows the dev loop without
+    payoff (the installer rarely needs to rebuild during
+    day-to-day code changes). The CI's `build-installer` job
+    invokes this wixproj directly.
+  -->
+
+  <PropertyGroup>
+    <OutputName>EgyptTax.Installer</OutputName>
+    <OutputType>Package</OutputType>
+    <InstallerPlatform>x64</InstallerPlatform>
+
+    <!-- Disable default item inclusion so the WiX SDK doesn't
+         auto-discover content files (notably under PublishDir)
+         and add them to the harvest a second time, which trips
+         WIX8602 "already harvested" errors. The Compile + Files
+         we declare explicitly are the only source of truth. -->
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+
+    <!-- HarvestPublishDir is the wixproj-named property for the
+         path the catch-all <Files> harvest reads. CI overrides via
+         -p:HarvestPublishDir=...; default points at the
+         conventional `publish/` directory at the repo root. -->
+    <HarvestPublishDir Condition=" '$(HarvestPublishDir)' == '' AND '$(PublishDir)' != '' ">$(PublishDir)</HarvestPublishDir>
+    <HarvestPublishDir Condition=" '$(HarvestPublishDir)' == '' ">$(MSBuildThisFileDirectory)..\..\publish</HarvestPublishDir>
+
+    <!-- Pass the harvest path through to the WiX preprocessor as
+         $(var.PublishDir). Renamed away from `PublishDir` to avoid
+         colliding with MSBuild's default `PublishDir` property
+         (which the SDK uses for its own publish-output directory). -->
+    <DefineConstants>PublishDir=$(HarvestPublishDir)</DefineConstants>
+
+    <!-- Suppress ICE60: warns when a versioned non-Font file lacks
+         a Language column. Triggered by .NET satellite-resource
+         assemblies (e.g. en/EgyptTax.Web.resources.dll) which
+         carry version info but no Language metadata in the WiX
+         File entry. The Files harvest doesn't make per-file
+         Language attribution practical; .NET resolves localized
+         resources via culture-named subdirectories, not the MSI
+         Language column, so the suppression is operationally safe. -->
+    <SuppressIces>ICE60</SuppressIces>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Product.wxs" />
+  </ItemGroup>
+
+  <!-- WiX 5 firewall extension for the HTTPS-443 inbound rule
+       declared in Product.wxs. -->
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Firewall.wixext" />
+  </ItemGroup>
+
+</Project>

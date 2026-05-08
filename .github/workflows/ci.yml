@@ -98,19 +98,25 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Install WiX 5
-        run: dotnet tool install --global wix --version 5.0.2
-
       - name: Publish EgyptTax.Web
-        run: dotnet publish src/EgyptTax.Web/EgyptTax.Web.csproj -c Release -r win-x64 --self-contained false -o publish/
+        # The published output feeds the WiX <Files> harvest in
+        # src/EgyptTax.Installer/Product.wxs via the
+        # HarvestPublishDir property below.
+        run: dotnet publish src/EgyptTax.Web/EgyptTax.Web.csproj -c Release -r win-x64 --self-contained false -o ${{ github.workspace }}/publish
 
-      - name: Build MSI
-        run: wix build src/EgyptTax.Installer/Product.wxs -o EgyptTax-Setup.msi -arch x64
-        continue-on-error: true # Installer ships in T247; until then this step is informational
+      - name: Build MSI (via wixproj — WiX SDK + Firewall.wixext restored automatically)
+        # T247-followup — wixproj's <Files> element auto-harvests
+        # the publish output at build time; no separate `wix harvest`
+        # step needed. WixToolset.Sdk + WixToolset.Firewall.wixext
+        # are restored by `dotnet build` from NuGet. The property is
+        # HarvestPublishDir (NOT MSBuild's default PublishDir, which
+        # would clash with the SDK's own publish-output directory —
+        # see the wixproj's PropertyGroup).
+        run: dotnet build src/EgyptTax.Installer/EgyptTax.Installer.wixproj -c Release -p:HarvestPublishDir=${{ github.workspace }}/publish
 
       - name: Upload MSI artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: EgyptTax-Setup-msi
-          path: EgyptTax-Setup.msi
+          path: src/EgyptTax.Installer/bin/Release/EgyptTax.Installer.msi

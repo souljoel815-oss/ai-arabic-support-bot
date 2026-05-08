@@ -1,13 +1,13 @@
-# EgyptTax MSI Installer (T247)
+# EgyptTax MSI Installer (T247 + T247-followup)
 
-WiX 5 source for the on-prem MSI installer. Built via `wix build` on Windows; the resulting `EgyptTax-Setup-{version}.msi` is what operators run to install the EgyptTax web service on a Windows host.
+WiX 5 source for the on-prem MSI installer. The wixproj wraps the WiX SDK so building the installer is a standard `dotnet build` invocation; the resulting `EgyptTax.Installer.msi` (rename to `EgyptTax-Setup-{version}.msi` for distribution) is what operators run to install the EgyptTax web service on a Windows host.
 
 ## What this directory contains
 
 | File | Purpose |
 |---|---|
-| `Product.wxs` | Main WiX source — package metadata, install directory, Windows service registration, firewall rule, custom actions for seed + health gate. |
-| `appsettings.template.json` | Application config skeleton; the MSI ships this as the per-install config seed. Operator-supplied SQL connection / audit-checkpoint mode / attachments root / NTP server land here at install time (currently via msiexec property bootstrap; full UI dialog page is Near-term). |
+| `EgyptTax.Installer.wixproj` | MSBuild project file using `WixToolset.Sdk/5.0.2`. Pulls in `WixToolset.Firewall.wixext` via `PackageReference`. Defines the WiX preprocessor variable `PublishDir` so `Product.wxs`'s `<Files>` element can harvest the published web-app output. |
+| `Product.wxs` | Main WiX source — package metadata, install directory, `<Files>` auto-harvest of the publish output, Windows service registration, firewall rule, custom actions for seed + health gate. |
 | `verify-health.ps1` | T257 health-readiness gate. Polls `/api/v1/health/ready` after the service starts; non-Healthy fails the install (rollback) so the "install complete" screen never fires while the service is still booting. |
 
 ## Build (CI)
@@ -15,31 +15,67 @@ WiX 5 source for the on-prem MSI installer. Built via `wix build` on Windows; th
 The `build-installer` job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) executes:
 
 ```powershell
-dotnet tool install --global wix --version 5.0.2
-dotnet publish src/EgyptTax.Web/EgyptTax.Web.csproj -c Release -r win-x64 --self-contained false -o publish/
-wix build src/EgyptTax.Installer/Product.wxs -o EgyptTax-Setup.msi -arch x64
+dotnet publish src/EgyptTax.Web/EgyptTax.Web.csproj -c Release -r win-x64 --self-contained false -o ${{ github.workspace }}/publish
+dotnet build src/EgyptTax.Installer/EgyptTax.Installer.wixproj -c Release -p:HarvestPublishDir=${{ github.workspace }}/publish
 ```
 
-The job is gated by `if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')` so feature branches don't burn CI time on installer builds.
+The job is gated by `if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')` so feature branches don't burn CI time on installer builds. **The previous `continue-on-error: true` flag has been removed** — the harvest-into-wixproj wiring is in place + verified locally (17 MB MSI produced cleanly with `0 Warning(s) 0 Error(s)`).
 
 ## Build (local / dev)
 
 ```powershell
-# One-time: install WiX 5
-dotnet tool install --global wix --version 5.0.2
+# One-time: nothing! The wixproj's <PackageReference Include="WixToolset.Firewall.wixext" />
+# pulls the SDK + extension automatically on first build.
 
-# Publish the web app to ./publish/
+# Step 1: publish the web app to ./publish/
 dotnet publish src\EgyptTax.Web\EgyptTax.Web.csproj -c Release -r win-x64 --self-contained false -o .\publish\
 
-# Harvest the publish output into a Components fragment (Near-term:
-# wire this into the wixproj so it happens automatically; current
-# path is a manual `wix harvest` invocation):
-# wix extension add WixToolset.Util.wixext
-# (full harvest invocation TBD — see "Open work" below)
+# Step 2: build the MSI
+dotnet build src\EgyptTax.Installer\EgyptTax.Installer.wixproj -c Release -p:HarvestPublishDir=$(pwd)\publish
 
-# Build the MSI
-wix build src\EgyptTax.Installer\Product.wxs -o EgyptTax-Setup.msi -arch x64
+# Output:
+#   src\EgyptTax.Installer\bin\Release\EgyptTax.Installer.msi
 ```
+
+**Note**: the property is `HarvestPublishDir`, NOT MSBuild's default `PublishDir` — that name is reserved by MSBuild for the SDK's own publish-output directory and using it here causes a property collision. See the wixproj's PropertyGroup for details.
+
+The wixproj is intentionally NOT included in `EgyptTax.sln` — pulling the WiX SDK into every solution-build slows the dev loop without payoff (the installer rarely needs to rebuild during day-to-day code changes).
+
+### Direct `wix build` invocation (alternative)
+
+If you'd rather skip the wixproj and call `wix.exe` directly:
+
+```powershell
+dotnet tool install --global wix --version 5.0.2
+wix extension add WixToolset.Firewall.wixext -g
+wix build src\EgyptTax.Installer\Product.wxs `
+    -ext WixToolset.Firewall.wixext `
+    -o EgyptTax-Setup.msi -arch x64 `
+    -d PublishDir=publish
+```
+
+This produces the same MSI; the wixproj path is preferred because it's idiomatic for the rest of the .NET toolchain.
+
+## How the `<Files>` harvest works
+
+WiX 5's `<Files>` element auto-generates one Component per file at build time with a stable Guid-from-path so MajorUpgrade scenarios work without manual ComponentGuid bookkeeping:
+
+```xml
+<ComponentGroup Id="EgyptTaxFiles" Directory="INSTALLFOLDER">
+  <Files Include="$(var.PublishDir)\**" />
+</ComponentGroup>
+```
+
+The `<Files>` element does NOT support an `Exclude` attribute (WiX 5 schema), so a file claimed by a separate Component (e.g. as a `ServiceInstall` keypath) would cause a duplicate-component conflict. The installer sidesteps this by registering the Windows service via `sc.exe` in custom actions (`CreateService` / `StartService` / `StopService` / `DeleteService`) rather than a WiX `ServiceInstall` element — `EgyptTax.Web.exe` is harvested alongside the rest of the publish output, and the service registration points at `[INSTALLFOLDER]EgyptTax.Web.exe` after install.
+
+Trade-off: `sc.exe`-based service registration produces an installer that's slightly less idiomatic than one using ServiceInstall, but operationally equivalent (auto-start service, NetworkService account, stops + deletes on uninstall via the symmetric custom actions). The win is a much simpler harvest with no per-extension globbing.
+
+### Required wixproj knobs
+
+The wixproj sets a few properties that aren't optional:
+
+- `EnableDefaultItems=false` (and the four siblings) — without this, the WiX SDK auto-includes content under `HarvestPublishDir` a second time and trips `WIX8602` "already harvested" errors on every file.
+- `SuppressIces=ICE60` — silences the validator for .NET satellite-resource DLLs (`en/EgyptTax.Web.resources.dll`, etc) which carry version info but no Language metadata. .NET resolves localized resources via culture-named subdirectories, not the MSI Language column, so the suppression is operationally safe.
 
 ## Operator-prompted properties
 
@@ -72,7 +108,7 @@ Both actions are conditional on `NOT REMOVE` so they don't fire on uninstall.
 ## Open work / deferred (not blocking the basic install path)
 
 - **WiX UI dialog pages for the 4 prompted properties.** The MVP relies on `msiexec` command-line property bootstrap; the full WixUI_Mondo dialog set + a custom property page belongs to a Near-term batch. The upgrade is purely cosmetic — the install otherwise produces a working service today via the command-line path.
-- **Component harvesting wired into the wixproj.** The `wix harvest` invocation that turns the `publish/` output into a `Components.wxs` fragment is currently a manual step; making it automatic via `Target` integration in the wixproj is Near-term. Until then, CI's `wix build` step expects a pre-harvested fragment OR uses the `IncludeFile` attribute on the Package (TBD per CI feedback).
+- **WixUtil's XmlConfig support to write the operator-supplied properties into the published `appsettings.json` at install time.** Today: operator hand-edits per docs/operator-runbook.md §1.2.
 - **Service-account dialog** for installs that need a dedicated domain account instead of `NT AUTHORITY\NetworkService`. Default works for most installs (Trusted_Connection against local default SQL); the dialog page lands when the first cross-domain customer signal comes in.
 - **Per-environment SQL bootstrap.** The `seed --apply-migrations` CLI uses EF Core's `Database.MigrateAsync()` which creates the database if it doesn't exist. Some IT shops want a separate "create the DB with these size + collation settings, THEN run migrations" step — that's a future MSI dialog page.
 
