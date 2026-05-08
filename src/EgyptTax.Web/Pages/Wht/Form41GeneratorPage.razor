@@ -1,0 +1,196 @@
+@page "/wht/form41/new"
+@using EgyptTax.Application.Wht
+@using EgyptTax.Domain.Tax
+@using EgyptTax.Infrastructure.Pdf
+@using EgyptTax.Infrastructure.Wht
+@using Microsoft.AspNetCore.Authorization
+@inject GenerateForm41Handler Generate
+@inject MarkForm41FiledHandler MarkFiled
+@inject IJSRuntime Js
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<a href="/wht" class="btn-secondary">← Back to dashboard</a>
+
+<h1>Generate Form 41 (FR-046) / إنشاء نموذج 41</h1>
+
+<form @onsubmit="OnGenerate" @onsubmit:preventDefault>
+    <div class="invoice-toolbar">
+        <label>
+            <span>Fiscal year</span>
+            <input type="number" min="2000" max="2099" @bind="_fiscalYear" required />
+        </label>
+        <label>
+            <span>Quarter</span>
+            <select @bind="_quarter">
+                <option value="1">Q1 (Jan-Mar)</option>
+                <option value="2">Q2 (Apr-Jun)</option>
+                <option value="3">Q3 (Jul-Sep)</option>
+                <option value="4">Q4 (Oct-Dec)</option>
+            </select>
+        </label>
+        <button type="submit" class="btn-primary" disabled="@_busy">
+            @(_busy ? "Generating…" : "Generate")
+        </button>
+    </div>
+</form>
+
+@if (_error is not null)
+{
+    <div class="flash-error"><strong>Error:</strong> @_error</div>
+}
+
+@if (_result is null)
+{
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>Filing id:</strong> <code>@_result.Form41FilingId</code></div>
+    <div><strong>Period:</strong> @_result.Payload.FilingHeader.FillingPeriodStart.ToString("yyyy-MM-dd") → @_result.Payload.FilingHeader.FillingPeriodEnd.ToString("yyyy-MM-dd")</div>
+    <div><strong>Lines:</strong> @_result.Payload.Totals.LineCount</div>
+    <div><strong>Total withheld:</strong> @_result.Payload.Totals.TotalAmountWithheld.ToString("F2") EGP</div>
+    @if (_result.Payload.Reconciliation.MatchesTotalAmountWithheld)
+    {
+        <div class="grand"><strong>Reconciled ✓</strong></div>
+    }
+    else
+    {
+        <div class="flash-error">
+            <strong>DISCREPANCY:</strong> @_result.Payload.Reconciliation.DiscrepancyAmount?.ToString("F2") EGP
+            — fix the books before marking Filed.
+        </div>
+    }
+</section>
+
+<p>
+    <button type="button" class="btn-secondary" @onclick="OnDownloadJson" disabled="@_busy">
+        Download JSON (regulator-shaped)
+    </button>
+    <button type="button" class="btn-secondary" @onclick="OnDownloadPdf" disabled="@_busy">
+        Download PDF (bilingual)
+    </button>
+    @if (_result.Payload.Reconciliation.MatchesTotalAmountWithheld)
+    {
+        <button type="button" class="btn-primary" @onclick="OnMarkFiled" disabled="@_busy || _filed">
+            @(_filed ? "Filed ✓" : _busy ? "Filing…" : "Mark Filed")
+        </button>
+    }
+</p>
+
+@if (_filed)
+{
+    <p class="grand">
+        Form 41 marked Filed. Included WHT certificates are now immutable for further inclusion (T200 / FR-046).
+    </p>
+}
+
+<h2>Lines (@_result.Payload.Lines.Count)</h2>
+@if (_result.Payload.Lines.Count == 0)
+{
+    <p><em>No WHT activity in this quarter.</em></p>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>Supplier TIN</th>
+                <th>Supplier</th>
+                <th>Category</th>
+                <th class="num">Rate %</th>
+                <th class="num">Gross (EGP)</th>
+                <th class="num">Withheld (EGP)</th>
+                <th>Voucher</th>
+                <th>Cert</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var line in _result.Payload.Lines)
+            {
+                <tr>
+                    <td><code>@line.SupplierTin</code></td>
+                    <td>
+                        <div>@line.SupplierName.En</div>
+                        <div style="font-size: 0.85em">@line.SupplierName.Ar</div>
+                    </td>
+                    <td>@line.WhtCategoryCode</td>
+                    <td class="num">@line.RateAppliedPercent.ToString("0.##")</td>
+                    <td class="num">@line.GrossPaymentTotal.ToString("F2")</td>
+                    <td class="num">@line.AmountWithheld.ToString("F2")</td>
+                    <td>@line.SupplierPaymentVoucherNumber</td>
+                    <td>@(line.OutboundCertificateNumber ?? "—")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [SupplyParameterFromQuery] public int? Year { get; set; }
+    [SupplyParameterFromQuery] public int? Q { get; set; }
+
+    private int _fiscalYear = DateTime.UtcNow.Year;
+    private int _quarter = ((DateTime.UtcNow.Month - 1) / 3) + 1;
+    private bool _busy;
+    private bool _filed;
+    private string? _error;
+    private GenerateForm41Result? _result;
+
+    protected override void OnInitialized()
+    {
+        if (Year is { } y) _fiscalYear = y;
+        if (Q is { } q) _quarter = q;
+    }
+
+    private async Task OnGenerate()
+    {
+        _error = null; _busy = true; _result = null; _filed = false;
+        try
+        {
+            _result = await Generate.HandleAsync(
+                new GenerateForm41Command(_fiscalYear, _quarter, Guid.Empty));
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnMarkFiled()
+    {
+        if (_result is null) return;
+        _error = null; _busy = true;
+        try
+        {
+            await MarkFiled.HandleAsync(
+                new MarkForm41FiledCommand(_result.Form41FilingId, Guid.Empty));
+            _filed = true;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnDownloadJson()
+    {
+        if (_result is null) return;
+        var json = Form41JsonSerializer.Serialize(_result.Payload);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        await TriggerDownloadAsync(bytes, "application/json", $"form41-{_fiscalYear}-Q{_quarter}.json");
+    }
+
+    private async Task OnDownloadPdf()
+    {
+        if (_result is null) return;
+        var bytes = Form41PdfRenderer.Render(_result.Payload);
+        await TriggerDownloadAsync(bytes, "application/pdf", $"form41-{_fiscalYear}-Q{_quarter}.pdf");
+    }
+
+    /// <summary>Mirrors the inline-eval download pattern from
+    /// <c>GenerateBundlePage.razor</c> — base64 → Blob → object
+    /// URL → click. Avoids a server-hosted file route for the MVP;
+    /// fine for typical Form 41 sizes (a few hundred KB).</summary>
+    private async Task TriggerDownloadAsync(byte[] bytes, string mimeType, string fileName)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("eval",
+            $"const b=atob('{base64}');const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++){{a[i]=b.charCodeAt(i);}}const u=URL.createObjectURL(new Blob([a],{{type:'{mimeType}'}}));const link=document.createElement('a');link.href=u;link.download='{fileName}';link.click();URL.revokeObjectURL(u);");
+    }
+}

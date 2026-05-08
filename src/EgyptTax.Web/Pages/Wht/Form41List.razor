@@ -1,0 +1,100 @@
+@page "/wht/form41"
+@using EgyptTax.Application.Wht
+@using EgyptTax.Domain.Tax
+@using Microsoft.AspNetCore.Authorization
+@inject IWhtLifecycleDashboardQuery Query
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<a href="/wht" class="btn-secondary">← Back to dashboard</a>
+
+<h1>Form 41 filings (FR-046) / إقرارات نموذج 41</h1>
+
+<form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
+    <label>
+        <span>As-of (drives Overdue derivation)</span>
+        <input type="date" @bind="_asOf" />
+    </label>
+    <button type="submit" class="btn-primary" disabled="@_loading">
+        @(_loading ? "Loading…" : "Refresh")
+    </button>
+    <a href="/wht/form41/new" class="btn-primary">+ New filing</a>
+</form>
+
+@if (_dashboard is null)
+{
+    <p>Loading…</p>
+    return;
+}
+
+@if (_dashboard.Filings.Count == 0)
+{
+    <p><em>No Form 41 filings yet. Click "+ New filing" to generate one.</em></p>
+    return;
+}
+
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th>Year</th>
+            <th>Quarter</th>
+            <th>Status</th>
+            <th>Due date</th>
+            <th class="num">Days overdue</th>
+            <th class="num">Lines</th>
+            <th class="num">WHT total (EGP)</th>
+            <th class="num">Estimated penalty (EGP)</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var f in _dashboard.Filings)
+        {
+            var rowClass = f.DerivedStatus switch
+            {
+                Form41Status.Overdue => "flash-error",
+                Form41Status.Filed => "active-row",
+                _ => "",
+            };
+            <tr class="@rowClass">
+                <td>@f.FiscalYear</td>
+                <td>Q@f.Quarter</td>
+                <td>
+                    <span class="kind-badge kind-@f.DerivedStatus.ToString().ToLowerInvariant()">
+                        @f.DerivedStatus
+                    </span>
+                </td>
+                <td>@f.DueDate.ToString("yyyy-MM-dd")</td>
+                <td class="num">@(f.DaysOverdue > 0 ? f.DaysOverdue.ToString() : "")</td>
+                <td class="num">@f.LineCount</td>
+                <td class="num">@f.TotalWhtPayable.ToString("F2")</td>
+                <td class="num">@(f.EstimatedPenalty?.ToString("F2") ?? "")</td>
+                <td>
+                    <a href="@($"/wht/form41/new?year={f.FiscalYear}&q={f.Quarter}")" class="btn-secondary">
+                        Re-open
+                    </a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private DateTime _asOf = DateTime.UtcNow.Date;
+    private bool _loading;
+    private WhtLifecycleDashboard? _dashboard;
+
+    protected override async Task OnInitializedAsync() => await OnRefresh();
+
+    private async Task OnRefresh()
+    {
+        _loading = true;
+        try
+        {
+            _dashboard = await Query.GetAsync(DateOnly.FromDateTime(_asOf));
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}
