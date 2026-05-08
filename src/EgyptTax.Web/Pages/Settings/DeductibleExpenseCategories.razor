@@ -1,0 +1,247 @@
+@page "/settings/expense-categories"
+@using System.ComponentModel.DataAnnotations
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Deductible expense categories (FR-015) / فئات المصروفات</h1>
+
+<p>
+    <em>
+        Drives the default <strong>deductible</strong> flag on Expense
+        documents. The operator can override per-line; the override is
+        recorded in the audit log (FR-027) so an inspector can trace
+        any "marked deductible against type-default" decision later.
+        Editing the defaults below <strong>does NOT retroactively
+        affect already-posted expense rows</strong> — the posted-row's
+        <code>DeductibleFlag</code> is frozen at post time. Only NEW
+        expenses created after the edit pick up the new default
+        (US5 scenario 1 / FR-015).
+    </em>
+</p>
+
+@if (_savedFlash is not null)
+{
+    <div class="flash-success" role="status">@_savedFlash</div>
+}
+@if (_error is not null)
+{
+    <div class="flash-error" role="alert">@_error</div>
+}
+
+@if (_categories is null)
+{
+    <p>Loading…</p>
+}
+else if (_categories.Count == 0)
+{
+    <p>
+        <em>
+            No categories yet. Add the ones your business uses below.
+            Default-account-id values currently carry forward without
+            a FK constraint — US4 lands the chart of accounts.
+        </em>
+    </p>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>Code</th>
+                <th>Name (English)</th>
+                <th>Name (Arabic)</th>
+                <th>Default deductible?</th>
+                <th>Default account id</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in _categories)
+            {
+                <tr class="@(c.Status == DeductibleExpenseCategoryStatus.Inactive ? "row-muted" : "active-row")">
+                    @if (_editingId == c.Id)
+                    {
+                        <td><code>@c.Code</code></td>
+                        <td>@c.Name.English</td>
+                        <td>@c.Name.Arabic</td>
+                        <td>
+                            <select @bind="_editDeductible">
+                                <option value="true">yes</option>
+                                <option value="false">no</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" @bind="_editAccountId" style="width: 22rem;" />
+                        </td>
+                        <td>@c.Status</td>
+                        <td>
+                            <button type="button" class="btn-primary"
+                                @onclick="() => SaveEditAsync(c.Id)">Save</button>
+                            <button type="button" @onclick="CancelEdit">Cancel</button>
+                        </td>
+                    }
+                    else
+                    {
+                        <td><code>@c.Code</code></td>
+                        <td>@c.Name.English</td>
+                        <td>@c.Name.Arabic</td>
+                        <td>@(c.DefaultDeductible ? "yes" : "no")</td>
+                        <td><code>@c.DefaultAccountId.ToString("D")</code></td>
+                        <td>@c.Status</td>
+                        <td>
+                            <button type="button" @onclick="() => BeginEdit(c)">Edit defaults</button>
+                            @if (c.Status == DeductibleExpenseCategoryStatus.Active)
+                            {
+                                <button type="button" @onclick="() => DeactivateAsync(c.Id)">Deactivate</button>
+                            }
+                            else
+                            {
+                                <button type="button" @onclick="() => ReactivateAsync(c.Id)">Reactivate</button>
+                            }
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h2>+ Add a category</h2>
+<EditForm Model="_form" OnValidSubmit="OnCreateAsync" FormName="settings-expense-category-create" class="form-grid">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <label>
+        <span>Code</span>
+        <InputText @bind-Value="_form.Code" />
+    </label>
+    <label>
+        <span>Name (English)</span>
+        <InputText @bind-Value="_form.NameEnglish" />
+    </label>
+    <label>
+        <span>Name (Arabic)</span>
+        <InputText @bind-Value="_form.NameArabic" />
+    </label>
+    <label>
+        <span>Default deductible</span>
+        <InputCheckbox @bind-Value="_form.DefaultDeductible" />
+    </label>
+    <label>
+        <span>Default account id (placeholder Guid until US4 CoA seed)</span>
+        <InputText @bind-Value="_form.DefaultAccountId" />
+    </label>
+
+    <button type="submit" class="btn-primary">Add category</button>
+</EditForm>
+
+@code {
+    private List<DeductibleExpenseCategory>? _categories;
+    private FormModel _form = new();
+    private string? _savedFlash;
+    private string? _error;
+
+    private Guid? _editingId;
+    private bool _editDeductible;
+    private string _editAccountId = "";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _categories = await Db.Set<DeductibleExpenseCategory>()
+            .AsNoTracking().OrderBy(c => c.Code).ToListAsync();
+    }
+
+    private async Task OnCreateAsync()
+    {
+        _error = null;
+        if (!Guid.TryParse(_form.DefaultAccountId, out var accountId))
+        {
+            _error = "Default account id must be a valid Guid.";
+            return;
+        }
+
+        try
+        {
+            var category = new DeductibleExpenseCategory(
+                code: _form.Code,
+                name: new ArabicEnglishText(_form.NameArabic, _form.NameEnglish),
+                defaultDeductible: _form.DefaultDeductible,
+                defaultAccountId: accountId);
+            Db.Add(category);
+            await Db.SaveChangesAsync();
+
+            _form = new FormModel();
+            _savedFlash = $"Expense category {category.Code} added.";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void BeginEdit(DeductibleExpenseCategory c)
+    {
+        _editingId = c.Id;
+        _editDeductible = c.DefaultDeductible;
+        _editAccountId = c.DefaultAccountId.ToString("D");
+        _savedFlash = null; _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _editAccountId = "";
+    }
+
+    private async Task SaveEditAsync(Guid id)
+    {
+        _error = null;
+        if (!Guid.TryParse(_editAccountId, out var accountId))
+        {
+            _error = "Default account id must be a valid Guid.";
+            return;
+        }
+
+        var c = await Db.Set<DeductibleExpenseCategory>().FirstAsync(x => x.Id == id);
+        c.UpdateDefaults(deductible: _editDeductible, accountId: accountId);
+        await Db.SaveChangesAsync();
+
+        _savedFlash = $"Category {c.Code} defaults updated. Already-posted expense rows are unchanged "
+            + "(US5 scenario 1 / FR-015 retroactivity guard).";
+        _editingId = null;
+        await ReloadAsync();
+    }
+
+    private async Task DeactivateAsync(Guid id)
+    {
+        var c = await Db.Set<DeductibleExpenseCategory>().FirstAsync(x => x.Id == id);
+        c.Deactivate();
+        await Db.SaveChangesAsync();
+        _savedFlash = $"Category {c.Code} deactivated. Posted expense rows referencing it remain readable.";
+        await ReloadAsync();
+    }
+
+    private async Task ReactivateAsync(Guid id)
+    {
+        var c = await Db.Set<DeductibleExpenseCategory>().FirstAsync(x => x.Id == id);
+        c.Reactivate();
+        await Db.SaveChangesAsync();
+        _savedFlash = $"Category {c.Code} reactivated.";
+        await ReloadAsync();
+    }
+
+    private sealed class FormModel
+    {
+        [Required, StringLength(32)] public string Code { get; set; } = "";
+        [Required, StringLength(200)] public string NameEnglish { get; set; } = "";
+        [Required, StringLength(200)] public string NameArabic { get; set; } = "";
+        public bool DefaultDeductible { get; set; } = true;
+        [Required] public string DefaultAccountId { get; set; } = Guid.Empty.ToString("D");
+    }
+}

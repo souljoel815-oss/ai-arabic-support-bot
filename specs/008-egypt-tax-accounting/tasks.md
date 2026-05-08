@@ -414,8 +414,8 @@ Per [plan.md](plan.md) §"Project Structure":
 
 ### Implementation
 
-- [ ] T175 [US5] Implement `Pages/Settings/VatCategories.razor` with effective-from-dated row editor and overlap validation
-- [ ] T176 [US5] Implement `Pages/Settings/DeductibleExpenseCategories.razor`
+- [X] T175 [US5] Settings page shipped at `src/EgyptTax.Web/Pages/Settings/VatCategories.razor` (route `/settings/vat-categories`). Lists every VAT-category row sorted by Code → EffectiveFromDate; flags rows that are active today; surfaces a red "overlapping effective windows" alert when two rows for the same code cover the same calendar date (operator config error per FR-019). The "+ Add new category" form pre-validates against `IVatRateLookup.ListByCodeAsync` and refuses to save when an existing row already covers the new effective-from — surfaces a clear "cap that row first" message instead of letting the dup persist. Supersession path remains: cap the older row's `EffectiveTo` strictly before the new `EffectiveFrom`, then add the new row. Wired into the main nav.
+- [X] T176 [US5] Settings page shipped at `src/EgyptTax.Web/Pages/Settings/DeductibleExpenseCategories.razor` (route `/settings/expense-categories`) — supersedes the earlier `/expense-categories` master-data page with full CRUD: list (with Active/Inactive row styling), create (existing path), Deactivate/Reactivate, and inline `Edit defaults` (UpdateDefaults) for each row. The page banner explicitly calls out the FR-015 retroactivity guard ("Editing the defaults below does NOT retroactively affect already-posted expense rows — only NEW expenses pick up the new default") so the operator understands the snapshot semantics pinned by T174. The post-save flash echoes the same — "Already-posted expense rows are unchanged (US5 scenario 1)". Wired into the main nav.
 - [ ] T177 [US5] Implement `Pages/Settings/ChartOfAccounts.razor` with hierarchy view
 - [ ] T178 [US5] Implement `Pages/Settings/FiscalYearSettings.razor`
 - [ ] T179 [US5] Implement `Pages/Settings/PaymentMethods.razor` (configurable list — Cash + Bank Transfer seeded; cheque/card deferred per Round 5 carve-out)
