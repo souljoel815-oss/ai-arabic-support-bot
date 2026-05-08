@@ -79,6 +79,13 @@ builder.Services.AddScoped<EgyptTax.Application.Payments.IPaymentVoucherQuery,
 builder.Services.AddScoped<EgyptTax.Application.Wht.IWhtComputeService,
     EgyptTax.Infrastructure.Wht.SqlWhtComputeService>();
 
+// US7 / T207 — WHT certificate payload builder. Same payload
+// shape drives the bilingual PDF (WhtCertificatePdfRenderer.Render
+// is static — no DI needed) AND the contract-validated JSON
+// (T198) so an inspector reads the same numbers in either form.
+builder.Services.AddScoped<EgyptTax.Application.Wht.IWhtCertificatePayloadBuilder,
+    EgyptTax.Infrastructure.Wht.SqlWhtCertificatePayloadBuilder>();
+
 // Differentiator 1 (Tax Risk Score) — rules registered as singletons
 // because they are stateless; the scorer fans out across every
 // registered rule. Adding a new rule = adding one AddSingleton line.
