@@ -149,7 +149,7 @@
            sc.exe config EgyptTax obj= "DOMAIN\acct" password= "..." -->
     <CustomAction Id="RegisterService"
                   Directory="INSTALLFOLDER"
-                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File [INSTALLFOLDER]register-service.ps1'
+                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLFOLDER]register-service.ps1"'
                   Execute="deferred"
                   Impersonate="yes"
                   Return="check" />
@@ -268,7 +268,7 @@
          elevated context (TLS callback registration etc.). -->
     <CustomAction Id="VerifyHealthReady"
                   Directory="INSTALLFOLDER"
-                  ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File [INSTALLFOLDER]verify-health.ps1"
+                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLFOLDER]verify-health.ps1"'
                   Execute="deferred"
                   Impersonate="yes"
                   Return="ignore" />
