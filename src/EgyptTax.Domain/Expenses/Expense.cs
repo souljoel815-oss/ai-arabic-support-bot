@@ -110,6 +110,19 @@ public sealed class Expense
         DocumentDate = documentDate;
     }
 
+    /// <summary>FR-026 transitions for the approval workflow.</summary>
+    public void MarkSubmitted() =>
+        State = DocumentStateMachine.Transition(State, DocumentState.Submitted, approvalEnabled: true);
+
+    public void MarkApproved() =>
+        State = DocumentStateMachine.Transition(State, DocumentState.Approved, approvalEnabled: true);
+
+    public void MarkRejected() =>
+        State = DocumentStateMachine.Transition(State, DocumentState.Draft, approvalEnabled: true);
+
+    public void MarkVoided() =>
+        State = DocumentStateMachine.Transition(State, DocumentState.Voided, approvalEnabled: true);
+
     public void MarkPosted(
         string documentNumber,
         Guid postedByUserId,

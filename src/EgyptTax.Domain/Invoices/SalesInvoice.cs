@@ -277,6 +277,41 @@ public sealed class SalesInvoice
     /// <c>DocumentTypeApprovalSetting</c> lookup; this method only
     /// transitions the state and persists those values.
     /// </summary>
+    /// <summary>
+    /// FR-026 — Bookkeeper transitions a Draft document to
+    /// Submitted to send it for approval.
+    /// </summary>
+    public void MarkSubmitted()
+    {
+        State = DocumentStateMachine.Transition(State, DocumentState.Submitted, approvalEnabled: true);
+    }
+
+    /// <summary>FR-026 — Approver moves Submitted → Approved.</summary>
+    public void MarkApproved()
+    {
+        State = DocumentStateMachine.Transition(State, DocumentState.Approved, approvalEnabled: true);
+    }
+
+    /// <summary>
+    /// FR-026 — Approver rejects: Submitted → Draft. Operator
+    /// edits + re-submits. The rejection reason is captured in
+    /// the ApprovalRequest row by the application handler.
+    /// </summary>
+    public void MarkRejected()
+    {
+        State = DocumentStateMachine.Transition(State, DocumentState.Draft, approvalEnabled: true);
+    }
+
+    /// <summary>
+    /// FR-026 — Voiding a non-Posted document. Posted documents
+    /// cannot be voided per FR-027; corrections route through
+    /// credit notes (FR-013).
+    /// </summary>
+    public void MarkVoided()
+    {
+        State = DocumentStateMachine.Transition(State, DocumentState.Voided, approvalEnabled: true);
+    }
+
     public void MarkPosted(
         string documentNumber,
         Guid postedByUserId,

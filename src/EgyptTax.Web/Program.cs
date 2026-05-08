@@ -117,6 +117,11 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Periods.LockTaxPeriodHandler>
 builder.Services.AddScoped<EgyptTax.Application.Compliance.IMonthlyTaxClosingCockpitQuery,
     EgyptTax.Infrastructure.Compliance.SqlMonthlyTaxClosingCockpitQuery>();
 
+// US3 / FR-026 — document approval workflow handler. Single class
+// covers Submit / Approve / Reject / Void across the 3 approval-
+// eligible aggregates (SalesInvoice / PurchaseInvoice / Expense).
+builder.Services.AddScoped<EgyptTax.Infrastructure.Workflow.DocumentApprovalHandler>();
+
 // T139 / R-21 — attachment store lives on the filesystem under
 // EGYPTTAX_ATTACHMENT_ROOT (config key Attachments:Root). Defaults
 // to {ContentRootPath}/var/attachments for dev so a fresh clone
