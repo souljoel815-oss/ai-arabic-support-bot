@@ -105,6 +105,15 @@ builder.Services.AddScoped<EgyptTax.Application.Wht.IWhtLifecycleDashboardQuery,
 builder.Services.AddScoped<EgyptTax.Application.Configuration.IVatRateLookup,
     EgyptTax.Infrastructure.Configuration.SqlVatRateLookup>();
 
+// US8 / FR-049 / T225 — firm-context resolver feeds AuditEmitBehavior
+// so any audit row written by a firm-user actor gets the firm name
+// auto-tagged in the chain (INV-015) even when the calling command
+// didn't populate ActorFirmName itself.
+builder.Services.AddScoped<EgyptTax.Application.FirmPortal.IFirmContextResolver,
+    EgyptTax.Infrastructure.FirmPortal.SqlFirmContextResolver>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.FirmPortal.InviteAccountantFirmUserHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.FirmPortal.PeriodReviewLockHandler>();
+
 // Differentiator 1 (Tax Risk Score) — rules registered as singletons
 // because they are stateless; the scorer fans out across every
 // registered rule. Adding a new rule = adding one AddSingleton line.

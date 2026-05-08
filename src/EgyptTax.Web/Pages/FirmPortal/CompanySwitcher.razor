@@ -1,0 +1,202 @@
+@page "/firm-portal/switch"
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Switch installation / تبديل المنشأة</h1>
+
+<p>
+    <em>
+        FR-049 — each Egyptian SME runs its own on-prem
+        installation; there is no central vendor hub. The list
+        below is your <strong>browser's local pool</strong> of
+        installations you've accepted invitations from. Switching
+        redirects you to that installation's login (or straight to
+        its home page if your session there is still valid). The
+        pool lives in localStorage on this device only — clearing
+        browser data clears it.
+    </em>
+</p>
+
+<section>
+    <h2>This installation</h2>
+    @if (_localFirmUser is not null)
+    {
+        <table class="data-grid">
+            <tbody>
+                <tr>
+                    <th>Firm name</th>
+                    <td><strong>@_localFirmUser.FirmName</strong></td>
+                </tr>
+                <tr>
+                    <th>Firm contact</th>
+                    <td><code>@_localFirmUser.FirmExternalIdentifier</code></td>
+                </tr>
+                <tr>
+                    <th>Status</th>
+                    <td>
+                        @if (_localFirmUser.IsActive)
+                        {
+                            <span class="active-row">Active</span>
+                        }
+                        else if (_localFirmUser.RevokedAtUtc is not null)
+                        {
+                            <span class="flash-error">Revoked at @_localFirmUser.RevokedAtUtc?.ToString("yyyy-MM-dd HH:mm") UTC</span>
+                        }
+                        else
+                        {
+                            <span>Pending acceptance</span>
+                        }
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <p>
+            <button type="button" class="btn-primary" @onclick="OnRememberThisInstallation">
+                Remember this installation in my pool
+            </button>
+        </p>
+    }
+    else
+    {
+        <p>
+            <em>
+                You're not registered as a firm-user on this
+                installation. The switcher is intended for
+                external accountants invited via FR-049.
+            </em>
+        </p>
+    }
+</section>
+
+<section>
+    <h2>Other installations in your pool</h2>
+    @if (_pool is null)
+    {
+        <p>Loading…</p>
+    }
+    else if (_pool.Count == 0)
+    {
+        <p>
+            <em>
+                No other installations remembered yet. The pool
+                fills up as you accept invitations from additional
+                Egyptian SMEs and click <strong>Remember this
+                installation</strong>.
+            </em>
+        </p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Label</th>
+                    <th>Firm</th>
+                    <th>URL</th>
+                    <th>Last used (UTC)</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var i in _pool)
+                {
+                    <tr class="active-row">
+                        <td>@i.Label</td>
+                        <td>@i.FirmName</td>
+                        <td><code>@i.Url</code></td>
+                        <td>@i.LastUsedAtIso</td>
+                        <td>
+                            <button type="button" class="btn-primary" @onclick="() => OnSwitchTo(i.Url)">Switch</button>
+                            <button type="button" @onclick="() => OnForget(i.Url)">Forget</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@if (_flash is not null)
+{
+    <div class="flash-success" role="status">@_flash</div>
+}
+
+@code {
+    private AccountantFirmUser? _localFirmUser;
+    private List<PoolEntry>? _pool;
+    private string? _flash;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Without a real auth-backed ICurrentUser, we surface the
+        // most-recently-invited firm user on this installation as
+        // the "this is you" hint. Real per-request firm-user
+        // resolution lives behind T225's IFirmContextResolver +
+        // is consumed by AuditEmitBehavior; see batch C2 commit.
+        _localFirmUser = await Db.Set<AccountantFirmUser>().AsNoTracking()
+            .OrderByDescending(a => a.InvitedAtUtc)
+            .FirstOrDefaultAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ReloadPoolAsync();
+        }
+    }
+
+    private async Task ReloadPoolAsync()
+    {
+        try
+        {
+            var raw = await Js.InvokeAsync<PoolEntry[]>("egyptTaxFirmPortal.list");
+            _pool = raw?.ToList() ?? new();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            // Pool isn't available pre-render or in tests; treat as empty.
+            _pool = new();
+            _flash = $"Pool unavailable ({ex.Message}); listing is empty.";
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnRememberThisInstallation()
+    {
+        var url = Nav.BaseUri.TrimEnd('/');
+        var label = new Uri(url).Host;
+        var firmName = _localFirmUser?.FirmName ?? "";
+        await Js.InvokeVoidAsync("egyptTaxFirmPortal.remember", url, label, firmName);
+        _flash = $"Remembered {url} in your installation pool.";
+        await ReloadPoolAsync();
+    }
+
+    private async Task OnSwitchTo(string url)
+    {
+        await Js.InvokeVoidAsync("egyptTaxFirmPortal.switchTo", url);
+    }
+
+    private async Task OnForget(string url)
+    {
+        await Js.InvokeVoidAsync("egyptTaxFirmPortal.forget", url);
+        _flash = $"Forgot {url}.";
+        await ReloadPoolAsync();
+    }
+
+    private sealed class PoolEntry
+    {
+        public string Url { get; set; } = "";
+        public string Label { get; set; } = "";
+        public string FirmName { get; set; } = "";
+        public string LastUsedAtIso { get; set; } = "";
+    }
+}

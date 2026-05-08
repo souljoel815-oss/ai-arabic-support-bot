@@ -1,4 +1,5 @@
 using EgyptTax.Application.Common.Abstractions;
+using EgyptTax.Application.FirmPortal;
 using EgyptTax.Domain.Audit;
 using FluentValidation;
 using MediatR;
@@ -50,4 +51,20 @@ public sealed class FakeCurrentUser : ICurrentUser
         UserId = id ?? Guid.NewGuid(),
         CompanyId = Guid.NewGuid(),
     };
+}
+
+public sealed class FakeFirmContextResolver : IFirmContextResolver
+{
+    private readonly Dictionary<Guid, string> _byUserId = new();
+
+    public FakeFirmContextResolver Map(Guid userId, string firmName)
+    {
+        _byUserId[userId] = firmName;
+        return this;
+    }
+
+    public Task<string?> ResolveFirmNameAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_byUserId.TryGetValue(userId, out var name) ? name : null);
+
+    public static FakeFirmContextResolver Empty { get; } = new();
 }

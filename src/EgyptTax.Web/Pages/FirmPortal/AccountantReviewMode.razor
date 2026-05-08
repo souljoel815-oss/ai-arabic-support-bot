@@ -1,0 +1,293 @@
+@page "/firm-portal"
+@using EgyptTax.Application.FirmPortal
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.FirmPortal
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.SharedKernel.Time
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject IClock Clock
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<h1>Firm portal — review mode (Differentiator 3) / وضع المراجعة</h1>
+
+<p>
+    <em>
+        Surface for accounting firms working on this client's
+        installation. Lists active <strong>review-locks</strong>
+        (the soft FR-050 handshake the bookkeeper raised when
+        their books were ready), plus this installation's firm-
+        user roster. Switching to a different client installation
+        is on the <a href="/firm-portal/switch">switcher page</a>.
+    </em>
+</p>
+
+@if (_savedFlash is not null)
+{
+    <div class="flash-success" role="status">@_savedFlash</div>
+}
+@if (_error is not null)
+{
+    <div class="flash-error" role="alert">@_error</div>
+}
+
+<section>
+    <h2>Active review-locks (FR-050)</h2>
+    @if (_activeLocks is null)
+    {
+        <p>Loading…</p>
+    }
+    else if (_activeLocks.Count == 0)
+    {
+        <p>
+            <em>
+                No months are currently locked for review. The
+                bookkeeper raises the lock from the closing
+                cockpit when they're done editing a month and
+                want a firm reviewer to look at it.
+            </em>
+        </p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Period</th>
+                    <th>Locked at (UTC)</th>
+                    <th>Locked by (user id)</th>
+                    <th>Note</th>
+                    <th class="num">Adjusting actions so far</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var l in _activeLocks)
+                {
+                    <tr class="active-row">
+                        <td>@l.PeriodYear-@l.PeriodMonth.ToString("D2")</td>
+                        <td>@l.LockedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td><code>@l.LockedByUserId.ToString("D")</code></td>
+                        <td>@(l.LockedNote ?? "—")</td>
+                        <td class="num">@l.AccountantActionsDuringLock</td>
+                        <td>
+                            <button type="button" class="btn-primary"
+                                @onclick="() => OnReleaseAsync(l.Id)" disabled="@_busy">
+                                Release
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section>
+    <h2>+ Lock a month for review</h2>
+    <p>
+        <em>
+            Bookkeepers raise the lock from the
+            <a href="/cockpit">closing cockpit</a>. Firm reviewers
+            can also raise it themselves if they want to "freeze"
+            a month while they're working through it.
+        </em>
+    </p>
+    <form @onsubmit="OnLockAsync" @onsubmit:preventDefault>
+        <div class="invoice-toolbar">
+            <label>
+                <span>Year</span>
+                <input type="number" min="2020" max="2099" @bind="_lockYear" required />
+            </label>
+            <label>
+                <span>Month</span>
+                <input type="number" min="1" max="12" @bind="_lockMonth" required />
+            </label>
+            <label>
+                <span>Locked-by user id</span>
+                <input type="text" @bind="_lockByUserId" required />
+            </label>
+        </div>
+        <div class="invoice-toolbar">
+            <label style="flex: 1;">
+                <span>Note (optional)</span>
+                <input type="text" @bind="_lockNote" />
+            </label>
+        </div>
+        <p>
+            <button type="submit" class="btn-primary" disabled="@_busy">
+                @(_busy ? "Saving…" : "Lock for review")
+            </button>
+        </p>
+    </form>
+</section>
+
+<section>
+    <h2>Released review-locks (history)</h2>
+    @if (_releasedLocks is null)
+    {
+        <p>Loading…</p>
+    }
+    else if (_releasedLocks.Count == 0)
+    {
+        <p><em>No released locks yet.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Period</th>
+                    <th>Locked at (UTC)</th>
+                    <th>Released at (UTC)</th>
+                    <th class="num">Adjusting actions during lock</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var l in _releasedLocks)
+                {
+                    <tr class="row-muted">
+                        <td>@l.PeriodYear-@l.PeriodMonth.ToString("D2")</td>
+                        <td>@l.LockedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@(l.ReleasedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                        <td class="num">@l.AccountantActionsDuringLock</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section>
+    <h2>Firm-user roster on this installation</h2>
+    @if (_firmUsers is null)
+    {
+        <p>Loading…</p>
+    }
+    else if (_firmUsers.Count == 0)
+    {
+        <p><em>No firm users invited yet.</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>Firm</th>
+                    <th>Contact</th>
+                    <th>Invited at (UTC)</th>
+                    <th>Accepted at</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in _firmUsers)
+                {
+                    <tr class="@(u.RevokedAtUtc is null ? "active-row" : "row-muted")">
+                        <td><strong>@u.FirmName</strong></td>
+                        <td><code>@u.FirmExternalIdentifier</code></td>
+                        <td>@u.InvitedAtUtc.ToString("yyyy-MM-dd")</td>
+                        <td>@(u.AcceptedAtUtc?.ToString("yyyy-MM-dd") ?? "(pending)")</td>
+                        <td>
+                            @if (u.RevokedAtUtc is not null)
+                            {
+                                <span class="flash-error">Revoked @u.RevokedAtUtc?.ToString("yyyy-MM-dd")</span>
+                            }
+                            else if (u.AcceptedAtUtc is not null)
+                            {
+                                <span>Active</span>
+                            }
+                            else
+                            {
+                                <span>Pending</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    private List<PeriodReviewLock>? _activeLocks;
+    private List<PeriodReviewLock>? _releasedLocks;
+    private List<AccountantFirmUser>? _firmUsers;
+
+    private int _lockYear = DateTime.UtcNow.Year;
+    private int _lockMonth = DateTime.UtcNow.Month;
+    private string _lockByUserId = "";
+    private string _lockNote = "";
+
+    private string? _savedFlash;
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _activeLocks = await Db.Set<PeriodReviewLock>().AsNoTracking()
+            .Where(l => l.ReleasedAtUtc == null)
+            .OrderByDescending(l => l.LockedAtUtc)
+            .ToListAsync();
+        _releasedLocks = await Db.Set<PeriodReviewLock>().AsNoTracking()
+            .Where(l => l.ReleasedAtUtc != null)
+            .OrderByDescending(l => l.ReleasedAtUtc)
+            .Take(50)
+            .ToListAsync();
+        _firmUsers = await Db.Set<AccountantFirmUser>().AsNoTracking()
+            .OrderByDescending(a => a.InvitedAtUtc)
+            .ToListAsync();
+    }
+
+    private async Task OnLockAsync()
+    {
+        _error = null; _savedFlash = null; _busy = true;
+        try
+        {
+            if (!Guid.TryParse(_lockByUserId, out var lockedBy))
+            {
+                _error = "Locked-by user id must be a valid Guid.";
+                return;
+            }
+            var auditStore = new EgyptTax.Infrastructure.Audit.SqlAuditLogStore(Db);
+            var handler = new PeriodReviewLockHandler(Db, Clock, auditStore);
+            var locked = await handler.LockAsync(new LockForReviewCommand(
+                PeriodYear: _lockYear,
+                PeriodMonth: _lockMonth,
+                LockedByUserId: lockedBy,
+                Note: string.IsNullOrWhiteSpace(_lockNote) ? null : _lockNote),
+                CancellationToken.None);
+            _savedFlash = $"Locked {locked.PeriodYear}-{locked.PeriodMonth:D2} for review.";
+            _lockNote = "";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnReleaseAsync(Guid lockId)
+    {
+        _error = null; _savedFlash = null; _busy = true;
+        try
+        {
+            if (!Guid.TryParse(_lockByUserId, out var releasedBy))
+            {
+                _error = "Set Locked-by user id (used here as releaser) before releasing.";
+                return;
+            }
+            var auditStore = new EgyptTax.Infrastructure.Audit.SqlAuditLogStore(Db);
+            var handler = new PeriodReviewLockHandler(Db, Clock, auditStore);
+            var released = await handler.ReleaseAsync(new ReleaseReviewCommand(lockId, releasedBy), CancellationToken.None);
+            _savedFlash = $"Released {released.PeriodYear}-{released.PeriodMonth:D2} after {released.AccountantActionsDuringLock} adjusting action(s).";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}
