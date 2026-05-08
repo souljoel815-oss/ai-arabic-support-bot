@@ -95,6 +95,20 @@ public sealed class PostSalesInvoiceHandler
             .FirstOrDefaultAsync(s => s.DocumentType == documentType, cancellationToken);
         var approvalRequired = approvalSetting?.ApprovalRequired ?? true;
 
+        // T159 / FR-026 — when this document type requires approval,
+        // refuse to direct-post a Draft. The Approver MUST move the
+        // document Draft → Submitted → Approved first; only then can
+        // it land on Posted. The state machine would also reject this
+        // transition, but failing here surfaces a clearer message AND
+        // skips the allocator below — no wasted document number on a
+        // gated post.
+        if (approvalRequired && invoice.State == DocumentState.Draft)
+        {
+            throw new InvalidOperationException(
+                $"Cannot post {documentType} {invoice.Id}: this document type requires approval (FR-026). " +
+                "Submit the document for approval, then have an Approver approve it before posting.");
+        }
+
         var fiscalYear = invoice.DocumentDate.Year;
         var documentNumber = await _allocator.AllocateAsync(
             documentType, fiscalYear, cancellationToken);

@@ -97,6 +97,16 @@ public sealed class PostPurchaseInvoiceHandler
             .FirstOrDefaultAsync(s => s.DocumentType == DocumentType.PurchaseInvoice, cancellationToken);
         var approvalRequired = approvalSetting?.ApprovalRequired ?? true;
 
+        // T159 / FR-026 — see the matching guard in
+        // PostSalesInvoiceHandler. Refuse Draft → Posted when this
+        // type requires approval, BEFORE the allocator runs.
+        if (approvalRequired && invoice.State == DocumentState.Draft)
+        {
+            throw new InvalidOperationException(
+                $"Cannot post PurchaseInvoice {invoice.Id}: this document type requires approval (FR-026). " +
+                "Submit the document for approval, then have an Approver approve it before posting.");
+        }
+
         var fiscalYear = invoice.DateReceived.Year;
         var documentNumber = await _allocator.AllocateAsync(
             DocumentType.PurchaseInvoice, fiscalYear, cancellationToken);

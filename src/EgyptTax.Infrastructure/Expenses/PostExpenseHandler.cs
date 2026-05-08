@@ -87,6 +87,16 @@ public sealed class PostExpenseHandler
             .FirstOrDefaultAsync(s => s.DocumentType == DocumentType.Expense, cancellationToken);
         var approvalRequired = approvalSetting?.ApprovalRequired ?? true;
 
+        // T159 / FR-026 — see the matching guard in
+        // PostSalesInvoiceHandler. Refuse Draft → Posted when this
+        // type requires approval, BEFORE the allocator runs.
+        if (approvalRequired && expense.State == DocumentState.Draft)
+        {
+            throw new InvalidOperationException(
+                $"Cannot post Expense {expense.Id}: this document type requires approval (FR-026). " +
+                "Submit the document for approval, then have an Approver approve it before posting.");
+        }
+
         var fiscalYear = expense.DocumentDate.Year;
         var documentNumber = await _allocator.AllocateAsync(
             DocumentType.Expense, fiscalYear, cancellationToken);
