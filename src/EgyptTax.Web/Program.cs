@@ -20,6 +20,7 @@ using Hangfire;
 using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 
 if (AdminRecover.IsRecoveryInvocation(args))
 {
@@ -37,6 +38,27 @@ if (VerifyAudit.IsVerifyAuditInvocation(args))
 }
 
 var builder = WebApplication.CreateBuilder(args);
+
+// T256 / R-20 — Serilog host logger. Console + rolling file sinks for
+// the MVP; production deployments can layer on Serilog.Sinks.MSSqlServer
+// via appsettings if they want a queryable ops log on the same SQL
+// instance the app already uses. The CorrelationContextMiddleware
+// pushes per-request CorrelationId / UserId / FirmName onto LogContext
+// so {FromLogContext} on every line below carries them automatically.
+builder.Host.UseSerilog((ctx, services, lc) => lc
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Application", "EgyptTax")
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{CorrelationId}] [{UserId}] [{FirmName}] {Message:lj} {Properties:j}{NewLine}{Exception}",
+        formatProvider: System.Globalization.CultureInfo.InvariantCulture)
+    .WriteTo.File(
+        path: Path.Combine(AppContext.BaseDirectory, "logs", "egypttax-.log"),
+        rollingInterval: Serilog.RollingInterval.Day,
+        retainedFileCountLimit: 31,
+        outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] [{CorrelationId}] [{UserId}] [{FirmName}] {Message:lj} {Properties:j}{NewLine}{Exception}",
+        formatProvider: System.Globalization.CultureInfo.InvariantCulture));
 
 builder.Services.AddApplication();
 builder.Services.AddScoped<ICurrentUser, AnonymousCurrentUser>();
@@ -390,6 +412,11 @@ app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// T256 / R-20 — push CorrelationId + UserId + FirmName onto Serilog's
+// LogContext for every downstream log line in the request.
+app.UseMiddleware<EgyptTax.Web.Logging.CorrelationContextMiddleware>();
+app.UseSerilogRequestLogging();
 
 // Schedule recurring jobs once Hangfire storage is available.
 if (!string.IsNullOrWhiteSpace(hangfireConnection))
