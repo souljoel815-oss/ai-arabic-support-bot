@@ -73,9 +73,39 @@ public sealed class BackupAutoFireJob
             return;
         }
 
-        _log.LogInformation(
-            "Auto-backup firing ({Frequency}, last={Last:o}). Running BackupEngine.",
-            config.Frequency, config.LastBackupAtUtc);
+        await FireBackupAsync(config.Frequency, cancellationToken);
+    }
+
+    /// <summary>
+    /// Event-driven path called by <c>LockTaxPeriodHandler</c> via
+    /// Hangfire fire-and-forget when a tax period locks. Fires
+    /// unconditionally when the operator's frequency is OnClosing
+    /// (no interval gate — the closing IS the trigger). Other
+    /// frequencies short-circuit so a stray enqueue on a Daily-
+    /// configured operator doesn't double-fire alongside the cron.
+    /// </summary>
+    public async Task RunOnClosingEventAsync(CancellationToken cancellationToken)
+    {
+        var config = await _settings.GetBackupConfigAsync(cancellationToken);
+        if (!config.AutoBackupEnabled)
+        {
+            _log.LogDebug("OnClosing event ignored: auto-backup disabled.");
+            return;
+        }
+        if (config.Frequency != BackupFrequency.OnClosing)
+        {
+            _log.LogDebug(
+                "OnClosing event ignored: frequency is {Frequency}, not OnClosing.",
+                config.Frequency);
+            return;
+        }
+
+        await FireBackupAsync(config.Frequency, cancellationToken);
+    }
+
+    private async Task FireBackupAsync(BackupFrequency frequency, CancellationToken cancellationToken)
+    {
+        _log.LogInformation("Auto-backup firing ({Frequency}). Running BackupEngine.", frequency);
 
         var result = await _engine.BackupNowAsync(cancellationToken);
         if (result.Ok)

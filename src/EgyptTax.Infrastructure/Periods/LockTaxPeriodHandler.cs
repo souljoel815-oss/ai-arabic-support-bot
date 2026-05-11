@@ -1,5 +1,6 @@
 using System.Globalization;
 using EgyptTax.Application.Audit;
+using Hangfire;
 using EgyptTax.Application.Compliance;
 using EgyptTax.Application.Periods;
 using EgyptTax.Domain.Audit;
@@ -31,17 +32,22 @@ public sealed class LockTaxPeriodHandler
     private readonly IClock _clock;
     private readonly IAuditLogStore _auditLog;
     private readonly IMonthlyTaxClosingCockpitQuery _cockpitQuery;
+    private readonly IBackgroundJobClient? _backgroundJobs;
 
     public LockTaxPeriodHandler(
         AppDbContext db,
         IClock clock,
         IAuditLogStore auditLog,
-        IMonthlyTaxClosingCockpitQuery cockpitQuery)
+        IMonthlyTaxClosingCockpitQuery cockpitQuery,
+        IBackgroundJobClient? backgroundJobs = null)
     {
         _db = db;
         _clock = clock;
         _auditLog = auditLog;
         _cockpitQuery = cockpitQuery;
+        // Optional — production resolves via DI; integration tests
+        // that construct the handler directly pass null (no-op enqueue).
+        _backgroundJobs = backgroundJobs;
     }
 
     public async Task<TaxPeriod> HandleAsync(
@@ -113,6 +119,18 @@ public sealed class LockTaxPeriodHandler
             ),
             cancellationToken
         );
+
+        // Gux.13 Tab 8 — OnClosing event: enqueue an auto-backup for
+        // operators who picked OnClosing as their backup frequency.
+        // BackupAutoFireJob.RunOnClosingEventAsync short-circuits if
+        // the frequency isn't OnClosing or if auto-backup is off, so
+        // a stray enqueue on a Daily-configured operator doesn't
+        // double-fire alongside the cron. Fire-and-forget so the
+        // lock RPC stays fast. _backgroundJobs is null in integration
+        // tests that construct the handler directly — skip the
+        // enqueue rather than throw on uninitialised JobStorage.
+        _backgroundJobs?.Enqueue<EgyptTax.Infrastructure.BackgroundJobs.BackupAutoFireJob>(
+            j => j.RunOnClosingEventAsync(CancellationToken.None));
 
         return period;
     }
