@@ -20,7 +20,10 @@ namespace EgyptTax.Infrastructure.Eta;
 /// </summary>
 public sealed class SqlEtaDashboardQuery(AppDbContext db) : IEtaDashboardQuery
 {
-    private const string Sql =
+    // T-SQL flavour: schema-qualified [brackets], N'literal' for
+    // nvarchar. Targets the ix_eta_submissions_dashboard covering
+    // index for the SC-012 < 2 s perf bar at 50 k rows.
+    private const string SqlSqlServer =
         @"
 SELECT
     [sales_invoice_id]                  AS SalesInvoiceId,
@@ -35,7 +38,30 @@ WHERE [status] IN (N'Pending', N'Failed')
   AND [submission_window_expires_at_utc] <  @cutoffUtc
 ORDER BY [submission_window_expires_at_utc] ASC;";
 
+    // SQLite flavour: no schema (EF Core SQLite drops the schema
+    // qualifier when mapping ToTable(..., schema: ""eta"")); no
+    // [brackets] or N'' literal prefix. Same index name, same
+    // semantics — SQLite picks the index on its own based on
+    // selectivity, no covering index hint needed.
+    private const string SqlSqlite =
+        @"
+SELECT
+    sales_invoice_id                    AS SalesInvoiceId,
+    id                                  AS EtaSubmissionId,
+    status                              AS StatusRaw,
+    submission_window_expires_at_utc    AS SubmissionWindowExpiresAtUtc,
+    attempt_count                       AS AttemptCount,
+    error_code                          AS LastErrorCode
+FROM eta_submissions
+WHERE status IN ('Pending', 'Failed')
+  AND submission_window_expires_at_utc >= @nowUtc
+  AND submission_window_expires_at_utc <  @cutoffUtc
+ORDER BY submission_window_expires_at_utc ASC;";
+
     private readonly AppDbContext _db = db;
+
+    private string ResolveSql() =>
+        _db.Database.IsSqlite() ? SqlSqlite : SqlSqlServer;
 
     public async Task<IReadOnlyList<EtaDashboardRow>> GetUpcomingDeadlinesAsync(
         TimeSpan within,
@@ -59,7 +85,7 @@ ORDER BY [submission_window_expires_at_utc] ASC;";
 
         var rows = await connection.QueryAsync<DapperRow>(
             new CommandDefinition(
-                Sql,
+                ResolveSql(),
                 parameters: new { nowUtc, cutoffUtc = nowUtc.Add(within) },
                 cancellationToken: cancellationToken
             )

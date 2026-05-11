@@ -30,7 +30,9 @@
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         _customers = await db.Set<Customer>().AsNoTracking().OrderBy(c => c.Name.English).ToListAsync();
-        _categories = await db.Set<WhtCategory>().AsNoTracking().OrderBy(c => c.RatePercent).ToListAsync();
+        // SQLite portable mode can't ORDER BY decimal — materialise then sort in-memory.
+        var categories = await db.Set<WhtCategory>().AsNoTracking().ToListAsync();
+        _categories = categories.OrderBy(c => c.RatePercent).ToList();
 
         _form.PeriodStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
         _form.PeriodEnd = _form.PeriodStart.AddMonths(1).AddDays(-1);
