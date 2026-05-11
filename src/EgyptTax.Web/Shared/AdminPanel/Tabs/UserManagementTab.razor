@@ -1,12 +1,262 @@
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Infrastructure.Settings
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Licensing
+@inject UserManagementHandler Users
+
 @*
-    Gux.13 Tab 6 — User Management placeholder.
-    Real implementation lands in Phase 2i (after role enforcement infra).
+    Gux.13 Tab 6 — User Management. Edition-gated: Solo edition
+    sees an upgrade prompt instead of the user list (single user
+    only). SMB+ sees the full list + add/disable/reset/delete.
 *@
-<div class="admin-tab-placeholder">
+
+@if (!EditionGate.Allows(Feature.MultiUser))
+{
+    <section class="user-management-tab">
+        <h2>@(IsArabic ? "إدارة المستخدمين" : "User Management")</h2>
+        <div class="kpi-card kpi-warn" style="padding:24px;">
+            <h3 style="margin-top:0;">
+                @(IsArabic ? "🔒 ميزة في خطة أعمال صغيرة فأعلى" : "🔒 Available on SMB and higher")
+            </h3>
+            <p>
+                @(IsArabic
+                    ? "خطة فردي تدعم مستخدم واحد فقط (المسؤول). للسماح لموظفين إضافيين بالدخول مع تحديد صلاحيات لكل منهم، رقّى لخطة «أعمال صغيرة» (تدعم 3 مستخدمين) أو أعلى."
+                    : "The Solo edition supports a single user (the administrator). To grant additional staff access with per-role permissions, upgrade to SMB (3 users) or higher.")
+            </p>
+            <a href="/settings?tab=license" class="btn-primary">
+                <Icon Name="key" Class="ic" />
+                @(IsArabic ? "ترقية الخطة" : "Upgrade plan")
+            </a>
+        </div>
+    </section>
+    return;
+}
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<section class="user-management-tab">
     <h2>@(IsArabic ? "إدارة المستخدمين" : "User Management")</h2>
-    <p class="page-subtitle">
+    <p class="page-subtitle" style="font-size:13px;">
         @(IsArabic
-            ? "هذا التبويب قيد التطوير. سيتضمن: قائمة المستخدمين، الأدوار (Admin/Accountant/Cashier/View-only)، إعادة ضبط كلمة المرور."
-            : "This tab is under construction. Will include: user list, roles (Admin/Accountant/Cashier/View-only), password reset.")
+            ? $"الخطة الحالية تدعم {(EditionGate.MaxUsers() == int.MaxValue ? "عدداً غير محدود" : EditionGate.MaxUsers().ToString())} من المستخدمين. الحالي: {_users.Count}."
+            : $"Your plan supports {(EditionGate.MaxUsers() == int.MaxValue ? "unlimited" : EditionGate.MaxUsers().ToString())} users. Currently: {_users.Count}.")
     </p>
-</div>
+
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+    }
+
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>@(IsArabic ? "الاسم" : "Name")</th>
+                <th>@(IsArabic ? "البريد" : "Email")</th>
+                <th>@(IsArabic ? "الدور" : "Role")</th>
+                <th>@(IsArabic ? "الحالة" : "Status")</th>
+                <th>@(IsArabic ? "آخر دخول" : "Last login")</th>
+                <th>@(IsArabic ? "إجراءات" : "Actions")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var u in _users)
+            {
+                <tr>
+                    <td>@(IsArabic ? u.DisplayNameAr : u.DisplayNameEn)</td>
+                    <td><code>@u.Email</code></td>
+                    <td>@string.Join(", ", u.RoleCodes)</td>
+                    <td>
+                        @if (u.Status == UserStatus.Active)
+                        {
+                            <span class="state-badge state-approved">@(IsArabic ? "نشط" : "Active")</span>
+                        }
+                        else
+                        {
+                            <span class="state-badge state-pending">@(IsArabic ? "موقوف" : "Disabled")</span>
+                        }
+                    </td>
+                    <td style="font-size:12px;color:var(--text-muted);">
+                        @(u.LastLoginAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "—")
+                    </td>
+                    <td style="white-space:nowrap;">
+                        @if (u.Status == UserStatus.Active)
+                        {
+                            <button type="button" class="btn-secondary" style="font-size:12px;padding:4px 8px;"
+                                    @onclick="() => OnDisableAsync(u.Id)">@(IsArabic ? "إيقاف" : "Disable")</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn-secondary" style="font-size:12px;padding:4px 8px;"
+                                    @onclick="() => OnReactivateAsync(u.Id)">@(IsArabic ? "تنشيط" : "Reactivate")</button>
+                        }
+                        <button type="button" class="btn-secondary" style="font-size:12px;padding:4px 8px;"
+                                @onclick="() => OnResetPasswordAsync(u.Id)">@(IsArabic ? "كلمة مرور جديدة" : "Reset PW")</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <hr style="margin:24px 0;" />
+
+    <h3>@(IsArabic ? "إضافة مستخدم جديد" : "Add new user")</h3>
+    @if (_users.Count >= EditionGate.MaxUsers())
+    {
+        <div class="kpi-card kpi-warn">
+            @(IsArabic
+                ? $"وصلت للحد الأقصى للمستخدمين في خطتك ({EditionGate.MaxUsers()}). أوقف مستخدم موجود أو رقّي الخطة."
+                : $"Reached your plan's user cap ({EditionGate.MaxUsers()}). Disable a user or upgrade your plan.")
+        </div>
+    }
+    else
+    {
+        <div class="form-grid">
+            <label>
+                <span>@(IsArabic ? "الاسم (عربي)" : "Display name (Arabic)")</span>
+                <input type="text" @bind="_newDisplayAr" />
+            </label>
+            <label>
+                <span>@(IsArabic ? "الاسم (إنجليزي)" : "Display name (English)")</span>
+                <input type="text" @bind="_newDisplayEn" />
+            </label>
+            <label>
+                <span>@(IsArabic ? "البريد" : "Email")</span>
+                <input type="email" @bind="_newEmail" placeholder="user@yourcompany.com" />
+            </label>
+            <label>
+                <span>@(IsArabic ? "الدور" : "Role")</span>
+                <select @bind="_newRoleCode">
+                    <option value="">— @(IsArabic ? "اختر" : "select") —</option>
+                    @foreach (var r in _roles)
+                    {
+                        <option value="@r.Code">@r.Code — @(IsArabic ? r.NameAr : r.NameEn)</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>@(IsArabic ? "كلمة مرور مؤقتة" : "Temporary password")</span>
+                <div style="display:flex;gap:4px;">
+                    <input type="text" @bind="_newPassword" style="flex:1;font-family:monospace;" />
+                    <button type="button" class="btn-secondary" style="padding:4px 8px;font-size:12px;"
+                            @onclick="OnGeneratePassword">@(IsArabic ? "توليد" : "Generate")</button>
+                </div>
+            </label>
+        </div>
+        <div class="invoice-actions" style="margin-top:12px;">
+            <button type="button" class="btn-primary" disabled="@_adding" @onclick="OnAddUserAsync">
+                <Icon Name="user-plus" Class="ic" />
+                @(_adding ? (IsArabic ? "جارٍ الإضافة…" : "Adding…") : (IsArabic ? "إضافة المستخدم" : "Add user"))
+            </button>
+        </div>
+        <p class="page-subtitle" style="font-size:12px;color:var(--text-muted);margin-top:8px;">
+            @(IsArabic
+                ? "المستخدم سيُجبر على تغيير كلمة المرور عند أول دخول."
+                : "The new user will be forced to change their password on first login.")
+        </p>
+    }
+</section>
+
+@code {
+    private bool _loading = true;
+    private bool _adding;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private List<UserSummary> _users = new();
+    private List<RoleSummary> _roles = new();
+
+    private string _newEmail = "";
+    private string _newDisplayAr = "";
+    private string _newDisplayEn = "";
+    private string _newRoleCode = "";
+    private string _newPassword = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!EditionGate.Allows(Feature.MultiUser))
+        {
+            _loading = false;
+            return;
+        }
+        _users = await Users.ListAsync();
+        _roles = await Users.ListRolesAsync();
+        _loading = false;
+    }
+
+    private void OnGeneratePassword() => _newPassword = UserManagementHandler.GenerateTempPassword();
+
+    private async Task OnAddUserAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newEmail) || string.IsNullOrWhiteSpace(_newRoleCode) || string.IsNullOrWhiteSpace(_newPassword))
+        {
+            _flash = IsArabic ? "أدخل البريد + الدور + كلمة المرور." : "Email, role, and password are required.";
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        _adding = true;
+        try
+        {
+            await Users.AddAsync(new AddUserCommand(
+                Email: _newEmail,
+                DisplayNameAr: string.IsNullOrWhiteSpace(_newDisplayAr) ? null : _newDisplayAr,
+                DisplayNameEn: string.IsNullOrWhiteSpace(_newDisplayEn) ? null : _newDisplayEn,
+                TempPassword: _newPassword,
+                RoleCode: _newRoleCode));
+            _flash = IsArabic
+                ? $"✓ تم إنشاء المستخدم {_newEmail}. كلمة المرور المؤقتة: {_newPassword} (سيُجبر على تغييرها عند أول دخول)."
+                : $"✓ User {_newEmail} created. Temp password: {_newPassword} (forced change on first login).";
+            _flashClass = "kpi-card kpi-info";
+            _users = await Users.ListAsync();
+            _newEmail = ""; _newDisplayAr = ""; _newDisplayEn = ""; _newRoleCode = ""; _newPassword = "";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _adding = false; }
+    }
+
+    private async Task OnDisableAsync(Guid id)
+    {
+        try
+        {
+            await Users.DisableAsync(id);
+            _flash = IsArabic ? "✓ تم إيقاف المستخدم." : "✓ User disabled.";
+            _flashClass = "kpi-card kpi-info";
+            _users = await Users.ListAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    private async Task OnReactivateAsync(Guid id)
+    {
+        try
+        {
+            await Users.ReactivateAsync(id);
+            _flash = IsArabic ? "✓ تم تنشيط المستخدم." : "✓ User reactivated.";
+            _flashClass = "kpi-card kpi-info";
+            _users = await Users.ListAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    private async Task OnResetPasswordAsync(Guid id)
+    {
+        try
+        {
+            var newPw = UserManagementHandler.GenerateTempPassword();
+            await Users.ResetPasswordAsync(id, newPw);
+            _flash = IsArabic
+                ? $"✓ كلمة المرور الجديدة المؤقتة: {newPw} (سيُجبر على تغييرها عند أول دخول)."
+                : $"✓ New temp password: {newPw} (forced change on first login).";
+            _flashClass = "kpi-card kpi-info";
+            _users = await Users.ListAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+}

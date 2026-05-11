@@ -438,6 +438,10 @@ builder.Services.AddSingleton<EgyptTax.Infrastructure.Settings.SmtpTestSender>()
 // and re-runs ActivationFlow. LicenseStatus refreshes immediately.
 builder.Services.AddSingleton<EgyptTax.Web.Licensing.InAppActivationHandler>();
 
+// Gux.13 Tab 6 — user management. Wraps the existing IPasswordHasher
+// (Argon2id) for temp-password hashing on add/reset.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.UserManagementHandler>();
+
 // Gux.13 Tab 8 — backup engine. Provider-aware (BACKUP DATABASE
 // for SQL Server, SQLite Online Backup API for SQLite). Captures
 // the attachments-root path so the engine zips them alongside the
