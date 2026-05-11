@@ -2590,3 +2590,53 @@ a.btn-secondary .ic {
 .quicklink-row:last-child { border-bottom: none; }
 .quicklink-row:hover { background: var(--bg-2); color: var(--primary); }
 .quicklink-row .ic { width: 18px; height: 18px; color: var(--primary); flex-shrink: 0; }
+
+/* ============================================================
+   Gux.12 — Mobile bottom-nav bar
+   ============================================================ */
+
+.mobile-bottom-nav {
+    display: none; /* shown only on small screens */
+}
+
+@media (max-width: 768px) {
+    .mobile-bottom-nav {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        position: fixed;
+        bottom: 0;
+        inset-inline: 0;
+        height: 64px;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        z-index: 80;
+        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+    .mobile-bottom-nav a {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        font-size: 11px;
+        color: var(--text-muted);
+        text-decoration: none;
+        transition: color var(--t-fast);
+    }
+    .mobile-bottom-nav a:hover { color: var(--primary); }
+    .mobile-bottom-nav a.active {
+        color: var(--primary);
+        font-weight: 600;
+    }
+    .mobile-bottom-nav a .ic {
+        width: 22px;
+        height: 22px;
+    }
+
+    /* Leave space at the bottom of <main> so the nav doesn't cover
+       the last line of content. */
+    .app-main {
+        padding-bottom: calc(var(--sp-4) + 64px + env(safe-area-inset-bottom, 0));
+    }
+}
