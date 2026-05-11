@@ -1,12 +1,223 @@
+@using EgyptTax.Domain.Settings
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Settings
+@inject SettingsRepository Settings
+@inject AppDbContext Db
+
 @*
-    Gux.13 Tab 9 — Notifications placeholder.
-    Real implementation lands in Phase 2h (NotificationPrefs entity wiring).
+    Gux.13 Tab 9 — Notification preferences. Backed by the
+    NotificationPrefs entity from Phase 0b. Each toggle saves
+    immediately on change; day-array thresholds are entered as
+    comma-separated text and validated by the entity setters.
+
+    Email notifications only fire when SMTP is configured in Tab 5
+    — the toggle here just expresses intent.
+
+    The actual notification firing (in-app bell + email) is wired
+    by existing Hangfire jobs that already consume the prefs:
+    update-check (G4.1), eta-status-poll, compliance-calendar-refresh,
+    bank-auto-match. The new ETA cert expiry alert needs its own
+    job (post-v1) — for now the toggle persists; the job lands
+    when the USB-token cert read is implemented end-to-end.
 *@
-<div class="admin-tab-placeholder">
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<section class="notifications-tab">
     <h2>@(IsArabic ? "الإشعارات" : "Notifications")</h2>
-    <p class="page-subtitle">
+    <p class="page-subtitle" style="font-size:13px;">
         @(IsArabic
-            ? "هذا التبويب قيد التطوير. سيتضمن: تنبيهات المواعيد الضريبية، انتهاء الترخيص، فشل ETA، الاعتمادات المعلقة، النسخ الاحتياطي، انتهاء شهادة ETA."
-            : "This tab is under construction. Will include: tax-deadline alerts, license expiry, ETA failures, pending approvals, backup reminder, ETA cert expiry.")
+            ? "تظهر التنبيهات في جرس الإشعارات أعلى الصفحة. التنبيهات بالبريد الإلكتروني تتطلب ضبط SMTP من تبويب «البريد الإلكتروني»."
+            : "Notifications appear in the bell icon at the top of every page. Email delivery requires SMTP configured in the Email Settings tab.")
     </p>
-</div>
+
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+    }
+
+    <table class="data-grid notifications-grid">
+        <thead>
+            <tr>
+                <th>@(IsArabic ? "نوع التنبيه" : "Notification")</th>
+                <th>@(IsArabic ? "مفعّل" : "Enabled")</th>
+                <th>@(IsArabic ? "الإعدادات" : "Settings")</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>@(IsArabic ? "المواعيد الضريبية" : "Tax deadlines")</strong></td>
+                <td><input type="checkbox" @bind="_taxDeadlineEnabled" @bind:after="OnTaxDeadlineChangedAsync" /></td>
+                <td>
+                    <label>@(IsArabic ? "أيام قبل الموعد:" : "Days before:")</label>
+                    <input type="text" style="width:120px;" @bind="_taxDeadlineDays" @bind:after="OnTaxDeadlineChangedAsync"
+                           placeholder="7,3,1" disabled="@(!_taxDeadlineEnabled)" />
+                </td>
+            </tr>
+            <tr>
+                <td><strong>@(IsArabic ? "انتهاء الترخيص" : "License expiry")</strong></td>
+                <td><input type="checkbox" @bind="_licenseExpiryEnabled" @bind:after="OnLicenseExpiryChangedAsync" /></td>
+                <td>
+                    <label>@(IsArabic ? "أيام قبل الانتهاء:" : "Days before:")</label>
+                    <input type="text" style="width:120px;" @bind="_licenseExpiryDays" @bind:after="OnLicenseExpiryChangedAsync"
+                           placeholder="30,7,1" disabled="@(!_licenseExpiryEnabled)" />
+                </td>
+            </tr>
+            <tr>
+                <td><strong>@(IsArabic ? "فشل إرسال ETA" : "ETA submission failure")</strong></td>
+                <td><input type="checkbox" @bind="_etaFailureEnabled" @bind:after="OnEtaFailureChangedAsync" /></td>
+                <td>
+                    <em style="color:var(--text-muted);font-size:13px;">
+                        @(IsArabic ? "تنبيه فوري عند فشل أي إرسال." : "Fires immediately on each failed submission.")
+                    </em>
+                </td>
+            </tr>
+            <tr>
+                <td><strong>@(IsArabic ? "اعتمادات معلقة" : "Pending approvals")</strong></td>
+                <td><input type="checkbox" @bind="_pendingApprovalsEnabled" @bind:after="OnPendingApprovalsChangedAsync" /></td>
+                <td>
+                    <em style="color:var(--text-muted);font-size:13px;">
+                        @(IsArabic ? "يومياً عند وجود اعتمادات تنتظر الموافقة." : "Daily when items are awaiting approval.")
+                    </em>
+                </td>
+            </tr>
+            <tr>
+                <td><strong>@(IsArabic ? "تذكير بالنسخ الاحتياطي" : "Backup reminder")</strong></td>
+                <td><input type="checkbox" @bind="_backupReminderEnabled" @bind:after="OnBackupReminderChangedAsync" /></td>
+                <td>
+                    <label>@(IsArabic ? "إذا لم يتم النسخ خلال:" : "If no backup within:")</label>
+                    <input type="number" min="1" max="365" style="width:80px;"
+                           @bind="_backupReminderDays" @bind:after="OnBackupReminderChangedAsync"
+                           disabled="@(!_backupReminderEnabled)" />
+                    <span>@(IsArabic ? "يوم" : "days")</span>
+                </td>
+            </tr>
+            <tr>
+                <td><strong>@(IsArabic ? "انتهاء شهادة ETA (USB)" : "ETA certificate expiry (USB token)")</strong></td>
+                <td><input type="checkbox" @bind="_etaCertExpiryEnabled" @bind:after="OnEtaCertExpiryChangedAsync" /></td>
+                <td>
+                    <label>@(IsArabic ? "أيام قبل الانتهاء:" : "Days before:")</label>
+                    <input type="text" style="width:120px;" @bind="_etaCertExpiryDays" @bind:after="OnEtaCertExpiryChangedAsync"
+                           placeholder="30,7" disabled="@(!_etaCertExpiryEnabled)" />
+                </td>
+            </tr>
+            <tr style="border-top:2px solid var(--border);">
+                <td><strong>@(IsArabic ? "إرسال نسخة بالبريد الإلكتروني" : "Also send via email")</strong></td>
+                <td><input type="checkbox" @bind="_emailNotificationsEnabled" @bind:after="OnEmailToggleChangedAsync" /></td>
+                <td>
+                    <em style="color:var(--text-muted);font-size:13px;">
+                        @(IsArabic
+                            ? "يتطلب ضبط SMTP من تبويب «البريد الإلكتروني» أولاً."
+                            : "Requires SMTP configured in the Email Settings tab first.")
+                    </em>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+
+@code {
+    private bool _loading = true;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    // Local edit-state shadows for two-way binding
+    private bool _taxDeadlineEnabled;
+    private string _taxDeadlineDays = "";
+
+    private bool _licenseExpiryEnabled;
+    private string _licenseExpiryDays = "";
+
+    private bool _etaFailureEnabled;
+    private bool _pendingApprovalsEnabled;
+
+    private bool _backupReminderEnabled;
+    private int _backupReminderDays;
+
+    private bool _etaCertExpiryEnabled;
+    private string _etaCertExpiryDays = "";
+
+    private bool _emailNotificationsEnabled;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var p = await Settings.GetNotificationPrefsAsync();
+        _taxDeadlineEnabled = p.TaxDeadlineEnabled;
+        _taxDeadlineDays = string.Join(",", p.TaxDeadlineDaysBefore);
+        _licenseExpiryEnabled = p.LicenseExpiryEnabled;
+        _licenseExpiryDays = string.Join(",", p.LicenseExpiryDaysBefore);
+        _etaFailureEnabled = p.EtaFailureEnabled;
+        _pendingApprovalsEnabled = p.PendingApprovalsEnabled;
+        _backupReminderEnabled = p.BackupReminderEnabled;
+        _backupReminderDays = p.BackupReminderDays;
+        _etaCertExpiryEnabled = p.EtaCertExpiryEnabled;
+        _etaCertExpiryDays = string.Join(",", p.EtaCertExpiryDaysBefore);
+        _emailNotificationsEnabled = p.EmailNotificationsEnabled;
+        _loading = false;
+    }
+
+    private static int[] ParseDayList(string raw) =>
+        raw.Split(',', StringSplitOptions.RemoveEmptyEntries)
+           .Select(s => int.TryParse(s.Trim(), System.Globalization.NumberStyles.Integer,
+               System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0)
+           .Where(n => n > 0)
+           .ToArray();
+
+    private async Task ApplyAsync(Action<NotificationPrefs> mutate)
+    {
+        try
+        {
+            var p = await Settings.GetNotificationPrefsAsync();
+            mutate(p);
+            await Db.SaveChangesAsync();
+            _flash = IsArabic ? "✓ تم الحفظ" : "✓ Saved";
+            _flashClass = "kpi-card kpi-info";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+    }
+
+    private Task OnTaxDeadlineChangedAsync()
+    {
+        var days = ParseDayList(_taxDeadlineDays);
+        if (days.Length == 0) days = new[] { 7, 3, 1 }; // sensible default if user clears
+        return ApplyAsync(p => p.SetTaxDeadline(_taxDeadlineEnabled, days));
+    }
+
+    private Task OnLicenseExpiryChangedAsync()
+    {
+        var days = ParseDayList(_licenseExpiryDays);
+        if (days.Length == 0) days = new[] { 30, 7, 1 };
+        return ApplyAsync(p => p.SetLicenseExpiry(_licenseExpiryEnabled, days));
+    }
+
+    private Task OnEtaFailureChangedAsync() =>
+        ApplyAsync(p => p.SetEtaFailure(_etaFailureEnabled));
+
+    private Task OnPendingApprovalsChangedAsync() =>
+        ApplyAsync(p => p.SetPendingApprovals(_pendingApprovalsEnabled));
+
+    private Task OnBackupReminderChangedAsync()
+    {
+        var days = _backupReminderDays is < 1 or > 365 ? 7 : _backupReminderDays;
+        _backupReminderDays = days;
+        return ApplyAsync(p => p.SetBackupReminder(_backupReminderEnabled, days));
+    }
+
+    private Task OnEtaCertExpiryChangedAsync()
+    {
+        var days = ParseDayList(_etaCertExpiryDays);
+        if (days.Length == 0) days = new[] { 30, 7 };
+        return ApplyAsync(p => p.SetEtaCertExpiry(_etaCertExpiryEnabled, days));
+    }
+
+    private Task OnEmailToggleChangedAsync() =>
+        ApplyAsync(p => p.SetEmailNotifications(_emailNotificationsEnabled));
+}

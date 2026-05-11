@@ -3220,3 +3220,18 @@ a.btn-secondary .ic {
         margin-inline-start: 4px;
     }
 }
+
+/* Gux.13 Tab 9 — Notifications grid. Wider rows so the day-array
+   inputs sit comfortably next to the toggles. */
+.notifications-grid td:first-child { width: 30%; }
+.notifications-grid td:nth-child(2) { width: 80px; text-align: center; }
+.notifications-grid td label {
+    display: inline-block;
+    margin-inline-end: 8px;
+    font-size: 13px;
+    color: var(--text-muted, #6b7280);
+}
+.notifications-grid input[type="number"],
+.notifications-grid input[type="text"] {
+    margin-inline-end: 4px;
+}
