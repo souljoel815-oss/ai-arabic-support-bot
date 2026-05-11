@@ -1983,3 +1983,195 @@ section {
     text-decoration: underline;
     font-weight: 600;
 }
+
+/* ============================================================
+   Phase 3.3 — Mobile-responsive layout
+   ============================================================
+   On screens narrower than 768px:
+   - app-shell collapses to a single column
+   - app-sidebar becomes a drawer that slides in from the side
+     (controlled by .sidebar-open on app-shell, toggled by the
+     hamburger button in the topbar)
+   - data-grids get a horizontal scroll wrapper so wide tables
+     don't break the layout
+   - form-grids stack to one column
+   - the topbar trims to essentials
+   ============================================================ */
+
+/* Hamburger button — hidden on desktop, shown on mobile.
+   3-stripe icon implemented in pure CSS. */
+.sidebar-toggle-btn {
+    display: none;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    cursor: pointer;
+    padding: 0;
+    margin-inline-end: var(--sp-2);
+    flex-direction: column;
+    gap: 4px;
+}
+.sidebar-toggle-btn span {
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: var(--text);
+    border-radius: 1px;
+}
+.sidebar-toggle-btn:hover { background: var(--bg-2); }
+
+/* Backdrop — covers the main area when the sidebar drawer is open. */
+.sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 90;
+}
+
+@media (max-width: 768px) {
+    /* Single-column shell — sidebar overlays main, doesn't share space. */
+    .app-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: var(--topbar-h) 1fr;
+        grid-template-areas:
+            "topbar"
+            "main";
+    }
+
+    /* Sidebar becomes an off-canvas drawer (left in LTR, right in RTL). */
+    .app-sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        inset-inline-start: 0;
+        width: 280px;
+        max-width: 85vw;
+        height: 100vh;
+        z-index: 100;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+    [dir="rtl"] .app-sidebar {
+        transform: translateX(100%);
+    }
+    .app-shell.sidebar-open .app-sidebar {
+        transform: translateX(0);
+    }
+    .app-shell.sidebar-open .sidebar-backdrop {
+        display: block;
+    }
+
+    /* Hamburger visible only on mobile. */
+    .sidebar-toggle-btn {
+        display: inline-flex;
+    }
+
+    /* Topbar: trim non-essential context to keep height predictable. */
+    .app-header {
+        padding: 0 var(--sp-3);
+        gap: var(--sp-2);
+    }
+    .topbar-context .topbar-company {
+        max-width: 180px;
+        font-size: 14px;
+    }
+    .topbar-context .topbar-period {
+        display: none; /* re-shows below ≥480 if we want it back */
+    }
+    .topbar-actions {
+        gap: var(--sp-1);
+    }
+    .topbar-btn,
+    .lang-toggle a {
+        padding: 0 10px;
+        font-size: 12.5px;
+        height: 34px;
+    }
+    .topbar-user {
+        height: 34px;
+        padding: 0 4px 0 10px;
+    }
+    [dir="rtl"] .topbar-user { padding: 0 10px 0 4px; }
+    .topbar-user > span:not(.topbar-avatar) {
+        display: none; /* keep just the avatar */
+    }
+
+    /* Main panel — tighter horizontal padding. */
+    .app-main {
+        padding: var(--sp-4) var(--sp-3);
+    }
+
+    /* Tables: don't let a wide grid burst the layout — wrap in scroll. */
+    .data-grid {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+    }
+    .data-grid thead,
+    .data-grid tbody {
+        display: table;
+        width: max-content;
+        min-width: 100%;
+    }
+
+    /* Forms: stack labels above inputs in a single column. */
+    .form-grid {
+        grid-template-columns: 1fr !important;
+        gap: var(--sp-3);
+    }
+    .form-grid fieldset {
+        grid-column: 1 / -1;
+    }
+    .invoice-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--sp-2);
+    }
+    .invoice-toolbar label,
+    .invoice-toolbar button {
+        width: 100%;
+    }
+
+    /* KPI cards already auto-stack via auto-fit minmax; tighten the
+       tile minimum on the smallest screens so single column wins. */
+    .kpi-grid {
+        grid-template-columns: 1fr;
+        gap: var(--sp-3);
+    }
+    .kpi-card {
+        padding: var(--sp-4);
+    }
+    .kpi-card .kpi-value {
+        font-size: 26px;
+    }
+
+    /* Trial banner: stack the two halves vertically. */
+    .trial-banner {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 12px;
+    }
+}
+
+/* Extra-narrow phones (≤ 380px). Tighten further. */
+@media (max-width: 380px) {
+    .topbar-context .topbar-company {
+        max-width: 140px;
+        font-size: 13px;
+    }
+    .topbar-btn,
+    .lang-toggle a {
+        padding: 0 8px;
+        font-size: 12px;
+    }
+    .app-main {
+        padding: var(--sp-3) var(--sp-2);
+    }
+}

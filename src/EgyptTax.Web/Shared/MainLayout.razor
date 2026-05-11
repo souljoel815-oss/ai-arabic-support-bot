@@ -25,6 +25,14 @@
     private string? _userInitial;
     private string? _userDisplayName;
 
+    /// <summary>Mobile-only sidebar drawer state. Toggled by the
+    /// hamburger button in the topbar (CSS-hidden on desktop) and
+    /// by the backdrop click. Closes automatically when the user
+    /// taps any nav link (via the @onclick on app-nav anchors).</summary>
+    private bool _sidebarOpen;
+    private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
+    private void CloseSidebar() => _sidebarOpen = false;
+
     // Once-per-process flag for the lazy default-data seed (VAT
     // categories etc.). Done in MainLayout because it's the first DB
     // hit on every authenticated request, and the request context has
@@ -87,9 +95,11 @@
         : CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m);
 }
 
-<div class="app-shell">
+<div class="app-shell @(_sidebarOpen ? "sidebar-open" : "")">
 
-    <aside class="app-sidebar">
+    <div class="sidebar-backdrop" @onclick="CloseSidebar"></div>
+
+    <aside class="app-sidebar" @onclick="CloseSidebar">
         <a href="" class="sidebar-brand" style="text-decoration:none;">
             <div class="sidebar-brand-mark">DX</div>
             <div class="sidebar-brand-name">Daftar<span class="brand-x">X</span></div>
@@ -157,6 +167,10 @@
     </aside>
 
     <header class="app-header">
+        <button type="button" class="sidebar-toggle-btn" @onclick="ToggleSidebar"
+                aria-label="@Tr("القائمة", "Menu")">
+            <span></span><span></span><span></span>
+        </button>
         <div class="topbar-context">
             <div class="topbar-company">@(_companyName ?? Tr("جارٍ التحميل…", "Loading…"))</div>
             <div class="topbar-period @(_periodLocked ? "is-locked" : "")">
