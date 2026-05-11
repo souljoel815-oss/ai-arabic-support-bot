@@ -633,6 +633,11 @@ builder.Services.AddHttpClient<EgyptTax.Application.Updates.IUpdateChannel,
     EgyptTax.Infrastructure.Updates.HttpUpdateChannel>();
 builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.UpdateCheckJob>();
 
+// Gux.13 Tab 8 — auto-backup cron. Fires hourly; the job itself
+// gates on AutoBackupEnabled + the configured Daily/Weekly interval
+// since the last successful backup.
+builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.BackupAutoFireJob>();
+
 // T110 / R-13 — supplier-TIN revalidation cron. The revalidator is
 // still the always-valid stub (the live registry feed is a Near-term
 // plug-in); US2 replaced the empty supplier source with the
@@ -899,6 +904,20 @@ app.UseSerilogRequestLogging();
         recurringJobId: "update-check",
         methodCall: j => j.RunOnceAsync(CancellationToken.None),
         cronExpression: "15 4 * * *"
+    );
+
+    // Gux.13 Tab 8 — auto-backup. Runs hourly; the job itself
+    // checks BackupConfig.AutoBackupEnabled + the configured
+    // Daily/Weekly interval since the last successful backup.
+    // Hourly cadence keeps the maximum delay between "deadline
+    // arrived" and "backup actually fires" bounded — a 02:00
+    // daily slot would skip the day if the service restarted at
+    // 02:30. OnClosing frequency is event-driven (period-lock
+    // handler) and not handled here.
+    recurring.AddOrUpdate<EgyptTax.Infrastructure.BackgroundJobs.BackupAutoFireJob>(
+        recurringJobId: "auto-backup",
+        methodCall: j => j.RunOnceAsync(CancellationToken.None),
+        cronExpression: "0 * * * *"
     );
 }
 
