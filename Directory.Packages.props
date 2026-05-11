@@ -54,6 +54,7 @@
     <PackageVersion Include="System.Management" Version="8.0.0" />
     <PackageVersion Include="Polly" Version="8.4.2" />
     <PackageVersion Include="CsvHelper" Version="33.0.1" />
+    <PackageVersion Include="ClosedXML" Version="0.104.1" />
   </ItemGroup>
 
   <ItemGroup Label="WiX 5 installer (T247)">

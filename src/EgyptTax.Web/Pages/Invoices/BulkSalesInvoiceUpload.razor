@@ -1,0 +1,238 @@
+@page "/invoices/bulk"
+@using System.Globalization
+@using System.Security.Claims
+@using EgyptTax.Application.Invoices.Bulk
+@using EgyptTax.Infrastructure.Invoices
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject BulkSalesInvoicePostHandler BulkHandler
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "رفع جماعي للفواتير | DaftarX" : "Bulk Invoice Upload | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private const long MaxUploadBytes = 16 * 1024 * 1024; // 16 MB
+
+    private BulkSalesInvoiceParseResult? _parseResult;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+    private bool _posting;
+    private readonly List<BulkPostOutcome> _outcomes = new();
+
+    private async Task DownloadTemplate()
+    {
+        // Trigger a normal HTTP GET on a server-side endpoint so the
+        // browser shows a Save-As dialog. The endpoint is wired in
+        // Program.cs (see /api/v1/invoices/bulk/template).
+        await Task.CompletedTask;
+    }
+
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _flash = null;
+        _parseResult = null;
+        _outcomes.Clear();
+
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > MaxUploadBytes)
+        {
+            _flash = Tr(
+                $"الملف أكبر من {MaxUploadBytes / 1024 / 1024} ميجا.",
+                $"File exceeds {MaxUploadBytes / 1024 / 1024} MB cap.");
+            _flashClass = "flash-error";
+            return;
+        }
+
+        byte[] bytes;
+        await using (var stream = file.OpenReadStream(MaxUploadBytes))
+        await using (var ms = new MemoryStream())
+        {
+            await stream.CopyToAsync(ms);
+            bytes = ms.ToArray();
+        }
+
+        _parseResult = BulkSalesInvoiceParser.Parse(bytes);
+    }
+
+    private async Task PostAllAsync()
+    {
+        if (_parseResult is null) return;
+        var validRows = _parseResult.Rows.Where(r => r.IsValid).ToList();
+        if (validRows.Count == 0)
+        {
+            _flash = Tr("لا توجد بنود صالحة للترحيل.", "No valid rows to post.");
+            _flashClass = "flash-error";
+            return;
+        }
+
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var sub = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid.TryParse(sub, out var userId);
+
+        _posting = true;
+        _outcomes.Clear();
+        StateHasChanged();
+        try
+        {
+            await foreach (var outcome in BulkHandler.PostAllAsync(validRows, userId))
+            {
+                _outcomes.Add(outcome);
+                StateHasChanged();
+            }
+
+            var ok = _outcomes.Count(o => o.Success);
+            var failed = _outcomes.Count - ok;
+            _flash = Tr(
+                $"اكتمل: {ok} نجح، {failed} فشل.",
+                $"Done: {ok} posted, {failed} failed.");
+            _flashClass = failed == 0 ? "kpi-card kpi-info" : "flash-error";
+        }
+        finally
+        {
+            _posting = false;
+        }
+    }
+}
+
+<h1>@Tr("📤 رفع جماعي لفواتير المبيعات", "📤 Bulk sales-invoice upload")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "ارفع ملف Excel فيه عدة فواتير (سطر واحد لكل فاتورة). راجع الأخطاء قبل الترحيل.",
+        "Upload an Excel file with multiple invoices (one row per invoice). Review errors before posting.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin-top:16px;">@_flash</div>
+}
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("1. تحميل القالب", "1. Download the template")</h2>
+    <p style="margin-top:4px;color:var(--text-muted);font-size:13px;">
+        @Tr(
+            "حمّل القالب، املأه في Excel، ثم ارفعه أدناه. أعمدة لازمة: CustomerCode / DocumentDate / ItemCode / Quantity / UnitPrice / VatCategoryCode.",
+            "Download the template, fill in Excel, upload below. Required columns: CustomerCode / DocumentDate / ItemCode / Quantity / UnitPrice / VatCategoryCode.")
+    </p>
+    <a href="/api/v1/invoices/bulk/template" class="btn-secondary" download>
+        <Icon Name="archive" Class="ic" />
+        @Tr("تحميل قالب Excel", "Download Excel template")
+    </a>
+</section>
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("2. رفع الملف", "2. Upload the file")</h2>
+    <InputFile OnChange="OnFileSelectedAsync" accept=".xlsx" />
+</section>
+
+@if (_parseResult is not null)
+{
+    <section class="wizard-panel" style="margin-top:24px;">
+        <h2>@Tr("3. مراجعة قبل الترحيل", "3. Review before posting")</h2>
+
+        @if (_parseResult.HasFileLevelError)
+        {
+            <div class="flash-error">
+                @Tr("لم يستطع DaftarX قراءة الملف:", "DaftarX couldn't read the file:")
+                <ul style="margin-top:8px;">
+                    @foreach (var e in _parseResult.Errors)
+                    {
+                        <li>@e</li>
+                    }
+                </ul>
+            </div>
+        }
+        else
+        {
+            <div class="kpi-card kpi-info">
+                @Tr(
+                    $"تم قراءة {_parseResult.Rows.Count} صف. الصالح للترحيل: {_parseResult.ValidRowCount}، عليه أخطاء: {_parseResult.InvalidRowCount}.",
+                    $"Parsed {_parseResult.Rows.Count} rows. Valid: {_parseResult.ValidRowCount}, with errors: {_parseResult.InvalidRowCount}.")
+            </div>
+
+            <table class="data-grid" style="margin-top:16px;">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>@Tr("العميل", "Customer")</th>
+                        <th>@Tr("التاريخ", "Date")</th>
+                        <th>@Tr("الصنف", "Item")</th>
+                        <th class="num">@Tr("الكمية", "Qty")</th>
+                        <th class="num">@Tr("السعر", "Price")</th>
+                        <th>@Tr("VAT", "VAT")</th>
+                        <th>@Tr("الحالة", "Status")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _parseResult.Rows)
+                    {
+                        var outcome = _outcomes.FirstOrDefault(o => o.LineNumber == row.LineNumber);
+                        <tr class="@(row.IsValid ? "" : "row-overdue")">
+                            <td>@row.LineNumber</td>
+                            <td>@row.CustomerCode</td>
+                            <td>@(row.DocumentDate == DateOnly.MinValue ? "—" : row.DocumentDate.ToString("yyyy-MM-dd"))</td>
+                            <td>@row.ItemCode</td>
+                            <td class="num">@row.Quantity.ToString("N2")</td>
+                            <td class="num">@row.UnitPrice.ToString("N2")</td>
+                            <td>@row.VatCategoryCode</td>
+                            <td>
+                                @if (outcome is not null)
+                                {
+                                    @if (outcome.Success)
+                                    {
+                                        <span class="state-badge state-approved">✓ @outcome.DocumentNumber</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="state-badge state-rejected" title="@outcome.ErrorMessage">✗ @Tr("فشل", "Failed")</span>
+                                    }
+                                }
+                                else if (!row.IsValid)
+                                {
+                                    <span class="state-badge state-rejected" title="@(string.Join(" • ", row.ErrorMessages))">
+                                        ⚠ @Tr("بها أخطاء", "Has errors")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="state-badge state-pending">@Tr("جاهز", "Ready")</span>
+                                }
+                            </td>
+                        </tr>
+                        @if (!row.IsValid && outcome is null)
+                        {
+                            <tr class="row-overdue">
+                                <td></td>
+                                <td colspan="7" style="color:var(--danger-text);font-size:12px;">
+                                    @string.Join(" • ", row.ErrorMessages)
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+
+            @if (_parseResult.ValidRowCount > 0)
+            {
+                <div class="invoice-actions" style="margin-top:16px;">
+                    <button type="button" class="btn-primary" disabled="@_posting" @onclick="PostAllAsync">
+                        <Icon Name="check-circle" Class="ic" />
+                        @(_posting
+                            ? Tr($"جارٍ الترحيل… ({_outcomes.Count}/{_parseResult.ValidRowCount})",
+                                  $"Posting… ({_outcomes.Count}/{_parseResult.ValidRowCount})")
+                            : Tr($"ترحيل {_parseResult.ValidRowCount} فاتورة",
+                                  $"Post {_parseResult.ValidRowCount} invoice(s)"))
+                    </button>
+                </div>
+            }
+        }
+    </section>
+}

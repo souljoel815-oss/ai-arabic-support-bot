@@ -407,6 +407,7 @@ builder.Services.AddSingleton<EgyptTax.Application.FileStorage.IAttachmentStore>
 builder.Services.AddScoped<EgyptTax.Infrastructure.Attachments.UploadAttachmentHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceWithEtaSubmissionHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.BulkSalesInvoicePostHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.IssueCreditNoteHandler>();
 builder.Services.AddSingleton<
     EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer,
@@ -830,6 +831,18 @@ app.UseSerilogRequestLogging();
 app.MapBlazorHub();
 app.MapRazorPages();
 app.MapFallbackToPage("/_Host");
+
+// G1.2 — Bulk-invoice template download. Stream the XLSX bytes
+// straight back so the browser fires a Save-As dialog. No DB
+// access required; the template is fixed by code.
+app.MapGet("/api/v1/invoices/bulk/template", () =>
+{
+    var bytes = EgyptTax.Application.Invoices.Bulk.BulkSalesInvoiceTemplate.Build();
+    return Results.File(
+        bytes,
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        fileDownloadName: "daftarx-bulk-invoices-template.xlsx");
+}).RequireAuthorization("FullyAuthenticated");
 
 // Language switcher — operator clicks AR/EN in the header, this
 // endpoint writes the .AspNetCore.Culture cookie and bounces back
