@@ -135,6 +135,11 @@
         _flash = null;
         try
         {
+            // Gux.13 — Income-tax return is Enterprise+. SMB customers
+            // see the page (deep-link allowed) but the generate
+            // action is gated server-side.
+            EgyptTax.Web.Licensing.EditionGate.Require(EgyptTax.Web.Licensing.Feature.IncomeTaxReturn);
+
             var auth = await AuthState.GetAuthenticationStateAsync();
             var sub = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
             Guid.TryParse(sub, out var userId);
@@ -145,6 +150,11 @@
                 Note: string.IsNullOrWhiteSpace(_note) ? null : _note));
 
             Nav.NavigateTo($"/tax/income-tax-return/{record.Id}");
+        }
+        catch (EgyptTax.Web.Licensing.LicenseRestrictionException ex)
+        {
+            _flash = IsArabic ? ex.ArabicMessage : ex.EnglishMessage;
+            _flashClass = "flash-error";
         }
         catch (Exception ex)
         {

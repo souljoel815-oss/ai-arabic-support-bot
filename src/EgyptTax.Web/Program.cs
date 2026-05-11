@@ -923,6 +923,15 @@ app.MapPost("/api/v1/expenses/ocr", async (
     EgyptTax.Application.Ocr.IReceiptOcrService ocr,
     CancellationToken ct) =>
 {
+    // Gux.13 — edition gate. Solo edition can't use OCR; SMB+ can.
+    // Done at the endpoint so curl/script callers get the same gate
+    // as the UI button (server-side enforcement, not just UI hide).
+    try { EgyptTax.Web.Licensing.EditionGate.Require(EgyptTax.Web.Licensing.Feature.ReceiptOcr); }
+    catch (EgyptTax.Web.Licensing.LicenseRestrictionException ex)
+    {
+        return Results.Json(new { error = ex.EnglishMessage, errorAr = ex.ArabicMessage }, statusCode: 403);
+    }
+
     if (!request.HasFormContentType)
         return Results.BadRequest(new { error = "Expected multipart/form-data with an 'image' file." });
     var form = await request.ReadFormAsync(ct);
@@ -955,6 +964,14 @@ app.MapPost("/api/v1/expenses/ocr", async (
 
 app.MapGet("/api/v1/invoices/bulk/template", () =>
 {
+    // Gux.13 — bulk upload is SMB+. Solo can't even download the
+    // template (no point — the upload itself would fail).
+    try { EgyptTax.Web.Licensing.EditionGate.Require(EgyptTax.Web.Licensing.Feature.BulkInvoice); }
+    catch (EgyptTax.Web.Licensing.LicenseRestrictionException ex)
+    {
+        return Results.Json(new { error = ex.EnglishMessage, errorAr = ex.ArabicMessage }, statusCode: 403);
+    }
+
     var bytes = EgyptTax.Application.Invoices.Bulk.BulkSalesInvoiceTemplate.Build();
     return Results.File(
         bytes,
