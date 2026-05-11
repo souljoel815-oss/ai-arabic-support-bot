@@ -126,13 +126,16 @@ public sealed class UserManagementHandler
     }
 
     /// <summary>Generate a 12-char temp password the operator can
-    /// hand to the new user. Mixed case + digits + a couple of
-    /// punctuation chars so it passes typical complexity policies.
-    /// Uses RNGCryptoServiceProvider via System.Security.Cryptography.
+    /// hand to the new user — typically over WhatsApp or by phone,
+    /// so the alphabet excludes glyphs that get garbled when
+    /// dictated: 0, O, o, 1, I, i, L, l. Same philosophy as
+    /// ReferralCode but with mixed case + digits + symbols so the
+    /// result passes typical complexity policies.
     /// </summary>
     public static string GenerateTempPassword()
     {
-        const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$";
+        // Excluded: 0 O o, 1 I i, L l. Rest is mixed case + digits + punctuation.
+        const string alphabet = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$";
         var bytes = new byte[12];
         System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
         var chars = new char[12];
