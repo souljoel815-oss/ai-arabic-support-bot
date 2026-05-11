@@ -1,0 +1,293 @@
+@page "/compliance/health"
+@using System.Globalization
+@using EgyptTax.Application.Compliance
+@using EgyptTax.Application.Compliance.PenaltyShield
+@using EgyptTax.Domain.Compliance
+@using EgyptTax.Domain.Eta
+@using EgyptTax.Domain.Periods
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IPenaltyExposureQuery PenaltyQuery
+@inject IMonthlyTaxClosingCockpitQuery CockpitQuery
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "صحة الامتثال | DaftarX" : "Compliance Health | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    // Roll-up panels (each pulls from an existing query — no new
+    // infrastructure, just a single demo-opener page that answers
+    // "am I compliant right now?").
+    private MonthlyTaxClosingCockpit? _cockpit;
+    private PenaltyExposureReport? _penalty;
+    private int _etaPending;
+    private int _etaFailed;
+    private ComplianceObligation? _nextDeadline;
+    private int _deadlinesNext30Days;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Cockpit (current month) — drafts in period, failed
+            // ETA submissions, missing-document buckets, VAT readiness.
+            _cockpit = await CockpitQuery.RunAsync(now.Year, now.Month);
+
+            // Penalty Shield — projected EGP exposure + avoidable today.
+            try { _penalty = await PenaltyQuery.GetAsync(now); } catch { /* ok */ }
+
+            // ETA queue counts — what the operator has to act on.
+            _etaPending = await db.Set<EtaSubmission>().AsNoTracking()
+                .CountAsync(s => s.Status == EtaSubmissionStatus.Pending);
+            _etaFailed = await db.Set<EtaSubmission>().AsNoTracking()
+                .CountAsync(s => s.Status == EtaSubmissionStatus.Failed);
+
+            // Next compliance deadline (any kind).
+            var todayDate = DateOnly.FromDateTime(now);
+            var horizon = todayDate.AddDays(30);
+            _nextDeadline = await db.Set<ComplianceObligation>().AsNoTracking()
+                .Where(o => o.Status == ComplianceObligationStatus.Upcoming
+                    && o.DueDate >= todayDate)
+                .OrderBy(o => o.DueDate)
+                .FirstOrDefaultAsync();
+            _deadlinesNext30Days = await db.Set<ComplianceObligation>().AsNoTracking()
+                .CountAsync(o => o.Status == ComplianceObligationStatus.Upcoming
+                    && o.DueDate >= todayDate
+                    && o.DueDate <= horizon);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>Composite 0-100 score:
+    /// 40 pts VAT readiness (cockpit), 30 pts ETA hygiene
+    /// (no failed/critical), 20 pts no draft/missing docs in period,
+    /// 10 pts no projected penalty. Skews high when there's nothing
+    /// to fix; drops fast as red signals appear.</summary>
+    private int OverallScore()
+    {
+        if (_cockpit is null) return 0;
+        var s = 0;
+        // VAT readiness: take its own 0-100 and weight to 40.
+        s += (int)Math.Round(_cockpit.VatReadinessPercent * 0.4m);
+        // ETA hygiene
+        if (_etaFailed == 0 && (_penalty?.CriticalNext24h ?? 0) == 0) s += 30;
+        else if (_etaFailed == 0) s += 18;
+        else if (_etaFailed < 3) s += 8;
+        // Drafts + missing-docs in period
+        var bad = _cockpit.DraftsInPeriodCount + _cockpit.MissingDocuments.Sum(b => b.Count);
+        if (bad == 0) s += 20;
+        else if (bad < 5) s += 10;
+        // Projected penalty
+        if ((_penalty?.ProjectedThisMonthEgp ?? 0m) <= 0m) s += 10;
+        else if ((_penalty?.ProjectedThisMonthEgp ?? 0m) < 5_000m) s += 5;
+        return Math.Clamp(s, 0, 100);
+    }
+
+    private string ScoreClass(int s) => s switch
+    {
+        >= 85 => "kpi-card-ok",
+        >= 60 => "kpi-card-warn",
+        _ => "kpi-card-danger",
+    };
+
+    /// <summary>Build a prioritised top-5 to-do list across every
+    /// surfaced source. Ranked by EGP impact descending so the
+    /// operator fixes the largest dollar item first.</summary>
+    private List<TodoRow> TopTodos()
+    {
+        var list = new List<TodoRow>();
+        if (_cockpit is not null)
+        {
+            if (_cockpit.DraftsInPeriodCount > 0)
+            {
+                list.Add(new TodoRow(
+                    Tr($"عندك {_cockpit.DraftsInPeriodCount} مسودة في فترة الشهر — رحّلها قبل القفل.",
+                       $"{_cockpit.DraftsInPeriodCount} draft(s) dated in this period — post or void before the lock."),
+                    "/cockpit", 1000m * _cockpit.DraftsInPeriodCount));
+            }
+            if (_cockpit.FailedEtaSubmissionCount > 0)
+            {
+                list.Add(new TodoRow(
+                    Tr($"{_cockpit.FailedEtaSubmissionCount} إرسال فاشل لمصلحة الضرائب ({_cockpit.FailedEtaSubmissionTotalGrand.Amount:N0} ج.م.).",
+                       $"{_cockpit.FailedEtaSubmissionCount} failed ETA submission(s) totalling {_cockpit.FailedEtaSubmissionTotalGrand.Amount:N0} EGP."),
+                    "/eta-dashboard", _cockpit.FailedEtaSubmissionTotalGrand.Amount));
+            }
+            foreach (var bucket in _cockpit.MissingDocuments.Where(b => b.Count > 0))
+            {
+                list.Add(new TodoRow(
+                    Tr($"مجموعة \"{bucket.Name}\": {bucket.Count} مستند ناقص.",
+                       $"\"{bucket.Name}\": {bucket.Count} missing document(s)."),
+                    "/cockpit", 500m * bucket.Count));
+            }
+        }
+        if (_penalty?.WorkQueue is { Count: > 0 } queue)
+        {
+            foreach (var item in queue.Take(3))
+            {
+                list.Add(new TodoRow(
+                    Tr($"فاتورة {item.DocumentNumber ?? "(مسودة)"}: غرامة محتملة {item.AvoidableFineEgp:N0} ج.م. خلال {item.HoursUntilDeadline:N0} ساعة.",
+                       $"Invoice {item.DocumentNumber ?? "(draft)"}: {item.AvoidableFineEgp:N0} EGP avoidable in {item.HoursUntilDeadline:N0}h."),
+                    $"/invoices/{item.SalesInvoiceId}", item.AvoidableFineEgp));
+            }
+        }
+        return list.OrderByDescending(t => t.ImpactEgp).Take(5).ToList();
+    }
+
+    private string MonthName(int m) => IsArabic
+        ? m switch { 1 => "يناير", 2 => "فبراير", 3 => "مارس", 4 => "أبريل", 5 => "مايو",
+            6 => "يونيو", 7 => "يوليو", 8 => "أغسطس", 9 => "سبتمبر", 10 => "أكتوبر",
+            11 => "نوفمبر", 12 => "ديسمبر", _ => $"الشهر {m}" }
+        : CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m);
+
+    private string DeadlineKindLabel(ComplianceObligationKind k) => (k, IsArabic) switch
+    {
+        (ComplianceObligationKind.VatMonthly, true)    => "إقرار الضريبة الشهري",
+        (ComplianceObligationKind.VatMonthly, false)   => "Monthly VAT return",
+        (ComplianceObligationKind.VatQuarterly, true)  => "إقرار الضريبة الربع سنوي",
+        (ComplianceObligationKind.VatQuarterly, false) => "Quarterly VAT return",
+        (ComplianceObligationKind.Form41Quarterly, true)  => "نموذج 41 — الخصم الربع سنوي",
+        (ComplianceObligationKind.Form41Quarterly, false) => "Form 41 — quarterly WHT",
+        (ComplianceObligationKind.IncomeTaxAnnual, true)   => "إقرار ضريبة الدخل السنوي",
+        (ComplianceObligationKind.IncomeTaxAnnual, false)  => "Annual income-tax return",
+        (ComplianceObligationKind.TurnoverTaxAnnual, true)  => "إقرار ضريبة معدل الدوران السنوي",
+        (ComplianceObligationKind.TurnoverTaxAnnual, false) => "Annual turnover-tax return",
+        _ => k.ToString(),
+    };
+
+    private sealed record TodoRow(string Text, string Href, decimal ImpactEgp);
+}
+
+<h1>@Tr("🩺 صحة الامتثال", "🩺 Compliance Health")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "نظرة موحّدة من قمرة الإقفال + درع الغرامات + ETA + التقويم — كل اللي محتاج تعمله النهارده في صفحة واحدة.",
+        "Single roll-up across Closing Cockpit + Penalty Shield + ETA + the calendar — everything you need to fix today on one page.")
+</p>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ الحساب…", "Computing…")</p>
+}
+else
+{
+    var score = OverallScore();
+    <section class="health-hero @ScoreClass(score)">
+        <div class="health-score">
+            <div class="health-score-num">@score<span class="health-score-pct">%</span></div>
+            <div class="health-score-label">
+                @if (score >= 85)        { @Tr("متوافق ✓ جاهز للإقفال.", "Compliant ✓ ready to close.") }
+                else if (score >= 60)    { @Tr("شبه متوافق — في حاجات صغيرة محتاجة تتعدّل.", "Mostly compliant — a few items to clean up.") }
+                else                     { @Tr("في مشاكل امتثال محتاجة تركيز فوراً.", "Compliance gaps need attention now.") }
+            </div>
+        </div>
+        <div class="health-period">
+            @Tr($"فترة {MonthName(_cockpit?.Month ?? DateTime.UtcNow.Month)} {_cockpit?.Year ?? DateTime.UtcNow.Year}",
+                $"Period: {MonthName(_cockpit?.Month ?? DateTime.UtcNow.Month)} {_cockpit?.Year ?? DateTime.UtcNow.Year}")
+        </div>
+    </section>
+
+    <!-- Four roll-up cards: Cockpit / Penalty Shield / ETA queue / Next deadline -->
+    <section class="kpi-grid kpi-grid-3" style="margin-top:24px;">
+        <a href="/cockpit" class="kpi-card-v2 @(_cockpit?.VatReadinessPercent >= 95m ? "kpi-card-ok" : _cockpit?.VatReadinessPercent >= 70m ? "kpi-card-warn" : "kpi-card-danger")">
+            <div class="kpi-v2-label"><Icon Name="target" Class="ic" />@Tr("جاهزية الإقفال", "Closing readiness")</div>
+            <div class="kpi-v2-value">@(_cockpit?.VatReadinessPercent.ToString("N0") ?? "—")<span class="kpi-v2-unit">%</span></div>
+            <div class="kpi-v2-meta">
+                @(_cockpit is null ? "" :
+                    Tr($"{_cockpit.CleanPostsCount} من {_cockpit.TotalPostsInPeriod} ترحيل بدون ملاحظات",
+                       $"{_cockpit.CleanPostsCount} of {_cockpit.TotalPostsInPeriod} posts clean"))
+            </div>
+        </a>
+
+        <a href="/penalty-shield" class="kpi-card-v2 @((_penalty?.ProjectedThisMonthEgp ?? 0m) <= 0m ? "kpi-card-ok" : (_penalty?.ProjectedThisMonthEgp ?? 0m) < 5000m ? "kpi-card-warn" : "kpi-card-danger")">
+            <div class="kpi-v2-label"><Icon Name="shield-check" Class="ic" />@Tr("درع الغرامات", "Penalty Shield")</div>
+            <div class="kpi-v2-value">@(_penalty?.ProjectedThisMonthEgp.ToString("N0") ?? "—")<span class="kpi-v2-unit">@Tr("ج.م.", "EGP")</span></div>
+            <div class="kpi-v2-meta">
+                @if (_penalty is { AvoidableIfActedTodayEgp: > 0 })
+                {
+                    @Tr($"وفّر {_penalty.AvoidableIfActedTodayEgp:N0} ج.م. النهارده", $"Save {_penalty.AvoidableIfActedTodayEgp:N0} EGP today")
+                }
+                else
+                {
+                    @Tr("لا توجد غرامات متوقعة ✓", "No penalties projected ✓")
+                }
+            </div>
+        </a>
+
+        <a href="/eta-dashboard" class="kpi-card-v2 @((_etaFailed > 0 || (_penalty?.CriticalNext24h ?? 0) > 0) ? "kpi-card-danger" : _etaPending > 0 ? "kpi-card-warn" : "kpi-card-ok")">
+            <div class="kpi-v2-label"><Icon Name="shield" Class="ic" />@Tr("الفاتورة الإلكترونية", "ETA queue")</div>
+            <div class="kpi-v2-value">@(_etaPending + _etaFailed)<span class="kpi-v2-unit">@Tr("إرسال", "open")</span></div>
+            <div class="kpi-v2-meta">
+                @if (_etaFailed > 0)  { <span>@_etaFailed @Tr("فاشل · ", "failed · ")</span> }
+                <span>@_etaPending @Tr("قيد الإرسال", "pending")</span>
+                @if ((_penalty?.CriticalNext24h ?? 0) > 0)
+                {
+                    <span> · </span>
+                    <strong>@_penalty!.CriticalNext24h @Tr("حرج خلال 24 ساعة", "critical (&lt;24h)")</strong>
+                }
+            </div>
+        </a>
+    </section>
+
+    <!-- Next deadline -->
+    @if (_nextDeadline is not null)
+    {
+        var daysToNext = _nextDeadline.DueDate.DayNumber - DateOnly.FromDateTime(DateTime.UtcNow).DayNumber;
+        var nextClass = daysToNext <= 3 ? "kpi-card-danger" : daysToNext <= 7 ? "kpi-card-warn" : "kpi-card-ok";
+        <section class="kpi-card-v2 @nextClass" style="margin-top:24px;display:block;">
+            <div class="kpi-v2-label"><Icon Name="calendar-range" Class="ic" />@Tr("الموعد القادم", "Next deadline")</div>
+            <div class="kpi-v2-value" style="font-size:22px;">
+                @DeadlineKindLabel(_nextDeadline.Kind)
+            </div>
+            <div class="kpi-v2-meta">
+                @_nextDeadline.DueDate.ToString("yyyy-MM-dd")
+                ·
+                @if (daysToNext <= 0) { @Tr("اليوم", "today") }
+                else if (daysToNext == 1) { @Tr("بعد يوم", "in 1 day") }
+                else { @Tr($"بعد {daysToNext} يوم", $"in {daysToNext} days") }
+                · <a href="/compliance/calendar">@Tr("عرض الكل ←", "view all →")</a>
+                @if (_deadlinesNext30Days > 1)
+                {
+                    <span> · @Tr($"+{_deadlinesNext30Days - 1} موعد آخر خلال 30 يوم", $"+{_deadlinesNext30Days - 1} more in next 30 days")</span>
+                }
+            </div>
+        </section>
+    }
+
+    <!-- Top 5 to-do (ranked by EGP impact) -->
+    <section style="margin-top:32px;">
+        <h2>@Tr("📋 أهم اللي محتاج تعمله النهارده", "📋 Top items to fix today")</h2>
+        @{ var todos = TopTodos(); }
+        @if (todos.Count == 0)
+        {
+            <div class="kpi-card kpi-success">
+                @Tr("ما فيش حاجة محتاجة تركيز دلوقتي. ✓", "Nothing pressing right now. ✓")
+            </div>
+        }
+        else
+        {
+            <ul class="todo-list">
+                @foreach (var t in todos)
+                {
+                    <li class="todo-row">
+                        <div class="todo-impact">
+                            @t.ImpactEgp.ToString("N0")<span class="todo-impact-unit">@Tr("ج.م.", "EGP")</span>
+                        </div>
+                        <div class="todo-text">@t.Text</div>
+                        <a href="@t.Href" class="todo-cta">@Tr("افتح ←", "open →")</a>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+}

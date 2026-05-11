@@ -2640,3 +2640,98 @@ a.btn-secondary .ic {
         padding-bottom: calc(var(--sp-4) + 64px + env(safe-area-inset-bottom, 0));
     }
 }
+
+/* ============================================================
+   G2.3 — Unified Compliance Health page
+   ============================================================ */
+.health-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-4);
+    padding: 28px 32px;
+    border-radius: var(--r-lg);
+    border: 1px solid var(--border);
+    border-inline-start-width: 6px;
+    background: var(--surface);
+    margin-top: 16px;
+}
+.health-hero.kpi-card-ok     { border-inline-start-color: #10b981; background: #f0fdf4; }
+.health-hero.kpi-card-warn   { border-inline-start-color: #f59e0b; background: #fffaf0; }
+.health-hero.kpi-card-danger { border-inline-start-color: #ef4444; background: #fef5f5; }
+.health-score-num {
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1;
+}
+.health-score-pct {
+    font-size: 28px;
+    margin-inline-start: 4px;
+    color: var(--text-muted);
+}
+.health-score-label {
+    margin-top: 8px;
+    font-size: 16px;
+    color: var(--text-muted);
+}
+.health-period {
+    font-size: 14px;
+    color: var(--text-muted);
+    text-align: end;
+}
+
+/* Top to-do list */
+.todo-list {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+}
+.todo-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+}
+.todo-row:last-child { border-bottom: none; }
+.todo-impact {
+    flex-shrink: 0;
+    min-width: 110px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--danger-text);
+    padding: 8px 12px;
+    background: var(--danger-soft);
+    border-radius: var(--r-md);
+}
+.todo-impact-unit {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.todo-text {
+    flex: 1;
+    font-size: 14.5px;
+    line-height: 1.5;
+}
+.todo-cta {
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration: none;
+    flex-shrink: 0;
+}
+.todo-cta:hover { text-decoration: underline; }
+
+@media (max-width: 768px) {
+    .health-hero { flex-direction: column; align-items: flex-start; padding: 20px; }
+    .health-score-num { font-size: 48px; }
+    .todo-row { flex-wrap: wrap; }
+    .todo-impact { min-width: 90px; }
+}
