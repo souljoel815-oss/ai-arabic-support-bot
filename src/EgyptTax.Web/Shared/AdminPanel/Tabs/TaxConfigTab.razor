@@ -1,14 +1,62 @@
 @*
-    Gux.13 Tab 2 — Tax Configuration placeholder.
-    Real implementation lands in Phase 2d.
+    Gux.13 Tab 2 — Tax Configuration. Directory-style tab: the
+    actual UI for each sub-area lives on its existing dedicated
+    page (already polished + tested). This tab gives operators a
+    single jump-off point with descriptions of when each sub-area
+    matters.
+
+    Future revision: extract each sub-page body into a panel and
+    inline them here. The 4 pages are 200-250 lines each — moving
+    them all at once is high-risk for a UX-only consolidation.
 *@
-<div class="admin-tab-placeholder">
+
+<section class="tax-config-tab">
     <h2>@(IsArabic ? "الإعدادات الضريبية" : "Tax Configuration")</h2>
     <p class="page-subtitle">
-        @(IsArabic ? "هذا التبويب قيد التطوير. استخدم مؤقتاً:" : "This tab is under construction. Use for now:")
-        <a href="/settings/tax-periods">/settings/tax-periods</a>,
-        <a href="/settings/vat-categories">/settings/vat-categories</a>,
-        <a href="/settings/wht-categories">/settings/wht-categories</a>,
-        <a href="/settings/fiscal-year">/settings/fiscal-year</a>
+        @(IsArabic
+            ? "أربع مناطق ضريبية تتحكم في كيفية حساب وعرض كل ضريبة في النظام. اضبطها مرة واحدة عند الإعداد ولا تحتاج للعودة إليها كثيراً."
+            : "Four tax sub-areas control how each tax is computed + presented across the app. Set them once at install time and you rarely need to revisit.")
     </p>
-</div>
+
+    <div class="tax-config-cards">
+        <a href="/settings/fiscal-year" class="tax-config-card">
+            <Icon Name="calendar" Class="ic" />
+            <div>
+                <strong>@(IsArabic ? "السنة المالية" : "Fiscal year")</strong>
+                <p>@(IsArabic
+                    ? "تاريخ بداية السنة المالية. يتحكم في فترات تقارير الدخل + الإقفال السنوي."
+                    : "Fiscal-year start month. Drives the income-tax report windows + the annual closing.")</p>
+            </div>
+        </a>
+
+        <a href="/settings/tax-periods" class="tax-config-card">
+            <Icon Name="lock" Class="ic" />
+            <div>
+                <strong>@(IsArabic ? "الفترات الضريبية (FR-037)" : "Tax periods (FR-037)")</strong>
+                <p>@(IsArabic
+                    ? "إدارة قفل / إعادة فتح الفترات الضريبية الشهرية والربع سنوية والسنوية. القفل يمنع الترحيل بأثر رجعي."
+                    : "Lock/reopen monthly + quarterly + annual tax periods. Locked periods refuse backdated postings.")</p>
+            </div>
+        </a>
+
+        <a href="/settings/vat-categories" class="tax-config-card">
+            <Icon Name="percent" Class="ic" />
+            <div>
+                <strong>@(IsArabic ? "فئات ضريبة القيمة المضافة" : "VAT categories")</strong>
+                <p>@(IsArabic
+                    ? "نسب VAT (14%, 0%, معفى) + الفئات المخصصة. مُسبقة الإعداد بنسب ETA الرسمية."
+                    : "VAT rates (14%, 0%, exempt) + custom categories. Pre-seeded with the official ETA codes.")</p>
+            </div>
+        </a>
+
+        <a href="/settings/wht-categories" class="tax-config-card">
+            <Icon Name="receipt" Class="ic" />
+            <div>
+                <strong>@(IsArabic ? "فئات الخصم من المنبع" : "WHT categories")</strong>
+                <p>@(IsArabic
+                    ? "نسب ضريبة الخصم من المنبع لكل كود نشاط. تتحكم في حسابات Form 41."
+                    : "WHT rates per activity code. Drives the Form 41 quarterly filing.")</p>
+            </div>
+        </a>
+    </div>
+</section>

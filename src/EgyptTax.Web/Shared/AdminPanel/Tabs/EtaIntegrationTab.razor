@@ -1,12 +1,165 @@
+@using EgyptTax.Domain.Eta
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+
 @*
-    Gux.13 Tab 3 — ETA Integration placeholder.
-    Real implementation lands in Phase 2e.
+    ETA credentials are stored outside the EF context (config file +
+    secrets), so we infer "configured" from the existence of any
+    submission history. A new install with no submissions yet sees
+    Grey ("not configured"); operators who've set up + sent at least
+    one invoice see Green/Orange based on the latest attempt.
 *@
-<div class="admin-tab-placeholder">
+
+@*
+    Gux.13 Tab 3 — ETA Integration. Directory tab linking to the
+    detailed ETA pages PLUS a 4-state status indicator at the top
+    that gives the operator immediate feedback on whether ETA is
+    ready to send invoices.
+
+    The status indicator is the new content per the v3 spec; the
+    rest of the ETA setup (credentials, certificates, wizard) keeps
+    living on its existing pages.
+*@
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<section class="eta-integration-tab">
     <h2>@(IsArabic ? "ربط منظومة ETA" : "ETA Integration")</h2>
-    <p class="page-subtitle">
-        @(IsArabic ? "هذا التبويب قيد التطوير. استخدم مؤقتاً:" : "This tab is under construction. Use for now:")
-        <a href="/eta-wizard">/eta-wizard</a>,
-        <a href="/certificates">/certificates</a>
-    </p>
-</div>
+
+    @* ----- 4-state status banner ----- *@
+
+    <div class="eta-status-banner @StatusClass">
+        <div class="eta-status-dot"></div>
+        <div>
+            <strong>@StatusTitle</strong>
+            <p>@StatusBody</p>
+        </div>
+    </div>
+
+    <div class="tax-config-cards" style="margin-top:24px;">
+        <a href="/eta-wizard" class="tax-config-card">
+            <Icon Name="play-circle" Class="ic" />
+            <div>
+                <strong>@(IsArabic ? "معالج إعداد ETA" : "ETA setup wizard")</strong>
+                <p>@(IsArabic
+                    ? "إعداد بيئة ETA لأول مرة (Sandbox / Production)، ربط Client ID + Secret + Token PIN، اختبار الاتصال."
+                    : "First-time ETA setup (Sandbox / Production), Client ID + Secret + Token PIN, Test Connection.")</p>
+            </div>
+        </a>
+
+        <a href="/certificates" class="tax-config-card">
+            <Icon Name="shield-check" Class="ic" />
+            <div>
+                <strong>@(IsArabic ? "الشهادات الرقمية (USB Token)" : "Digital certificates (USB token)")</strong>
+                <p>@(IsArabic
+                    ? "إدارة شهادات الـ USB token المستخدمة في توقيع الفواتير. تنبيه قبل الانتهاء يضبط من تبويب الإشعارات."
+                    : "Manage the USB-token certificates used to sign invoices. Expiry alerts are configured in the Notifications tab.")</p>
+            </div>
+        </a>
+
+        <a href="/eta-dashboard" class="tax-config-card">
+            <Icon Name="activity" Class="ic" />
+            <div>
+                <strong>@(IsArabic ? "لوحة تحكم ETA" : "ETA dashboard")</strong>
+                <p>@(IsArabic
+                    ? "حالة كل إرسال فاتورة + إعادة المحاولة + معالج الأخطاء بالعربي."
+                    : "Per-invoice submission status, retry, Arabic error translator.")</p>
+            </div>
+        </a>
+
+        <a href="/eta-inbox" class="tax-config-card">
+            <Icon Name="inbox" Class="ic" />
+            <div>
+                <strong>@(IsArabic ? "صندوق ETA الوارد" : "ETA inbox")</strong>
+                <p>@(IsArabic
+                    ? "المستندات التي يرسلها لك ETA (فواتير المشتريات الإلكترونية المسجلة بإسمك)."
+                    : "Documents ETA delivers TO you (e-invoices issued with your TIN).")</p>
+            </div>
+        </a>
+    </div>
+</section>
+
+@code {
+    private bool _loading = true;
+    private DateTime? _lastSubmissionAttemptUtc;
+    private bool _lastSubmissionFailed;
+    private int _totalSubmissions;
+    private int _failedRecently;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            _totalSubmissions = await db.Set<EtaSubmission>().AsNoTracking().CountAsync();
+
+            // Most recent submission attempt by status — used to
+            // distinguish "set up + working" from "set up + failing".
+            var lastSubmission = await db.Set<EtaSubmission>().AsNoTracking()
+                .Where(s => s.LastAttemptAtUtc != null)
+                .OrderByDescending(s => s.LastAttemptAtUtc)
+                .Select(s => new { s.LastAttemptAtUtc, s.Status })
+                .FirstOrDefaultAsync();
+            if (lastSubmission is not null)
+            {
+                _lastSubmissionAttemptUtc = lastSubmission.LastAttemptAtUtc;
+                _lastSubmissionFailed = lastSubmission.Status == EtaSubmissionStatus.Failed;
+            }
+
+            // Failed-in-last-24h count — surfaces "intermittent
+            // failures" vs "single old failure".
+            var since = DateTime.UtcNow.AddHours(-24);
+            _failedRecently = await db.Set<EtaSubmission>().AsNoTracking()
+                .CountAsync(s => s.Status == EtaSubmissionStatus.Failed
+                    && s.LastAttemptAtUtc != null
+                    && s.LastAttemptAtUtc >= since);
+        }
+        finally { _loading = false; }
+    }
+
+    /// <summary>4-state indicator from the v3 spec:
+    ///  Grey: not configured (no submission history yet)
+    ///  Orange: most recent submission failed (auth OK but problem)
+    ///  Green: most recent submission succeeded
+    ///
+    /// (The Red "auth failed" state would need a real auth-test;
+    ///  inferring it from submission history alone isn't reliable
+    ///  enough to surface — Orange covers both auth + transient
+    ///  network failures correctly.)
+    /// </summary>
+    private string StatusClass
+    {
+        get
+        {
+            if (_totalSubmissions == 0) return "eta-status-grey";
+            if (_lastSubmissionFailed) return "eta-status-orange";
+            return "eta-status-green";
+        }
+    }
+
+    private string StatusTitle => StatusClass switch
+    {
+        "eta-status-green"  => IsArabic ? "✓ متصل بـ ETA" : "✓ Connected to ETA",
+        "eta-status-orange" => IsArabic ? "⚠ آخر إرسال فشل — راجع لوحة التحكم" : "⚠ Last submission failed — check the dashboard",
+        _                   => IsArabic ? "○ غير مُعَدّ" : "○ Not configured",
+    };
+
+    private string StatusBody => StatusClass switch
+    {
+        "eta-status-green"  => IsArabic
+            ? $"آخر إرسال ناجح: {_lastSubmissionAttemptUtc:yyyy-MM-dd HH:mm} UTC."
+            : $"Last successful submission: {_lastSubmissionAttemptUtc:yyyy-MM-dd HH:mm} UTC.",
+        "eta-status-orange" => IsArabic
+            ? $"عدد الإرسالات الفاشلة خلال آخر 24 ساعة: {_failedRecently}. ربما الـ USB token غير متصل، Client Secret تغير، أو مشكلة شبكة."
+            : $"{_failedRecently} failure(s) in the last 24h. USB token may be disconnected, Client Secret may have changed, or network issue.",
+        _                   => IsArabic
+            ? "ابدأ بمعالج الإعداد لربط ETA لأول مرة."
+            : "Start with the setup wizard to connect ETA for the first time.",
+    };
+}
