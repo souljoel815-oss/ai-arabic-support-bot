@@ -10,6 +10,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- G2.1 — bundled GPC corpus for the smart coding assistant.
+         Embedded so the suggester works in the portable single-file
+         EXE without an external data file. -->
+    <EmbeddedResource Include="Eta\ItemCodeSuggestions\eta-item-codes.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="MediatR" />
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />

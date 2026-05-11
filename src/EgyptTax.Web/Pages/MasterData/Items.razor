@@ -1,5 +1,6 @@
 @page "/items"
 @using System.ComponentModel.DataAnnotations
+@using EgyptTax.Application.Eta.ItemCodeSuggestions
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.SharedKernel
@@ -94,11 +95,11 @@
             </label>
             <label>
                 <span>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</span>
-                <InputText @bind-Value="_form.NameEnglish" />
+                <InputText @bind-Value="_form.NameEnglish" @bind-Value:after="RefreshSuggestions" />
             </label>
             <label>
                 <span>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</span>
-                <InputText @bind-Value="_form.NameArabic" />
+                <InputText @bind-Value="_form.NameArabic" @bind-Value:after="RefreshSuggestions" />
             </label>
             <label>
                 <span>@(IsArabic ? "فئة الضريبة الافتراضية" : "Default VAT category")</span>
@@ -110,6 +111,44 @@
                 </InputSelect>
             </label>
 
+            @* G2.1 — Smart GS1/EGS code suggester. Renders as soon
+               as the operator types 3+ chars in either name field.
+               Picks one → fills _form.EtaItemCode silently; the new
+               item ships with the code already set. *@
+            @if (_codeSuggestions.Count > 0 || !string.IsNullOrEmpty(_form.EtaItemCode))
+            {
+                <div class="code-suggester" style="grid-column:1 / -1;">
+                    <div class="code-suggester-header">
+                        <Icon Name="zap" Class="ic" />
+                        <strong>@(IsArabic ? "اقتراحات كود ETA" : "ETA code suggestions")</strong>
+                        @if (!string.IsNullOrEmpty(_form.EtaItemCode))
+                        {
+                            <span class="code-suggester-applied">
+                                @(IsArabic ? "تم اختيار: " : "Picked: ")<code>@_form.EtaItemCode</code>
+                                <button type="button" class="code-suggester-clear" @onclick="ClearSuggestion">×</button>
+                            </span>
+                        }
+                    </div>
+                    @if (string.IsNullOrEmpty(_form.EtaItemCode))
+                    {
+                        <div class="code-suggester-grid">
+                            @foreach (var s in _codeSuggestions)
+                            {
+                                var conf = s.Confidence >= EtaItemCodeSuggester.HighConfidenceThreshold
+                                    ? "code-conf-high" : "code-conf-mid";
+                                <button type="button" class="code-suggester-card @conf"
+                                        @onclick="@(() => ApplySuggestion(s.Code))"
+                                        title="@s.Category — @s.Kind">
+                                    <div class="code-suggester-conf">@s.Confidence%</div>
+                                    <div class="code-suggester-label">@(IsArabic ? s.LabelAr : s.LabelEn)</div>
+                                    <code>@s.Code</code>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
             <button type="submit">@(IsArabic ? "إضافة صنف" : "Add item")</button>
         </EditForm>
     }
@@ -120,6 +159,27 @@
     private List<VatCategory>? _vatCategories;
     private FormModel _form = new();
     private string? _savedFlash;
+
+    // G2.1 — live ETA-code suggestions for the create form.
+    // Recomputed whenever the operator types in either name field
+    // (debounce isn't needed — the suggester is in-memory and
+    // hits ~70 entries; the whole pass is ~1ms).
+    private IReadOnlyList<EtaItemCodeSuggestion> _codeSuggestions = Array.Empty<EtaItemCodeSuggestion>();
+    private void RefreshSuggestions()
+    {
+        var description = $"{_form.NameArabic} {_form.NameEnglish}".Trim();
+        _codeSuggestions = description.Length >= 3
+            ? EtaItemCodeSuggester.Suggest(description, topN: 3)
+            : Array.Empty<EtaItemCodeSuggestion>();
+    }
+    private void ApplySuggestion(string code)
+    {
+        _form.EtaItemCode = code;
+    }
+    private void ClearSuggestion()
+    {
+        _form.EtaItemCode = null;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -165,6 +225,13 @@
             code: _form.Code,
             name: new ArabicEnglishText(_form.NameArabic, _form.NameEnglish),
             defaultVatCategoryId: _form.DefaultVatCategoryId);
+        // G2.1 — apply the operator's picked suggestion immediately
+        // so the new item ships with a usable EtaItemCode (skips the
+        // request-and-wait loop the buttons drive otherwise).
+        if (!string.IsNullOrWhiteSpace(_form.EtaItemCode))
+        {
+            item.SetEtaItemCode(_form.EtaItemCode);
+        }
         Db.Add(item);
         await Db.SaveChangesAsync();
 
@@ -268,5 +335,9 @@
         [Required, StringLength(200)] public string NameEnglish { get; set; } = "";
         [Required, StringLength(200)] public string NameArabic { get; set; } = "";
         public Guid DefaultVatCategoryId { get; set; }
+        /// <summary>G2.1 — set by the operator when they pick a
+        /// suggestion. The new item ships with this code already
+        /// filled, skipping the request-and-wait flow.</summary>
+        public string? EtaItemCode { get; set; }
     }
 }

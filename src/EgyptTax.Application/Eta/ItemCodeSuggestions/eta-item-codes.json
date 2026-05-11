@@ -1,0 +1,58 @@
+[
+  { "code": "10000123", "kind": "GS1", "labelEn": "Notebook computer (laptop)", "labelAr": "حاسب محمول (لاب توب)", "ar": ["لابتوب","لاب توب","كمبيوتر محمول","نوت بوك"], "en": ["laptop","notebook","macbook","portable computer","ultrabook"], "category": "Electronics" },
+  { "code": "10000124", "kind": "GS1", "labelEn": "Desktop computer", "labelAr": "حاسب مكتبي", "ar": ["كمبيوتر مكتبي","ديسك توب","حاسب آلي"], "en": ["desktop","pc","computer","tower"], "category": "Electronics" },
+  { "code": "10000131", "kind": "GS1", "labelEn": "Smartphone / mobile phone", "labelAr": "هاتف ذكي / موبايل", "ar": ["موبايل","تليفون","هاتف","سمارت فون","ايفون","سامسونج"], "en": ["smartphone","phone","mobile","iphone","samsung","huawei","android"], "category": "Electronics" },
+  { "code": "10000142", "kind": "GS1", "labelEn": "Tablet computer", "labelAr": "تابلت", "ar": ["تابلت","ايباد","لوحي"], "en": ["tablet","ipad"], "category": "Electronics" },
+  { "code": "10000156", "kind": "GS1", "labelEn": "Printer (office)", "labelAr": "طابعة مكتبية", "ar": ["طابعة","طباعه","برينتر"], "en": ["printer","laserjet","inkjet"], "category": "Electronics" },
+  { "code": "10000157", "kind": "GS1", "labelEn": "Computer monitor / display", "labelAr": "شاشة كمبيوتر", "ar": ["شاشة","موشن","مونيتور"], "en": ["monitor","display","screen","lcd"], "category": "Electronics" },
+  { "code": "10000158", "kind": "GS1", "labelEn": "Computer keyboard", "labelAr": "كيبورد", "ar": ["كيبورد","لوحة مفاتيح"], "en": ["keyboard"], "category": "Electronics" },
+  { "code": "10000159", "kind": "GS1", "labelEn": "Computer mouse", "labelAr": "ماوس", "ar": ["ماوس","فأرة"], "en": ["mouse"], "category": "Electronics" },
+  { "code": "10000160", "kind": "GS1", "labelEn": "USB flash drive", "labelAr": "فلاش USB", "ar": ["فلاش","يو إس بي","ميمري"], "en": ["usb","flash","drive","memory stick","thumb drive"], "category": "Electronics" },
+  { "code": "10000161", "kind": "GS1", "labelEn": "External hard disk drive", "labelAr": "هارد ديسك خارجي", "ar": ["هارد","قرص صلب","تخزين خارجي"], "en": ["hard","disk","drive","ssd","hdd","external"], "category": "Electronics" },
+
+  { "code": "10001001", "kind": "GS1", "labelEn": "Wheat flour (bagged)", "labelAr": "دقيق قمح (معبأ)", "ar": ["دقيق","فينو","طحين"], "en": ["flour","wheat"], "category": "Food" },
+  { "code": "10001002", "kind": "GS1", "labelEn": "Refined white sugar", "labelAr": "سكر أبيض", "ar": ["سكر"], "en": ["sugar"], "category": "Food" },
+  { "code": "10001003", "kind": "GS1", "labelEn": "Sunflower / vegetable cooking oil", "labelAr": "زيت طعام (دوار شمس / خضروات)", "ar": ["زيت","زيت طبخ","زيت دوار شمس","زيت ذرة"], "en": ["oil","cooking oil","vegetable oil","sunflower oil","corn oil"], "category": "Food" },
+  { "code": "10001004", "kind": "GS1", "labelEn": "Olive oil (extra virgin)", "labelAr": "زيت زيتون", "ar": ["زيت زيتون"], "en": ["olive","olive oil","extra virgin"], "category": "Food" },
+  { "code": "10001005", "kind": "GS1", "labelEn": "Long-grain white rice", "labelAr": "أرز أبيض", "ar": ["أرز","رز"], "en": ["rice","basmati"], "category": "Food" },
+  { "code": "10001006", "kind": "GS1", "labelEn": "Pasta (dried)", "labelAr": "مكرونة جافة", "ar": ["مكرونة","مكرونه","سباجيتي"], "en": ["pasta","spaghetti","macaroni"], "category": "Food" },
+  { "code": "10001007", "kind": "GS1", "labelEn": "Bottled water (still)", "labelAr": "مياه معدنية", "ar": ["مياه","ماء","ميه"], "en": ["water","mineral water","bottled water"], "category": "Food" },
+  { "code": "10001008", "kind": "GS1", "labelEn": "Carbonated soft drink", "labelAr": "مشروب غازي", "ar": ["مشروب غازي","كولا","بيبسي","كوكاكولا"], "en": ["soda","cola","pepsi","coca-cola","soft drink"], "category": "Food" },
+  { "code": "10001009", "kind": "GS1", "labelEn": "Tea (black, loose or bagged)", "labelAr": "شاي", "ar": ["شاي","شاي ليبتون"], "en": ["tea","black tea","lipton"], "category": "Food" },
+  { "code": "10001010", "kind": "GS1", "labelEn": "Roasted coffee (ground or beans)", "labelAr": "قهوة محمصة", "ar": ["قهوة","قهوه","بن","نسكافيه"], "en": ["coffee","espresso","nescafe"], "category": "Food" },
+
+  { "code": "10002001", "kind": "GS1", "labelEn": "Cotton fabric (per metre)", "labelAr": "قماش قطن (بالمتر)", "ar": ["قماش قطن","قطن"], "en": ["cotton","fabric"], "category": "Textiles" },
+  { "code": "10002002", "kind": "GS1", "labelEn": "T-shirt (cotton)", "labelAr": "تيشيرت قطن", "ar": ["تيشيرت","تي شيرت"], "en": ["t-shirt","tshirt","tee"], "category": "Textiles" },
+  { "code": "10002003", "kind": "GS1", "labelEn": "Men's shirt (formal/casual)", "labelAr": "قميص رجالي", "ar": ["قميص","قميص رجالي"], "en": ["shirt","mens shirt","dress shirt"], "category": "Textiles" },
+  { "code": "10002004", "kind": "GS1", "labelEn": "Trousers / pants", "labelAr": "بنطلون", "ar": ["بنطلون","بنطال","سروال"], "en": ["pants","trousers","jeans"], "category": "Textiles" },
+  { "code": "10002005", "kind": "GS1", "labelEn": "Bed sheet (cotton)", "labelAr": "ملاءة سرير قطن", "ar": ["ملاءة","ملايات","شرشف"], "en": ["bed","sheet","linen"], "category": "Textiles" },
+
+  { "code": "10003001", "kind": "GS1", "labelEn": "Office paper (A4, ream)", "labelAr": "ورق طباعة A4 (دستة)", "ar": ["ورق","ورق A4","ورق طباعة","فرخ ورق"], "en": ["paper","a4","printer paper","ream"], "category": "Office supplies" },
+  { "code": "10003002", "kind": "GS1", "labelEn": "Ballpoint pen", "labelAr": "قلم جاف", "ar": ["قلم","قلم جاف","بنصلق","بنصلكة"], "en": ["pen","ballpoint","biro"], "category": "Office supplies" },
+  { "code": "10003003", "kind": "GS1", "labelEn": "Printer toner cartridge", "labelAr": "خرطوشة حبر / تونر", "ar": ["تونر","خرطوشة","خرطوشه حبر","حبر طابعة"], "en": ["toner","cartridge","ink","printer ink"], "category": "Office supplies" },
+  { "code": "10003004", "kind": "GS1", "labelEn": "Stapler (desktop)", "labelAr": "دباسة مكتبية", "ar": ["دباسة","دباسه"], "en": ["stapler"], "category": "Office supplies" },
+  { "code": "10003005", "kind": "GS1", "labelEn": "Notebook / notepad", "labelAr": "دفتر ملاحظات", "ar": ["دفتر","كشكول","نوته"], "en": ["notebook","notepad"], "category": "Office supplies" },
+
+  { "code": "EGS-SVC-001", "kind": "EGS", "labelEn": "Accounting / bookkeeping services", "labelAr": "خدمات محاسبة / مسك دفاتر", "ar": ["محاسبة","مسك دفاتر","مراجعة حسابات","استشارات مالية"], "en": ["accounting","bookkeeping","audit","financial consulting"], "category": "Services" },
+  { "code": "EGS-SVC-002", "kind": "EGS", "labelEn": "Legal services", "labelAr": "خدمات قانونية", "ar": ["خدمات قانونية","استشارات قانونية","محاماة"], "en": ["legal","law","attorney","lawyer","legal consulting"], "category": "Services" },
+  { "code": "EGS-SVC-003", "kind": "EGS", "labelEn": "Software development services", "labelAr": "خدمات تطوير برمجيات", "ar": ["تطوير برمجيات","برمجة","تصميم مواقع","تطبيقات"], "en": ["software","development","programming","web development","app development"], "category": "Services" },
+  { "code": "EGS-SVC-004", "kind": "EGS", "labelEn": "IT consulting / managed services", "labelAr": "استشارات تكنولوجيا المعلومات", "ar": ["استشارات IT","دعم فني","صيانة كمبيوتر"], "en": ["it consulting","tech support","managed services","helpdesk"], "category": "Services" },
+  { "code": "EGS-SVC-005", "kind": "EGS", "labelEn": "Marketing / advertising services", "labelAr": "خدمات تسويق / إعلانات", "ar": ["تسويق","إعلانات","سوشيال ميديا","ديجيتال ماركتنج"], "en": ["marketing","advertising","social media","digital marketing"], "category": "Services" },
+  { "code": "EGS-SVC-006", "kind": "EGS", "labelEn": "Cleaning services", "labelAr": "خدمات نظافة", "ar": ["خدمات نظافة","تنظيف","شركة نظافة"], "en": ["cleaning","janitorial"], "category": "Services" },
+  { "code": "EGS-SVC-007", "kind": "EGS", "labelEn": "Transport / freight services", "labelAr": "خدمات نقل / شحن", "ar": ["نقل","شحن","لوجستيات","نقل بضائع"], "en": ["transport","freight","logistics","shipping"], "category": "Services" },
+  { "code": "EGS-SVC-008", "kind": "EGS", "labelEn": "Construction services", "labelAr": "خدمات مقاولات", "ar": ["مقاولات","بناء","تشييد","ترميم"], "en": ["construction","contracting","building"], "category": "Services" },
+
+  { "code": "10004001", "kind": "GS1", "labelEn": "Paracetamol tablets", "labelAr": "أقراص باراسيتامول", "ar": ["باراسيتامول","بنادول"], "en": ["paracetamol","panadol","acetaminophen"], "category": "Pharmaceuticals" },
+  { "code": "10004002", "kind": "GS1", "labelEn": "Antibiotic capsules (general)", "labelAr": "مضاد حيوي", "ar": ["مضاد حيوي","انتي بايوتيك"], "en": ["antibiotic","amoxicillin"], "category": "Pharmaceuticals" },
+  { "code": "10004003", "kind": "GS1", "labelEn": "Hand sanitiser (alcohol gel)", "labelAr": "مطهر اليدين", "ar": ["مطهر","معقم يدين","جل كحول"], "en": ["sanitiser","sanitizer","hand sanitizer","alcohol gel"], "category": "Pharmaceuticals" },
+  { "code": "10004004", "kind": "GS1", "labelEn": "Surgical face mask", "labelAr": "كمامة طبية", "ar": ["كمامة","ماسك طبي"], "en": ["mask","face mask","surgical mask"], "category": "Pharmaceuticals" },
+
+  { "code": "10005001", "kind": "GS1", "labelEn": "Portland cement (50 kg bag)", "labelAr": "أسمنت بورتلاند (شيكارة 50كجم)", "ar": ["أسمنت","اسمنت","شيكارة اسمنت"], "en": ["cement","portland cement"], "category": "Construction" },
+  { "code": "10005002", "kind": "GS1", "labelEn": "Steel reinforcement bar (rebar)", "labelAr": "حديد تسليح", "ar": ["حديد","حديد تسليح","صلب"], "en": ["steel","rebar","reinforcement"], "category": "Construction" },
+  { "code": "10005003", "kind": "GS1", "labelEn": "Ceramic floor tile", "labelAr": "بلاط سيراميك", "ar": ["سيراميك","بلاط","رخام"], "en": ["ceramic","tile","floor tile"], "category": "Construction" },
+  { "code": "10005004", "kind": "GS1", "labelEn": "Interior wall paint", "labelAr": "بويا حوائط داخلية", "ar": ["بويا","دهان","طلاء حوائط"], "en": ["paint","wall paint","interior paint"], "category": "Construction" },
+
+  { "code": "10006001", "kind": "GS1", "labelEn": "Dishwashing detergent", "labelAr": "سائل غسيل أطباق", "ar": ["سائل اطباق","صابون اطباق","فيري"], "en": ["dishwashing","dish soap","fairy"], "category": "Cleaning" },
+  { "code": "10006002", "kind": "GS1", "labelEn": "Laundry detergent powder", "labelAr": "مسحوق غسيل ملابس", "ar": ["مسحوق غسيل","تايد","اريال"], "en": ["laundry","detergent","tide","ariel"], "category": "Cleaning" },
+  { "code": "10006003", "kind": "GS1", "labelEn": "All-purpose surface cleaner", "labelAr": "منظف أسطح متعدد الأغراض", "ar": ["منظف اسطح","منظف عام"], "en": ["surface cleaner","all-purpose","cleaner"], "category": "Cleaning" }
+]
