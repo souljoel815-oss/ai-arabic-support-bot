@@ -32,7 +32,24 @@
     Expiry date (yyyy-MM-dd). Default: 1 year from today.
 
 .PARAMETER Edition
-    Standard | Pro | Enterprise. Default: Standard.
+    Solo | SMB | Enterprise | Firm (Gux.13 4-edition scheme).
+    Default: SMB. Pre-Gux.13 values (Standard / Pro / Basic) are
+    accepted for backward compatibility but mapped to Solo at
+    activation time.
+
+.PARAMETER MaxUsers
+    Override the default user cap for the chosen edition. Defaults:
+    Solo=1, SMB=3, Enterprise=unlimited, Firm=unlimited.
+
+.PARAMETER MaxCompanies
+    Override the default company cap. Defaults: Solo=1, SMB=1,
+    Enterprise=3, Firm=unlimited.
+
+.PARAMETER ExtraFeatures
+    Comma-separated extra feature flags to add on top of the
+    edition's default Features[] (e.g., promotional bundle giving
+    an SMB customer one Enterprise feature). Use the constants
+    from src\EgyptTax.Web\Licensing\Feature.cs.
 
 .PARAMETER Phone
     Sales contact phone shown on the activation banner.
@@ -61,8 +78,14 @@ param(
     [string] $Hwid,
     [string] $Customer,
     [string] $Expires,
-    [ValidateSet('Standard', 'Pro', 'Enterprise')]
-    [string] $Edition = 'Standard',
+    # Gux.13 4-edition scheme. Pre-Gux.13 values (Standard, Pro,
+    # Basic) still accepted for back-compat scripts; they map to
+    # Solo at activation time.
+    [ValidateSet('Solo', 'SMB', 'Enterprise', 'Firm', 'Standard', 'Pro', 'Basic')]
+    [string] $Edition = 'SMB',
+    [int]    $MaxUsers,
+    [int]    $MaxCompanies,
+    [string] $ExtraFeatures,
     [string] $Phone   = '+20 100 000 0000',
     [string] $Email   = 'sales@daftarx.local',
     [string] $OutDir
@@ -128,27 +151,45 @@ if (-not (Test-Path $OutDir)) {
 $tokenPath = Join-Path $OutDir 'license.token'
 
 # --- Sign ------------------------------------------------------------
+# Resolve effective MaxUsers / MaxCompanies / Features from the
+# edition's defaults if the caller didn't override. The signing CLI
+# accepts these as explicit args; the runtime gate also has the
+# same defaults baked in (Feature.DefaultsFor) so omitting the
+# Features list still produces a license that gates correctly.
+$effectiveMaxUsers     = if ($PSBoundParameters.ContainsKey('MaxUsers'))     { $MaxUsers     } else { 0 }
+$effectiveMaxCompanies = if ($PSBoundParameters.ContainsKey('MaxCompanies')) { $MaxCompanies } else { 0 }
+$effectiveFeatures     = if ([string]::IsNullOrWhiteSpace($ExtraFeatures))   { ''            } else { $ExtraFeatures.Trim() }
+
 Write-Host ""
 Write-Host "Signing license:"
-Write-Host "  HWID:     $Hwid"
-Write-Host "  Customer: $Customer"
-Write-Host "  Edition:  $Edition"
-Write-Host "  Expires:  $Expires"
-Write-Host "  Output:   $tokenPath"
+Write-Host "  HWID:         $Hwid"
+Write-Host "  Customer:     $Customer"
+Write-Host "  Edition:      $Edition"
+Write-Host "  Expires:      $Expires"
+if ($effectiveMaxUsers     -gt 0) { Write-Host "  MaxUsers:     $effectiveMaxUsers (override)" }
+if ($effectiveMaxCompanies -gt 0) { Write-Host "  MaxCompanies: $effectiveMaxCompanies (override)" }
+if ($effectiveFeatures)           { Write-Host "  +Features:    $effectiveFeatures" }
+Write-Host "  Output:       $tokenPath"
 Write-Host ""
 
 # dotnet run -- args; absolute paths because dotnet run shifts cwd
 # to the project directory before invoking the CLI.
-& dotnet run --project $webProject --no-launch-profile -- `
-    license-issue `
-    --keys $keysPath `
-    --hwid $Hwid `
-    --customer $Customer `
-    --expires $Expires `
-    --edition $Edition `
-    --phone $Phone `
-    --email $Email `
-    --out $tokenPath
+$cliArgs = @(
+    'license-issue',
+    '--keys', $keysPath,
+    '--hwid', $Hwid,
+    '--customer', $Customer,
+    '--expires', $Expires,
+    '--edition', $Edition,
+    '--phone', $Phone,
+    '--email', $Email,
+    '--out', $tokenPath
+)
+if ($effectiveMaxUsers     -gt 0) { $cliArgs += @('--max-users',     $effectiveMaxUsers) }
+if ($effectiveMaxCompanies -gt 0) { $cliArgs += @('--max-companies', $effectiveMaxCompanies) }
+if ($effectiveFeatures)           { $cliArgs += @('--features',      $effectiveFeatures) }
+
+& dotnet run --project $webProject --no-launch-profile -- @cliArgs
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "license-issue exited $LASTEXITCODE"
