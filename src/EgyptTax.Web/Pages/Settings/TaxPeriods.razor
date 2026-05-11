@@ -12,6 +12,8 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
+<SettingsTabStrip Group="tax-setup" />
+
 <h1>@(IsArabic ? "الفترات الضريبية (FR-037)" : "Tax periods (FR-037)")</h1>
 
 <p>

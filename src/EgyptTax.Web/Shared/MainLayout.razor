@@ -59,6 +59,13 @@
     private string ActiveLink(string path) =>
         string.Equals(CurrentPath, path, StringComparison.OrdinalIgnoreCase) ? "active" : "";
 
+    /// <summary>Gux.3 — variant for sidebar entries that point at a
+    /// page which shares a tab strip with siblings. Stays active for
+    /// any path in the group so the operator's place in the strip
+    /// matches the sidebar's highlight.</summary>
+    private string ActiveLink(params string[] paths) =>
+        paths.Any(p => string.Equals(CurrentPath, p, StringComparison.OrdinalIgnoreCase)) ? "active" : "";
+
     /// <summary>Splat helper for &lt;details&gt; elements — returns
     /// the boolean <c>open</c> HTML attribute when the current page
     /// matches one of the prefixes; an empty dictionary otherwise.
@@ -248,12 +255,11 @@
             </summary>
             <nav class="app-nav">
                 <a href="settings/company" class="@ActiveLink("settings/company")" @onclick="CloseSidebar">@Tr("بيانات الشركة", "Company profile")</a>
-                <a href="settings/tax-periods" class="@ActiveLink("settings/tax-periods")" @onclick="CloseSidebar">@Tr("الفترات الضريبية", "Tax periods")</a>
-                <a href="settings/vat-categories" class="@ActiveLink("settings/vat-categories")" @onclick="CloseSidebar">@Tr("فئات الضريبة", "VAT categories")</a>
+                @* Gux.3 — Tax periods + VAT categories share a tab strip on the page itself, so one sidebar entry is enough. *@
+                <a href="settings/tax-periods" class="@(ActiveLink("settings/tax-periods", "settings/vat-categories"))" @onclick="CloseSidebar">@Tr("إعداد الضرائب", "Tax setup")</a>
                 <a href="settings/fiscal-year" class="@ActiveLink("settings/fiscal-year")" @onclick="CloseSidebar">@Tr("السنة المالية", "Fiscal year")</a>
-                <a href="settings/payment-methods" class="@ActiveLink("settings/payment-methods")" @onclick="CloseSidebar">@Tr("طرق الدفع", "Payment methods")</a>
-                <a href="settings/cash-accounts" class="@ActiveLink("settings/cash-accounts")" @onclick="CloseSidebar">@Tr("الخزائن والبنوك", "Cashboxes & banks")</a>
-                <a href="settings/opening-balances" class="@ActiveLink("settings/opening-balances")" @onclick="CloseSidebar">@Tr("الأرصدة الافتتاحية", "Opening balances")</a>
+                @* Gux.3 — Payment methods + Cash accounts + Opening balances share a tab strip. *@
+                <a href="settings/cash-accounts" class="@(ActiveLink("settings/cash-accounts", "settings/payment-methods", "settings/opening-balances"))" @onclick="CloseSidebar">@Tr("نقدية وبنوك", "Money & banks")</a>
                 <a href="expense-categories" class="@ActiveLink("expense-categories")" @onclick="CloseSidebar">@Tr("فئات المصروفات", "Expense categories")</a>
                 <a href="settings/referrals" class="@ActiveLink("settings/referrals")" @onclick="CloseSidebar">@Tr("ادعُ صديق", "Refer a friend")</a>
                 @* Setup-only ETA items moved here per Gux.2 *@

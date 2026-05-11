@@ -3,6 +3,8 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
+<SettingsTabStrip Group="money" />
+
 <h1>@(IsArabic ? "طرق الدفع (للقراءة فقط)" : "Payment methods (read-only)")</h1>
 
 <p>

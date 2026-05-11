@@ -9,6 +9,8 @@
 @inject IVatRateLookup VatLookup
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
+<SettingsTabStrip Group="tax-setup" />
+
 <h1>@(IsArabic ? "فئات ضريبة القيمة المضافة" : "VAT categories (FR-019 / FR-022)")</h1>
 
 <p>

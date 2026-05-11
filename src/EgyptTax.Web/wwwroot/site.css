@@ -3012,3 +3012,51 @@ a.btn-secondary .ic {
 /* The shared panel renders its own h2; the drawer already shows a
    title bar, so hide the duplicate. */
 .cockpit-drawer .drawer-body .cockpit-h { display: none; }
+
+/* Gux.3 — Settings tab strip shown at the top of related pages so
+   operators perceive them as one cluster. */
+.settings-tabstrip {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 8px 0 0;
+    margin: -12px -16px 16px;
+    padding-inline: 16px;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+    flex-wrap: wrap;
+}
+.settings-tabstrip-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted, #6b7280);
+    font-weight: 600;
+}
+.settings-tabstrip-tabs {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.settings-tab {
+    display: inline-block;
+    padding: 8px 14px;
+    border-radius: 6px 6px 0 0;
+    color: var(--text-muted, #6b7280);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    border-bottom: 0;
+    position: relative;
+    bottom: -1px;
+}
+.settings-tab:hover {
+    background: var(--bg-subtle, #f3f4f6);
+    color: var(--text, #111);
+}
+.settings-tab.is-active {
+    background: var(--bg-elevated, #fff);
+    color: var(--accent, #0a66c2);
+    border-color: var(--border, #e5e7eb);
+    font-weight: 600;
+}

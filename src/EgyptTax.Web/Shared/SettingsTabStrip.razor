@@ -1,0 +1,66 @@
+@inject NavigationManager Nav
+
+@*
+    Gux.3 — gives a related cluster of Settings pages a shared tab
+    strip so operators perceive them as one area. Pages keep their
+    URLs (no breakage for bookmarks); the strip renders tabs and
+    highlights whichever one matches the current path.
+
+    Two clusters today:
+      Group="tax-setup"  → Tax periods + VAT categories
+      Group="money"      → Payment methods + Cash accounts + Opening balances
+*@
+
+@code {
+    [Parameter] public string Group { get; set; } = "";
+
+    private record Tab(string Path, string Ar, string En);
+
+    private static readonly Tab[] TaxSetupTabs =
+    {
+        new("/settings/tax-periods",   "الفترات الضريبية", "Tax periods"),
+        new("/settings/vat-categories", "فئات الضريبة",     "VAT categories"),
+    };
+
+    private static readonly Tab[] MoneyTabs =
+    {
+        new("/settings/payment-methods",  "طرق الدفع",         "Payment methods"),
+        new("/settings/cash-accounts",    "الخزائن والبنوك",    "Cashboxes & banks"),
+        new("/settings/opening-balances", "الأرصدة الافتتاحية", "Opening balances"),
+    };
+
+    private Tab[] Tabs => Group switch
+    {
+        "tax-setup" => TaxSetupTabs,
+        "money"     => MoneyTabs,
+        _           => Array.Empty<Tab>(),
+    };
+
+    private string GroupTitle => Group switch
+    {
+        "tax-setup" => IsArabic ? "إعداد الضرائب" : "Tax setup",
+        "money"     => IsArabic ? "نقدية وبنوك" : "Money & banks",
+        _           => "",
+    };
+
+    private bool IsActive(string path)
+    {
+        var current = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+        return current.Equals(path.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+@if (Tabs.Length > 0)
+{
+    <div class="settings-tabstrip">
+        <div class="settings-tabstrip-label">@GroupTitle</div>
+        <nav class="settings-tabstrip-tabs">
+            @foreach (var tab in Tabs)
+            {
+                <a href="@tab.Path" class="settings-tab @(IsActive(tab.Path) ? "is-active" : "")">
+                    @(IsArabic ? tab.Ar : tab.En)
+                </a>
+            }
+        </nav>
+    </div>
+}
