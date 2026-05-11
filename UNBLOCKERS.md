@@ -12,25 +12,15 @@ once it lands.
 
 ---
 
-## 1. G0 — Pricing decision  *(unblocks: G1.1 landing page)*
+## 1. G0 — Pricing decision  ✅ DONE 2026-05-11
 
-**What I need from you:** three EGP-per-year numbers — Basic,
-Pro, Enterprise. The roadmap is built on the "tax-compliance
-insurance, not generic accounting" pitch (pay 3K/year vs. 20K-200K
-in penalties), so the bottom tier should be in the 2K-5K range to
-beat Daftra/Wafeq's lowest plan and feel like an obvious yes.
+Locked: **Basic 2,500 / Pro 7,500 / Enterprise 21,000 EGP/year**
+(monthly available at 250 / 700 / 2,000 EGP with 12-20% premium).
+Manual renewal in v1, no auto-charge.
 
-**Suggested anchors** (you decide the actual numbers):
-- **Basic** EGP 3,000/year — single user, ETA + Form 41
-- **Pro** EGP 9,000/year — 5 users, multi-cashbox, bank import
-- **Enterprise** EGP 24,000/year — unlimited users, Firm Portal,
-  on-prem or VPS install
-
-**How long:** 1 hour (decision + record in CRM/sales doc).
-
-**What ships once landed:** G1.1 landing page (~3-4 days work) can
-quote real prices instead of "TBD". G1.5 self-service portal pricing
-table also fills in.
+Full rationale + feature ladder + change log in
+[`specs/008-egypt-tax-accounting/pricing.md`](specs/008-egypt-tax-accounting/pricing.md).
+G1.1 landing page + G1.5 portal both reference that doc.
 
 ---
 
@@ -168,7 +158,7 @@ These are all live on the current branch and ready to use:
 
 | Need | Time to get | Unblocks |
 |---|---|---|
-| Three pricing tiers | 1 hour | G1.1 |
+| ~~Three pricing tiers~~ | ~~1 hour~~ | ✅ done 2026-05-11 |
 | `daftarx.{com,app,eg}` | 30 min + 48h DNS | G1.1, G2.4, G4.1 |
 | Paymob account | 5-10 business days | G1.5 |
 | Anthropic API key + $50/mo budget | 30 min | G3.1 |

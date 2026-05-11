@@ -78,10 +78,10 @@ decision or external credential.
 
 | Wave | Item | Status |
 |---|---|---|
-| **G0** | Pricing decision | ⏳ blocked: needs three EGP/year numbers |
+| **G0** | Pricing decision | ✅ locked 2026-05-11 — see [`pricing.md`](pricing.md) |
 | **G0** | Domain | ⏳ blocked: needs `daftarx.com/.app/.eg` |
 | **G0** | Payment processor | ⏳ blocked: needs Paymob account or InstaPay setup |
-| **G1.1** | Arabic landing page | ⏳ blocked on G0 (pricing + domain) |
+| **G1.1** | Arabic landing page | ⏳ blocked on G0.2 (domain only — pricing is locked) |
 | **G1.2** | Bulk invoice upload | ✅ shipped |
 | **G1.3** | Per-bank CSV import | ✅ shipped |
 | **G1.4** | Accountant commission ledger | ✅ shipped |
