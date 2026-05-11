@@ -177,7 +177,10 @@ public sealed class GenerateForm41Handler
         // — exactly the regression T200 catches.
         var startUtc = periodStart.ToDateTime(TimeOnly.MinValue);
         var endExclusive = periodEnd.AddDays(1).ToDateTime(TimeOnly.MinValue);
-        var fromJournalEntries = await (
+        // SQLite portable-mode workaround: materialise then sum
+        // in-memory. Server-side decimal aggregation isn't supported
+        // by the EF Core SQLite provider.
+        var jeAmounts = await (
             from e in _db.Set<JournalEntry>().AsNoTracking()
             from l in e.Lines
             where
@@ -185,8 +188,8 @@ public sealed class GenerateForm41Handler
                 && e.PostedAtUtc < endExclusive
                 && l.AccountCode == ChartOfAccountCodes.WhtPayable
             select l.Credit.Amount - l.Debit.Amount
-        ).SumAsync(cancellationToken);
-        var fromJournalVouchers = await (
+        ).ToListAsync(cancellationToken);
+        var jvAmounts = await (
             from v in _db.Set<JournalVoucher>().AsNoTracking()
             from l in v.Lines
             where
@@ -194,8 +197,8 @@ public sealed class GenerateForm41Handler
                 && v.Date <= periodEnd
                 && l.AccountCode == ChartOfAccountCodes.WhtPayable
             select l.Credit.Amount - l.Debit.Amount
-        ).SumAsync(cancellationToken);
-        var whtPayableAccrued = fromJournalEntries + fromJournalVouchers;
+        ).ToListAsync(cancellationToken);
+        var whtPayableAccrued = jeAmounts.Sum() + jvAmounts.Sum();
 
         var matches = whtPayableAccrued == totalWithheld;
         var discrepancy = matches ? (decimal?)null : whtPayableAccrued - totalWithheld;

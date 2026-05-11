@@ -78,17 +78,25 @@
             _periodLockedAtUtc = period.LockedAtUtc;
         }
 
-        // Output VAT — sum from posted sales invoices in current month
-        _outputVat = await Db.Set<SalesInvoice>().AsNoTracking()
+        // Output VAT — sum from posted sales invoices in current month.
+        // Materialise + sum in-memory: SQLite doesn't support server-
+        // side decimal aggregation (the values are stored as REAL/TEXT)
+        // so SumAsync throws NotSupportedException on the portable EXE
+        // / SQLite path. Volume is bounded to a single month's posts.
+        var outputAmounts = await Db.Set<SalesInvoice>().AsNoTracking()
             .Where(i => i.State == DocumentState.Posted
                 && i.DocumentDate >= _monthStart && i.DocumentDate <= _monthEnd)
-            .SumAsync(i => (decimal?)i.VatTotal.Amount) ?? 0m;
+            .Select(i => i.VatTotal.Amount)
+            .ToListAsync();
+        _outputVat = outputAmounts.Sum();
 
-        // Input VAT — sum from posted purchase invoices in current month
-        _inputVat = await Db.Set<PurchaseInvoice>().AsNoTracking()
+        // Input VAT — sum from posted purchase invoices in current month.
+        var inputAmounts = await Db.Set<PurchaseInvoice>().AsNoTracking()
             .Where(p => p.State == DocumentState.Posted
                 && p.DateReceived >= _monthStart && p.DateReceived <= _monthEnd)
-            .SumAsync(p => (decimal?)p.VatTotal.Amount) ?? 0m;
+            .Select(p => p.VatTotal.Amount)
+            .ToListAsync();
+        _inputVat = inputAmounts.Sum();
 
         _vatPayable = _outputVat - _inputVat;
 

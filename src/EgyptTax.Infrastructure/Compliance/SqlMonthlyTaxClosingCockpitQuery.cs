@@ -279,15 +279,19 @@ public sealed class SqlMonthlyTaxClosingCockpitQuery : IMonthlyTaxClosingCockpit
 
         // The failed-ETA total wants per-invoice grand totals; pull
         // them via a small follow-up query for the failed set.
+        // SQLite portable mode can't aggregate decimal server-side,
+        // so materialise and sum in-memory.
         var failedSalesIds = failedEta.Select(f => f.SalesInvoiceId).ToArray();
-        var failedTotal =
-            failedSalesIds.Length == 0
-                ? 0m
-                : await _db.Set<SalesInvoice>()
-                    .AsNoTracking()
-                    .Where(s => failedSalesIds.Contains(s.Id))
-                    .Select(s => s.GrandTotal.Amount)
-                    .SumAsync(cancellationToken);
+        decimal failedTotal = 0m;
+        if (failedSalesIds.Length > 0)
+        {
+            var failedAmounts = await _db.Set<SalesInvoice>()
+                .AsNoTracking()
+                .Where(s => failedSalesIds.Contains(s.Id))
+                .Select(s => s.GrandTotal.Amount)
+                .ToListAsync(cancellationToken);
+            failedTotal = failedAmounts.Sum();
+        }
 
         // VAT readiness: clean = posted documents in period with no
         // bucket membership. Partition is approximate (we only check

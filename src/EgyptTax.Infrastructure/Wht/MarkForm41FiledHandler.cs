@@ -92,7 +92,10 @@ public sealed class MarkForm41FiledHandler
         // Same dual-source accrual the generator uses (auto-emitted
         // JournalEntry + manual JournalVoucher). Keeps the
         // reconciliation comparable across the two callers.
-        var fromJournalEntries = await (
+        // SQLite portable-mode workaround: server-side decimal Sum
+        // is unsupported, so materialise + sum in-memory. Volume is
+        // bounded by the period filter.
+        var jeAmounts = await (
             from e in _db.Set<JournalEntry>().AsNoTracking()
             from l in e.Lines
             where
@@ -100,8 +103,8 @@ public sealed class MarkForm41FiledHandler
                 && e.PostedAtUtc < endExclusive
                 && l.AccountCode == ChartOfAccountCodes.WhtPayable
             select l.Credit.Amount - l.Debit.Amount
-        ).SumAsync(cancellationToken);
-        var fromJournalVouchers = await (
+        ).ToListAsync(cancellationToken);
+        var jvAmounts = await (
             from v in _db.Set<EgyptTax.Domain.Documents.JournalVoucher>().AsNoTracking()
             from l in v.Lines
             where
@@ -109,8 +112,8 @@ public sealed class MarkForm41FiledHandler
                 && v.Date <= periodEnd
                 && l.AccountCode == ChartOfAccountCodes.WhtPayable
             select l.Credit.Amount - l.Debit.Amount
-        ).SumAsync(cancellationToken);
-        var whtPayableAccrued = fromJournalEntries + fromJournalVouchers;
+        ).ToListAsync(cancellationToken);
+        var whtPayableAccrued = jeAmounts.Sum() + jvAmounts.Sum();
 
         if (whtPayableAccrued != certTotal)
         {
