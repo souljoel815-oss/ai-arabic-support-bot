@@ -20,6 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="EgyptTax.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="..\..\specs\008-egypt-tax-accounting\contracts\api\openapi.yaml"
              Link="contracts\openapi.yaml"
              CopyToOutputDirectory="PreserveNewest" />

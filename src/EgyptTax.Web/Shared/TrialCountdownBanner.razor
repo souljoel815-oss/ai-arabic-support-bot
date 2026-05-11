@@ -1,0 +1,61 @@
+@using System.Globalization
+@using EgyptTax.Web.Licensing
+
+@*
+    P0 trial mode — shows a non-blocking countdown when the install
+    is on the 14-day evaluation trial (no license.token). Hidden in
+    Active / NotActivated / Expired / Tampered states.
+
+    Renders into MainLayout above @Body so it's visible on every
+    authenticated page. The HWID + sales contact mirror the
+    activation banner so the operator knows exactly what to send
+    to sales when they decide to buy.
+*@
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsTrial => LicenseStatus.State == LicenseState.Trial;
+
+    private int DaysRemaining =>
+        Math.Max(0, (int)Math.Ceiling((LicenseStatus.TrialExpiresAtUtc - DateTime.UtcNow).TotalDays));
+
+    private string Severity => DaysRemaining switch
+    {
+        <= 2 => "trial-banner-urgent",
+        <= 5 => "trial-banner-warn",
+        _    => "trial-banner-info",
+    };
+}
+
+@if (IsTrial)
+{
+    <div class="trial-banner @Severity" role="status">
+        <div class="trial-banner-text">
+            @if (IsArabic)
+            {
+                <strong>🎁 نسخة تجريبية:</strong>
+                <span>متبقي <strong>@DaysRemaining</strong> @(DaysRemaining == 1 ? "يوم" : "يوماً") من فترة الـ 14 يوم.</span>
+                <span class="trial-banner-cta">
+                    اشترِ ترخيصاً قبل @LicenseStatus.TrialExpiresAtUtc.ToLocalTime().ToString("yyyy-MM-dd") لتجنّب فقدان الوصول.
+                </span>
+            }
+            else
+            {
+                <strong>🎁 Trial:</strong>
+                <span><strong>@DaysRemaining</strong> day@(DaysRemaining == 1 ? "" : "s") left in your 14-day evaluation.</span>
+                <span class="trial-banner-cta">
+                    Purchase a license before @LicenseStatus.TrialExpiresAtUtc.ToLocalTime().ToString("yyyy-MM-dd") to keep working.
+                </span>
+            }
+        </div>
+        <div class="trial-banner-hwid">
+            <span>@(IsArabic ? "معرّف الجهاز:" : "Hardware ID:")</span>
+            <code>@LicenseStatus.Hwid</code>
+            <a href="mailto:@LicenseStatus.SalesEmail?subject=DaftarX%20license%20request&body=HWID:%20@LicenseStatus.Hwid"
+               class="trial-banner-link">
+                @(IsArabic ? "اتصل بالمبيعات" : "Contact sales")
+            </a>
+        </div>
+    </div>
+}

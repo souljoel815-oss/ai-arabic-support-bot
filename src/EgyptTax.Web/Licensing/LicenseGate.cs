@@ -15,6 +15,20 @@ public static class LicenseGate
 {
     public const string DefaultStateDirRelativeName = "license";
 
+    /// <summary>P0 — length of the no-token-required evaluation trial
+    /// granted on first run. The trial starts when the gate first
+    /// sees an install with no <c>license.token</c> AND no
+    /// <see cref="TrialMarkerFileName"/>; the start wall-clock is
+    /// persisted so reinstalls / service restarts don't reset it.</summary>
+    public static readonly TimeSpan TrialDuration = TimeSpan.FromDays(14);
+
+    /// <summary>P0 — file holding the trial start time. Existence
+    /// implies "trial already used on this machine"; the operator
+    /// can delete it only via support (the file is plain text but
+    /// the gate refuses to grant a second trial regardless — the
+    /// trial expires once, then the operator must buy a license).</summary>
+    public const string TrialMarkerFileName = "trial-started.txt";
+
     /// <summary>
     /// Run the gate. <paramref name="stateDirectory"/> defaults to
     /// %PROGRAMDATA%/DaftarX/license on Windows; the portable EXE
@@ -108,8 +122,17 @@ public static class LicenseGate
             return; // ActivationFlow.TryActivate already updated LicenseStatus.
         }
 
-        // Path 3 — not activated, no token. Refuse-to-start state.
-        // The middleware will show the HWID + sales contact banner.
+        // Path 3 — no token, no activated state. Check for an
+        // existing trial marker; if none, start a new trial; if
+        // present and still in window, continue the trial.
+        if (TryGrantTrial(dir, hwid))
+        {
+            return;
+        }
+
+        // Path 4 — trial used up or some other failure. Refuse to
+        // start; the middleware will show the HWID + sales contact
+        // banner.
         if (existing.FailureReason == LicenseFailureReason.None
             || existing.FailureReason == LicenseFailureReason.EnvelopeMissingOrEmpty)
         {
@@ -120,6 +143,115 @@ public static class LicenseGate
             LicenseStatus.RecordFailure(existing.FailureReason, hwid, existing.Payload);
         }
     }
+
+    /// <summary>
+    /// P0 — grant or continue a 14-day evaluation trial. Returns
+    /// <c>true</c> if the trial is active (i.e., this is either a
+    /// fresh install OR a previous trial that's still inside its
+    /// window). On the first call, writes
+    /// <see cref="TrialMarkerFileName"/> with the current UTC; on
+    /// subsequent calls, reads the existing marker and lets the
+    /// trial continue if it hasn't expired yet.
+    ///
+    /// Marker is plain text containing ISO-8601 UTC of the trial
+    /// start. A tampered or unreadable marker is treated as
+    /// "trial expired" — the operator can't game the system by
+    /// editing the file. Note: the marker file MUST be excluded
+    /// from any "reset install" tooling so a deleted-and-recreated
+    /// folder doesn't grant infinite trials.
+    /// </summary>
+    private static bool TryGrantTrial(string stateDir, string hwid)
+    {
+        var markerPath = Path.Combine(stateDir, TrialMarkerFileName);
+        DateTime? existingStart = null;
+
+        if (File.Exists(markerPath))
+        {
+            try
+            {
+                existingStart = ParseTrialMarker(File.ReadAllText(markerPath));
+                if (existingStart is null) return false; // tampered → no trial
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        var decision = EvaluateTrial(existingStart, DateTime.UtcNow, TrialDuration);
+        if (!decision.Granted) return false;
+
+        if (existingStart is null)
+        {
+            try
+            {
+                File.WriteAllText(
+                    markerPath,
+                    decision.StartUtc.ToString("o", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            catch
+            {
+                // If we can't write the marker, the trial still
+                // runs for this process but won't survive a
+                // restart. Operator's data dir is broken in a
+                // bigger way and they'll see other errors.
+            }
+        }
+
+        LicenseStatus.RecordTrial(hwid, decision.EndUtc);
+        return true;
+    }
+
+    /// <summary>
+    /// P0 — pure trial-window arithmetic. Given an optional persisted
+    /// trial start (<c>null</c> on first run), the current UTC, and
+    /// the trial duration, decide whether the trial should be
+    /// granted and what its start/end timestamps are.
+    /// Exposed as <c>internal</c> for unit-test coverage of the
+    /// state machine without disk I/O.
+    /// </summary>
+    internal static TrialDecision EvaluateTrial(
+        DateTime? existingStartUtc,
+        DateTime nowUtc,
+        TimeSpan duration)
+    {
+        var startUtc = existingStartUtc ?? nowUtc;
+        var endUtc = startUtc + duration;
+        var granted = nowUtc < endUtc;
+        return new TrialDecision(granted, startUtc, endUtc);
+    }
+
+    /// <summary>P0 — parse the marker file payload. Returns
+    /// <c>null</c> for any value that's missing, blank, or
+    /// unparseable so the caller refuses to grant a trial off a
+    /// tampered marker.</summary>
+    internal static DateTime? ParseTrialMarker(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        if (!DateTime.TryParse(
+                raw.Trim(),
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind,
+                out var parsed))
+        {
+            return null;
+        }
+        // ISO-8601 "o" format always carries a kind. If somehow Local
+        // sneaked through, normalise to UTC; if Unspecified, treat
+        // as Utc (the marker file is always written in Utc).
+        return parsed.Kind switch
+        {
+            DateTimeKind.Utc => parsed,
+            DateTimeKind.Local => parsed.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(parsed, DateTimeKind.Utc),
+        };
+    }
+
+    /// <summary>P0 — outcome of <see cref="EvaluateTrial"/>.
+    /// <see cref="Granted"/> is <c>false</c> only when the existing
+    /// trial window has elapsed; <see cref="StartUtc"/> /
+    /// <see cref="EndUtc"/> are always populated.</summary>
+    internal readonly record struct TrialDecision(bool Granted, DateTime StartUtc, DateTime EndUtc);
 
     public static string DefaultStateDirectory()
     {

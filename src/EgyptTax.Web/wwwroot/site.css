@@ -1923,3 +1923,63 @@ section {
     font-size: 13px;
     opacity: 0.92;
 }
+
+/* P0 trial countdown banner — appears at the top of the main panel
+   when the install is on the 14-day evaluation. Severity colours:
+   info (>5 days left), warn (3-5 days), urgent (<=2 days). */
+.trial-banner {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    margin: 0 0 20px;
+    border-radius: 10px;
+    border: 1px solid;
+    font-size: 14px;
+    line-height: 1.5;
+}
+.trial-banner-info {
+    background: #ecfdf5;
+    border-color: #6ee7b7;
+    color: #065f46;
+}
+.trial-banner-warn {
+    background: #fffbeb;
+    border-color: #fcd34d;
+    color: #92400e;
+}
+.trial-banner-urgent {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #991b1b;
+}
+.trial-banner-text {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    align-items: baseline;
+}
+.trial-banner-cta {
+    font-weight: 500;
+}
+.trial-banner-hwid {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 13px;
+    opacity: 0.92;
+}
+.trial-banner-hwid code {
+    background: rgba(0, 0, 0, 0.06);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 12px;
+}
+.trial-banner-link {
+    color: inherit;
+    text-decoration: underline;
+    font-weight: 600;
+}
