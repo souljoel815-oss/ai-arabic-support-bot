@@ -1,12 +1,6 @@
 @*
-    Gux.13 Tab 1 — Company Profile placeholder.
-    Real implementation lands in Phase 2b (refactors the existing
-    /settings/company page into this component).
+    Gux.13 Tab 1 — Company Profile. Mounts the shared
+    <CompanyProfilePanel /> so this tab and the standalone
+    /settings/company route render identical UI.
 *@
-<div class="admin-tab-placeholder">
-    <h2>@(IsArabic ? "بيانات الشركة" : "Company Profile")</h2>
-    <p class="page-subtitle">
-        @(IsArabic ? "هذا التبويب قيد التطوير. استخدم مؤقتاً:" : "This tab is under construction. Use for now:")
-        <a href="/settings/company">/settings/company</a>
-    </p>
-</div>
+<CompanyProfilePanel />
