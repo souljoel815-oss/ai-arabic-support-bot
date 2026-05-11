@@ -61,6 +61,10 @@ Blazor Server UI at `http://localhost:8088`.
 5. **Portable EXE** — a 65 MB single-file build runs on a fresh PC
    in 30 seconds with no SQL or .NET install.
 
+**Try before you buy:** every fresh install gets a **14-day
+evaluation trial automatically** — no token, no activation step.
+A small banner counts down the remaining days. See [§4.1](#41-first-run--automatic-14-day-trial).
+
 **What it is not:** a SaaS, a POS, an inventory MRP system, or a
 payroll engine. Those are out of scope by design.
 
@@ -123,11 +127,41 @@ that file to support.
 
 ## 4. First-run setup
 
-### 4.1 License activation
+### 4.1 First run — automatic 14-day trial
 
-Every install is hardware-bound. On first run the boot-time
-`LicenseGate` prints a **Hardware ID (HWID)** in the activation
-banner — a string like `017F-0D1A-1BA1-C968`.
+A fresh install **does not require a license to use** — the boot-time
+`LicenseGate` grants every machine a **14-day evaluation trial**
+the first time DaftarX runs. Every feature is unlocked; a small
+countdown banner across the top of every page tracks the days
+remaining. The trial start time is persisted to:
+
+```
+C:\ProgramData\DaftarX\license\trial-started.txt
+```
+
+So restarting the service or reinstalling on the same machine
+keeps the original clock — **deleting / re-creating the install
+folder does not grant a second trial**. Tampering with the marker
+file (editing the timestamp) makes the gate refuse the trial and
+fall through to the activation banner.
+
+The banner uses three colours to keep urgency honest:
+
+| Days remaining | Tone |
+|---|---|
+| > 5 | Green — informational |
+| 3–5 | Amber — start the buying conversation |
+| ≤ 2 | Red — buy now to avoid a lockout |
+
+The HWID is shown inside the banner with a one-click "Contact sales"
+mailto link so the operator never has to hunt for it.
+
+### 4.2 License activation (after trial or for paid customers)
+
+When the trial expires, or when a paying customer wants to lock in
+their license up front, the banner switches to the **activation
+required** page — HTTP 451 — showing the **Hardware ID (HWID)**:
+a string like `017F-0D1A-1BA1-C968`.
 
 The customer sends that HWID to sales. Sales runs
 [`Issue-License.cmd`](Issue-License.cmd) (or the PowerShell
@@ -141,13 +175,18 @@ C:\ProgramData\DaftarX\license\license.token
 ```
 
 …and restarts the EgyptTax service (`net stop EgyptTax && net start EgyptTax`).
-The activation banner disappears.
+The banner / countdown disappears.
+
+A valid license **always takes precedence** over an active trial —
+dropping the token in mid-trial converts the install to Active
+immediately without losing the original trial-start record.
 
 See [§21 Licensing](#21-licensing) for the vendor-side flow.
 
-### 4.2 Default login
+### 4.3 Default login
 
-After activation, browse to `http://localhost:8088/login` and sign in:
+After activation (or during the trial — the trial unlocks the
+login page too), browse to `http://localhost:8088/login` and sign in:
 
 | Username | Password |
 |---|---|
@@ -158,7 +197,7 @@ You'll be asked to change the password and enrol an authenticator
 sign in). Use Google Authenticator / Microsoft Authenticator /
 Authy to scan the QR code on `/mfa/enroll`.
 
-### 4.3 Pick your tax regime
+### 4.4 Pick your tax regime
 
 Go to **Settings → Company profile** (`/settings/company`). Fill:
 
@@ -199,6 +238,36 @@ Below the KPIs:
   expense", "open closing cockpit", "run VAT report".
 
 Everything on the dashboard is read-only; nothing posts.
+
+### 5.1 Mobile / tablet access
+
+The whole UI is responsive — open `http://<your-server>:8088` from
+a phone on the same network and you'll see a mobile-tuned layout:
+
+- The sidebar collapses behind a **hamburger button** in the
+  topbar; tap to slide the drawer in from the leading edge (left
+  in English, right in Arabic). Tap any nav link OR the dimmed
+  backdrop to close.
+- KPI cards stack to a single column.
+- Wide tables (sales invoice list, audit log, etc.) get a
+  horizontal scroll bar instead of breaking the layout.
+- Forms (new invoice, voucher edit) stack labels above inputs in
+  one column.
+- The topbar hides the period chip + user name on phones (the
+  avatar stays clickable to reach the logout link).
+
+Breakpoints:
+
+| Viewport | Behavior |
+|---|---|
+| > 768px | Full desktop layout — fixed sidebar |
+| ≤ 768px | Mobile / tablet — hamburger drawer + stacked forms |
+| ≤ 380px | Small phones — extra-tight padding |
+
+No mobile app to install; the responsive layout is the same Blazor
+Server stack on a smaller viewport. Latency depends on your
+network — best for reading KPIs / approving documents on the go,
+not for heavy data entry.
 
 ---
 
@@ -961,13 +1030,50 @@ Restart the service after every change.
 
 ## 21. Licensing
 
-### 21.1 Customer-side
+### 21.1 License states
 
-Already covered in [§4.1](#41-license-activation). One sentence:
-copy the vendor-supplied `license.token` to
+Every install is in exactly one of these states:
+
+| State | Triggered by | Banner shown | Operator can use the app? |
+|---|---|---|---|
+| **Trial** | First run with no `license.token` | Countdown banner in topbar | Yes — full features |
+| **Active** | Valid `license.token` for this HWID | None | Yes — full features |
+| **NotActivated** | Trial expired AND no token | HTTP 451 activation page | No — every URL returns the banner |
+| **Expired** | `license.token` past its expiry | HTTP 451 with "license expired" copy | No |
+| **Tampered** | Bad signature / wrong HWID / unreadable shares | HTTP 451 with specific copy | No |
+
+A valid `license.token` always wins — adding one in any state
+(including mid-trial) immediately flips the install to Active.
+
+### 21.2 Trial mode (P0)
+
+A fresh install grants a **14-day evaluation trial** automatically.
+
+| What | Where |
+|---|---|
+| Trial marker | `%PROGRAMDATA%\DaftarX\license\trial-started.txt` |
+| Format | ISO-8601 UTC timestamp, plain text |
+| Duration | 14 days |
+| Restart-safe? | Yes — reinstalls / service restarts preserve the original clock |
+| Tamper-safe? | Yes — unparseable / blank markers → trial refused, falls through to activation banner |
+| One-trial-per-machine? | Yes — once expired, the marker stays as proof; the next launch refuses to grant a fresh trial |
+
+This is the **only path** to running DaftarX without contacting
+sales first. If your operator deleted the marker file to try to
+extend the trial, the trick won't work — the file is recreated
+with the current UTC, but the gate notices that
+`trial-started.txt` was deleted from an install that previously
+exited gracefully and falls through to refuse-to-start. (For
+support: the only legitimate way to reset a trial is to reformat
+the machine, which is too painful to be a workaround.)
+
+### 21.3 Customer-side activation
+
+Covered in detail at [§4.2](#42-license-activation-after-trial-or-for-paid-customers).
+Short version: copy the vendor-supplied `license.token` to
 `%PROGRAMDATA%\DaftarX\license\` and restart the service.
 
-### 21.2 Vendor-side — issue a license
+### 21.4 Vendor-side — issue a license
 
 From the repo root, use [`Issue-License.cmd`](Issue-License.cmd)
 (double-click for interactive prompts) or PowerShell:
@@ -985,7 +1091,7 @@ The script:
    `licenses\<HWID>\`.
 4. The folder is gitignored.
 
-### 21.3 Rotate the signing keypair
+### 21.5 Rotate the signing keypair
 
 Run `dotnet run --project src/EgyptTax.Web -- license-keygen --out
 vendor-keys.json`. Then patch the new public key into
@@ -993,22 +1099,28 @@ vendor-keys.json`. Then patch the new public key into
 installer. **Every existing customer's license becomes invalid**
 — rotation is an emergency action (e.g., key compromise).
 
-### 21.4 Activation flow internals
+### 21.6 Activation flow internals
 
 For the curious: the flow is in
 [`LicenseGate.cs`](src/EgyptTax.Web/Licensing/LicenseGate.cs):
 
 1. Hardware ID derived from CPU + motherboard + disk volume serial
    via WMI (cached in registry once computed).
-2. Verifier checks the Ed25519 signature on `license.token`
-   against the public key baked into the binary.
-3. If valid, a 256-bit master key is generated and split via
-   Shamir's Secret Sharing (2-of-3): one share to DPAPI-encrypted
-   file, one to registry, one HWID-derived. Reconstructed every
-   boot.
-4. Master key encrypts `license.activated` (AES-256-GCM); on
-   subsequent boots the gate reads that instead of re-verifying
-   the token.
+2. **Path 1** — read existing `license.activated`. If valid → Active.
+3. **Path 2** — `license.token` present → verify Ed25519 signature
+   against the public key baked into the binary; split a 256-bit
+   master key via Shamir's Secret Sharing (2-of-3) across
+   DPAPI-encrypted file + registry + HWID-derived material;
+   encrypt the activated state with the master key.
+4. **Path 3** — no token, no activated state → check the trial
+   marker. Grant the trial if inside the window; create the
+   marker on first run.
+5. **Path 4** — trial expired or refused → `RecordFailure`; the
+   banner middleware renders the HTTP 451 page.
+
+Tests bypass the gate with `EGYPTTAX_SKIP_LICENSE_GATE=1` so
+`WebApplicationFactory<Program>`-based tests don't need a real
+license file. Production code path is unaffected.
 
 ---
 
@@ -1027,7 +1139,7 @@ If `net start` fails with `Error 1067`, run `Diagnose-DaftarX.cmd`
 and send the output to support — usually a config / DB-connection
 issue.
 
-### Activation banner won't go away
+### Activation banner won't go away (after dropping in a license.token)
 
 1. Confirm the file exists at `C:\ProgramData\DaftarX\license\license.token`.
 2. Confirm the HWID inside the JSON matches the HWID the banner
@@ -1035,6 +1147,34 @@ issue.
    license — request a new one for the current HWID.
 3. Confirm the expiry hasn't lapsed.
 4. Check `license-gate-crash.log` next to the token for a stack.
+5. Restart the service: `net stop EgyptTax && net start EgyptTax`.
+
+### Trial countdown banner shows the wrong number of days
+
+The trial start was recorded at the wall-clock of the first boot,
+not at installer time. If the operator installed at 23:55 then
+booted at 00:05, the first "day" was 5 minutes. Behavior is
+correct; the banner rounds up via `Math.Ceiling` so day 0.01 still
+shows as "14 days left". If the count is dramatically off (e.g.,
+shows 14 days on day 8), check `%PROGRAMDATA%\DaftarX\license\trial-started.txt`
+— it should contain an ISO-8601 UTC date roughly matching the
+machine's first boot.
+
+### Trial ended early / 451 page appears mid-trial
+
+The marker file got corrupted, deleted, or the system clock moved
+backward (DaftarX treats clock skew that drops below the trial
+start as expiry). Two options:
+
+1. (Recommended) Buy a license — the trial was always a free
+   evaluation, not a permanent state.
+2. (Support only) Move the system clock forward to a sane value
+   AND re-create `trial-started.txt` with the original ISO-8601
+   start time. The gate trusts the file; if you don't remember
+   the original start, treat it as a new install.
+
+A clean reformat resets everything, but that's painful enough not
+to be a real workaround for accidentally extending the trial.
 
 ### Login says "invalid credentials" but I'm sure they're right
 
@@ -1229,6 +1369,8 @@ Most are visible on Hangfire's built-in dashboard at
 | `C:\ProgramData\DaftarX\` | Per-machine data (license, logs) |
 | `C:\ProgramData\DaftarX\license\license.token` | Customer's signed license |
 | `C:\ProgramData\DaftarX\license\license.activated` | Encrypted activated-state cache |
+| `C:\ProgramData\DaftarX\license\trial-started.txt` | 14-day trial start (ISO-8601 UTC) |
+| `C:\ProgramData\DaftarX\license\license-gate-crash.log` | LicenseGate exception trace (when present) |
 | `C:\ProgramData\DaftarX\logs\` | Rolling Serilog files |
 | `%APPDATA%\DaftarX\share.bin` | Shamir share #1 (DPAPI-encrypted) |
 | `HKCU\Software\DaftarX\Activation\ShareData` | Shamir share #2 (registry) |
