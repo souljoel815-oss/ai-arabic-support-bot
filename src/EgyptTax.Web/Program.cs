@@ -438,6 +438,17 @@ builder.Services.AddSingleton<EgyptTax.Infrastructure.Settings.SmtpTestSender>()
 // and re-runs ActivationFlow. LicenseStatus refreshes immediately.
 builder.Services.AddSingleton<EgyptTax.Web.Licensing.InAppActivationHandler>();
 
+// Gux.13 Tab 8 — backup engine. Provider-aware (BACKUP DATABASE
+// for SQL Server, SQLite Online Backup API for SQLite). Captures
+// the attachments-root path so the engine zips them alongside the
+// DB into the .dxbak archive.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.BackupEngine>(sp =>
+    new EgyptTax.Infrastructure.Settings.BackupEngine(
+        sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<EgyptTax.Infrastructure.Persistence.AppDbContext>>(),
+        sp.GetRequiredService<EgyptTax.Infrastructure.Settings.SettingsRepository>(),
+        sp.GetRequiredService<EgyptTax.SharedKernel.Time.IClock>(),
+        attachmentRoot));
+
 // G3.2 — Receipt OCR. Tesseract loads native libs + tessdata
 // language packs lazily on first request; if tessdata is missing,
 // the service returns Unavailable rather than crashing so the rest

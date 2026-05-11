@@ -1,12 +1,195 @@
+@using EgyptTax.Domain.Settings
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Settings
+@inject SettingsRepository Settings
+@inject BackupEngine BackupEngine
+@inject AppDbContext Db
+
 @*
-    Gux.13 Tab 8 — Backup placeholder.
-    Real implementation lands in Phase 2j (provider-aware backup engine).
+    Gux.13 Tab 8 — Backup. Provider-aware engine: produces .dxbak
+    files (zip containing manifest.json + db.bak/db.db + attachments).
+    Restore validates the manifest and refuses cross-provider files.
 *@
-<div class="admin-tab-placeholder">
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<section class="backup-tab">
     <h2>@(IsArabic ? "النسخ الاحتياطي" : "Backup")</h2>
-    <p class="page-subtitle">
+
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+    }
+
+    @* ----- Last backup status ----- *@
+
+    @if (_config.LastBackupAtUtc is { } at)
+    {
+        <div class="kpi-card kpi-info" style="margin-bottom:16px;">
+            <strong>@(IsArabic ? "آخر نسخة احتياطية:" : "Last backup:")</strong>
+            @at.ToString("yyyy-MM-dd HH:mm") UTC ·
+            @((_config.LastBackupSizeBytes ?? 0) / 1024 / 1024) MB ·
+            <code>@(_config.LastBackupPath ?? "")</code>
+        </div>
+    }
+    else
+    {
+        <div class="kpi-card kpi-warn" style="margin-bottom:16px;">
+            @(IsArabic
+                ? "⚠ لم يتم إجراء أي نسخة احتياطية بعد. اضغط «نسخ الآن» لإنشاء أول نسخة."
+                : "⚠ No backup taken yet. Click \"Backup Now\" to create your first one.")
+        </div>
+    }
+
+    @* ----- Auto-backup settings ----- *@
+
+    <h3>@(IsArabic ? "النسخ التلقائي" : "Auto-backup")</h3>
+    <div class="form-grid">
+        <label>
+            <span>@(IsArabic ? "تفعيل النسخ التلقائي" : "Auto-backup enabled")</span>
+            <input type="checkbox" @bind="_autoEnabled" @bind:after="OnAutoChangedAsync" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "التكرار" : "Frequency")</span>
+            <select @bind="_frequency" @bind:after="OnFrequencyChangedAsync" disabled="@(!_autoEnabled)">
+                <option value="@BackupFrequency.Daily">@(IsArabic ? "يومياً" : "Daily")</option>
+                <option value="@BackupFrequency.Weekly">@(IsArabic ? "أسبوعياً" : "Weekly")</option>
+                <option value="@BackupFrequency.OnClosing">@(IsArabic ? "عند قفل كل فترة ضريبية" : "On every period close")</option>
+            </select>
+        </label>
+        <label style="grid-column:span 2;">
+            <span>@(IsArabic ? "مكان الحفظ" : "Save location")</span>
+            <input type="text" @bind="_savePath" @bind:after="OnSavePathChangedAsync" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "عدد النسخ المحفوظة" : "Keep last N backups")</span>
+            <input type="number" min="1" max="365" @bind="_retention" @bind:after="OnRetentionChangedAsync" />
+        </label>
+    </div>
+
+    <hr style="margin: 24px 0;" />
+
+    <h3>@(IsArabic ? "إجراءات يدوية" : "Manual actions")</h3>
+    <div class="invoice-actions">
+        <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnBackupNowAsync">
+            <Icon Name="save" Class="ic" />
+            @(_busy
+                ? (IsArabic ? "جارٍ الإنشاء…" : "Creating…")
+                : (IsArabic ? "نسخ الآن" : "Backup Now"))
+        </button>
+    </div>
+
+    <h3 style="margin-top:24px;">@(IsArabic ? "استعادة من نسخة" : "Restore from backup")</h3>
+    <p class="page-subtitle" style="font-size:13px;color:var(--text-muted);">
         @(IsArabic
-            ? "هذا التبويب قيد التطوير. سيتضمن: نسخ تلقائي/يدوي، استعادة، احتفاظ بـ30 نسخة افتراضياً، يدعم SQL Server و SQLite."
-            : "This tab is under construction. Will include: auto/manual backup, restore, 30-backup retention default, supports both SQL Server and SQLite.")
+            ? "ألصق المسار الكامل لملف .dxbak. يتم التحقق من توافق نوع قاعدة البيانات قبل البدء — النسخ من نوع آخر (SQL Server vs SQLite) ستُرفض."
+            : "Paste the full path to your .dxbak file. The provider type is verified before restore — cross-provider backups will be rejected.")
     </p>
-</div>
+    <div class="form-grid">
+        <label style="grid-column:span 2;">
+            <span>@(IsArabic ? "مسار ملف النسخة" : "Backup file path")</span>
+            <input type="text" @bind="_restorePath" placeholder="@_config.SavePath\daftarx-backup-YYYYMMDD-HHMMSS.dxbak" />
+        </label>
+    </div>
+    <div class="invoice-actions" style="margin-top:8px;">
+        <button type="button" class="btn-secondary" disabled="@_busy" @onclick="OnRestoreAsync">
+            <Icon Name="upload" Class="ic" />
+            @(IsArabic ? "تحقق من النسخة" : "Validate backup")
+        </button>
+    </div>
+    <p class="page-subtitle" style="font-size:12px;color:var(--text-muted);margin-top:8px;">
+        @(IsArabic
+            ? "ملحوظة: تنفيذ الاستعادة الفعلية يحتاج لإيقاف الخدمة. هذا الزر يتحقق من الملف ويعرض التعليمات."
+            : "Note: actually applying a restore requires stopping the service. This button validates the file and shows instructions.")
+    </p>
+</section>
+
+@code {
+    private bool _loading = true;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+    private bool _busy;
+
+    private BackupConfig _config = default!;
+    private bool _autoEnabled;
+    private BackupFrequency _frequency;
+    private string _savePath = "";
+    private int _retention;
+    private string _restorePath = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _config = await Settings.GetBackupConfigAsync();
+        _autoEnabled = _config.AutoBackupEnabled;
+        _frequency = _config.Frequency;
+        _savePath = _config.SavePath;
+        _retention = _config.RetentionCount;
+        _loading = false;
+    }
+
+    private async Task PersistAsync(Action<BackupConfig> mutate)
+    {
+        try
+        {
+            var c = await Settings.GetBackupConfigAsync();
+            mutate(c);
+            await Db.SaveChangesAsync();
+            _config = c;
+            _flash = IsArabic ? "✓ تم الحفظ" : "✓ Saved";
+            _flashClass = "kpi-card kpi-info";
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    private Task OnAutoChangedAsync()      => PersistAsync(c => c.UpdateAutoBackup(_autoEnabled));
+    private Task OnFrequencyChangedAsync() => PersistAsync(c => c.UpdateFrequency(_frequency));
+    private Task OnSavePathChangedAsync()  => PersistAsync(c => c.UpdateSavePath(_savePath));
+    private Task OnRetentionChangedAsync() => PersistAsync(c => c.UpdateRetentionCount(_retention));
+
+    private async Task OnBackupNowAsync()
+    {
+        _busy = true;
+        _flash = null;
+        try
+        {
+            var result = await BackupEngine.BackupNowAsync();
+            if (result.Ok)
+            {
+                _flash = IsArabic
+                    ? $"✓ تم إنشاء النسخة الاحتياطية. الحجم: {(result.SizeBytes ?? 0) / 1024 / 1024} MB. المسار: {result.Path}"
+                    : $"✓ Backup created. Size: {(result.SizeBytes ?? 0) / 1024 / 1024} MB. Path: {result.Path}";
+                _flashClass = "kpi-card kpi-info";
+                _config = await Settings.GetBackupConfigAsync(); // refresh "last backup" panel
+            }
+            else
+            {
+                _flash = IsArabic ? $"فشل النسخ: {result.Error}" : $"Backup failed: {result.Error}";
+                _flashClass = "kpi-card kpi-error";
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OnRestoreAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_restorePath))
+        {
+            _flash = IsArabic ? "أدخل مسار الملف أولاً." : "Provide the backup file path first.";
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        _busy = true;
+        _flash = null;
+        try
+        {
+            var result = await BackupEngine.RestoreAsync(_restorePath);
+            _flash = result.Message;
+            _flashClass = result.Ok ? "kpi-card kpi-info" : "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+}
