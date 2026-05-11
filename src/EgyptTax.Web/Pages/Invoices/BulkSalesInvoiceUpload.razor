@@ -74,6 +74,17 @@
             return;
         }
 
+        // Gux.13 — bulk-invoice post is SMB+. Server-side gate so a
+        // direct-link visit from a Solo customer can't post even if
+        // they manage to generate a valid spreadsheet.
+        try { EgyptTax.Web.Licensing.EditionGate.Require(EgyptTax.Web.Licensing.Feature.BulkInvoice); }
+        catch (EgyptTax.Web.Licensing.LicenseRestrictionException ex)
+        {
+            _flash = IsArabic ? ex.ArabicMessage : ex.EnglishMessage;
+            _flashClass = "flash-error";
+            return;
+        }
+
         var auth = await AuthState.GetAuthenticationStateAsync();
         var sub = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
         Guid.TryParse(sub, out var userId);

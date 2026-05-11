@@ -330,6 +330,17 @@
             return;
         }
 
+        // Gux.13 — WhatsApp delivery is SMB+. Solo customers see the
+        // button (since invoice detail page itself isn't gated) but
+        // the dispatch action is gated server-side.
+        try { EgyptTax.Web.Licensing.EditionGate.Require(EgyptTax.Web.Licensing.Feature.WhatsAppDelivery); }
+        catch (EgyptTax.Web.Licensing.LicenseRestrictionException ex)
+        {
+            _whatsAppFlash = IsArabic ? ex.ArabicMessage : ex.EnglishMessage;
+            _whatsAppFlashClass = "flash-error";
+            return;
+        }
+
         _whatsAppSending = true;
         try
         {

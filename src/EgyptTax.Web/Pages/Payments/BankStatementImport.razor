@@ -113,6 +113,16 @@
         _saving = true;
         try
         {
+            // Gux.13 — bank import is SMB+. Server-side gate so a
+            // direct-link visit from a Solo customer can't sneak past
+            // the UI hide.
+            try { EgyptTax.Web.Licensing.EditionGate.Require(EgyptTax.Web.Licensing.Feature.BankImport); }
+            catch (EgyptTax.Web.Licensing.LicenseRestrictionException ex)
+            {
+                _flash = IsArabic ? ex.ArabicMessage : ex.EnglishMessage;
+                return;
+            }
+
             if (_header.CashAccountId == Guid.Empty)
             {
                 _flash = Tr("اختر حساب بنكي.", "Pick a cash/bank account.");

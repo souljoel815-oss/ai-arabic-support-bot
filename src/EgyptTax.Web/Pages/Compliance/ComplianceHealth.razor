@@ -29,9 +29,20 @@
     private ComplianceObligation? _nextDeadline;
     private int _deadlinesNext30Days;
     private bool _loading = true;
+    private bool _editionGated;
 
     protected override async Task OnInitializedAsync()
     {
+        // Gux.13 — Compliance Health is Enterprise+. Solo + SMB
+        // customers see an upgrade prompt (rendered below) instead of
+        // the heavy roll-up data load.
+        if (!EgyptTax.Web.Licensing.EditionGate.Allows(EgyptTax.Web.Licensing.Feature.ComplianceHealth))
+        {
+            _editionGated = true;
+            _loading = false;
+            return;
+        }
+
         try
         {
             var now = DateTime.UtcNow;
@@ -169,6 +180,26 @@
 }
 
 <h1>@Tr("🩺 صحة الامتثال", "🩺 Compliance Health")</h1>
+
+@if (_editionGated)
+{
+    <div class="kpi-card kpi-warn" style="padding:24px;">
+        <h3 style="margin-top:0;">
+            @Tr("🔒 ميزة في خطة المؤسسات فأعلى", "🔒 Available on Enterprise and higher")
+        </h3>
+        <p>
+            @Tr(
+                "صفحة «صحة الامتثال» تجمع كل مؤشرات الامتثال (قمرة الإقفال + درع الغرامات + ETA + التقويم) في صفحة واحدة. متاحة في خطة المؤسسات أو خطة مكاتب المحاسبة.",
+                "The Compliance Health page rolls up every compliance signal (Closing Cockpit + Penalty Shield + ETA + the calendar) on one page. Available on the Enterprise or Firm editions.")
+        </p>
+        <a href="/settings?tab=license" class="btn-primary">
+            <Icon Name="key" Class="ic" />
+            @Tr("ترقية الخطة", "Upgrade plan")
+        </a>
+    </div>
+    return;
+}
+
 <p class="page-subtitle">
     @Tr(
         "نظرة موحّدة من قمرة الإقفال + درع الغرامات + ETA + التقويم — كل اللي محتاج تعمله النهارده في صفحة واحدة.",
