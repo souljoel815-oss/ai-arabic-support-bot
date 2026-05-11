@@ -6,7 +6,7 @@
 > surface. Settings are scattered across 9+ sidebar items with no role-based
 > gating.
 >
-> **Complexity:** L (~5.75 days AI-paired, including the new edition system)
+> **Complexity:** L (~6 days AI-paired, including the new edition system)
 >
 > **Dependencies:** Gux.1 (collapsible sidebar — shipped), Gux.2 (setup items
 > moved to Settings — shipped), Gux.3 (Settings tab strip — shipped),
@@ -105,15 +105,20 @@ invoices are never modified.
 | Client ID | text | From ETA portal |
 | Client Secret | password | Masked, show/hide toggle |
 | Token PIN | password | For USB token signing |
-| حالة الاتصال (Connection status) | indicator | Green (connected) / Red (failed) / Grey (not configured) |
+| حالة الاتصال (Connection status) | indicator | Green (connected) / Orange (token offline) / Red (auth failed) / Grey (not configured) |
 | آخر اتصال ناجح (Last successful connection) | timestamp | Auto-updated |
 | زر اختبار الاتصال (Test Connection) | button | Calls ETA auth endpoint, shows result |
 
 **Behaviour:**
-- Test Connection sends a real auth request to ETA sandbox/production and
-  shows success/failure with the exact error message in Arabic.
+- Test Connection sends a real **OAuth authentication** request to ETA
+  sandbox/production and shows success/failure with the exact error message
+  in Arabic. **Note:** this tests Client ID + Secret authentication only —
+  USB token signing is tested at invoice submission time, not here.
 - Toggle between Sandbox and Production requires confirmation: "التبديل
   للبيئة الحقيقية يعني أن الفواتير سترسل لمصلحة الضرائب فعلياً."
+- If the USB token is not connected, the status indicator should show an
+  **orange** "Token غير متصل" state (distinct from the red auth-failure
+  state).
 - The existing ETA Wizard (`/eta-wizard`) becomes a first-time setup flow
   that redirects here after completion.
 
@@ -126,7 +131,7 @@ invoices are never modified.
 | قالب الفاتورة (Invoice template) | select + preview | 3 built-in templates: Classic, Modern, Compact |
 | لغة الفاتورة (Invoice language) | select | Arabic only / Arabic + English (bilingual) |
 | بادئة رقم الفاتورة (Invoice prefix) | text | e.g., "INV-" or "فت-" |
-| الترقيم التالي (Next number) | number | Auto-incremented, admin can override |
+| الترقيم التالي (Next number) | number | Auto-incremented, admin can override (see validation below) |
 | شروط الدفع الافتراضية (Default payment terms) | select | Immediate / 15 days / 30 days / 60 days / Custom |
 | ملاحظات أسفل الفاتورة (Footer notes) | textarea | Appears on every invoice. e.g., bank account for transfer |
 | إظهار QR code | toggle | QR code with ETA verification URL |
@@ -134,6 +139,20 @@ invoices are never modified.
 
 **Behaviour:** Live preview panel on the right side (desktop) shows a
 sample invoice updating in real-time as the admin changes settings.
+
+**Next Number Override Validation:**
+- The new number **must be greater than** the highest invoice number already
+  used (posted or draft). Attempting to set a lower number shows: "لا يمكن
+  استخدام رقم أقل من آخر فاتورة (رقم X). اختر رقماً أكبر."
+- If the new number creates a gap (e.g., jumping from 150 to 200), show a
+  warning: "تغيير الترقيم سيخلق فجوة في أرقام الفواتير (من X إلى Y). هل
+  أنت متأكد؟"
+- **Period-lock guard (FR-037):** if the tax period containing the most
+  recent invoice is **Locked**, the Next Number field is read-only. Show:
+  "لا يمكن تغيير الترقيم — الفترة الضريبية الحالية مقفولة." The admin must
+  unlock the period first (which itself requires confirmation).
+- Every change to the next number is recorded in the audit log with the old
+  and new values.
 
 ---
 
@@ -189,8 +208,9 @@ sample invoice updating in real-time as the admin changes settings.
 **Behaviour:**
 - "Add User" button opens a form. Admin sets name, email, temporary
   password, and role.
-- Only available on Pro and higher plans (see §7). Basic plan shows:
-  "الخطة الأساسية تدعم مستخدم واحد. ترقية لخطة المهنية لإضافة مستخدمين."
+- Only available on **SMB** and higher editions (see §7). **Solo** edition
+  shows: "خطة فردي تدعم مستخدم واحد. ترقية لخطة أعمال صغيرة لإضافة
+  مستخدمين."
 - Disabling a user immediately logs them out.
 
 ---
@@ -233,11 +253,22 @@ sample invoice updating in real-time as the admin changes settings.
 | سجل النسخ (Backup history) | Table: date, size, status (success/failed) |
 
 **Behaviour:**
-- Auto-backup creates a compressed `.dxbak` file (renamed ZIP containing
-  the SQLite DB + attachments).
+- Auto-backup creates a compressed `.dxbak` file (renamed ZIP). The backup
+  strategy is **provider-aware**:
+  - **SQL Server Express:** runs `BACKUP DATABASE ... TO DISK` (T-SQL) to
+    produce a `.bak` file, then zips it with the attachments folder.
+  - **SQLite (SQLCipher):** copies the encrypted `.db` file directly (using
+    the SQLite Online Backup API to avoid locking), then zips it with the
+    attachments folder.
+  - The `.dxbak` file includes a `manifest.json` indicating which provider
+    was used, so Restore knows which path to take.
 - Backup Now shows a progress bar and confirms with file path.
 - Restore requires double confirmation: "هذا سيستبدل جميع البيانات
   الحالية. هل أنت متأكد؟" → "اكتب 'استعادة' للتأكيد."
+- **Cross-provider restore is not supported.** If the manifest says
+  SQL Server but the current instance runs SQLite (or vice versa), show:
+  "هذه النسخة الاحتياطية من نوع مختلف (SQL Server). لا يمكن استعادتها
+  على هذا الجهاز (SQLite). استخدم نفس نوع قاعدة البيانات."
 - Keep last 30 backups by default. Older ones auto-deleted (configurable).
 - Cloud backup (G4.2) will add a third option in Save location: "Cloud
   (encrypted)".
@@ -249,16 +280,19 @@ sample invoice updating in real-time as the admin changes settings.
 | Setting | Notes |
 |---------|-------|
 | تنبيه المواعيد الضريبية (Tax deadline alerts) | Toggle + days before (default: 7, 3, 1) |
-| تنبيه انتهاء الترخيص (License expiry alert) | Toggle + days before (default: 30, 14, 7, 1) |
+| تنبيه انتهاء الترخيص (License expiry alert) | Toggle + days before (default: 30, 7, 1) |
 | تنبيه فشل إرسال ETA (ETA submission failure) | Toggle (default: on) |
 | تنبيه اعتمادات معلقة (Pending approvals) | Toggle (default: on) |
 | تنبيه النسخ الاحتياطي (Backup reminder) | Toggle + if no backup in X days (default: 7) |
+| تنبيه انتهاء شهادة ETA (ETA certificate expiry) | Toggle + days before (default: 30, 7) |
 | طريقة التنبيه (Notification method) | In-app (always) + Email (optional, requires Tab 5 SMTP) |
 
 **Behaviour:**
 - In-app notifications appear in the bell icon (Gux.10 — shipped).
 - Email notifications only work if SMTP is configured in Tab 5.
 - All toggles default to ON for new installations.
+- The ETA certificate expiry alert checks the USB token certificate's
+  NotAfter date (if available) and warns before it expires.
 
 ---
 
@@ -268,16 +302,22 @@ sample invoice updating in real-time as the admin changes settings.
 |------|-------|
 | إصدار البرنامج (App version) | e.g., 1.2.0 |
 | إصدار قاعدة البيانات (DB version) | Schema version |
-| معلومات النظام (System info) | OS, .NET version, SQL LocalDB version |
+| معلومات النظام (System info) | OS, .NET version, DB provider (SQL Server Express / SQLite), DB version |
 | زر تقرير التشخيص (Diagnostic Report) | Generates the existing DIAGNOSTIC-REPORT and saves/copies |
 | زر التحقق من التحديثات (Check for Updates) | Calls `latest.json` (G4.1) |
+| زر تصدير البيانات (Export Data) | Exports all company data (invoices, customers, suppliers, reports) as a ZIP file (PDPL 151/2020 compliance) |
 | رابط دليل المستخدم (User Guide) | Opens USER-GUIDE in browser |
 | رابط التواصل (Contact Support) | WhatsApp link + email |
 | الرخصة القانونية (Legal) | EULA + third-party licenses |
+| إعادة تشغيل معالج الإعداد (Re-run Setup Wizard) | Link to re-launch the first-time wizard |
 
 **Behaviour:** Visible to all users (not admin-only). The diagnostic
 report button is critical for support — when a customer reports a bug,
 support says "اضغط على تقرير التشخيص وابعتلنا الملف."
+
+The "System info" field should show the **actual DB provider** detected at
+runtime (e.g., "SQL Server Express 16.0" or "SQLite 3.46 (SQLCipher)") —
+not a hardcoded string.
 
 ---
 
@@ -328,6 +368,27 @@ enforcement is mandatory** — UI hiding is not enough.
 ---
 
 ## 6. Technical Implementation Notes
+
+### Database provider awareness
+
+DaftarX is **provider-aware** — the same binary runs against SQL Server
+Express (MSI install) or SQLite/SQLCipher (portable/Docker/dev). The admin
+panel must respect this:
+
+| Context | DB | Detection |
+|---------|-----|-----------|
+| MSI install on Windows | SQL Server Express (`.\SQLEXPRESS`) | Connection-string shape detection in `Program.cs:545` |
+| Portable / Docker / dev | SQLite (SQLCipher-encrypted) | Fallback to `%LOCALAPPDATA%\DaftarX\daftarx.db` |
+
+Key implications for Gux.13:
+
+- **Tab 8 (Backup):** must use provider-specific backup strategy (see
+  Tab 8 spec above).
+- **Tab 10 (About):** must show the actual detected provider, not a
+  hardcoded string.
+- **New entities** (`InvoiceSettings`, `SmtpSettings`, etc.) must work with
+  both providers — use `AppDbContext.OnModelCreating` patterns already
+  established (strip SQL Server annotations when SQLite detected).
 
 ### Existing entities to reuse
 
@@ -381,8 +442,23 @@ NotificationPrefs
 ├── PendingApprovalsEnabled (bool)
 ├── BackupReminderEnabled (bool)
 ├── BackupReminderDays (int)
+├── EtaCertExpiryEnabled (bool)       -- v2: added per Manus review
+├── EtaCertExpiryDaysBefore (int[])   -- v2: added per Manus review
 └── EmailNotificationsEnabled (bool)
 ```
+
+### Data migration for existing installs
+
+When upgrading from a pre-Gux.13 version:
+
+1. Existing `Company`, `TaxPeriod`, `EtaCredential` data must appear in
+   Tabs 1-3 without re-entry.
+2. New entities (`InvoiceSettings`, `SmtpSettings`, `BackupConfig`,
+   `NotificationPrefs`) are created with sensible defaults on first access
+   if they don't exist yet (lazy initialization pattern).
+3. Old routes (`/settings/company`, `/settings/tax-periods`, etc.) redirect
+   to `/settings` with the correct tab pre-selected via query parameter
+   (e.g., `/settings?tab=company-profile`).
 
 ### UI approach
 
@@ -419,7 +495,7 @@ upgrade path.
 | **Users** | 1 | 3 | Unlimited | Unlimited |
 | **Companies** | 1 | 1 | 3 | Unlimited |
 | **Tax regime** | Standard OR Simplified | Both | Both | Both |
-| **Suggested price (EGP/yr)** | 3,000 - 4,000 | 7,000 - 9,000 | 15,000 - 20,000 | 25,000 - 35,000 |
+| **Price (EGP/yr)** | 3,500 | 8,000 | 17,500 | 30,000 |
 
 ### 7.2 Feature Matrix
 
@@ -503,6 +579,7 @@ public class BulkSalesInvoicePostHandler
 ```
 
 The `LicenseGate.Require()` method:
+
 1. Reads the current `LicensePayload` from the in-memory cache.
 2. Checks if the requested feature is in the `Features[]` array.
 3. If not, throws a `LicenseRestrictionException` with a user-friendly
@@ -539,8 +616,8 @@ deciding which edition to buy. After trial expiry:
 
 ### 7.6 Pricing Strategy Notes (input to G0 decision)
 
-The suggested prices in §7.1 are based on competitor pricing research (May
-2026, 1 USD ≈ 53 EGP):
+The prices in §7.1 are based on competitor pricing research (May 2026,
+1 USD ≈ 53 EGP):
 
 | Competitor | Cheapest Plan | Mid Plan | Top Plan |
 |-----------|--------------|----------|----------|
@@ -553,16 +630,16 @@ All competitors above are cloud-only SaaS. DaftarX is on-premise (data on
 the customer's machine, annual license). This justifies a different
 positioning:
 
-- **Solo at 3,000-4,000 EGP/yr:** Cheaper than Wafeq Starter (9,660) and
-  Daftra Basic (12,720), but not suspiciously cheap. The message: "أقل من
-  350 جنيه في الشهر — أرخص من غرامة تأخير واحدة. وبياناتك على جهازك."
-- **SMB at 7,000-9,000 EGP/yr:** Competes with Wafeq Starter (9,660) and
+- **Solo at 3,500 EGP/yr:** Cheaper than Wafeq Starter (9,660) and Daftra
+  Basic (12,720), but not suspiciously cheap. The message: "أقل من 300
+  جنيه في الشهر — أرخص من غرامة تأخير واحدة. وبياناتك على جهازك."
+- **SMB at 8,000 EGP/yr:** Competes with Wafeq Starter (9,660) and
   undercuts Daftra Basic (12,720), but includes features they charge extra
   for (bank import, bulk upload, 3 users, audit log).
-- **Enterprise at 15,000-20,000 EGP/yr:** Competes with Daftra Advanced
-  (26,235) and Wafeq Premium (23,892). DaftarX wins on: on-premise +
-  Arabic-first + compliance focus + multi-company. Significantly cheaper.
-- **Firm at 25,000-35,000 EGP/yr:** No direct competitor. Daftra has no
+- **Enterprise at 17,500 EGP/yr:** Competes with Daftra Advanced (26,235)
+  and Wafeq Premium (23,892). DaftarX wins on: on-premise + Arabic-first +
+  compliance focus + multi-company. Significantly cheaper.
+- **Firm at 30,000 EGP/yr:** No direct competitor. Daftra has no
   accountant portal. Wafeq has basic "Accountant Perks" but nothing close
   to a full firm management system. New market segment.
 
@@ -596,7 +673,7 @@ the roadmap:
 4. Test Connection (ETA) and Test Email (SMTP) return clear Arabic
    success/failure messages.
 5. Backup creates a valid `.dxbak` file that can be restored on a different
-   machine.
+   machine **of the same DB provider type**.
 6. All settings persist across app restarts.
 7. Changing tax regime shows a confirmation dialog and does not modify
    existing posted invoices.
@@ -607,6 +684,12 @@ the roadmap:
 11. Upgrading edition via new license key takes effect immediately without
     reinstall.
 12. `LicenseGate.Require()` is enforced server-side for all gated features.
+13. Invoice number override rejects values ≤ highest used number, and is
+    read-only when the active period is Locked.
+14. Tab 10 shows the actual detected DB provider at runtime (not a
+    hardcoded string).
+15. New entities are lazy-initialized with defaults for existing installs
+    on first access.
 
 ---
 
@@ -615,63 +698,49 @@ the roadmap:
 | Component | Effort (AI-paired) |
 |-----------|-------------------|
 | Tab 1-3 (refactor existing pages into tabs) | 0.5 day |
-| Tab 4 (Invoice Settings — new) | 0.5 day |
+| Tab 4 (Invoice Settings — new, incl. number validation + period-lock guard) | 0.5 day |
 | Tab 5 (Email — MAPI + SMTP) | 0.5 day |
 | Tab 6 (User Management + roles) | 1 day |
 | Tab 7 (License — refactor existing) | 0.25 day |
-| Tab 8 (Backup — new) | 0.5 day |
-| Tab 9 (Notifications — new) | 0.25 day |
-| Tab 10 (About — refactor existing) | 0.25 day |
+| Tab 8 (Backup — new, provider-aware + manifest) | 0.75 day |
+| Tab 9 (Notifications — new, incl. ETA cert expiry) | 0.25 day |
+| Tab 10 (About — refactor existing, add data export + provider info) | 0.25 day |
 | First-time wizard | 0.5 day |
 | Role-based access enforcement | 0.5 day |
 | Edition system (LicenseGate + feature flags + upgrade prompts) | 1 day |
 | Edition-aware UI (show/hide/lock features per edition) | 0.5 day |
 | `Issue-License.ps1` update (encode edition in token) | 0.25 day |
-| **Total** | **~5.75 days** |
+| **Total** | **~6 days** |
 
 ---
 
-## Pricing decision needed
+## 11. Known Bug — Dev Config Skew
 
-The edition system in §7 is **not compatible with the 3-tier pricing
-already locked** in [`pricing.md`](pricing.md). One of these has to give
-before implementation can start:
+`appsettings.Development.json` defines a connection string named `"App"`,
+but `Program.cs:541-545` reads `"EgyptTax"`. They don't match, so every
+`dotnet run` in dev falls through to the portable SQLite default — even if
+the developer intended to hit SQL Server Express.
 
-### Option A — Adopt the 4-edition system (this doc wins)
+**Fix (choose one):**
 
-Re-open `pricing.md` and restructure to:
-- **Solo** (1 user / 1 company / 3,000-4,000 EGP)
-- **SMB** (3 users / 1 company / 7,000-9,000 EGP)
-- **Enterprise** (unlimited users / 3 companies / 15,000-20,000 EGP)
-- **Firm** (unlimited / unlimited / 25,000-35,000 EGP)
+- **Option A:** Rename `"App"` → `"EgyptTax"` in
+  `appsettings.Development.json` so dev matches the MSI production path
+  (SQL Server Express).
+- **Option B:** Leave it as-is and document that dev always uses SQLite.
+  This is actually convenient for new contributors who don't have SQL
+  Server installed.
 
-Rationale for this option: the new spec is more granular (separates
-"company that just hit you with ETA" from "real SMB with 3 employees" from
-"firm running clients"). Better revenue ladder. Closer to competitor pricing
-than the 3-tier scheme. Resolves the "Solo tier below Basic?" question that
-was deferred in `pricing.md`.
+**Recommendation:** Option B (document it). Most developers and CI will
+prefer the zero-dependency SQLite path. Add a comment in
+`appsettings.Development.json` explaining the intentional fallthrough.
 
-Cost: rewrites the pricing decision committed in `55fc87d`.
+---
 
-### Option B — Keep the 3-tier pricing (pricing.md wins)
+## Change Log
 
-Adapt §7 of this spec to use the 3 existing tiers (Basic / Pro /
-Enterprise). Drop the Firm-specific tier; merge Firm Portal features into
-Enterprise (as the existing decision says).
-
-Cost: less granular ladder. Firm Portal usage doesn't have its own
-revenue tier. Solo persona (the newly-mandated micro-business) still gets
-served by Basic at 2,500 EGP, but with fewer features.
-
-### Option C — Three tiers + Add-ons
-
-Keep Basic / Pro / Enterprise from `pricing.md`, but allow per-feature
-add-ons (e.g., "Firm Portal +5,000 EGP/year" on top of Enterprise). Maps
-to the spec's existing "Cloud backup add-on" pattern in §7.2.
-
-Cost: more complex pricing page; harder to position in a hero copy line.
-
-**Resolved 2026-05-11:** Option A adopted. `pricing.md` was rewritten
-to use the 4-edition scheme (Solo / SMB / Enterprise / Firm) at
-3,500 / 8,000 / 17,500 / 30,000 EGP/year. `LicenseGate` implementation
-proceeds against that ladder.
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-05-11 | Initial spec | Claude (AI) |
+| 2026-05-11 | Pricing resolved: Option A adopted (4 editions) | User + Claude |
+| 2026-05-11 | **v2 review fixes:** (1) Tab 6 "Pro/Basic" → "SMB/Solo", (2) Tab 8 SQLite → provider-aware backup, (3) Tab 4 invoice number validation added, (4) Tab 3 ETA clarified OAuth-only test, (5) Tab 9 ETA cert expiry alert added, (6) Tab 10 data export + runtime DB provider added, (7) §6 dual-DB architecture documented, (8) §9 acceptance criteria expanded 12→15, (9) §10 effort adjusted +0.25 day, (10) §11 dev-config skew documented, (11) Tab 8 cross-provider restore guard added | Manus AI (review) |
+| 2026-05-11 | **v3 final fixes:** (1) Tab 4 added FR-037 period-lock guard for invoice number override, (2) §10 license tooling clarified as `Issue-License.ps1` (not Python/web portal — those are separate systems), (3) Referral codes confirmed unlimited across all editions (no cap), (4) Danger Zone deferred to post-v1, (5) Complexity updated to ~6 days | User + Manus AI |

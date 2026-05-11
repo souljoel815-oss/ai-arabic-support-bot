@@ -98,7 +98,7 @@ decision or external credential.
 | **Gux.10** | Approvals badge in topbar | ✅ shipped |
 | **Gux.11** | Typography pass | ✅ shipped |
 | **Gux.12** | Mobile bottom-nav bar | ✅ shipped |
-| **Gux.13** | Company Admin Panel + edition system | ⏳ planned (~5.75 days), unblocked by 4-edition pricing decision |
+| **Gux.13** | Company Admin Panel + edition system | ⏳ planned (~6 days, v3 spec), unblocked by 4-edition pricing decision |
 | **G2.1** | GS1/EGS coding assistant | ✅ shipped |
 | **G2.2** | WhatsApp invoice delivery | ✅ shipped (mock dispatcher; real on Meta keys) |
 | **G2.3** | Unified Compliance Health page | ✅ shipped |
@@ -626,8 +626,9 @@ G4 (defense + QoL) slots in opportunistically.
 - **Competitor:** Daftra, Wafeq, Edara all have a single Settings/
   Admin page with tab navigation + role-gating. DaftarX is alone in
   its scattered approach.
-- **Complexity:** L (~5.75 days AI-paired, includes the new edition
-  system)
+- **Complexity:** L (~6 days AI-paired, v3 spec — includes the new
+  edition system, provider-aware backup, FR-037 period-lock guard,
+  PDPL data export)
 - **Dependencies:** Gux.1+2+3 (shipped); existing `Company` +
   `TaxPeriod` + `EtaCredential` + `LicensePayload` entities.
 - **MVP slice:** Single `/settings` page with 10 tabs (Company /
