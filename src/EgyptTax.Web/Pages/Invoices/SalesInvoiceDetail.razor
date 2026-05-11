@@ -1,16 +1,22 @@
 @page "/invoices/{Id:guid}"
+@using System.Security.Claims
 @using EgyptTax.Application.Compliance.RiskScoring
 @using EgyptTax.Application.Verification
+@using EgyptTax.Application.Whatsapp
 @using EgyptTax.Domain.Eta
 @using EgyptTax.Domain.Invoices
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Pdf
 @using EgyptTax.Infrastructure.Verification
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject DocumentRiskScorer RiskScorer
+@inject IWhatsAppDispatcher WhatsAppDispatcher
+@inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <h1>@(IsArabic ? $"فاتورة مبيعات {(_invoice?.DocumentNumber ?? "(جارٍ التحميل)")}" : $"Sales invoice {(_invoice?.DocumentNumber ?? "(loading)")}")</h1>
@@ -122,6 +128,10 @@
 {
     <section class="invoice-actions">
         <a class="btn-primary" href="/invoices/@_invoice.Id/pdf" target="_blank">📄 @(IsArabic ? "تنزيل PDF" : "Download PDF")</a>
+        <button type="button" class="btn-secondary" @onclick="OpenWhatsAppModal">
+            <Icon Name="receipt" Class="ic" />
+            @(IsArabic ? "إرسال عبر واتساب" : "Send via WhatsApp")
+        </button>
         <a href="/invoices/@_invoice.Id/einvoice.json" target="_blank">@(IsArabic ? "عرض JSON الفاتورة الإلكترونية" : "View eInvoice JSON")</a>
         @if (_seal is not null)
         {
@@ -129,6 +139,81 @@
         }
         <a href="/document360/@(_invoice.IsCreditNote ? "credit-note" : "sales-invoice")/@_invoice.Id">📂 @(IsArabic ? "ملف المستند الكامل" : "Document 360")</a>
     </section>
+
+    @if (_whatsAppFlash is not null)
+    {
+        <div class="@_whatsAppFlashClass" style="margin-top:12px;">@_whatsAppFlash</div>
+    }
+
+    @if (_whatsAppHistory.Count > 0)
+    {
+        <section class="invoice-actions">
+            <details>
+                <summary>
+                    <strong>@(IsArabic ? $"سجل إرسال واتساب ({_whatsAppHistory.Count})" : $"WhatsApp dispatch history ({_whatsAppHistory.Count})")</strong>
+                </summary>
+                <table class="data-grid" style="margin-top:8px;">
+                    <thead>
+                        <tr>
+                            <th>@(IsArabic ? "وقت الإرسال" : "Sent at")</th>
+                            <th>@(IsArabic ? "للرقم" : "To")</th>
+                            <th>@(IsArabic ? "الحالة" : "Status")</th>
+                            <th>@(IsArabic ? "المرجع" : "Provider id")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var d in _whatsAppHistory)
+                        {
+                            <tr>
+                                <td>@d.SentAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td><code style="font-size:12px;">@d.RecipientPhone</code></td>
+                                <td>
+                                    @switch (d.DeliveryStatus)
+                                    {
+                                        case WhatsAppDispatchStatus.Sent:      <span class="state-badge state-pending">@(IsArabic ? "أُرسلت" : "Sent")</span>     break;
+                                        case WhatsAppDispatchStatus.Delivered: <span class="state-badge state-submitted">@(IsArabic ? "تم التوصيل" : "Delivered")</span> break;
+                                        case WhatsAppDispatchStatus.Read:      <span class="state-badge state-approved">@(IsArabic ? "تم القراءة" : "Read")</span> break;
+                                        case WhatsAppDispatchStatus.Failed:    <span class="state-badge state-rejected" title="@d.FailureReason">@(IsArabic ? "فشل" : "Failed")</span> break;
+                                    }
+                                </td>
+                                <td><code style="font-size:11px;color:var(--text-muted);">@(d.ProviderMessageId ?? "—")</code></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </details>
+        </section>
+    }
+
+    @if (_whatsAppModalOpen)
+    {
+        <div class="modal-backdrop" @onclick="CloseWhatsAppModal"></div>
+        <div class="modal-panel" role="dialog" aria-modal="true">
+            <h2>@(IsArabic ? "إرسال الفاتورة عبر واتساب" : "Send invoice via WhatsApp")</h2>
+            <p style="color:var(--text-muted);font-size:13px;">
+                @(IsArabic
+                    ? "هذه نسخة v1 — تُسجَّل عملية الإرسال في سجل الإيصالات لكنّ الإرسال الفعلي إلى Meta WhatsApp Business Cloud API يتفعّل عند تسجيل رقم تجاري."
+                    : "v1 dispatcher — records the send in the audit ledger; live Meta WhatsApp Business Cloud API delivery activates once a registered business number is wired.")
+            </p>
+            <label>
+                <span>@(IsArabic ? "رقم العميل (مع كود الدولة)" : "Customer phone (with country code)")</span>
+                <input type="tel" @bind="_whatsAppPhone" placeholder="+201001234567" />
+            </label>
+            <label>
+                <span>@(IsArabic ? "نص الرسالة" : "Message body")</span>
+                <textarea @bind="_whatsAppMessage" rows="6" style="width:100%;font-family:inherit;"></textarea>
+            </label>
+            <div class="invoice-actions" style="margin-top:12px;">
+                <button type="button" class="btn-primary" disabled="@_whatsAppSending" @onclick="SendWhatsAppAsync">
+                    <Icon Name="check-circle" Class="ic" />
+                    @(_whatsAppSending ? (IsArabic ? "جارٍ الإرسال…" : "Sending…") : (IsArabic ? "إرسال" : "Send"))
+                </button>
+                <button type="button" class="btn-secondary" @onclick="CloseWhatsAppModal">
+                    @(IsArabic ? "إلغاء" : "Cancel")
+                </button>
+            </div>
+        </div>
+    }
 
     @* P1.9 — Cancel-vs-Credit-Note correction wizard. Only for
        non-credit-note posted invoices (a credit note can't be
@@ -216,6 +301,83 @@
     private IReadOnlyList<RiskFinding>? _riskFindings;
     private ApprovalRequest? _latestApproval;
 
+    // G2.2 — WhatsApp dispatch state.
+    private List<InvoiceWhatsAppDispatch> _whatsAppHistory = new();
+    private bool _whatsAppModalOpen;
+    private string _whatsAppPhone = "";
+    private string _whatsAppMessage = "";
+    private bool _whatsAppSending;
+    private string? _whatsAppFlash;
+    private string _whatsAppFlashClass = "kpi-card kpi-info";
+
+    private void OpenWhatsAppModal()
+    {
+        _whatsAppFlash = null;
+        _whatsAppPhone = _customer?.Phone ?? "";
+        _whatsAppMessage = IsArabic
+            ? $"السلام عليكم،\nمرفق فاتورة رقم {_invoice?.DocumentNumber}.\nالإجمالي: {_invoice?.GrandTotal.Amount:N2} ج.م.\nشكراً لتعاملكم معنا."
+            : $"Hello,\nPlease find attached invoice {_invoice?.DocumentNumber}.\nTotal: {_invoice?.GrandTotal.Amount:N2} EGP.\nThank you for your business.";
+        _whatsAppModalOpen = true;
+    }
+    private void CloseWhatsAppModal() { _whatsAppModalOpen = false; }
+
+    private async Task SendWhatsAppAsync()
+    {
+        if (_invoice is null || string.IsNullOrWhiteSpace(_whatsAppPhone))
+        {
+            _whatsAppFlash = IsArabic ? "أدخل رقم العميل أولاً." : "Enter the customer's phone first.";
+            _whatsAppFlashClass = "flash-error";
+            return;
+        }
+
+        _whatsAppSending = true;
+        try
+        {
+            var auth = await AuthState.GetAuthenticationStateAsync();
+            var sub = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            Guid.TryParse(sub, out var userId);
+
+            // PDF bytes — for the mock dispatcher we don't need the
+            // real PDF (it just logs the size); when the Meta adapter
+            // takes over we'll render the invoice PDF here.
+            var pdfBytes = Array.Empty<byte>();
+
+            var result = await WhatsAppDispatcher.DispatchAsync(new WhatsAppDispatchRequest(
+                SalesInvoiceId: _invoice.Id,
+                RecipientPhone: _whatsAppPhone.Trim(),
+                MessageBody: _whatsAppMessage.Trim(),
+                PdfBytes: pdfBytes,
+                PdfFileName: $"{_invoice.DocumentNumber}.pdf",
+                SentByUserId: userId));
+
+            if (result.Success)
+            {
+                _whatsAppFlash = IsArabic
+                    ? $"تم الإرسال — مرجع: {result.ProviderMessageId}"
+                    : $"Sent — provider id {result.ProviderMessageId}";
+                _whatsAppFlashClass = "kpi-card kpi-info";
+                _whatsAppModalOpen = false;
+                await ReloadAsync();
+            }
+            else
+            {
+                _whatsAppFlash = IsArabic
+                    ? $"فشل الإرسال: {result.ErrorMessage}"
+                    : $"Send failed: {result.ErrorMessage}";
+                _whatsAppFlashClass = "flash-error";
+            }
+        }
+        catch (Exception ex)
+        {
+            _whatsAppFlash = ex.Message;
+            _whatsAppFlashClass = "flash-error";
+        }
+        finally
+        {
+            _whatsAppSending = false;
+        }
+    }
+
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
     private async Task ReloadAsync()
@@ -245,6 +407,13 @@
         {
             _etaSubmission = await Db.Set<EtaSubmission>().AsNoTracking()
                 .FirstOrDefaultAsync(s => s.SalesInvoiceId == _invoice.Id);
+
+            // G2.2 — WhatsApp dispatch history (latest first).
+            _whatsAppHistory = await Db.Set<InvoiceWhatsAppDispatch>().AsNoTracking()
+                .Where(d => d.SalesInvoiceId == _invoice.Id)
+                .OrderByDescending(d => d.SentAtUtc)
+                .Take(20)
+                .ToListAsync();
 
             // Build a deterministic seal payload for the verify-link
             // (matches the encode the PDF route emits; auditors who

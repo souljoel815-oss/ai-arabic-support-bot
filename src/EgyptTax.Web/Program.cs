@@ -408,6 +408,13 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Attachments.UploadAttachmentH
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceWithEtaSubmissionHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.BulkSalesInvoicePostHandler>();
+
+// G2.2 — WhatsApp invoice delivery. Default to the mock dispatcher
+// (writes the audit row + logs but doesn't hit the network); swap
+// to MetaCloudWhatsAppDispatcher when the vendor's Meta WhatsApp
+// Business number + access token are configured.
+builder.Services.AddScoped<EgyptTax.Application.Whatsapp.IWhatsAppDispatcher,
+    EgyptTax.Infrastructure.Whatsapp.MockWhatsAppDispatcher>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.IssueCreditNoteHandler>();
 builder.Services.AddSingleton<
     EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer,

@@ -2832,3 +2832,54 @@ a.btn-secondary .ic {
     font-size: 11.5px;
     color: var(--text-muted);
 }
+
+/* ============================================================
+   G2.2 — Modal (used by the WhatsApp send dialog; reusable for
+   future confirm/edit modals).
+   ============================================================ */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(11, 29, 58, 0.55);
+    z-index: 200;
+    backdrop-filter: blur(2px);
+}
+.modal-panel {
+    position: fixed;
+    top: 50%;
+    inset-inline-start: 50%;
+    transform: translate(-50%, -50%);
+    width: min(560px, 92vw);
+    max-height: 88vh;
+    overflow-y: auto;
+    background: var(--surface);
+    border-radius: var(--r-lg);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
+    z-index: 210;
+    padding: 28px;
+}
+[dir="rtl"] .modal-panel { transform: translate(50%, -50%); }
+.modal-panel h2 { margin-top: 0; }
+.modal-panel label {
+    display: block;
+    margin-top: 12px;
+    font-size: 13px;
+    font-weight: 500;
+}
+.modal-panel label > span { display: block; margin-bottom: 4px; color: var(--text-muted); }
+.modal-panel input,
+.modal-panel textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    font-size: 14px;
+    background: var(--surface);
+    color: var(--text);
+}
+.modal-panel input:focus,
+.modal-panel textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-soft);
+}
