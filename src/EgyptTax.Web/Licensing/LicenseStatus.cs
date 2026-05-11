@@ -16,6 +16,11 @@ public static class LicenseStatus
     private static DateTime _expiresAtUtc = DateTime.MinValue;
     private static DateTime _trialExpiresAtUtc = DateTime.MinValue;
     private static volatile int _failureReason = (int)LicenseFailureReason.None;
+    // --- Gux.13 v2 payload fields (read by EditionGate) ---
+    private static volatile string _editionWire = "";
+    private static int? _payloadMaxUsers;
+    private static int? _payloadMaxCompanies;
+    private static IReadOnlyList<string> _payloadFeatures = Array.Empty<string>();
 
     public static LicenseState State => (LicenseState)_state;
     public static string Hwid => _hwid;
@@ -34,6 +39,23 @@ public static class LicenseStatus
     /// states are equally permitted to run the app.</summary>
     public static bool IsLicensed => State == LicenseState.Active || State == LicenseState.Trial;
 
+    /// <summary>Gux.13 — wire-format edition string from the license
+    /// payload. Read by <see cref="EditionGate"/>.</summary>
+    public static string EditionWireString => _editionWire;
+
+    /// <summary>Gux.13 — explicit MaxUsers from the v2 payload, or
+    /// null when the payload omitted it (pre-Gux.13 token). Falls
+    /// back to <see cref="LicenseEditionExtensions.DefaultMaxUsers"/>.</summary>
+    public static int? PayloadMaxUsers => _payloadMaxUsers;
+
+    /// <summary>Gux.13 — explicit MaxCompanies from the v2 payload.</summary>
+    public static int? PayloadMaxCompanies => _payloadMaxCompanies;
+
+    /// <summary>Gux.13 — the explicit Features[] from the v2 payload.
+    /// Empty when the payload omitted the array; the gate then uses
+    /// <c>Feature.DefaultsFor(edition)</c>.</summary>
+    public static IReadOnlyList<string> PayloadFeatures => _payloadFeatures;
+
     public static void RecordValid(LicensePayload p, string hwid)
     {
         _hwid = hwid;
@@ -41,6 +63,10 @@ public static class LicenseStatus
         _salesPhone = string.IsNullOrWhiteSpace(p.SalesPhone) ? _salesPhone : p.SalesPhone;
         _salesEmail = string.IsNullOrWhiteSpace(p.SalesEmail) ? _salesEmail : p.SalesEmail;
         _expiresAtUtc = p.ExpiresAtUtc;
+        _editionWire = p.Edition ?? "";
+        _payloadMaxUsers = p.MaxUsers;
+        _payloadMaxCompanies = p.MaxCompanies;
+        _payloadFeatures = p.Features ?? Array.Empty<string>();
         _failureReason = (int)LicenseFailureReason.None;
         _state = (int)LicenseState.Active;
     }
@@ -58,6 +84,13 @@ public static class LicenseStatus
         _customer = "Trial";
         _expiresAtUtc = trialExpiresAtUtc;
         _trialExpiresAtUtc = trialExpiresAtUtc;
+        // Gux.13 — trial users get a synthetic Trial edition with the
+        // full Enterprise feature set (NOT Firm Portal). The gate
+        // also special-cases LicenseEdition.Trial to return that set.
+        _editionWire = "Trial";
+        _payloadFeatures = Array.Empty<string>(); // EditionGate falls back to Feature.DefaultsFor(Trial)
+        _payloadMaxUsers = null;
+        _payloadMaxCompanies = null;
         _failureReason = (int)LicenseFailureReason.None;
         _state = (int)LicenseState.Trial;
     }

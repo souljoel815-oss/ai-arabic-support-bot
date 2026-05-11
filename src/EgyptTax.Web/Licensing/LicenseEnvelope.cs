@@ -26,6 +26,20 @@ namespace EgyptTax.Web.Licensing;
 /// </summary>
 public sealed record LicenseEnvelope(LicensePayload Payload, string Signature);
 
+/// <summary>
+/// Signed license payload. v1 had only Edition (string). v2 (Gux.13)
+/// added MaxUsers + MaxCompanies + Features[] for fine-grained
+/// edition gating. Pre-v2 tokens deserialize with default values for
+/// the new fields; the runtime falls back to <c>Feature.DefaultsFor</c>
+/// based on the parsed <see cref="LicenseEdition"/> when
+/// <see cref="Features"/> is empty.
+///
+/// CRITICAL: <see cref="LicensePayloadSerializer.CanonicalBytes"/>
+/// uses <see cref="JsonIgnoreCondition.WhenWritingDefault"/> so that
+/// re-serializing a v1 payload (without the new fields set) produces
+/// the same bytes that were originally signed — otherwise Ed25519
+/// verification of older tokens would fail.
+/// </summary>
 public sealed record LicensePayload(
     [property: JsonPropertyName("version")]      int Version,
     [property: JsonPropertyName("hwid")]         string Hwid,
@@ -34,7 +48,14 @@ public sealed record LicensePayload(
     [property: JsonPropertyName("issuedAtUtc")]  DateTime IssuedAtUtc,
     [property: JsonPropertyName("expiresAtUtc")] DateTime ExpiresAtUtc,
     [property: JsonPropertyName("salesPhone")]   string SalesPhone,
-    [property: JsonPropertyName("salesEmail")]   string SalesEmail);
+    [property: JsonPropertyName("salesEmail")]   string SalesEmail,
+    // --- v2 (Gux.13) additions; nullable for backward compat ---
+    [property: JsonPropertyName("maxUsers"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        int? MaxUsers = null,
+    [property: JsonPropertyName("maxCompanies"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        int? MaxCompanies = null,
+    [property: JsonPropertyName("features"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string[]? Features = null);
 
 /// <summary>
 /// Stable serializer used by both the issuer (signing side) and the
