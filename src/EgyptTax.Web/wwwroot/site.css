@@ -2175,3 +2175,31 @@ section {
         padding: var(--sp-3) var(--sp-2);
     }
 }
+
+/* Bug-fix: icon safety net.
+   <Icon Class="ic"> SVGs only have viewBox + no width/height.
+   Per-context sizes are defined inline (.kpi-card .kpi-label .ic,
+   .activity-icon .ic, .topbar-btn .ic, ...) but icons used in
+   contexts without an explicit rule fell back to the browser
+   default SVG box (300×150) and burst the layout — most visible
+   on /penalty-shield, /cockpit, and other pages with inline
+   button-icons. */
+svg.ic,
+svg.nav-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    vertical-align: -2px;
+}
+
+/* Inline-with-text variant: when an icon sits next to label text
+   inside a button, keep the natural baseline alignment. */
+button .ic,
+.btn-primary .ic,
+.btn-secondary .ic,
+a.btn-primary .ic,
+a.btn-secondary .ic {
+    width: 14px;
+    height: 14px;
+    margin-inline-end: 4px;
+}
