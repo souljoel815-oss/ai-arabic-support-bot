@@ -1,0 +1,51 @@
+@using System.Globalization
+@using EgyptTax.Application.Updates
+
+@*
+    G4.1 — non-blocking banner that surfaces a newer version when
+    UpdateCheckJob's daily poll finds one. Hidden in normal operation
+    (current == latest, no banner shown). Click-through opens the
+    vendor download page in a new tab; the operator restarts manually
+    after reading the changelog (no silent self-update per the roadmap).
+*@
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    private bool Show => UpdateStatus.UpdateAvailable && _expanded;
+    private bool _expanded = true;
+    private void Dismiss() => _expanded = false;
+}
+
+@if (UpdateStatus.UpdateAvailable && _expanded)
+{
+    var m = UpdateStatus.Latest!;
+    <div class="update-banner" role="status">
+        <div class="update-banner-text">
+            <strong>🚀</strong>
+            <span>
+                @if (IsArabic)
+                {
+                    @($"إصدار جديد متاح: ") <strong>@m.LatestVersion</strong>
+                    @($" (نسختك الحالية {UpdateStatus.CurrentVersion}).")
+                }
+                else
+                {
+                    @($"New version available: ") <strong>@m.LatestVersion</strong>
+                    @($" (you're on {UpdateStatus.CurrentVersion}).")
+                }
+            </span>
+            <details class="update-banner-changelog">
+                <summary>@(IsArabic ? "ما الجديد؟" : "What's new?")</summary>
+                <pre>@(IsArabic ? m.ChangelogAr : m.ChangelogEn)</pre>
+            </details>
+        </div>
+        <div class="update-banner-actions">
+            <a href="@m.DownloadUrl" target="_blank" rel="noopener" class="btn-primary">
+                @(IsArabic ? "تحميل التحديث" : "Download update")
+            </a>
+            <button type="button" class="update-banner-dismiss" @onclick="Dismiss"
+                    aria-label="@(IsArabic ? "إخفاء" : "Dismiss")">×</button>
+        </div>
+    </div>
+}

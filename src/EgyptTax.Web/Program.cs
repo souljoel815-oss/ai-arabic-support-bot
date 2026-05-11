@@ -573,6 +573,12 @@ builder.Services.AddTransient<ComplianceCalendarRefreshJob>();
 // P3.4 — bank-recon auto-match Hangfire job (scorer is static).
 builder.Services.AddTransient<BankAutoMatchJob>();
 
+// G4.1 — daily check against the vendor's latest.json manifest.
+// Typed HttpClient so the 5s timeout + base config is scoped.
+builder.Services.AddHttpClient<EgyptTax.Application.Updates.IUpdateChannel,
+    EgyptTax.Infrastructure.Updates.HttpUpdateChannel>();
+builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.UpdateCheckJob>();
+
 // T110 / R-13 — supplier-TIN revalidation cron. The revalidator is
 // still the always-valid stub (the live registry feed is a Near-term
 // plug-in); US2 replaced the empty supplier source with the
@@ -828,6 +834,17 @@ app.UseSerilogRequestLogging();
         recurringJobId: "bank-auto-match",
         methodCall: j => j.RunOnceAsync(CancellationToken.None),
         cronExpression: "*/10 * * * *"
+    );
+
+    // G4.1 — daily auto-update check at 04:15 UTC. Reads the
+    // vendor's latest.json manifest and exposes the result via
+    // UpdateStatus / the topbar banner. Failure is non-fatal —
+    // the banner falls back to whatever the last successful check
+    // returned, so a transient CDN blip doesn't hide an update.
+    recurring.AddOrUpdate<EgyptTax.Infrastructure.BackgroundJobs.UpdateCheckJob>(
+        recurringJobId: "update-check",
+        methodCall: j => j.RunOnceAsync(CancellationToken.None),
+        cronExpression: "15 4 * * *"
     );
 }
 
