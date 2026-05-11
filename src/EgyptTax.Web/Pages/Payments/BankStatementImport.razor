@@ -1,11 +1,13 @@
 @page "/payments/bank-statements/import"
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
+@using EgyptTax.Application.Banking
 @using EgyptTax.Domain.Banking
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.SharedKernel
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject NavigationManager Nav
@@ -23,6 +25,13 @@
     private string? _flash;
     private bool _saving;
 
+    // G1.3 — CSV/file-import state. _uploadWarnings surfaces per-line
+    // parse problems (skipped rows, ambiguous debits) so the operator
+    // can cross-check before saving.
+    private string? _detectedBankName;
+    private List<string> _uploadWarnings = new();
+    private const long MaxUploadBytes = 8 * 1024 * 1024; // 8 MB; bank CSVs are tiny
+
     protected override async Task OnInitializedAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
@@ -36,6 +45,67 @@
     private void AddLine() => _lines.Add(new LineModel { TransactionDate = _header.PeriodStart });
 
     private void RemoveLine(LineModel line) => _lines.Remove(line);
+
+    /// <summary>G1.3 — handle the CSV/OFX upload. Auto-detects the
+    /// bank by sniffing the header row; populates the lines grid +
+    /// the header fields the parser could infer (period, closing
+    /// balance). Operator confirms + clicks Save as usual.</summary>
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _flash = null;
+        _uploadWarnings.Clear();
+        _detectedBankName = null;
+
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > MaxUploadBytes)
+        {
+            _flash = Tr($"الملف أكبر من {MaxUploadBytes / 1024 / 1024} ميجا.",
+                $"File exceeds {MaxUploadBytes / 1024 / 1024} MB cap.");
+            return;
+        }
+
+        string content;
+        await using (var stream = file.OpenReadStream(MaxUploadBytes))
+        using (var reader = new StreamReader(stream))
+        {
+            content = await reader.ReadToEndAsync();
+        }
+
+        var parser = BankStatementParserRegistry.Detect(content);
+        if (parser is null)
+        {
+            _flash = Tr(
+                "ما قدرناش نتعرف على شكل الملف. اختر بنك مدعوم: CIB / NBE / QNB.",
+                "Couldn't detect the bank. Supported: CIB / NBE / QNB. Use manual entry or pick a different file.");
+            return;
+        }
+
+        var result = parser.Parse(content);
+        _detectedBankName = parser.BankName;
+        _uploadWarnings = result.Warnings.ToList();
+        _header.SourceFileName = file.Name;
+
+        if (result.PeriodStart is { } ps) _header.PeriodStart = ps.ToDateTime(TimeOnly.MinValue);
+        if (result.PeriodEnd is { } pe) _header.PeriodEnd = pe.ToDateTime(TimeOnly.MinValue);
+        if (result.ClosingBalance is { } cb) _header.ClosingBalance = cb;
+
+        _lines = result.Lines.Select(l => new LineModel
+        {
+            TransactionDate = l.TransactionDate.ToDateTime(TimeOnly.MinValue),
+            Description = l.Description,
+            Debit = l.Debit,
+            Credit = l.Credit,
+            RunningBalance = l.RunningBalance,
+            BankReference = l.BankReference,
+        }).ToList();
+
+        if (_lines.Count == 0)
+        {
+            _lines.Add(new LineModel { TransactionDate = _header.PeriodStart });
+            _flash = Tr("لم تُستخرج أي بنود من الملف.", "Parsed file produced 0 lines — check the warnings below.");
+        }
+    }
 
     private async Task SaveAsync()
     {
@@ -111,12 +181,48 @@
     }
 }
 
-<h1>@(IsArabic ? "📥 استيراد كشف بنك (إدخال يدوي)" : "📥 Import Bank Statement (manual entry)")</h1>
+<h1>@(IsArabic ? "📥 استيراد كشف بنك" : "📥 Import Bank Statement")</h1>
 <p class="page-subtitle">
     @(IsArabic
-        ? "أدخل بيانات الكشف يدوياً (parsing الـ PDFs ييجي في إصدار قادم)."
-        : "Enter the statement manually (PDF parsing ships in a later release).")
+        ? "ارفع ملف CSV من بوابة البنك (CIB / NBE / QNB) أو أدخل البنود يدوياً. الـ PDF parsing ييجي في إصدار قادم."
+        : "Upload a CSV from your bank's online portal (CIB / NBE / QNB) or enter lines manually. PDF parsing ships in a later release.")
 </p>
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("رفع ملف من البنك", "Upload from bank")</h2>
+    <p style="margin-top:4px;color:var(--text-muted);font-size:13px;">
+        @Tr(
+            "صدّر ملف CSV من بوابة البنك (تحركات الحساب → تصدير → CSV) ثم اختره هنا. سيتم اكتشاف البنك تلقائياً.",
+            "Export an account-statement CSV from your bank's online portal, then pick it below. The bank format is auto-detected.")
+    </p>
+    <InputFile OnChange="OnFileSelectedAsync" accept=".csv,.ofx,.txt" />
+
+    @if (!string.IsNullOrEmpty(_detectedBankName))
+    {
+        <div class="kpi-card kpi-info" style="margin-top:12px;">
+            @Tr($"تم التعرف على البنك: {_detectedBankName}. تم تعبئة الجدول بالأسفل.",
+                $"Detected bank: {_detectedBankName}. Lines below are pre-filled.")
+        </div>
+    }
+
+    @if (_uploadWarnings.Count > 0)
+    {
+        <details class="kpi-card kpi-warn" style="margin-top:12px;">
+            <summary>
+                <strong>
+                    @Tr($"تحذيرات الاستيراد ({_uploadWarnings.Count})",
+                        $"Import warnings ({_uploadWarnings.Count})")
+                </strong>
+            </summary>
+            <ul style="margin-top:8px;font-size:13px;">
+                @foreach (var w in _uploadWarnings)
+                {
+                    <li>@w</li>
+                }
+            </ul>
+        </details>
+    }
+</section>
 
 @if (_flash is not null)
 {
