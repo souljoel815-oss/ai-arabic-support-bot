@@ -55,6 +55,9 @@
     // --- Activity feed ---
     private List<FeedItem> _feed = new();
 
+    // --- Gux.9 Closing Cockpit drawer ---
+    private bool _cockpitOpen;
+
     private record FeedItem(
         string IconName,
         string Tone,
@@ -377,10 +380,33 @@
         </div>
     </div>
     <div class="pb-actions">
-        <a href="cockpit" class="btn-secondary"><Icon Name="target" Class="ic" />@(IsArabic ? "افتح قمرة الإقفال" : "Open closing cockpit")</a>
+        <button type="button" class="btn-primary" @onclick="() => _cockpitOpen = true">
+            <Icon Name="target" Class="ic" />@(IsArabic ? "إقفال الشهر" : "Close month")
+        </button>
         <a href="settings/tax-periods" class="btn-secondary"><Icon Name="calendar" Class="ic" />@(IsArabic ? "إدارة الفترات" : "Manage periods")</a>
     </div>
 </div>
+
+@*
+    Gux.9 — Closing Cockpit drawer. Slides in from the inline-end
+    (right in Arabic, left in English). Shared body with /cockpit so
+    direct links still work. Backdrop click + Esc would be ideal but
+    we keep it to button-driven open/close for now.
+*@
+@if (_cockpitOpen)
+{
+    <div class="drawer-backdrop" @onclick="() => _cockpitOpen = false"></div>
+    <aside class="cockpit-drawer" role="dialog" aria-modal="true">
+        <header class="drawer-head">
+            <strong>@(IsArabic ? "إقفال الشهر" : "Close month")</strong>
+            <button type="button" class="drawer-close" @onclick="() => _cockpitOpen = false"
+                    aria-label="@(IsArabic ? "إغلاق" : "Close")">×</button>
+        </header>
+        <div class="drawer-body">
+            <ClosingCockpitPanel />
+        </div>
+    </aside>
+}
 
 <!-- Gux.4 — Action buttons at the TOP. The most common operator
      intent is "create a thing"; surface that before any KPI. -->

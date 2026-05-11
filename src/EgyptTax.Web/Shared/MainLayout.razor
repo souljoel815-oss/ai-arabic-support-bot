@@ -225,7 +225,7 @@
         </details>
 
         @* Gux.1 + Gux.2 — Compliance (setup-only items moved to Settings) *@
-        <details class="sidebar-group" @attributes="@OpenAttr("penalty-shield", "compliance", "eta-dashboard", "eta-inbox", "eta-export", "cockpit")">
+        <details class="sidebar-group" @attributes="@OpenAttr("penalty-shield", "compliance", "eta-dashboard", "eta-inbox", "eta-export")">
             <summary>
                 <Icon Name="shield" Class="nav-icon" />
                 <span>@Tr("الامتثال", "Compliance")</span>
@@ -234,7 +234,6 @@
                 <a href="compliance/health" class="@ActiveLink("compliance/health")" @onclick="CloseSidebar">@Tr("🩺 صحة الامتثال", "🩺 Compliance health")</a>
                 <a href="penalty-shield" class="@ActiveLink("penalty-shield")" @onclick="CloseSidebar">@Tr("درع الغرامات", "Penalty Shield")</a>
                 <a href="compliance/calendar" class="@ActiveLink("compliance/calendar")" @onclick="CloseSidebar">@Tr("تقويم الالتزامات", "Compliance calendar")</a>
-                <a href="cockpit" class="@ActiveLink("cockpit")" @onclick="CloseSidebar">@Tr("قمرة الإقفال", "Closing cockpit")</a>
                 <a href="eta-dashboard" class="@ActiveLink("eta-dashboard")" @onclick="CloseSidebar">@Tr("لوحة ETA", "ETA dashboard")</a>
                 <a href="eta-inbox" class="@ActiveLink("eta-inbox")" @onclick="CloseSidebar">@Tr("صندوق ETA الوارد", "ETA inbox")</a>
                 <a href="eta-export" class="@ActiveLink("eta-export")" @onclick="CloseSidebar">@Tr("تصدير ETA", "ETA export")</a>
@@ -242,7 +241,7 @@
         </details>
 
         @* Gux.1 + Gux.2 — Settings (absorbs setup-only items from Compliance + Master Data) *@
-        <details class="sidebar-group" @attributes="@OpenAttr("settings", "eta-wizard", "certificates", "expense-categories", "audit-log", "inspection-bundle")">
+        <details class="sidebar-group" @attributes="@OpenAttr("settings", "eta-wizard", "certificates", "expense-categories", "audit-log", "inspection-bundle", "cockpit")">
             <summary>
                 <Icon Name="building" Class="nav-icon" />
                 <span>@Tr("الإعدادات", "Settings")</span>
@@ -260,7 +259,8 @@
                 @* Setup-only ETA items moved here per Gux.2 *@
                 <a href="eta-wizard" class="@ActiveLink("eta-wizard")" @onclick="CloseSidebar">@Tr("معالج إعداد ETA", "ETA setup wizard")</a>
                 <a href="certificates" class="@ActiveLink("certificates")" @onclick="CloseSidebar">@Tr("الشهادات الرقمية", "Digital certificates")</a>
-                @* Advanced — accountant / auditor tools *@
+                @* Advanced — accountant / auditor tools (rarely-used mid-month) *@
+                <a href="cockpit" class="@ActiveLink("cockpit")" @onclick="CloseSidebar">@Tr("قمرة الإقفال", "Closing cockpit")</a>
                 <a href="settings/chart-of-accounts" class="@ActiveLink("settings/chart-of-accounts")" @onclick="CloseSidebar">@Tr("دليل الحسابات", "Chart of accounts")</a>
                 <a href="audit-log" class="@ActiveLink("audit-log")" @onclick="CloseSidebar">@Tr("سجل التدقيق", "Audit log")</a>
                 <a href="inspection-bundle" class="@ActiveLink("inspection-bundle")" @onclick="CloseSidebar">@Tr("حزمة الفحص الضريبي", "Inspection bundle")</a>
