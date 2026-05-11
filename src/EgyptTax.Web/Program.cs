@@ -420,6 +420,12 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Tax.GenerateVatReturnHandler>
 // (Law 91 brackets for Standard, Law 6 turnover for simplified).
 builder.Services.AddScoped<EgyptTax.Infrastructure.Tax.GenerateIncomeTaxReturnHandler>();
 
+// Gux.13 — lazy-init accessor for the four new single-row settings
+// entities (InvoiceSettings, SmtpSettings, BackupConfig,
+// NotificationPrefs). Admin-panel tabs call these without worrying
+// about whether the row exists yet on pre-Gux.13 installs.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.SettingsRepository>();
+
 // G3.2 — Receipt OCR. Tesseract loads native libs + tessdata
 // language packs lazily on first request; if tessdata is missing,
 // the service returns Unavailable rather than crashing so the rest
