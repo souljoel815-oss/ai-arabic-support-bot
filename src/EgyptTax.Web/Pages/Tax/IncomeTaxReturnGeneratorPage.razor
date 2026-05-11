@@ -1,0 +1,325 @@
+@page "/tax/income-tax-return/new"
+@using System.Globalization
+@using System.Security.Claims
+@using EgyptTax.Application.Reports
+@using EgyptTax.Application.Tax
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Periods
+@using EgyptTax.Domain.Tax
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Tax
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ITaxableIncomeReportQuery ReportQuery
+@inject GenerateIncomeTaxReturnHandler Handler
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "إقرار ضريبة دخل جديد | DaftarX" : "Generate Income-Tax Return | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    // Default to the previous fiscal year — current one is rarely
+    // ready to file in real life.
+    private int _fiscalYear = DateTime.UtcNow.Year - 1;
+    private string _note = "";
+    private bool _loading;
+    private bool _generating;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private TaxableIncomeReport? _preview;
+    private IncomeTaxResult? _bracketResult;
+    private TurnoverTaxResult? _turnoverResult;
+    private List<string> _unlockedMonths = new();
+    private DateOnly _previewStart;
+    private DateOnly _previewEnd;
+    private IncomeTaxRegime _regime;
+    private Company? _company;
+
+    private async Task OnPreview()
+    {
+        _flash = null;
+        _loading = true;
+        _preview = null;
+        _bracketResult = null;
+        _turnoverResult = null;
+        _unlockedMonths = new();
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _company = await db.Set<Company>().AsNoTracking().FirstOrDefaultAsync();
+            if (_company is null)
+            {
+                _flash = Tr("لم يتم ضبط ملف الشركة. ادخل الإعدادات > الشركة أولاً.",
+                    "Company profile not configured. Open Settings → Company first.");
+                _flashClass = "flash-error";
+                return;
+            }
+
+            _regime = _company.TaxRegime == TaxRegime.Law6Simplified
+                ? IncomeTaxRegime.Law6Simplified
+                : IncomeTaxRegime.Standard;
+
+            (_previewStart, _previewEnd) = DeriveFiscalYearWindow(_fiscalYear, _company.FiscalYearStartMonth);
+
+            // Check VAT-month locks across the window so the operator
+            // sees exactly which months still need closing.
+            await CheckLocksAsync(db);
+
+            _preview = await ReportQuery.RunAsync(_previewStart, _previewEnd);
+
+            if (_regime == IncomeTaxRegime.Law6Simplified)
+            {
+                _turnoverResult = TurnoverTaxBracketCalculator.Compute(_preview.Revenue.Amount);
+            }
+            else
+            {
+                _bracketResult = CorporateIncomeTaxBracketCalculator.Compute(_preview.TaxableIncome.Amount);
+            }
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CheckLocksAsync(AppDbContext db)
+    {
+        var required = new List<(int Year, int Month)>(12);
+        var cursor = new DateOnly(_previewStart.Year, _previewStart.Month, 1);
+        var last = new DateOnly(_previewEnd.Year, _previewEnd.Month, 1);
+        while (cursor <= last)
+        {
+            required.Add((cursor.Year, cursor.Month));
+            cursor = cursor.AddMonths(1);
+        }
+        var minYear = required[0].Year;
+        var maxYear = required[^1].Year;
+        var existing = await db.Set<TaxPeriod>().AsNoTracking()
+            .Where(p => p.PeriodKind == TaxPeriodKind.VatMonth
+                && p.Year >= minYear
+                && p.Year <= maxYear)
+            .ToListAsync();
+        foreach (var (y, m) in required)
+        {
+            var period = existing.FirstOrDefault(p => p.Year == y && p.MonthOrQuarter == m);
+            if (period is null || period.Status != TaxPeriodStatus.Locked)
+            {
+                _unlockedMonths.Add($"{y}-{m:D2}");
+            }
+        }
+    }
+
+    private static (DateOnly Start, DateOnly End) DeriveFiscalYearWindow(int fy, int startMonth)
+    {
+        if (startMonth == 1) return (new DateOnly(fy, 1, 1), new DateOnly(fy, 12, 31));
+        var start = new DateOnly(fy - 1, startMonth, 1);
+        return (start, start.AddYears(1).AddDays(-1));
+    }
+
+    private async Task OnGenerate()
+    {
+        if (_preview is null || _unlockedMonths.Count > 0) return;
+        _generating = true;
+        _flash = null;
+        try
+        {
+            var auth = await AuthState.GetAuthenticationStateAsync();
+            var sub = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            Guid.TryParse(sub, out var userId);
+
+            var record = await Handler.GenerateAsync(new GenerateIncomeTaxReturnCommand(
+                FiscalYear: _fiscalYear,
+                GeneratedByUserId: userId,
+                Note: string.IsNullOrWhiteSpace(_note) ? null : _note));
+
+            Nav.NavigateTo($"/tax/income-tax-return/{record.Id}");
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _generating = false;
+        }
+    }
+}
+
+<h1>@Tr("📝 تجهيز إقرار ضريبة الدخل السنوي", "📝 Generate annual income-tax return")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "اختر سنة مالية مقفولة بالكامل (كل شهور VAT الـ12). راجع الأرقام والشرائح، ثم ولّد.",
+        "Pick a fully-locked fiscal year (all 12 VAT months). Review the numbers + brackets, then generate.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin-top:16px;">@_flash</div>
+}
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("1. اختر السنة المالية", "1. Pick the fiscal year")</h2>
+    <div class="form-grid">
+        <label>
+            <span>@Tr("سنة الانتهاء", "Ending year")</span>
+            <input type="number" min="2000" max="9999" @bind="_fiscalYear" />
+        </label>
+    </div>
+    <p style="color:var(--text-muted);font-size:12px;margin-top:8px;">
+        @Tr(
+            "السنة المالية تنتسب لسنة انتهائها (المعيار المصري). شركة بداية يناير → FY 2026 = 2026-01 إلى 2026-12. شركة بداية يوليو → FY 2026 = 2025-07 إلى 2026-06.",
+            "Egyptian convention: a fiscal year is labelled by the year in which it ENDS. Jan-start company → FY 2026 = 2026-01 to 2026-12. July-start company → FY 2026 = 2025-07 to 2026-06.")
+    </p>
+    <div class="invoice-actions" style="margin-top:12px;">
+        <button type="button" class="btn-primary" disabled="@_loading" @onclick="OnPreview">
+            <Icon Name="search" Class="ic" />
+            @(_loading ? Tr("جارٍ الحساب…", "Computing…") : Tr("معاينة الأرقام", "Preview numbers"))
+        </button>
+    </div>
+</section>
+
+@if (_preview is not null)
+{
+    <section class="wizard-panel" style="margin-top:24px;">
+        <h2>@Tr("2. مراجعة الفترة وحالة الإقفال", "2. Review the period + lock status")</h2>
+
+        <table class="data-grid">
+            <tbody>
+                <tr><td>@Tr("من", "Start")</td><td>@_previewStart.ToString("yyyy-MM-dd")</td></tr>
+                <tr><td>@Tr("إلى", "End")</td><td>@_previewEnd.ToString("yyyy-MM-dd")</td></tr>
+                <tr><td>@Tr("النظام الضريبي", "Tax regime")</td>
+                    <td><strong>@(_regime == IncomeTaxRegime.Law6Simplified ? Tr("قانون 6 المُبَسَّط (إيراد فقط)", "Law 6 simplified (revenue-based)") : Tr("قياسي (شرائح Law 91)", "Standard (Law 91 brackets)"))</strong></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="@(_unlockedMonths.Count == 0 ? "kpi-card kpi-info" : "flash-error")" style="margin-top:12px;">
+            @if (_unlockedMonths.Count == 0)
+            {
+                @Tr("كل الـ12 شهر VAT مقفولين — جاهز للتوليد.",
+                    "All 12 VAT months are Locked — ready to generate.")
+            }
+            else
+            {
+                <strong>@Tr($"{_unlockedMonths.Count} شهر مازال مفتوحاً:",
+                            $"{_unlockedMonths.Count} month(s) still Open:")</strong>
+                <span style="margin-inline-start:8px;">@string.Join(", ", _unlockedMonths)</span>
+                <div style="margin-top:8px;">
+                    <a href="/cockpit">@Tr("افتح قمرة الإقفال ←", "Open Closing Cockpit →")</a>
+                </div>
+            }
+        </div>
+    </section>
+
+    <section class="wizard-panel" style="margin-top:24px;">
+        <h2>@Tr("3. الأرقام", "3. The numbers")</h2>
+        <table class="data-grid">
+            <tbody>
+                <tr><td>@Tr("الإيرادات (مبيعات + إشعارات مدينة)", "Revenue (sales + credit notes)")</td>
+                    <td class="num"><strong>@_preview.Revenue.Amount.ToString("N2")</strong> @Tr("ج.م.", "EGP")</td></tr>
+                <tr><td>@Tr("مصروفات قابلة للخصم", "Deductible expenses")</td>
+                    <td class="num">@_preview.DeductibleExpenses.Amount.ToString("N2") @Tr("ج.م.", "EGP")</td></tr>
+                <tr><td>@Tr("تسويات غير قابلة للخصم (مُضافة مرة أخرى)", "Non-deductible add-backs")</td>
+                    <td class="num">@_preview.NonDeductibleAdjustments.Amount.ToString("N2") @Tr("ج.م.", "EGP")</td></tr>
+                <tr><td>@Tr("ربح/خسارة الإدارة (P&L الداخلي)", "Management P&L")</td>
+                    <td class="num">@_preview.ManagementProfitLoss.Amount.ToString("N2") @Tr("ج.م.", "EGP")</td></tr>
+                <tr style="border-top:2px solid var(--border);">
+                    <td><strong>@Tr("الدخل الخاضع للضريبة", "Taxable income")</strong></td>
+                    <td class="num"><strong style="font-size:16px;">@_preview.TaxableIncome.Amount.ToString("N2")</strong> @Tr("ج.م.", "EGP")</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    @if (_regime == IncomeTaxRegime.Standard && _bracketResult is not null)
+    {
+        <section class="wizard-panel" style="margin-top:24px;">
+            <h2>@Tr("4. حساب الضريبة بالشرائح (Law 91/2005)", "4. Bracket-based tax (Law 91/2005)")</h2>
+            <table class="data-grid">
+                <thead>
+                    <tr>
+                        <th>@Tr("الشريحة", "Bracket")</th>
+                        <th class="num">@Tr("النسبة", "Rate")</th>
+                        <th class="num">@Tr("الشريحة الخاضعة", "Slice taxed")</th>
+                        <th class="num">@Tr("الضريبة من الشريحة", "Tax from slice")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in _bracketResult.Contributions)
+                    {
+                        var ceiling = c.UpperBoundEgp == decimal.MaxValue ? "∞" : c.UpperBoundEgp.ToString("N0");
+                        <tr>
+                            <td>@c.LowerBoundEgp.ToString("N0") – @ceiling @Tr("ج.م.", "EGP")</td>
+                            <td class="num">@c.RatePercent.ToString("N2")%</td>
+                            <td class="num">@c.TaxableSliceEgp.ToString("N2")</td>
+                            <td class="num">@c.TaxFromSliceEgp.ToString("N2")</td>
+                        </tr>
+                    }
+                    <tr style="border-top:2px solid var(--border);">
+                        <td colspan="3"><strong>@Tr("الضريبة المستحقة", "Tax due")</strong> (@Tr("النسبة الفعلية", "effective rate") @_bracketResult.EffectiveRatePercent.ToString("N2")%)</td>
+                        <td class="num"><strong style="font-size:18px;">@_bracketResult.TaxOwedEgp.ToString("N2")</strong> @Tr("ج.م.", "EGP")</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    }
+
+    @if (_regime == IncomeTaxRegime.Law6Simplified)
+    {
+        <section class="wizard-panel" style="margin-top:24px;">
+            <h2>@Tr("4. حساب ضريبة الإيراد (قانون 6/2025)", "4. Turnover-tax calculation (Law 6/2025)")</h2>
+            @if (_turnoverResult is null)
+            {
+                <div class="flash-error">
+                    @Tr($"الإيراد {_preview.Revenue.Amount:N2} ج.م. أعلى من حد الـ15 مليون. غيّر النظام إلى القياسي من إعدادات الشركة.",
+                        $"Revenue of {_preview.Revenue.Amount:N2} EGP exceeds the EGP 15M Law-6 cap. Switch to Standard regime in Settings → Company.")
+                </div>
+            }
+            else
+            {
+                <table class="data-grid">
+                    <tbody>
+                        <tr><td>@Tr("سقف الشريحة المُطَبَّقة", "Applicable bracket ceiling")</td>
+                            <td class="num">@_turnoverResult.BracketCeilingEgp.ToString("N0") @Tr("ج.م.", "EGP")</td></tr>
+                        <tr><td>@Tr("النسبة", "Rate")</td>
+                            <td class="num">@_turnoverResult.AppliedRatePercent.ToString("N2")%</td></tr>
+                        <tr style="border-top:2px solid var(--border);">
+                            <td><strong>@Tr("الضريبة المستحقة", "Tax due")</strong></td>
+                            <td class="num"><strong style="font-size:18px;">@_turnoverResult.TaxOwedEgp.ToString("N2")</strong> @Tr("ج.م.", "EGP")</td>
+                        </tr>
+                    </tbody>
+                </table>
+            }
+        </section>
+    }
+
+    <section class="wizard-panel" style="margin-top:24px;">
+        <label style="display:block;">
+            <span>@Tr("ملاحظات (اختياري)", "Note (optional)")</span>
+            <input type="text" @bind="_note" placeholder="@Tr("سيظهر على الإقرار في DaftarX (ليس على ETA).", "Stays inside DaftarX (not on the ETA form).")" />
+        </label>
+
+        <div class="invoice-actions" style="margin-top:12px;">
+            <button type="button" class="btn-primary"
+                    disabled="@(_generating || _unlockedMonths.Count > 0 || (_regime == IncomeTaxRegime.Law6Simplified && _turnoverResult is null))"
+                    @onclick="OnGenerate">
+                <Icon Name="check-circle" Class="ic" />
+                @(_generating ? Tr("جارٍ التوليد…", "Generating…") : Tr("توليد الإقرار", "Generate return"))
+            </button>
+            <a href="/tax/income-tax-return" class="btn-secondary">@Tr("إلغاء", "Cancel")</a>
+        </div>
+    </section>
+}

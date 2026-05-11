@@ -1,0 +1,87 @@
+@page "/tax/income-tax-return"
+@using System.Globalization
+@using EgyptTax.Domain.Tax
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "إقرارات ضريبة الدخل | DaftarX" : "Income Tax Returns | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<IncomeTaxReturn> _returns = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _returns = await db.Set<IncomeTaxReturn>().AsNoTracking()
+            .OrderByDescending(r => r.FiscalYear)
+            .ThenByDescending(r => r.GeneratedAtUtc)
+            .Take(100)
+            .ToListAsync();
+    }
+}
+
+<h1>@Tr("📑 إقرارات ضريبة الدخل السنوية", "📑 Annual Income-Tax Returns")</h1>
+<p class="page-subtitle">
+    @Tr("كل الإقرارات السنوية المُولّدة. اضغط على واحد للمراجعة أو تسجيل التقديم.",
+        "Every generated annual return. Click into one to review or record a submission.")
+</p>
+
+<div class="invoice-actions" style="margin-top:16px;">
+    <a class="btn-primary" href="/tax/income-tax-return/new">
+        <Icon Name="plus" Class="ic" />
+        @Tr("إقرار سنوي جديد", "Generate a new annual return")
+    </a>
+</div>
+
+@if (_returns.Count == 0)
+{
+    <div class="kpi-card kpi-info" style="margin-top:16px;">
+        @Tr("لم يتم تجهيز أي إقرار سنوي بعد. اقفل كل شهور السنة المالية من قمرة الإقفال، ثم ولّد الإقرار.",
+            "No annual returns yet. Lock every month of the fiscal year via the Closing Cockpit, then generate the return.")
+    </div>
+}
+else
+{
+    <table class="data-grid" style="margin-top:16px;">
+        <thead>
+            <tr>
+                <th>@Tr("السنة المالية", "Fiscal year")</th>
+                <th>@Tr("النظام", "Regime")</th>
+                <th class="num">@Tr("الإيرادات", "Revenue")</th>
+                <th class="num">@Tr("الدخل الخاضع", "Taxable income")</th>
+                <th class="num">@Tr("النسبة الفعلية", "Effective %")</th>
+                <th class="num">@Tr("الضريبة المستحقة", "Tax due")</th>
+                <th>@Tr("الحالة", "Status")</th>
+                <th>@Tr("التاريخ", "Generated")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _returns)
+            {
+                <tr>
+                    <td><a href="/tax/income-tax-return/@r.Id"><strong>FY @r.FiscalYear</strong></a></td>
+                    <td>@(r.Regime == IncomeTaxRegime.Law6Simplified ? Tr("قانون 6 المُبَسَّط", "Law 6 simplified") : Tr("قياسي (شرائح)", "Standard (brackets)"))</td>
+                    <td class="num">@r.Revenue.Amount.ToString("N2")</td>
+                    <td class="num">@r.TaxableIncome.Amount.ToString("N2")</td>
+                    <td class="num">@r.EffectiveRatePercent.ToString("N2")%</td>
+                    <td class="num"><strong>@r.TaxDue.Amount.ToString("N2")</strong></td>
+                    <td>
+                        @switch (r.Status)
+                        {
+                            case IncomeTaxReturnStatus.Generated:    <span class="state-badge state-pending">@Tr("جاهز", "Generated")</span> break;
+                            case IncomeTaxReturnStatus.Submitted:    <span class="state-badge state-submitted">@Tr("مُقدّم", "Submitted")</span> break;
+                            case IncomeTaxReturnStatus.Acknowledged: <span class="state-badge state-approved">@Tr("مُعتمد", "Acknowledged")</span> break;
+                        }
+                    </td>
+                    <td>@r.GeneratedAtUtc.ToString("yyyy-MM-dd")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

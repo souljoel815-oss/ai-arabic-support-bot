@@ -414,6 +414,12 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.BulkSalesInvoicePost
 // snapshot row.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Tax.GenerateVatReturnHandler>();
 
+// G3.4 — Annual income-tax return generator. Re-uses the existing
+// TaxableIncomeReport query, gates on all 12 VAT months of the
+// fiscal year being Locked, applies regime-specific tax calculation
+// (Law 91 brackets for Standard, Law 6 turnover for simplified).
+builder.Services.AddScoped<EgyptTax.Infrastructure.Tax.GenerateIncomeTaxReturnHandler>();
+
 // G2.2 — WhatsApp invoice delivery. Default to the mock dispatcher
 // (writes the audit row + logs but doesn't hit the network); swap
 // to MetaCloudWhatsAppDispatcher when the vendor's Meta WhatsApp
