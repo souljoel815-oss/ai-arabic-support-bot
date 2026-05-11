@@ -58,6 +58,10 @@
     // --- Gux.9 Closing Cockpit drawer ---
     private bool _cockpitOpen;
 
+    // --- Gux.8 6-month revenue trend ---
+    private record RevenueBucket(int Year, int Month, decimal Egp);
+    private List<RevenueBucket> _revenueTrend = new();
+
     private record FeedItem(
         string IconName,
         string Tone,
@@ -106,6 +110,24 @@
         _inputVat = inputAmounts.Sum();
 
         _vatPayable = _outputVat - _inputVat;
+
+        // Gux.8 — 6-month revenue trend. Pull each month's posted
+        // sales-invoice grand totals separately so SQLite's decimal
+        // limitation (no server-side Sum on decimal) doesn't bite us.
+        // Volume bounded to ~6 months of posts; acceptable for the
+        // single-tenant SMB scale.
+        _revenueTrend.Clear();
+        for (int back = 5; back >= 0; back--)
+        {
+            var bucketStart = new DateOnly(now.Year, now.Month, 1).AddMonths(-back);
+            var bucketEnd = bucketStart.AddMonths(1).AddDays(-1);
+            var amounts = await Db.Set<SalesInvoice>().AsNoTracking()
+                .Where(i => i.State == DocumentState.Posted
+                    && i.DocumentDate >= bucketStart && i.DocumentDate <= bucketEnd)
+                .Select(i => i.GrandTotal.Amount)
+                .ToListAsync();
+            _revenueTrend.Add(new RevenueBucket(bucketStart.Year, bucketStart.Month, amounts.Sum()));
+        }
 
         // ETA submission status counts
         _etaPending = await Db.Set<EtaSubmission>().AsNoTracking()
@@ -333,6 +355,18 @@
         }
         : CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m);
 
+    // Gux.8 — three-letter month label used on the revenue chart's
+    // x-axis. Compact enough that 6 fit side-by-side on mobile.
+    private string MonthShort(int m) => IsArabic
+        ? m switch
+        {
+            1 => "ينا", 2 => "فبر", 3 => "مار", 4 => "أبر",
+            5 => "ماي", 6 => "يون", 7 => "يول", 8 => "أغس",
+            9 => "سبت", 10 => "أكت", 11 => "نوف", 12 => "ديس",
+            _ => $"{m}",
+        }
+        : CultureInfo.InvariantCulture.DateTimeFormat.GetAbbreviatedMonthName(m);
+
     private string RelativeTime(DateTime at)
     {
         var span = DateTime.UtcNow - at;
@@ -507,6 +541,59 @@
         </div>
     </a>
 </section>
+
+@*
+    Gux.8 — 6-month revenue trend. Inline SVG so we don't pull in a
+    JS chart lib; the bars are tall enough for the 50yo persona to
+    read at a glance. Each bar shows the delta vs. the previous
+    month so the operator immediately sees the direction of travel.
+*@
+@{
+    var maxRevenue = _revenueTrend.Count == 0 ? 1m : Math.Max(1m, _revenueTrend.Max(b => b.Egp));
+    var hasAnyRevenue = _revenueTrend.Any(b => b.Egp > 0m);
+}
+@if (hasAnyRevenue)
+{
+    <section class="revenue-trend">
+        <h2 class="dashboard-section-h2">@(IsArabic ? "📈 الإيرادات — آخر 6 شهور" : "📈 Revenue — last 6 months")</h2>
+        <div class="revenue-trend-bars">
+            @for (int i = 0; i < _revenueTrend.Count; i++)
+            {
+                var b = _revenueTrend[i];
+                var heightPct = (double)(b.Egp / maxRevenue) * 100.0;
+                if (heightPct < 2 && b.Egp > 0) heightPct = 2; // keep tiny months visible
+
+                decimal? deltaPct = null;
+                if (i > 0)
+                {
+                    var prev = _revenueTrend[i - 1].Egp;
+                    if (prev > 0m) deltaPct = (b.Egp - prev) / prev * 100m;
+                }
+                var deltaClass = deltaPct switch
+                {
+                    null     => "rt-delta-na",
+                    > 0      => "rt-delta-up",
+                    < 0      => "rt-delta-down",
+                    _        => "rt-delta-flat",
+                };
+                var deltaLabel = deltaPct switch
+                {
+                    null  => "—",
+                    > 0   => $"▲ {deltaPct.Value:F0}%",
+                    < 0   => $"▼ {Math.Abs(deltaPct.Value):F0}%",
+                    _     => "—",
+                };
+
+                <div class="revenue-bar-wrap">
+                    <div class="revenue-bar-delta @deltaClass">@deltaLabel</div>
+                    <div class="revenue-bar" style="height:@(heightPct.ToString("F1"))%;" title="@b.Egp.ToString("N2") @(IsArabic ? "ج.م." : "EGP")"></div>
+                    <div class="revenue-bar-amount">@(b.Egp >= 1000m ? $"{b.Egp / 1000m:F0}k" : b.Egp.ToString("F0"))</div>
+                    <div class="revenue-bar-label">@MonthShort(b.Month) @(b.Year % 100)</div>
+                </div>
+            }
+        </div>
+    </section>
+}
 
 <!-- Gux.7 — Upcoming-deadlines widget. Tax deadlines are the #1
      customer anxiety per the market analysis; surface them here so
