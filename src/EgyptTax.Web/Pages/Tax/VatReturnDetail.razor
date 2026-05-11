@@ -1,0 +1,190 @@
+@page "/tax/vat-return/{Id:guid}"
+@using System.Globalization
+@using System.Security.Claims
+@using EgyptTax.Domain.Tax
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "تفاصيل إقرار الضريبة | DaftarX" : "VAT Return | DaftarX")</PageTitle>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private VatReturn? _r;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+    private string _submissionRef = "";
+    private string _ackRef = "";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _r = await db.Set<VatReturn>().AsNoTracking().FirstOrDefaultAsync(x => x.Id == Id);
+    }
+
+    private async Task<Guid> CurrentUserAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var sub = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid.TryParse(sub, out var u);
+        return u;
+    }
+
+    private async Task OnMarkSubmittedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_submissionRef))
+        {
+            _flash = Tr("أدخل رقم مرجع المصلحة.", "Enter the regulator's submission reference.");
+            _flashClass = "flash-error";
+            return;
+        }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Set<VatReturn>().FirstOrDefaultAsync(x => x.Id == Id);
+        if (entity is null) return;
+        try
+        {
+            entity.MarkSubmitted(_submissionRef, await CurrentUserAsync(), DateTime.UtcNow);
+            await db.SaveChangesAsync();
+            _flash = Tr("تم تسجيل التقديم.", "Submission recorded.");
+            _flashClass = "kpi-card kpi-info";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "flash-error"; }
+    }
+
+    private async Task OnMarkAcknowledgedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_ackRef))
+        {
+            _flash = Tr("أدخل رقم اعتماد المصلحة.", "Enter the acknowledgement reference.");
+            _flashClass = "flash-error";
+            return;
+        }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Set<VatReturn>().FirstOrDefaultAsync(x => x.Id == Id);
+        if (entity is null) return;
+        try
+        {
+            entity.MarkAcknowledged(_ackRef, await CurrentUserAsync(), DateTime.UtcNow);
+            await db.SaveChangesAsync();
+            _flash = Tr("تم تسجيل الاعتماد.", "Acknowledgement recorded.");
+            _flashClass = "kpi-card kpi-info";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "flash-error"; }
+    }
+
+    private string MonthName(int m) => IsArabic
+        ? m switch { 1 => "يناير", 2 => "فبراير", 3 => "مارس", 4 => "أبريل", 5 => "مايو",
+            6 => "يونيو", 7 => "يوليو", 8 => "أغسطس", 9 => "سبتمبر", 10 => "أكتوبر",
+            11 => "نوفمبر", 12 => "ديسمبر", _ => $"الشهر {m}" }
+        : CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m);
+}
+
+@if (_r is null)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+}
+else
+{
+    <h1>@Tr($"📑 إقرار ضريبة — {MonthName(_r.PeriodOrdinal)} {_r.PeriodYear}",
+            $"📑 VAT return — {MonthName(_r.PeriodOrdinal)} {_r.PeriodYear}")</h1>
+
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin-top:16px;">@_flash</div>
+    }
+
+    <section class="kpi-grid kpi-grid-3" style="margin-top:16px;">
+        <div class="kpi-card-v2 kpi-card-ok">
+            <div class="kpi-v2-label">@Tr("مخرجات", "Output VAT")</div>
+            <div class="kpi-v2-value">@_r.OutputVat.Amount.ToString("N2")<span class="kpi-v2-unit">@Tr("ج.م.", "EGP")</span></div>
+        </div>
+        <div class="kpi-card-v2 kpi-card-ok">
+            <div class="kpi-v2-label">@Tr("مدخلات قابلة للاسترداد", "Input recoverable")</div>
+            <div class="kpi-v2-value">@_r.InputVatRecoverable.Amount.ToString("N2")<span class="kpi-v2-unit">@Tr("ج.م.", "EGP")</span></div>
+        </div>
+        <div class="kpi-card-v2 @(_r.NetPayable.Amount > 0 ? "kpi-card-danger" : "kpi-card-ok")">
+            <div class="kpi-v2-label">@Tr("الصافي المستحق", "Net payable")</div>
+            <div class="kpi-v2-value">@_r.NetPayable.Amount.ToString("N2")<span class="kpi-v2-unit">@Tr("ج.م.", "EGP")</span></div>
+        </div>
+    </section>
+
+    <section class="wizard-panel" style="margin-top:24px;">
+        <h2>@Tr("ملخص", "Summary")</h2>
+        <table class="data-grid">
+            <tbody>
+                <tr><td>@Tr("نوع الفترة", "Period kind")</td><td>@(_r.PeriodKind == VatReturnPeriodKind.VatMonthly ? Tr("شهرية", "Monthly") : Tr("ربع سنوية", "Quarterly"))</td></tr>
+                <tr><td>@Tr("من", "Start")</td><td>@_r.PeriodStart.ToString("yyyy-MM-dd")</td></tr>
+                <tr><td>@Tr("إلى", "End")</td><td>@_r.PeriodEnd.ToString("yyyy-MM-dd")</td></tr>
+                <tr><td>@Tr("عدد المستندات المساهمة", "Contributing documents")</td><td>@_r.ContributingDocumentCount</td></tr>
+                <tr><td>@Tr("مدخلات غير قابلة للاسترداد (FR-020)", "Input VAT non-recoverable (FR-020)")</td><td>@_r.InputVatNonRecoverable.Amount.ToString("N2") @Tr("ج.م.", "EGP")</td></tr>
+                <tr><td>@Tr("التوليد", "Generated")</td><td>@_r.GeneratedAtUtc.ToString("yyyy-MM-dd HH:mm") UTC</td></tr>
+                <tr><td>@Tr("الحالة", "Status")</td><td><strong>@_r.Status</strong></td></tr>
+                @if (_r.RegulatorSubmissionReference is { } srf)
+                {
+                    <tr><td>@Tr("مرجع التقديم", "Submission reference")</td><td><code>@srf</code> — @_r.SubmittedAtUtc?.ToString("yyyy-MM-dd HH:mm") UTC</td></tr>
+                }
+                @if (_r.RegulatorAcknowledgementReference is { } arf)
+                {
+                    <tr><td>@Tr("مرجع الاعتماد", "Acknowledgement reference")</td><td><code>@arf</code> — @_r.AcknowledgedAtUtc?.ToString("yyyy-MM-dd HH:mm") UTC</td></tr>
+                }
+                @if (_r.Note is { Length: > 0 })
+                {
+                    <tr><td>@Tr("ملاحظات", "Note")</td><td>@_r.Note</td></tr>
+                }
+            </tbody>
+        </table>
+    </section>
+
+    @if (_r.Status == VatReturnStatus.Generated)
+    {
+        <section class="wizard-panel" style="margin-top:24px;">
+            <h2>@Tr("تسجيل تقديم للمصلحة", "Record regulator submission")</h2>
+            <p style="color:var(--text-muted);font-size:13px;">
+                @Tr(
+                    "بعد ما تقدّم الإقرار من بوابة المصلحة الإلكترونية، الصق رقم المرجع هنا. ETA لم تنشر API للتقديم المُجَمَّع بعد، لذا الخطوة دي يدوية مؤقتاً.",
+                    "After submitting through the ETA portal, paste the regulator's reference here. ETA hasn't published a bulk-submit API yet, so this step is manual for now.")
+            </p>
+            <label style="display:block;">
+                <span>@Tr("رقم مرجع التقديم", "Submission reference")</span>
+                <input type="text" @bind="_submissionRef" placeholder="ETA-VAT-202605-XXXXXX" />
+            </label>
+            <div class="invoice-actions" style="margin-top:12px;">
+                <button type="button" class="btn-primary" @onclick="OnMarkSubmittedAsync">
+                    <Icon Name="check-circle" Class="ic" />@Tr("تسجيل التقديم", "Mark submitted")
+                </button>
+            </div>
+        </section>
+    }
+
+    @if (_r.Status == VatReturnStatus.Submitted)
+    {
+        <section class="wizard-panel" style="margin-top:24px;">
+            <h2>@Tr("تسجيل اعتماد المصلحة", "Record regulator acknowledgement")</h2>
+            <label style="display:block;">
+                <span>@Tr("رقم مرجع الاعتماد", "Acknowledgement reference")</span>
+                <input type="text" @bind="_ackRef" />
+            </label>
+            <div class="invoice-actions" style="margin-top:12px;">
+                <button type="button" class="btn-primary" @onclick="OnMarkAcknowledgedAsync">
+                    <Icon Name="check-circle" Class="ic" />@Tr("تسجيل الاعتماد", "Mark acknowledged")
+                </button>
+            </div>
+        </section>
+    }
+
+    <div class="invoice-actions" style="margin-top:24px;">
+        <a href="/tax/vat-return" class="btn-secondary">← @Tr("العودة للقائمة", "Back to list")</a>
+    </div>
+}

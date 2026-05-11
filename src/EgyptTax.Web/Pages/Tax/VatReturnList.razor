@@ -1,0 +1,103 @@
+@page "/tax/vat-return"
+@using System.Globalization
+@using EgyptTax.Domain.Tax
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "إقرارات الضريبة | DaftarX" : "VAT Returns | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<VatReturn> _returns = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _returns = await db.Set<VatReturn>().AsNoTracking()
+            .OrderByDescending(r => r.PeriodYear)
+            .ThenByDescending(r => r.PeriodOrdinal)
+            .ThenByDescending(r => r.GeneratedAtUtc)
+            .Take(100)
+            .ToListAsync();
+    }
+
+    private string PeriodLabel(VatReturn r) => r.PeriodKind switch
+    {
+        VatReturnPeriodKind.VatMonthly =>
+            $"{MonthName(r.PeriodOrdinal)} {r.PeriodYear}",
+        VatReturnPeriodKind.VatQuarterly =>
+            IsArabic ? $"الربع {r.PeriodOrdinal} {r.PeriodYear}" : $"Q{r.PeriodOrdinal} {r.PeriodYear}",
+        _ => $"{r.PeriodYear}-{r.PeriodOrdinal}",
+    };
+
+    private string MonthName(int m) => IsArabic
+        ? m switch { 1 => "يناير", 2 => "فبراير", 3 => "مارس", 4 => "أبريل", 5 => "مايو",
+            6 => "يونيو", 7 => "يوليو", 8 => "أغسطس", 9 => "سبتمبر", 10 => "أكتوبر",
+            11 => "نوفمبر", 12 => "ديسمبر", _ => $"الشهر {m}" }
+        : CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m);
+}
+
+<h1>@Tr("📑 إقرارات الضريبة", "📑 VAT Returns")</h1>
+<p class="page-subtitle">
+    @Tr("كل الإقرارات المُولّدة. اضغط على واحد للمراجعة أو تسجيل التقديم.",
+        "Every generated return. Click into one to review or record a submission.")
+</p>
+
+<div class="invoice-actions" style="margin-top:16px;">
+    <a class="btn-primary" href="/tax/vat-return/new">
+        <Icon Name="plus" Class="ic" />
+        @Tr("إقرار جديد", "Generate a new return")
+    </a>
+</div>
+
+@if (_returns.Count == 0)
+{
+    <div class="kpi-card kpi-info" style="margin-top:16px;">
+        @Tr("لم يتم تجهيز أي إقرار بعد. اضغط «إقرار جديد» لتجهيز أول واحد.",
+            "No returns yet. Click \"Generate a new return\" to prepare the first one.")
+    </div>
+}
+else
+{
+    <table class="data-grid" style="margin-top:16px;">
+        <thead>
+            <tr>
+                <th>@Tr("الفترة", "Period")</th>
+                <th>@Tr("النوع", "Kind")</th>
+                <th class="num">@Tr("مخرجات", "Output")</th>
+                <th class="num">@Tr("مدخلات قابلة للاسترداد", "Input recoverable")</th>
+                <th class="num">@Tr("الصافي المستحق", "Net payable")</th>
+                <th class="num">@Tr("عدد المستندات", "Docs")</th>
+                <th>@Tr("الحالة", "Status")</th>
+                <th>@Tr("التاريخ", "Generated")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _returns)
+            {
+                <tr>
+                    <td><a href="/tax/vat-return/@r.Id">@PeriodLabel(r)</a></td>
+                    <td>@(r.PeriodKind == VatReturnPeriodKind.VatMonthly ? Tr("شهري", "Monthly") : Tr("ربع سنوي", "Quarterly"))</td>
+                    <td class="num">@r.OutputVat.Amount.ToString("N2")</td>
+                    <td class="num">@r.InputVatRecoverable.Amount.ToString("N2")</td>
+                    <td class="num"><strong>@r.NetPayable.Amount.ToString("N2")</strong></td>
+                    <td class="num">@r.ContributingDocumentCount</td>
+                    <td>
+                        @switch (r.Status)
+                        {
+                            case VatReturnStatus.Generated:    <span class="state-badge state-pending">@Tr("جاهز", "Generated")</span> break;
+                            case VatReturnStatus.Submitted:    <span class="state-badge state-submitted">@Tr("مُقدّم", "Submitted")</span> break;
+                            case VatReturnStatus.Acknowledged: <span class="state-badge state-approved">@Tr("مُعتمد", "Acknowledged")</span> break;
+                        }
+                    </td>
+                    <td>@r.GeneratedAtUtc.ToString("yyyy-MM-dd")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

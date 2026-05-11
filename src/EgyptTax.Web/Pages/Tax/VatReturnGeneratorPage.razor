@@ -1,0 +1,199 @@
+@page "/tax/vat-return/new"
+@using System.Globalization
+@using System.Security.Claims
+@using EgyptTax.Application.Reports
+@using EgyptTax.Domain.Periods
+@using EgyptTax.Domain.Tax
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Tax
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IVatMonthlyReportQuery VatReport
+@inject GenerateVatReturnHandler Handler
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "إقرار ضريبة جديد | DaftarX" : "Generate VAT Return | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private int _year = DateTime.UtcNow.Year;
+    private int _month = DateTime.UtcNow.Month == 1 ? 12 : DateTime.UtcNow.Month - 1;
+    private string _note = "";
+    private bool _loading;
+    private bool _generating;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private VatMonthlyReport? _preview;
+    private bool _periodLocked;
+    private DateTime? _periodLockedAtUtc;
+
+    private async Task OnPreview()
+    {
+        _flash = null;
+        _loading = true;
+        try
+        {
+            // Lock check first — show the bad-news up front so the
+            // operator doesn't bother computing the numbers for a
+            // period they can't ship anyway.
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var period = await db.Set<TaxPeriod>().AsNoTracking()
+                .FirstOrDefaultAsync(p =>
+                    p.PeriodKind == TaxPeriodKind.VatMonth
+                    && p.Year == _year
+                    && p.MonthOrQuarter == _month);
+            _periodLocked = period?.Status == TaxPeriodStatus.Locked;
+            _periodLockedAtUtc = period?.LockedAtUtc;
+
+            _preview = await VatReport.RunAsync(_year, _month);
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnGenerate()
+    {
+        if (_preview is null) return;
+        _generating = true;
+        _flash = null;
+        try
+        {
+            var auth = await AuthState.GetAuthenticationStateAsync();
+            var sub = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            Guid.TryParse(sub, out var userId);
+
+            var record = await Handler.GenerateAsync(new GenerateVatReturnCommand(
+                PeriodKind: VatReturnPeriodKind.VatMonthly,
+                PeriodYear: _year,
+                PeriodOrdinal: _month,
+                GeneratedByUserId: userId,
+                Note: string.IsNullOrWhiteSpace(_note) ? null : _note));
+
+            Nav.NavigateTo($"/tax/vat-return/{record.Id}");
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _generating = false;
+        }
+    }
+
+    private string MonthName(int m) => IsArabic
+        ? m switch { 1 => "يناير", 2 => "فبراير", 3 => "مارس", 4 => "أبريل", 5 => "مايو",
+            6 => "يونيو", 7 => "يوليو", 8 => "أغسطس", 9 => "سبتمبر", 10 => "أكتوبر",
+            11 => "نوفمبر", 12 => "ديسمبر", _ => $"الشهر {m}" }
+        : CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m);
+}
+
+<h1>@Tr("📝 تجهيز إقرار ضريبة شهري", "📝 Generate monthly VAT return")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "اختر فترة مقفولة، راجع الأرقام، ثم ولّد الإقرار. الفترة لازم تكون مقفولة من قمرة الإقفال أولاً.",
+        "Pick a Locked period, review the numbers, then generate. The period must be Locked via the Closing Cockpit first.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin-top:16px;">@_flash</div>
+}
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("1. اختر الفترة", "1. Pick the period")</h2>
+    <div class="form-grid">
+        <label>
+            <span>@Tr("السنة", "Year")</span>
+            <input type="number" min="2000" max="9999" @bind="_year" />
+        </label>
+        <label>
+            <span>@Tr("الشهر", "Month")</span>
+            <select @bind="_month">
+                @for (var m = 1; m <= 12; m++)
+                {
+                    <option value="@m">@MonthName(m)</option>
+                }
+            </select>
+        </label>
+    </div>
+    <div class="invoice-actions" style="margin-top:12px;">
+        <button type="button" class="btn-primary" disabled="@_loading" @onclick="OnPreview">
+            <Icon Name="search" Class="ic" />
+            @(_loading ? Tr("جارٍ الحساب…", "Computing…") : Tr("معاينة الأرقام", "Preview numbers"))
+        </button>
+    </div>
+</section>
+
+@if (_preview is not null)
+{
+    <section class="wizard-panel" style="margin-top:24px;">
+        <h2>@Tr("2. مراجعة قبل التوليد", "2. Review before generating")</h2>
+
+        <div class="@(_periodLocked ? "kpi-card kpi-info" : "flash-error")" style="margin-bottom:12px;">
+            @if (_periodLocked)
+            {
+                @Tr($"الفترة مقفولة منذ {_periodLockedAtUtc:yyyy-MM-dd HH:mm} UTC — جاهزة للتقديم.",
+                    $"Period is Locked (since {_periodLockedAtUtc:yyyy-MM-dd HH:mm} UTC) — ready to file.")
+            }
+            else
+            {
+                @Tr("الفترة مازالت مفتوحة. أقفلها من قمرة الإقفال قبل التوليد.",
+                    "Period is still Open. Lock it via the Closing Cockpit before generating.")
+                <a href="/cockpit" style="margin-inline-start:8px;">@Tr("افتح قمرة الإقفال ←", "Open Closing Cockpit →")</a>
+            }
+        </div>
+
+        <table class="data-grid">
+            <tbody>
+                <tr>
+                    <td><strong>@Tr("ضريبة المخرجات (مبيعات)", "Output VAT (sales)")</strong></td>
+                    <td class="num"><strong>@_preview.OutputVat.Amount.ToString("N2") @Tr("ج.م.", "EGP")</strong></td>
+                </tr>
+                <tr>
+                    <td>@Tr("ضريبة المدخلات القابلة للاسترداد (مشتريات من ممولين مسجلين)",
+                          "Input VAT recoverable (registered-taxpayer purchases)")</td>
+                    <td class="num">@_preview.InputVatRecoverable.Amount.ToString("N2") @Tr("ج.م.", "EGP")</td>
+                </tr>
+                <tr style="border-top:2px solid var(--border);">
+                    <td><strong>@Tr("صافي المستحق", "Net payable")</strong></td>
+                    <td class="num">
+                        <strong style="font-size:18px;">@_preview.NetPayable.Amount.ToString("N2") @Tr("ج.م.", "EGP")</strong>
+                    </td>
+                </tr>
+                <tr>
+                    <td>@Tr("عدد المستندات المساهمة", "Contributing documents")</td>
+                    <td class="num">@_preview.Rows.Count</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <label style="margin-top:16px;display:block;">
+            <span>@Tr("ملاحظات (اختياري)", "Note (optional)")</span>
+            <input type="text" @bind="_note" placeholder="@Tr("سيظهر على الإقرار في DaftarX (ليس على ETA).", "Stays inside DaftarX (not on the ETA form).")" />
+        </label>
+
+        <div class="invoice-actions" style="margin-top:12px;">
+            <button type="button" class="btn-primary" disabled="@(_generating || !_periodLocked)" @onclick="OnGenerate">
+                <Icon Name="check-circle" Class="ic" />
+                @(_generating ? Tr("جارٍ التوليد…", "Generating…") : Tr("توليد الإقرار", "Generate return"))
+            </button>
+            <a href="/tax/vat-return" class="btn-secondary">@Tr("إلغاء", "Cancel")</a>
+        </div>
+    </section>
+}

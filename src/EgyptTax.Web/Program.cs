@@ -409,6 +409,11 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceHand
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.PostSalesInvoiceWithEtaSubmissionHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.BulkSalesInvoicePostHandler>();
 
+// G3.3 — VAT-return generator. Reads from existing VatMonthly
+// report query, gates on a Locked TaxPeriod, writes a frozen
+// snapshot row.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Tax.GenerateVatReturnHandler>();
+
 // G2.2 — WhatsApp invoice delivery. Default to the mock dispatcher
 // (writes the audit row + logs but doesn't hit the network); swap
 // to MetaCloudWhatsAppDispatcher when the vendor's Meta WhatsApp
