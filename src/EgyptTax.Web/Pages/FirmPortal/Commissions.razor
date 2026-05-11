@@ -1,0 +1,345 @@
+@page "/firm-portal/commissions"
+@using System.Globalization
+@using EgyptTax.Domain.FirmPortal
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "عمولات المحاسبين | DaftarX" : "Accountant commissions | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<RefRow> _rows = new();
+    private List<FirmOption> _firms = new();
+    private bool _showAddForm;
+    private NewReferralForm _newRef = new();
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    // Status-filter chip
+    private AccountantReferralStatus? _statusFilter;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // Pre-load active firm-user options for the dropdown.
+        _firms = await db.Set<AccountantFirmUser>()
+            .AsNoTracking()
+            .Where(f => f.AcceptedAtUtc != null && f.RevokedAtUtc == null)
+            .Select(f => new FirmOption(f.UserId, f.FirmName, f.FirmExternalIdentifier))
+            .ToListAsync();
+
+        var query = db.Set<AccountantReferral>().AsNoTracking().AsQueryable();
+        if (_statusFilter.HasValue)
+        {
+            query = query.Where(r => r.Status == _statusFilter.Value);
+        }
+        var rows = await query
+            .OrderByDescending(r => r.ReferredAtUtc)
+            .Take(200)
+            .ToListAsync();
+
+        // Hydrate firm-name per row in-memory (cheap; we already have the dictionary).
+        var firmsById = _firms.ToDictionary(f => f.UserId, f => f.FirmName);
+        _rows = rows.Select(r => new RefRow(
+            Referral: r,
+            FirmName: firmsById.GetValueOrDefault(r.AccountantFirmUserId, "(unknown firm)")
+        )).ToList();
+    }
+
+    private async Task ApplyFilter(AccountantReferralStatus? s)
+    {
+        _statusFilter = s;
+        await ReloadAsync();
+    }
+
+    private async Task AddReferralAsync()
+    {
+        _flash = null;
+        try
+        {
+            if (_newRef.AccountantFirmUserId == Guid.Empty)
+                throw new InvalidOperationException(Tr("اختر المحاسب.", "Pick an accountant."));
+
+            var entity = new AccountantReferral(
+                accountantFirmUserId: _newRef.AccountantFirmUserId,
+                referredCustomerName: _newRef.CustomerName ?? "",
+                referredCustomerHwid: _newRef.CustomerHwid ?? "",
+                licenseEdition: _newRef.LicenseEdition ?? "",
+                licenseAnnualPriceEgp: _newRef.LicenseAnnualPriceEgp,
+                commissionRatePercent: _newRef.CommissionRatePercent,
+                referredAtUtc: DateTime.UtcNow,
+                note: _newRef.Note);
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            db.Add(entity);
+            await db.SaveChangesAsync();
+
+            _flash = Tr(
+                $"تم تسجيل الإحالة. عمولة محسوبة: {entity.CommissionEgp:N2} ج.م.",
+                $"Referral recorded. Commission: {entity.CommissionEgp:N2} EGP.");
+            _flashClass = "kpi-card kpi-info";
+            _showAddForm = false;
+            _newRef = new NewReferralForm();
+            await ReloadAsync();
+        }
+        catch (DbUpdateException dbex) when (dbex.InnerException?.Message?.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            _flash = Tr(
+                "هذا الـ HWID مسجّل بالفعل لإحالة سابقة. كل تثبيت يُحال مرة واحدة فقط.",
+                "This HWID already has a referral recorded. One referral per install.");
+            _flashClass = "flash-error";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+    }
+
+    private async Task MarkEarnedAsync(Guid id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var r = await db.Set<AccountantReferral>().FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return;
+        try
+        {
+            r.MarkEarned(DateTime.UtcNow);
+            await db.SaveChangesAsync();
+            _flash = Tr("تم تحديد العمولة كمستحقة.", "Marked as earned.");
+            _flashClass = "kpi-card kpi-info";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "flash-error"; }
+    }
+
+    private async Task MarkPaidAsync(Guid id, string reference)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            _flash = Tr("اكتب رقم تحويل / مرجع الدفع.", "Enter the payment reference / transfer ID.");
+            _flashClass = "flash-error";
+            return;
+        }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var r = await db.Set<AccountantReferral>().FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return;
+        try
+        {
+            r.MarkPaid(DateTime.UtcNow, reference);
+            await db.SaveChangesAsync();
+            _flash = Tr($"تم تسجيل الدفع — مرجع {reference}.", $"Payment recorded — ref {reference}.");
+            _flashClass = "kpi-card kpi-info";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "flash-error"; }
+    }
+
+    private static decimal SumCommission(IEnumerable<RefRow> rows, AccountantReferralStatus? s = null) =>
+        rows.Where(r => s is null || r.Referral.Status == s).Sum(r => r.Referral.CommissionEgp);
+
+    private sealed record FirmOption(Guid UserId, string FirmName, string ContactEmail);
+    private sealed record RefRow(AccountantReferral Referral, string FirmName);
+
+    private sealed class NewReferralForm
+    {
+        public Guid AccountantFirmUserId { get; set; }
+        public string? CustomerName { get; set; }
+        public string? CustomerHwid { get; set; }
+        public string? LicenseEdition { get; set; } = "Standard";
+        public decimal LicenseAnnualPriceEgp { get; set; } = 3000m;
+        public decimal CommissionRatePercent { get; set; } = 20m;
+        public string? Note { get; set; }
+    }
+
+    private readonly Dictionary<Guid, string> _paidRefDraft = new();
+}
+
+<h1>@Tr("💼 عمولات المحاسبين", "💼 Accountant commissions")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "سجّل كل إحالة من محاسب شريك، تابع حالة العمولة (معلّقة / مستحقة / مدفوعة)، ودفعها يدوياً.",
+        "Track each accountant-driven referral, its commission status (pending / earned / paid), and disburse manually.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin-top:16px;">@_flash</div>
+}
+
+<section class="kpi-grid kpi-grid-3" style="margin-top:16px;">
+    <div class="kpi-card-v2 kpi-card-warn">
+        <div class="kpi-v2-label">@Tr("معلّقة (في التجربة)", "Pending (in trial)")</div>
+        <div class="kpi-v2-value">@SumCommission(_rows, AccountantReferralStatus.Pending).ToString("N0")<span class="kpi-v2-unit">@Tr("ج.م.", "EGP")</span></div>
+        <div class="kpi-v2-meta">@_rows.Count(r => r.Referral.Status == AccountantReferralStatus.Pending) @Tr("إحالة", "referrals")</div>
+    </div>
+    <div class="kpi-card-v2 kpi-card-danger">
+        <div class="kpi-v2-label">@Tr("مستحقة (لم تُدفع بعد)", "Earned (not yet paid)")</div>
+        <div class="kpi-v2-value">@SumCommission(_rows, AccountantReferralStatus.Earned).ToString("N0")<span class="kpi-v2-unit">@Tr("ج.م.", "EGP")</span></div>
+        <div class="kpi-v2-meta">@_rows.Count(r => r.Referral.Status == AccountantReferralStatus.Earned) @Tr("إحالة", "referrals")</div>
+    </div>
+    <div class="kpi-card-v2 kpi-card-ok">
+        <div class="kpi-v2-label">@Tr("مدفوعة", "Paid")</div>
+        <div class="kpi-v2-value">@SumCommission(_rows, AccountantReferralStatus.Paid).ToString("N0")<span class="kpi-v2-unit">@Tr("ج.م.", "EGP")</span></div>
+        <div class="kpi-v2-meta">@_rows.Count(r => r.Referral.Status == AccountantReferralStatus.Paid) @Tr("إحالة", "referrals")</div>
+    </div>
+</section>
+
+<div class="invoice-actions" style="margin-top:24px;">
+    <button type="button" class="btn-primary" @onclick="@(() => _showAddForm = !_showAddForm)">
+        <Icon Name="plus" Class="ic" />
+        @(_showAddForm ? Tr("إخفاء النموذج", "Hide form") : Tr("تسجيل إحالة جديدة", "Record a new referral"))
+    </button>
+    <span style="margin-inline-start:auto;display:inline-flex;gap:6px;">
+        <button type="button" class="@(_statusFilter is null ? "btn-primary" : "btn-secondary")" @onclick="@(() => ApplyFilter(null))">@Tr("الكل", "All")</button>
+        <button type="button" class="@(_statusFilter == AccountantReferralStatus.Pending ? "btn-primary" : "btn-secondary")" @onclick="@(() => ApplyFilter(AccountantReferralStatus.Pending))">@Tr("معلّقة", "Pending")</button>
+        <button type="button" class="@(_statusFilter == AccountantReferralStatus.Earned ? "btn-primary" : "btn-secondary")" @onclick="@(() => ApplyFilter(AccountantReferralStatus.Earned))">@Tr("مستحقة", "Earned")</button>
+        <button type="button" class="@(_statusFilter == AccountantReferralStatus.Paid ? "btn-primary" : "btn-secondary")" @onclick="@(() => ApplyFilter(AccountantReferralStatus.Paid))">@Tr("مدفوعة", "Paid")</button>
+    </span>
+</div>
+
+@if (_showAddForm)
+{
+    <section class="wizard-panel" style="margin-top:16px;">
+        <h2>@Tr("إحالة جديدة", "New referral")</h2>
+        <div class="form-grid">
+            <label>
+                <span>@Tr("المحاسب الشريك", "Accountant firm")</span>
+                <select @bind="_newRef.AccountantFirmUserId">
+                    <option value="@Guid.Empty">@Tr("— اختر —", "— select —")</option>
+                    @foreach (var f in _firms)
+                    {
+                        <option value="@f.UserId">@f.FirmName · @f.ContactEmail</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>@Tr("اسم العميل المُحال", "Referred customer name")</span>
+                <input type="text" @bind="_newRef.CustomerName" placeholder="Hope Trading Co" />
+            </label>
+            <label>
+                <span>@Tr("HWID للعميل", "Customer HWID")</span>
+                <input type="text" @bind="_newRef.CustomerHwid" placeholder="017F-0D1A-1BA1-C968" />
+            </label>
+            <label>
+                <span>@Tr("الباقة", "License edition")</span>
+                <select @bind="_newRef.LicenseEdition">
+                    <option value="Basic">Basic</option>
+                    <option value="Standard">Standard</option>
+                    <option value="Pro">Pro</option>
+                    <option value="Enterprise">Enterprise</option>
+                </select>
+            </label>
+            <label>
+                <span>@Tr("سعر سنة (ج.م.)", "Annual price (EGP)")</span>
+                <input type="number" step="100" min="0" @bind="_newRef.LicenseAnnualPriceEgp" />
+            </label>
+            <label>
+                <span>@Tr("نسبة العمولة %", "Commission rate %")</span>
+                <input type="number" step="1" min="0" max="100" @bind="_newRef.CommissionRatePercent" />
+            </label>
+            <label style="grid-column:1 / -1;">
+                <span>@Tr("ملاحظات (اختياري)", "Note (optional)")</span>
+                <input type="text" @bind="_newRef.Note" />
+            </label>
+        </div>
+        <div class="invoice-actions" style="margin-top:12px;">
+            <button type="button" class="btn-primary" @onclick="AddReferralAsync">
+                <Icon Name="check-circle" Class="ic" />
+                @Tr("حفظ الإحالة", "Save referral")
+            </button>
+        </div>
+    </section>
+}
+
+<section style="margin-top:24px;">
+    @if (_rows.Count == 0)
+    {
+        <div class="kpi-card kpi-info">
+            @Tr("لا توجد إحالات بعد. اضغط «تسجيل إحالة جديدة» لتسجيل أول واحدة.",
+                "No referrals yet. Click \"Record a new referral\" to add the first one.")
+        </div>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@Tr("التاريخ", "Date")</th>
+                    <th>@Tr("المحاسب", "Accountant")</th>
+                    <th>@Tr("العميل", "Customer")</th>
+                    <th>@Tr("HWID", "HWID")</th>
+                    <th>@Tr("الباقة", "Edition")</th>
+                    <th class="num">@Tr("السعر", "Price")</th>
+                    <th class="num">@Tr("العمولة", "Commission")</th>
+                    <th>@Tr("الحالة", "Status")</th>
+                    <th>@Tr("إجراءات", "Actions")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    var r = row.Referral;
+                    <tr>
+                        <td>@r.ReferredAtUtc.ToString("yyyy-MM-dd")</td>
+                        <td>@row.FirmName</td>
+                        <td>@r.ReferredCustomerName</td>
+                        <td><code style="font-size:11px;">@r.ReferredCustomerHwid</code></td>
+                        <td>@r.LicenseEdition</td>
+                        <td class="num">@r.LicenseAnnualPriceEgp.ToString("N0")</td>
+                        <td class="num"><strong>@r.CommissionEgp.ToString("N0")</strong></td>
+                        <td>
+                            @switch (r.Status)
+                            {
+                                case AccountantReferralStatus.Pending:
+                                    <span class="state-badge state-pending">@Tr("معلّقة", "Pending")</span>
+                                    break;
+                                case AccountantReferralStatus.Earned:
+                                    <span class="state-badge state-rejected">@Tr("مستحقة", "Earned")</span>
+                                    break;
+                                case AccountantReferralStatus.Paid:
+                                    <span class="state-badge state-approved">@Tr("مدفوعة", "Paid")</span>
+                                    break;
+                            }
+                        </td>
+                        <td>
+                            @if (r.Status == AccountantReferralStatus.Pending)
+                            {
+                                <button type="button" class="btn-secondary" @onclick="@(() => MarkEarnedAsync(r.Id))">
+                                    @Tr("تأكيد الدفع للعميل", "Mark earned")
+                                </button>
+                            }
+                            else if (r.Status == AccountantReferralStatus.Earned)
+                            {
+                                <div style="display:flex;gap:4px;align-items:center;">
+                                    <input type="text" placeholder="@Tr("مرجع التحويل", "Payment ref")"
+                                           value="@(_paidRefDraft.GetValueOrDefault(r.Id) ?? "")"
+                                           @oninput="@(e => _paidRefDraft[r.Id] = e.Value?.ToString() ?? "")"
+                                           style="width:130px;font-size:12px;" />
+                                    <button type="button" class="btn-secondary"
+                                            @onclick="@(() => MarkPaidAsync(r.Id, _paidRefDraft.GetValueOrDefault(r.Id) ?? ""))">
+                                        @Tr("دفع", "Pay")
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <span style="font-size:12px;color:var(--text-muted);">
+                                    @r.PaidReference · @r.PaidAtUtc?.ToString("yyyy-MM-dd")
+                                </span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>

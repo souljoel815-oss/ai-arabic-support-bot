@@ -133,7 +133,7 @@ specs/007-fpl-analyzer.rar
 specs/fantasy/
 alembic.ini
 pyproject.toml
-migrations/
+/migrations/
 tests/__init__.py
 tests/contract/
 tests/integration/
