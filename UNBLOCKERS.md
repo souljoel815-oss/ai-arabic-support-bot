@@ -12,15 +12,20 @@ once it lands.
 
 ---
 
-## 1. G0 — Pricing decision  ✅ DONE 2026-05-11
+## 1. G0 — Pricing decision  ✅ DONE 2026-05-11 (revised pm)
 
-Locked: **Basic 2,500 / Pro 7,500 / Enterprise 21,000 EGP/year**
-(monthly available at 250 / 700 / 2,000 EGP with 12-20% premium).
-Manual renewal in v1, no auto-charge.
+Locked: **4 editions** — Solo 3,500 / SMB 8,000 / Enterprise 17,500 /
+Firm 30,000 EGP/year (monthly available at 350 / 750 / 1,650 / 2,800
+EGP with 12-20% premium). Manual renewal in v1, no auto-charge.
+
+Restructured from the morning's 3-tier scheme after the Gux.13
+Company Admin Panel spec landed — its §7 proposed an edition-aware
+gating system that the 3-tier ladder couldn't support cleanly.
 
 Full rationale + feature ladder + change log in
 [`specs/008-egypt-tax-accounting/pricing.md`](specs/008-egypt-tax-accounting/pricing.md).
-G1.1 landing page + G1.5 portal both reference that doc.
+G1.1 landing page + G1.5 portal + Gux.13 admin panel all reference
+that doc.
 
 ---
 

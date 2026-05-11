@@ -98,6 +98,7 @@ decision or external credential.
 | **Gux.10** | Approvals badge in topbar | ✅ shipped |
 | **Gux.11** | Typography pass | ✅ shipped |
 | **Gux.12** | Mobile bottom-nav bar | ✅ shipped |
+| **Gux.13** | Company Admin Panel + edition system | ⏳ planned (~5.75 days), unblocked by 4-edition pricing decision |
 | **G2.1** | GS1/EGS coding assistant | ✅ shipped |
 | **G2.2** | WhatsApp invoice delivery | ✅ shipped (mock dispatcher; real on Meta keys) |
 | **G2.3** | Unified Compliance Health page | ✅ shipped |
@@ -614,6 +615,35 @@ G4 (defense + QoL) slots in opportunistically.
   its purpose if it competes with the hamburger drawer. Don't
   show this on tablets (tablets have room for the drawer-style
   sidebar to be permanently open).
+
+### Gux.13 Company Admin Panel + Edition system
+
+- **Pain:** 9 separate Settings pages (post-Gux.3 they cluster into
+  fewer sidebar entries but each still has its own URL + chrome). No
+  unified admin surface. No role-based access — every user sees
+  every settings page, including ETA credentials. No onboarding
+  flow — fresh installs land on an empty dashboard with no guidance.
+- **Competitor:** Daftra, Wafeq, Edara all have a single Settings/
+  Admin page with tab navigation + role-gating. DaftarX is alone in
+  its scattered approach.
+- **Complexity:** L (~5.75 days AI-paired, includes the new edition
+  system)
+- **Dependencies:** Gux.1+2+3 (shipped); existing `Company` +
+  `TaxPeriod` + `EtaCredential` + `LicensePayload` entities.
+- **MVP slice:** Single `/settings` page with 10 tabs (Company /
+  Tax / ETA / Invoice / Email / Users / License / Backup /
+  Notifications / About). Old `/settings/*` URLs redirect to the
+  new page with the matching tab pre-selected. Server-side
+  role-based access. First-time wizard for fresh installs (4 steps
+  → company + tax + ETA + first invoice). New `LicenseGate.Require()`
+  for per-feature edition gating with friendly Arabic upgrade
+  prompts.
+- **Avoid:** Don't break existing direct links to old settings
+  URLs — every `/settings/*` route must redirect to `/settings`
+  with the matching tab pre-selected.
+- **Pricing:** Resolved on 2026-05-11 — adopted the spec's
+  4-edition system. See [`pricing.md`](pricing.md).
+- **Full spec:** [`gux-13-admin-panel.md`](gux-13-admin-panel.md)
 
 ---
 
