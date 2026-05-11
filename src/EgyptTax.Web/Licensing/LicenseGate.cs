@@ -19,9 +19,19 @@ public static class LicenseGate
     /// Run the gate. <paramref name="stateDirectory"/> defaults to
     /// %PROGRAMDATA%/DaftarX/license on Windows; the portable EXE
     /// passes its own working directory.
+    ///
+    /// Tests bypass the gate via <c>EGYPTTAX_SKIP_LICENSE_GATE=1</c>
+    /// — when set, this method is a no-op and the caller is expected
+    /// to have already populated <see cref="LicenseStatus"/> with
+    /// a test payload (see
+    /// <c>tests/EgyptTax.ContractTests/LicenseSentryTestInitializer.cs</c>).
     /// </summary>
     public static void Run(string? stateDirectory = null)
     {
+        if (Environment.GetEnvironmentVariable("EGYPTTAX_SKIP_LICENSE_GATE") == "1")
+        {
+            return;
+        }
         // Defensive — never let a licensing failure (WMI down, DPAPI
         // refused, registry locked, malformed token, etc.) crash the
         // service. Worst case lands in Tampered state which the

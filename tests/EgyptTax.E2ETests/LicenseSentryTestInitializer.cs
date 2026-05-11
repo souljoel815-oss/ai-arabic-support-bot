@@ -2,26 +2,21 @@ using System.Runtime.CompilerServices;
 using EgyptTax.SharedKernel;
 using EgyptTax.Web.Licensing;
 
-namespace EgyptTax.ContractTests;
+namespace EgyptTax.E2ETests;
 
 /// <summary>
-/// Flips <see cref="LicenseSentry.IsLicensedProvider"/> to
-/// always-true at assembly load AND records a fake-valid
-/// <see cref="LicenseStatus"/> so the
-/// <see cref="LicenseBannerMiddleware"/> doesn't return HTTP 451
-/// for every request the WebApplicationFactory makes. See
-/// <c>tests/EgyptTax.IntegrationTests/Infrastructure/LicenseSentryTestInitializer.cs</c>
-/// for the rationale.
+/// Flips <see cref="LicenseSentry.IsLicensedProvider"/> + records a
+/// fake-valid <see cref="LicenseStatus"/> + bypasses the real
+/// <see cref="LicenseGate"/> at assembly load. Mirrors the contract
+/// test assembly's initializer — see
+/// <c>tests/EgyptTax.ContractTests/LicenseSentryTestInitializer.cs</c>
+/// for rationale.
 /// </summary>
 internal static class LicenseSentryTestInitializer
 {
     [ModuleInitializer]
     internal static void Init()
     {
-        // Prevent the real LicenseGate from running inside
-        // WebApplicationFactory<Program> boot (it would overwrite the
-        // RecordValid below with NotActivated because there's no
-        // license.token on disk in CI).
         Environment.SetEnvironmentVariable("EGYPTTAX_SKIP_LICENSE_GATE", "1");
 
         LicenseSentry.IsLicensedProvider = static () => true;
@@ -29,7 +24,7 @@ internal static class LicenseSentryTestInitializer
             new LicensePayload(
                 Version: 1,
                 Hwid: "test-hwid",
-                Customer: "Contract Test Suite",
+                Customer: "E2E Test Suite",
                 Edition: "Test",
                 IssuedAtUtc: DateTime.UtcNow,
                 ExpiresAtUtc: DateTime.UtcNow.AddYears(10),

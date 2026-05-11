@@ -4,6 +4,7 @@ using EgyptTax.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -84,12 +85,25 @@ public class HealthSmokeTests : IClassFixture<EgyptTaxE2EFactory>
 
 /// <summary>
 /// Shared E2E factory — swaps the SQL Server-bound <c>AppDbContext</c>
-/// for an in-memory provider so the host boots without a real database.
-/// Each test class gets a fresh logical database so cross-class state
-/// leakage cannot mask a regression.
+/// for SQLite in-memory so the host boots without a real database
+/// AND so the EF8 <c>ComplexProperty&lt;ArabicEnglishText&gt;</c>
+/// mappings work (the EF InMemory provider crashes on those at
+/// first query).
+///
+/// The connection is held open for the factory's lifetime so the
+/// in-memory DB survives across <c>AppDbContext</c> instances; a
+/// closed SQLite in-memory connection discards the database.
 /// </summary>
 public sealed class EgyptTaxE2EFactory : WebApplicationFactory<Program>
 {
+    private readonly SqliteConnection _connection;
+
+    public EgyptTaxE2EFactory()
+    {
+        _connection = new SqliteConnection("DataSource=:memory:");
+        _connection.Open();
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureServices(services =>
@@ -101,9 +115,21 @@ public sealed class EgyptTaxE2EFactory : WebApplicationFactory<Program>
             {
                 services.Remove(d);
             }
-            services.AddDbContext<AppDbContext>(opt =>
-                opt.UseInMemoryDatabase($"E2E_{Guid.NewGuid():N}")
-            );
+            services.AddDbContext<AppDbContext>(opt => opt.UseSqlite(_connection));
+
+            using var sp = services.BuildServiceProvider();
+            using var scope = sp.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Database.EnsureCreated();
         });
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _connection.Dispose();
+        }
+        base.Dispose(disposing);
     }
 }

@@ -1,6 +1,7 @@
 using EgyptTax.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -81,11 +82,28 @@ public class OpenApiAlignmentTests : IClassFixture<EgyptTaxContractTestFactory>
 
 /// <summary>
 /// Shared <see cref="WebApplicationFactory{TEntryPoint}"/> for ContractTests.
-/// Swaps the production SQL Server <c>AppDbContext</c> for an in-memory
-/// EF provider so the host boots without a real database.
+/// Swaps the production SQL Server <c>AppDbContext</c> for SQLite
+/// in-memory so the host boots without a real database AND so the
+/// EF8 <c>ComplexProperty&lt;ArabicEnglishText&gt;</c> mappings work
+/// (the EF InMemory provider crashes on those at first query —
+/// "Property: Role.Name#ArabicEnglishText.Arabic was not present in
+/// the dictionary").
+///
+/// The connection is held open for the lifetime of the factory so
+/// the in-memory DB survives across multiple <c>AppDbContext</c>
+/// instances (a closed SQLite in-memory connection discards the
+/// database). <c>EnsureCreated</c> applies the model on first boot.
 /// </summary>
 public sealed class EgyptTaxContractTestFactory : WebApplicationFactory<Program>
 {
+    private readonly SqliteConnection _connection;
+
+    public EgyptTaxContractTestFactory()
+    {
+        _connection = new SqliteConnection("DataSource=:memory:");
+        _connection.Open();
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureServices(services =>
@@ -97,7 +115,23 @@ public sealed class EgyptTaxContractTestFactory : WebApplicationFactory<Program>
             {
                 services.Remove(d);
             }
-            services.AddDbContext<AppDbContext>(opt => opt.UseInMemoryDatabase("ContractTests"));
+            services.AddDbContext<AppDbContext>(opt => opt.UseSqlite(_connection));
+
+            // Materialise the schema once so EnsureAdminUserAsync's
+            // query against Roles/Users doesn't fail at boot.
+            using var sp = services.BuildServiceProvider();
+            using var scope = sp.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Database.EnsureCreated();
         });
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _connection.Dispose();
+        }
+        base.Dispose(disposing);
     }
 }
