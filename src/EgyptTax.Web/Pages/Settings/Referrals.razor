@@ -1,0 +1,269 @@
+@page "/settings/referrals"
+@using System.Globalization
+@using EgyptTax.Application.Referrals
+@using EgyptTax.Domain.Referrals
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Web.Licensing
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IJSRuntime Js
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "ادعُ صديق | DaftarX" : "Refer a friend | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private string _myCode = "";
+    private List<CustomerReferral> _ledger = new();
+
+    // "Add a new referral" form
+    private string _newName = "";
+    private string _newDetail = "";
+    private string _newNote = "";
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private int Invited => _ledger.Count(r => r.Status == CustomerReferralStatus.Invited);
+    private int Installed => _ledger.Count(r => r.Status == CustomerReferralStatus.Installed);
+    private int Purchased => _ledger.Count(r => r.Status == CustomerReferralStatus.Purchased);
+    private int RewardDaysTotal => _ledger.Sum(r => r.RewardDays);
+
+    private string ShareMessage => IsArabic
+        ? $"جرّب DaftarX — برنامج محاسبة + ضرائب مصري بيخلّي ETA + Form 41 سهل. استخدم كود الإحالة بتاعي: {_myCode} وهتاخد 30 يوم مجانًا."
+        : $"Try DaftarX — Egyptian accounting + tax software that makes ETA + Form 41 painless. Use my referral code: {_myCode} for 30 days free.";
+
+    private string WhatsAppShareUrl =>
+        $"https://wa.me/?text={Uri.EscapeDataString(ShareMessage)}";
+
+    private string MailtoShareUrl =>
+        $"mailto:?subject={Uri.EscapeDataString(IsArabic ? "اقتراح برنامج محاسبة" : "Try DaftarX")}&body={Uri.EscapeDataString(ShareMessage)}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _myCode = ReferralCode.Derive(string.IsNullOrWhiteSpace(LicenseStatus.Hwid) ? "unknown" : LicenseStatus.Hwid);
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _ledger = await db.Set<CustomerReferral>().AsNoTracking()
+            .OrderByDescending(r => r.InvitedAtUtc)
+            .Take(200)
+            .ToListAsync();
+    }
+
+    private async Task OnAddAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newName))
+        {
+            _flash = Tr("ادخل اسم الشخص.", "Enter the contact's name.");
+            _flashClass = "flash-error";
+            return;
+        }
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var r = new CustomerReferral(
+                referredContactName: _newName,
+                invitedAtUtc: DateTime.UtcNow,
+                referredContactDetail: string.IsNullOrWhiteSpace(_newDetail) ? null : _newDetail,
+                note: string.IsNullOrWhiteSpace(_newNote) ? null : _newNote);
+            db.Add(r);
+            await db.SaveChangesAsync();
+
+            _newName = ""; _newDetail = ""; _newNote = "";
+            _flash = Tr("تمت إضافة الإحالة.", "Referral added.");
+            _flashClass = "kpi-card kpi-info";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+    }
+
+    private async Task OnMarkInstalledAsync(Guid id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var r = await db.Set<CustomerReferral>().FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return;
+        r.MarkInstalled(DateTime.UtcNow);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task OnMarkPurchasedAsync(Guid id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var r = await db.Set<CustomerReferral>().FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return;
+        r.MarkPurchased(DateTime.UtcNow, referredCustomerHwid: null, rewardDays: 30);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task CopyCodeAsync()
+    {
+        await Js.InvokeVoidAsync("navigator.clipboard.writeText", _myCode);
+        _flash = Tr("تم نسخ الكود.", "Code copied.");
+        _flashClass = "kpi-card kpi-info";
+    }
+
+    private async Task CopyMessageAsync()
+    {
+        await Js.InvokeVoidAsync("navigator.clipboard.writeText", ShareMessage);
+        _flash = Tr("تم نسخ الرسالة.", "Share message copied.");
+        _flashClass = "kpi-card kpi-info";
+    }
+}
+
+<h1>@Tr("🎁 ادعُ صديق", "🎁 Refer a friend")</h1>
+<p class="page-subtitle">
+    @Tr("شارك كودك. لما صديقك يشتري DaftarX، الاتنين تاخدوا 30 يوم مجاناً.",
+        "Share your code. When a friend buys DaftarX, you both get 30 days free.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin-top:16px;">@_flash</div>
+}
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("كودك", "Your code")</h2>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px;">
+        <code style="font-size:32px;letter-spacing:2px;padding:12px 20px;background:var(--bg-elevated);border:2px solid var(--accent);border-radius:8px;font-family:monospace;">
+            @_myCode
+        </code>
+        <button type="button" class="btn-secondary" @onclick="CopyCodeAsync">
+            <Icon Name="copy" Class="ic" /> @Tr("نسخ", "Copy")
+        </button>
+    </div>
+    <p style="color:var(--text-muted);font-size:13px;margin-top:12px;">
+        @Tr("الكود مرتبط بجهازك ومش بيتغير. شاركه باطمئنان.",
+            "The code is tied to your install and never changes. Share it freely.")
+    </p>
+</section>
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("شارك بسرعة", "Share quickly")</h2>
+    <div class="invoice-actions" style="margin-top:8px;">
+        <a href="@WhatsAppShareUrl" target="_blank" rel="noopener" class="btn-primary">
+            <Icon Name="message-circle" Class="ic" />
+            @Tr("شارك على واتساب", "Share on WhatsApp")
+        </a>
+        <a href="@MailtoShareUrl" class="btn-secondary">
+            <Icon Name="mail" Class="ic" />
+            @Tr("ابعتها إيميل", "Email it")
+        </a>
+        <button type="button" class="btn-secondary" @onclick="CopyMessageAsync">
+            <Icon Name="copy" Class="ic" />
+            @Tr("انسخ النص", "Copy message")
+        </button>
+    </div>
+    <details style="margin-top:12px;">
+        <summary>@Tr("شوف الرسالة", "Preview the message")</summary>
+        <pre style="background:var(--bg-elevated);padding:12px;border-radius:6px;margin-top:8px;white-space:pre-wrap;">@ShareMessage</pre>
+    </details>
+</section>
+
+<section class="kpi-grid kpi-grid-3" style="margin-top:24px;">
+    <div class="kpi-card-v2 kpi-card-info">
+        <div class="kpi-v2-label">@Tr("دعوات", "Invited")</div>
+        <div class="kpi-v2-value">@Invited</div>
+    </div>
+    <div class="kpi-card-v2 kpi-card-info">
+        <div class="kpi-v2-label">@Tr("بدأوا التجربة", "Installed")</div>
+        <div class="kpi-v2-value">@Installed</div>
+    </div>
+    <div class="kpi-card-v2 kpi-card-ok">
+        <div class="kpi-v2-label">@Tr("اشتروا", "Purchased") · @Tr($"+{RewardDaysTotal} يوم", $"+{RewardDaysTotal} days")</div>
+        <div class="kpi-v2-value">@Purchased</div>
+    </div>
+</section>
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("سجّل دعوة جديدة", "Log a new referral")</h2>
+    <p style="color:var(--text-muted);font-size:13px;">
+        @Tr("سجّل اللي قلتله عن DaftarX عشان تتابع حالته.",
+            "Track each person you tell about DaftarX.")
+    </p>
+    <div class="form-grid">
+        <label>
+            <span>@Tr("الاسم", "Contact name")</span>
+            <input type="text" @bind="_newName" placeholder="@Tr("هاني خالد", "Hany Khaled")" />
+        </label>
+        <label>
+            <span>@Tr("التليفون / الإيميل (اختياري)", "Phone / email (optional)")</span>
+            <input type="text" @bind="_newDetail" placeholder="+201001234567" />
+        </label>
+        <label style="grid-column:span 2;">
+            <span>@Tr("ملاحظات (اختياري)", "Notes (optional)")</span>
+            <input type="text" @bind="_newNote" />
+        </label>
+    </div>
+    <div class="invoice-actions" style="margin-top:12px;">
+        <button type="button" class="btn-primary" @onclick="OnAddAsync">
+            <Icon Name="plus" Class="ic" />
+            @Tr("إضافة", "Add referral")
+        </button>
+    </div>
+</section>
+
+@if (_ledger.Count > 0)
+{
+    <section style="margin-top:24px;">
+        <h2>@Tr("الدعوات", "Referrals")</h2>
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@Tr("الاسم", "Name")</th>
+                    <th>@Tr("جهة الاتصال", "Contact")</th>
+                    <th>@Tr("تاريخ الدعوة", "Invited")</th>
+                    <th>@Tr("الحالة", "Status")</th>
+                    <th>@Tr("المكافأة", "Reward")</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _ledger)
+                {
+                    <tr>
+                        <td><strong>@r.ReferredContactName</strong></td>
+                        <td>@(r.ReferredContactDetail ?? "—")</td>
+                        <td>@r.InvitedAtUtc.ToString("yyyy-MM-dd")</td>
+                        <td>
+                            @switch (r.Status)
+                            {
+                                case CustomerReferralStatus.Invited: <span class="state-badge state-pending">@Tr("مدعو", "Invited")</span> break;
+                                case CustomerReferralStatus.Installed: <span class="state-badge state-submitted">@Tr("بدأ التجربة", "Installed")</span> break;
+                                case CustomerReferralStatus.Purchased: <span class="state-badge state-approved">@Tr("اشترى", "Purchased")</span> break;
+                            }
+                        </td>
+                        <td>@(r.RewardDays > 0 ? Tr($"+{r.RewardDays} يوم", $"+{r.RewardDays} days") : "—")</td>
+                        <td>
+                            @if (r.Status == CustomerReferralStatus.Invited)
+                            {
+                                <button type="button" class="btn-secondary" style="font-size:12px;padding:4px 8px;"
+                                        @onclick="() => OnMarkInstalledAsync(r.Id)">
+                                    @Tr("نزّل ←", "Installed →")
+                                </button>
+                            }
+                            @if (r.Status == CustomerReferralStatus.Installed)
+                            {
+                                <button type="button" class="btn-primary" style="font-size:12px;padding:4px 8px;"
+                                        @onclick="() => OnMarkPurchasedAsync(r.Id)">
+                                    @Tr("اشترى ←", "Purchased →")
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+}
