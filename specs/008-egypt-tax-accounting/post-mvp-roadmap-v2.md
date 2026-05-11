@@ -41,12 +41,23 @@ competitor in Egypt has shipped):
 | 2 | Arabic AI tax assistant (chatbot) | G3 | No |
 | 3 | WhatsApp invoice delivery | G2 | Nudge button only — needs PDF send |
 | 4 | OCR receipt scanner (Arabic-aware) | G3 | No |
-| 5 | Per-bank CSV / OFX bank import | G1 | Manual entry only |
+| 5 | Per-bank CSV / OFX bank import | ✅ shipped | CIB / NBE / QNB parsers + auto-match |
 | 6 | Tax calendar with reminders | ✅ shipped | `/compliance/calendar` |
 | 7 | Accountant portal + reseller commission | G1 | Multi-company switcher exists; no commission ledger |
-| 8 | Bulk invoice operations (Excel upload) | G1 | No |
+| 8 | Bulk invoice operations (Excel upload) | ✅ shipped | `/invoices/bulk` |
 | 9 | Compliance health dashboard (unified) | G2 | Cockpit + Penalty Shield exist separately |
 | 10 | One-click tax-return preparation | G3 | Form 41 generator exists; VAT/income-tax don't |
+
+**UX overhaul wave inserted (May 2026 audit):** the existing
+sidebar surfaces 37 items in 6 flat sections — overwhelming for a
+50-year-old shop owner who's the actual buyer persona. The new
+**Gux** wave (between G1 and G2) restructures information
+architecture: 7 collapsible sidebar groups, color-coded KPI cards,
+human-readable activity log, simplified Settings. No features
+removed; the same surface area, sized for the customer's
+cognitive load. ~7 days of focused work. Sequenced before G2 so
+the new differentiation features land into a clean shell instead
+of crowding the noise.
 
 **Three commercial deliverables** are blocking everything (see §G0):
 1. **Pricing** — three numbers (Basic / Pro / Enterprise EGP/year)
@@ -57,9 +68,12 @@ competitor in Egypt has shipped):
 Without those, the **Phase 1 landing page** and **Phase 2 self-service
 portal** can't ship; everything else can.
 
-**Cadence (AI-paired velocity):** v2 is ~3-4 weeks of focused
-shipping. G0 (commercial setup) gates G1 (foundation) which gates G2
-(differentiation) which unlocks G3 (market leadership).
+**Cadence (AI-paired velocity):** v2 is ~4-5 weeks of focused
+shipping (now ~7 days longer than the original v2 estimate because
+of the inserted Gux UX wave). Order: G0 (commercial setup, 1 day)
+→ G1 (foundation, ~1 week) → Gux (UX overhaul, ~1 week) → G2
+(differentiation, ~1 week) → G3 (market leadership, ~1.5 weeks).
+G4 (defense + QoL) slots in opportunistically.
 
 ---
 
@@ -259,6 +273,302 @@ shipping. G0 (commercial setup) gates G1 (foundation) which gates G2
 - **Avoid:** Don't bake the portal into the main DaftarX app — it's
   a separate sales surface with different uptime requirements.
   Don't store HWIDs longer than needed for support (90 days).
+
+---
+
+## Gux — UX / Information-Architecture Overhaul
+
+> Synthesises the **DaftarX UX Audit (May 2026)**. The current
+> sidebar shows 37 items in 6 flat sections; the dashboard has 6
+> same-weight KPI cards. The fix isn't removing features — it's
+> reorganising so the user sees what matters first and finds
+> everything else with one click.
+>
+> Slotted between G1 (foundation features) and G2 (differentiation
+> features) on purpose: clearing the cognitive load BEFORE the
+> next batch of features lands prevents G2/G3 from drowning in
+> the same noise.
+
+### Gux.1 Collapsible sidebar — 37 items → 7 groups
+
+- **Pain:** The current sidebar can't fit on a 1080p screen
+  without scrolling. Items below the fold are effectively
+  invisible. A 50-year-old shop owner (the actual buyer) opens
+  the app, sees a wall of Arabic links, and quits.
+- **Competitor:** Daftra and QuickBooks both use collapsible
+  sidebars. Wafeq uses a 3-level vertical with top-icon nav. SAP/
+  Dynamics have hierarchical menus. DaftarX is the outlier on
+  flat-37-items.
+- **Complexity:** M (1 day)
+- **Dependencies:** Existing `MainLayout.razor` + the responsive
+  drawer logic from Phase 3.3 (already shipped).
+- **MVP slice:** Refactor `MainLayout.razor`:
+  - Replace the 6 flat sections with 7 collapsible top-level groups:
+    Home / Invoices & Operations / Customers & Suppliers / Reports /
+    Compliance / Settings / Firm Portal (firm-portal users only).
+  - Each group toggles a `<details>` element (CSS-only) — no JS
+    state to manage; current page's group auto-expands via
+    server-side check against `Nav.Uri`.
+  - Show notification badges on Compliance (penalty score),
+    ETA Inbox (unread count), Approvals (pending count). Counts
+    pre-loaded in the existing `MainLayout.OnInitializedAsync`.
+  - Floating "+" button at the top of the sidebar — always visible,
+    drops a 4-item menu (New sales invoice / New purchase / New
+    expense / Bulk upload).
+- **Avoid:** Don't animate group expand/collapse (CSS transitions
+  on details elements are a portability mess across browsers).
+  Don't track "user opened group X" preference in DB — defaults
+  per session are fine.
+
+### Gux.2 Move setup-only items into Settings
+
+- **Pain:** Sidebar items used once during onboarding (ETA wizard,
+  digital certificates, opening balances, chart of accounts) take
+  permanent space alongside daily-used items. Drowns out what the
+  operator actually needs.
+- **Competitor:** Every mature SaaS hides setup-only flows under a
+  Settings page. DaftarX has 4 such items on the daily-visible
+  sidebar.
+- **Complexity:** S (½ day)
+- **Dependencies:** Gux.1 (the collapsible Settings group).
+- **MVP slice:** Move under Settings:
+  - ETA wizard → Settings → ETA (renamed from `/eta-wizard` to
+    `/settings/eta`; keep the original route as a redirect for
+    bookmark-stability)
+  - Digital certificates → Settings → ETA
+  - Item-code lifecycle / `EtaItemCodeCheckJob` UI → Settings → ETA
+  - Expense categories → Settings (already lives under
+    `/settings/expense-categories`; just move the top-level
+    `/expense-categories` link out of "Master Data")
+  - Audit log → Settings → Advanced
+  - Inspection bundle → Compliance → "Advanced tools" sub-group
+    (hidden by default, expandable on demand)
+- **Avoid:** Don't delete the routes — keep them so existing
+  bookmarks + the support team's documentation still work. Only
+  the sidebar link moves; URLs stay.
+
+### Gux.3 Merge related Settings pages — 9 → 7
+
+- **Pain:** Settings has 9 separate sub-pages, several of which
+  cover one concept across multiple pages (tax periods + VAT
+  categories are both "tax setup"; payment methods + cash
+  accounts + opening balances are all "money setup").
+- **Competitor:** Daftra has one Settings page with tabs. SAP/
+  Dynamics have grouped Settings panes.
+- **Complexity:** M (1 day)
+- **Dependencies:** Gux.1 + Gux.2 (need the new grouping first).
+- **MVP slice:** Merge:
+  - Tax periods + VAT categories → "Tax setup" page with 2 tabs
+  - Payment methods + Cash accounts + Opening balances → "Money &
+    banks" page with 3 tabs
+  - Chart of accounts stays under Settings → Advanced (accountant-
+    only feature; the operator persona doesn't touch it)
+- **Avoid:** Don't change the underlying handlers / pages — only
+  add a wrapper page that hosts the existing pages as tabs.
+  Operator-facing URLs stay valid.
+
+### Gux.4 Dashboard layout — actions on top, 3 KPIs colour-coded
+
+- **Pain:** The dashboard has 6 KPI cards all in the same size and
+  colour, with quick-action buttons below the fold. The operator
+  has to scroll past compliance metrics to do the action that
+  brought them here (new invoice). And the 6 KPI cards have no
+  visual hierarchy — Penalty Shield (EGP 50K of exposure) reads as
+  visually equal to Drafts (3 unposted rows).
+- **Competitor:** QuickBooks / Xero / Wafeq all put primary
+  actions at the top of the dashboard and use colour-coded KPI
+  tiles (green / amber / red). Daftra is closest to DaftarX's
+  current layout — and is criticised for the same reason.
+- **Complexity:** M (1 day)
+- **Dependencies:** Existing dashboard at [Index.razor](../../src/EgyptTax.Web/Pages/Index.razor).
+- **MVP slice:** Rewrite the dashboard layout top-to-bottom:
+  1. **Trial banner** (when in trial) — unchanged from Phase 0.
+  2. **3 big action buttons** (full-width on mobile, three-up on
+     desktop): "New sales invoice" / "New expense" / "New
+     purchase". Each ≥ 56px tall with an icon. First thing the
+     eye lands on.
+  3. **3 KPI cards** (was 6): Penalty Shield / VAT due / ETA
+     status. Colour-coded by severity (rules in Gux.5).
+  4. **Upcoming deadlines** widget (left) + **Revenue trend**
+     mini-chart (right, bar chart, last 6 months).
+  5. **Activity feed** with human-readable Arabic (Gux.6).
+- **Avoid:** Don't try to fit everything from the current dashboard.
+  Drop the 3 less-load-bearing KPIs (Drafts / Missing
+  attachments / Pending approvals) into the Compliance section
+  or surface as inline alerts when relevant. Don't add charts
+  that need real-time aggregation — pre-compute weekly via a
+  Hangfire job for the revenue chart.
+
+### Gux.5 Colour-coded KPI cards
+
+- **Pain:** Sub-task of Gux.4; calls out the colour logic
+  explicitly so the rule is testable.
+- **Competitor:** Industry-standard traffic-light convention.
+- **Complexity:** S (½ day)
+- **Dependencies:** Gux.4 (new dashboard structure).
+- **MVP slice:** Each KPI has three CSS classes (`kpi-card-ok` /
+  `kpi-card-warn` / `kpi-card-danger`) picked by these rules:
+
+  | Metric | Green | Amber | Red |
+  |---|---|---|---|
+  | Penalty Shield | 0 EGP projected | < 5,000 EGP | ≥ 5,000 EGP |
+  | VAT due | Paid / 0 | Due within 7 days | Overdue |
+  | ETA status | All acknowledged | < 5 pending | ≥ 5 pending OR any failed |
+
+  Each card shows: icon + label + big number + one-line context
+  ("3 invoices need re-submission"), and clicks through to the
+  drill-down page.
+- **Avoid:** Don't show emoji for severity — colour + the existing
+  Icon component is enough. Don't pulse / animate the red state
+  on every page load; it gets annoying fast.
+
+### Gux.6 Human-readable activity feed
+
+- **Pain:** The activity feed today shows raw audit-log event
+  names — `session.opened`, `eta_received.inbox_pulled`. Users
+  don't speak developer.
+- **Competitor:** Every consumer-grade app shows human-readable
+  events. DaftarX is showing event keys that are basically
+  developer log strings.
+- **Complexity:** S (½ day)
+- **Dependencies:** Existing audit-log entries + ETA event source.
+- **MVP slice:** New translator method
+  `AuditEventDisplay.Translate(kind, payloadJson, isArabic)`
+  returning a one-line user-facing string. Switch covers the ~30
+  event kinds the dashboard currently surfaces; default fallback
+  is the existing raw kind (so unknown / new events don't crash
+  the feed). Example mappings:
+  - `session.opened` → "تم فتح الجلسة" / "Session started"
+  - `eta_received.inbox_pulled` → "تم استلام {count} فاتورة جديدة من ETA"
+  - `sales_invoice.posted` → "تم ترحيل فاتورة #{documentNumber}"
+  - `eta_submission.rejected` → "فاتورة #{documentNumber} رُفضت من ETA: {errorCode}"
+  Raw event names remain on `/audit-log` for compliance / debugging.
+- **Avoid:** Don't translate the audit-log VIEWER itself (that's an
+  auditor-facing surface — they need exact event names). Only the
+  dashboard feed.
+
+### Gux.7 Upcoming-deadlines widget
+
+- **Pain:** Tax deadlines are the #1 customer anxiety per the
+  Manus market analysis. The compliance calendar exists but
+  requires a click; the operator only sees deadlines when they
+  remember to look.
+- **Competitor:** QuickBooks Online has a "deadlines" widget on
+  the dashboard. Daftra has it as a sidebar callout.
+- **Complexity:** S (½ day)
+- **Dependencies:** Existing `ComplianceObligation` table +
+  `ComplianceCalendarRefreshJob` (already shipped, P2.6).
+- **MVP slice:** New dashboard component `<UpcomingDeadlines />`
+  that pulls the next 5 obligations within the next 30 days from
+  `ComplianceObligation`, ranked by due date. Each row: icon by
+  kind (VAT / WHT / income tax), one-line "VAT return — 15 يونيو
+  (after 4 days)", click → opens the calendar at that month.
+- **Avoid:** No reminders / push notifications in this widget
+  (that's WhatsApp's job — G3.4 follow-on). No editing of
+  obligations from this widget — read-only window.
+
+### Gux.8 Revenue trend mini-chart
+
+- **Pain:** Today the dashboard shows raw numbers with no
+  history. "VAT due 0 EGP" alone tells the operator nothing about
+  whether they're trending up or down.
+- **Competitor:** Every accounting tool with a dashboard has a
+  trend chart. DaftarX has none.
+- **Complexity:** M (1 day)
+- **Dependencies:** Existing posted-invoice query +
+  Chart.js (or a Blazor-native chart lib).
+- **MVP slice:** Pre-compute monthly-revenue totals (last 6
+  months) in a Hangfire job that runs daily and writes to a
+  `dashboard_revenue_monthly` cache table. Dashboard renders a
+  vertical bar chart with one bar per month and a delta
+  percentage above each bar. Cache invalidation: the daily job
+  + on every posted-sales-invoice event (already audited).
+- **Avoid:** Don't fetch chart data per dashboard load — that
+  scales poorly. Don't pull in a heavy chart lib for one bar
+  chart; consider plain SVG + ~50 lines of code first.
+
+### Gux.9 Move Closing Cockpit into the dashboard
+
+- **Pain:** The Closing Cockpit (`/cockpit`) is a top-level
+  sidebar destination, but it's only used at month-end. For 27
+  days of the month it competes with the actual dashboard for
+  the operator's attention.
+- **Competitor:** N/A — DaftarX invented the Closing Cockpit.
+- **Complexity:** S (½ day)
+- **Dependencies:** Existing `ClosingCockpit.razor` + the gate
+  from P3.6.
+- **MVP slice:** Convert the cockpit page into a drawer-style
+  panel triggered by a "إقفال الشهر" button on the dashboard.
+  Drawer slides in from the right (left in LTR). Keep the
+  current `/cockpit` URL working — direct-link still opens the
+  drawer. Sidebar link moves under Compliance → "Advanced tools"
+  (rarely needed mid-month).
+- **Avoid:** Don't merge the cockpit logic into the dashboard
+  — they have different cadences and different audiences (cockpit
+  is for the accountant at month-end; dashboard is the daily
+  operator).
+
+### Gux.10 Move Approvals into a notification badge
+
+- **Pain:** "My approvals" is a top-level sidebar destination,
+  but approvals are NOTIFICATIONS — they're things waiting for
+  the user, not a place to navigate to. A bookkeeper with no
+  pending approvals shouldn't see this slot at all.
+- **Competitor:** GitHub, Slack, Notion — every notifications-
+  driven app surfaces them as badges, not menu items.
+- **Complexity:** S (½ day)
+- **Dependencies:** Existing `/approvals` page + count query.
+- **MVP slice:** Replace the sidebar link with a bell-icon button
+  in the topbar that shows a red badge with the pending count
+  when > 0. Click opens a popover with the 5 most-recent pending
+  approvals + a "View all" link to `/approvals` (kept). When the
+  count is 0, the bell sits quietly in grey — operator isn't
+  reminded of nothing.
+- **Avoid:** Don't surface approvals via desktop OS notifications
+  (`Notification` API) without explicit opt-in — that's a noise
+  trap.
+
+### Gux.11 Typography pass
+
+- **Pain:** Sidebar text is ~13px which is uncomfortable for the
+  50-year-old buyer persona. Section headers use the same
+  weight as items — no visual separation.
+- **Competitor:** Every Arabic enterprise app bumps the base
+  font to 14-15px because the Cairo / Amiri fonts read smaller
+  than their Latin equivalents at the same px.
+- **Complexity:** XS (1 hour)
+- **Dependencies:** Existing `site.css` variables.
+- **MVP slice:** In `site.css`:
+  - `.app-nav a` font-size 13px → 14.5px, line-height 1.5
+  - `.sidebar-section-label` adds `font-weight: 600` +
+    `color: var(--text-muted)` + bigger letter-spacing for
+    visual separation
+  - Sidebar horizontal padding bumped from 14px → 18px
+  - Verify against /penalty-shield + /eta-dashboard which have
+    dense pages — make sure nothing else needs to retighten
+- **Avoid:** Don't bump body font-size on the data grids — they're
+  already at 14px which is right.
+
+### Gux.12 Mobile bottom-nav bar
+
+- **Pain:** Phase 3.3 made the sidebar a drawer on mobile, but
+  every common action requires two taps (hamburger → link). The
+  three actions the operator does daily (new invoice / new
+  expense / dashboard) should be one tap.
+- **Competitor:** WhatsApp, Instagram, Daftra mobile — all use
+  bottom-nav bars on phone viewports.
+- **Complexity:** S (½ day)
+- **Dependencies:** Existing mobile breakpoints + the responsive
+  CSS from Phase 3.3.
+- **MVP slice:** New `<MobileBottomNav />` component injected
+  into `MainLayout`. Hidden via CSS on screens > 768px; on
+  mobile sticks to the bottom of the viewport with 4 icon-only
+  buttons: Home / New invoice / Reports / Settings. ~64px tall.
+  Active route gets an accent colour.
+- **Avoid:** Don't add a fifth or sixth item — bottom nav loses
+  its purpose if it competes with the hamburger drawer. Don't
+  show this on tablets (tablets have room for the drawer-style
+  sidebar to be permanently open).
 
 ---
 
@@ -505,12 +815,18 @@ windows between G-waves.
 | Wave | Calendar (AI-paired) | Items | Gate |
 |---|---|---|---|
 | **G0** | 1 day (decision day) | Pricing + domain + payment processor | None |
-| **G1** | 5-7 days | Landing page, bulk invoice, CSV bank import, accountant commission, self-service portal | G0 |
-| **G2** | 4-5 days | GS1 assistant, WhatsApp send, unified compliance dashboard, marketing copy | G1 |
+| **G1** | 5-7 days | Landing page, ✅ bulk invoice, ✅ CSV bank import, accountant commission, self-service portal | G0 |
+| **Gux** | 6-7 days | Collapsible sidebar, Settings merge, dashboard redesign + 3 colour-coded KPIs, human-readable activity feed, upcoming-deadlines widget, revenue chart, Closing Cockpit drawer, Approvals badge, typography pass, mobile bottom nav | G1 |
+| **G2** | 4-5 days | GS1 assistant, WhatsApp send, unified compliance dashboard, marketing copy | Gux |
 | **G3** | 8-10 days | Arabic AI assistant, OCR receipts, tax-return automation | G2 |
 | **G4** | 2-3 days, opportunistic | Auto-update, cloud backup, referral codes | any time |
 
-**Total v2 effort:** ~3-4 weeks of focused shipping. Real bottleneck is **G0** — without pricing/domain/payment, the funnel can't start.
+**Total v2 effort:** ~4-5 weeks of focused shipping (the inserted
+Gux wave is ~1 week). Real bottleneck stays **G0** — without
+pricing/domain/payment, the funnel can't start. Gux is the only
+wave that gates on no decisions; once G1 lands it can start
+immediately and run in parallel with whatever decisions are
+still pending for G0/G2.
 
 ---
 
@@ -552,10 +868,18 @@ weekly. Opt-out toggle in settings. No PII, no document content.
 
 ## References
 
-This roadmap synthesises the market scan in "DaftarX — Market
-Analysis & Roadmap to #1" (Manus AI, May 2026). Where v1 (this repo's
-existing `post-mvp-roadmap.md`) was engineering-driven, v2 is
-market-driven and assumes v1 P0-P3 has landed.
+This roadmap synthesises two external documents:
+
+- **DaftarX — Market Analysis & Roadmap to #1** (Manus AI, May 2026)
+  — market context, competitor analysis, the 10 features in
+  §0 above. Drives the G1 / G2 / G3 / G4 waves.
+- **DaftarX — UX Audit & Redesign Proposal** (May 2026) — sidebar
+  + dashboard restructure, the 37 → 7 nav collapse, KPI colour
+  rules, mobile bottom nav. Drives the inserted **Gux** wave.
+
+Where v1 (this repo's existing `post-mvp-roadmap.md`) was
+engineering-driven, v2 is market + UX driven and assumes v1 P0-P3
+has landed.
 
 Existing implementation references in this repo (for delta calculation):
 - Penalty Shield → [src/EgyptTax.Web/Pages/Compliance/PenaltyShield.razor](../../src/EgyptTax.Web/Pages/Compliance/PenaltyShield.razor)
