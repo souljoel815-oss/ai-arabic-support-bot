@@ -55,11 +55,13 @@ namespace EgyptTax.E2ETests;
 public class SC001NewAccountantOnboardingTests : IAsyncLifetime
 {
     private const string SkipReason =
-        "Blocked: requires (a) reachable EgyptTax instance via env EGYPTTAX_E2E_URL, "
-        + "(b) fresh-install DB drop+recreate per run, (c) Microsoft.Playwright browsers "
-        + "installed on the runner. The skeleton documents the 12 quickstart steps "
-        + "+ pins the Stopwatch-based budget gate; remove the Skip when the harness "
-        + "lands.";
+        "Acceptance harness — SC-001 measures a real human's wall-clock "
+        + "through the 12-step quickstart, so the test needs a real "
+        + "DaftarX deployment (EGYPTTAX_E2E_URL), a fresh-install DB "
+        + "drop+recreate per run, and Playwright Chromium installed. "
+        + "Skipped in CI; not a candidate for the in-process "
+        + "EgyptTaxE2EFactory pattern (the budget gate is meaningless "
+        + "against SQLite-in-memory).";
 
     private static readonly TimeSpan SC001Budget = TimeSpan.FromMinutes(15);
 

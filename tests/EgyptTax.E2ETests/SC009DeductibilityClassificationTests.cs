@@ -52,11 +52,10 @@ namespace EgyptTax.E2ETests;
 public class SC009DeductibilityClassificationTests : IAsyncLifetime
 {
     private const string SkipReason =
-        "Blocked: requires (a) reachable EgyptTax instance via env EGYPTTAX_E2E_URL, "
-        + "(b) deterministic seed of the 10 sample scenarios with stable ids, "
-        + "(c) Microsoft.Playwright browsers on the runner. The skeleton documents "
-        + "the canonical scenario inventory + the 9-of-10 pass criterion; remove "
-        + "the Skip when the harness + seeded scenarios land.";
+        "Acceptance harness — drives a real browser against a running "
+        + "DaftarX deployment (EGYPTTAX_E2E_URL) with the 10-scenario "
+        + "deductibility seed applied. Skipped in CI; run locally with "
+        + "Playwright Chromium installed.";
 
     private const int RequiredCorrect = 9;
     private const int TotalScenarios = 10;

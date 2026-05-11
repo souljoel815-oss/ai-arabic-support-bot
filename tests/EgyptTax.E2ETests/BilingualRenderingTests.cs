@@ -55,10 +55,13 @@ namespace EgyptTax.E2ETests;
 public class BilingualRenderingTests : IAsyncLifetime
 {
     private const string SkipReason =
-        "Blocked: requires either (a) a reachable EgyptTax instance via env "
-        + "EGYPTTAX_E2E_URL, or (b) an in-process WebApplicationFactory<Program> "
-        + "helper. The skeleton documents the page inventory + Playwright "
-        + "bootstrap shape; remove the Skip when the harness lands.";
+        "Acceptance harness — drives a real browser against a running "
+        + "DaftarX instance at EGYPTTAX_E2E_URL. Skipped in CI; run "
+        + "locally after `dotnet run --project src/EgyptTax.Web` + "
+        + "`playwright install chromium`. EgyptTaxE2EFactory is also "
+        + "an option if/when these tests get rewritten to drive an "
+        + "in-process server (SQLite-in-memory shape, see "
+        + "HealthSmokeTests).";
 
     private static readonly string BaseUrl =
         Environment.GetEnvironmentVariable("EGYPTTAX_E2E_URL") ?? "https://localhost";

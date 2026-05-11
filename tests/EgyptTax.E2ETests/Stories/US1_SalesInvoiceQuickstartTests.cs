@@ -10,46 +10,40 @@ namespace EgyptTax.E2ETests.Stories;
 /// login through to the ETA dashboard appearance + offline QR
 /// verification.
 ///
-/// **Status (2026-05-07): SKIPPED — DEPENDENCIES NOT YET IMPLEMENTED.**
+/// **Status:** SKIPPED — Playwright bodies not yet written.
+/// The application surface (login, MFA, invoice editor, post,
+/// PDF, ETA dashboard, verify endpoint, audit-verifier CLI) all
+/// shipped during Wave 1; what's missing is the Playwright code
+/// that drives them. Each [Fact] currently has a `PLANNED:` doc
+/// comment describing the steps; un-skip and fill in the body
+/// when this harness gets prioritised.
 ///
-/// This test cannot be GREEN until the US1 implementation surface
-/// ships (tasks T085 onward). Each step below maps to a specific
-/// implementation task; as each lands, remove its Skip from the
-/// corresponding `[Fact]` so the test progressively lights up.
+/// Per-test scope:
 ///
-/// | Step | What                                        | Implementation task         |
-/// | ---- | ------------------------------------------- | --------------------------- |
-/// | 1    | Login page POSTs to a sign-in endpoint      | T085 (login page)           |
-/// | 2    | Forced-change-password page when            |                             |
-/// |      | PasswordMustChange = true                   | T086 (force-change page)    |
-/// | 3    | MFA enrollment + TOTP prompt                | T087 (MFA pages)            |
-/// | 4–6  | Invoice editor + line totals computation    | T088–T091 (invoice editor)  |
-/// | 7    | Post → document number assigned + audit row | T092 (post endpoint wiring) |
-/// | 8    | PDF download (renderer already shipped per  |                             |
-/// |      | T079; needs the route)                      | T093 (download route)       |
-/// | 9    | ETA mock submission view + dashboard view   | T094, T095 (mock endpoint   |
-/// |      |                                             | + dashboard page)           |
-/// | 10   | ETA Compliance Dashboard appearance         | T095                        |
-/// | 11   | /api/v1/verify/{seal} endpoint (codec       |                             |
-/// |      | already shipped per T078; needs the route)  | T096 (verify route)         |
-/// | 12   | `dotnet run -- verify-audit` console verb   | T097 (audit-verify CLI)     |
+/// | Step | Drives                                            |
+/// | ---- | ------------------------------------------------- |
+/// | 1    | Bootstrap admin login → force-change-password     |
+/// | 2    | New password → MFA enrollment page                |
+/// | 3    | TOTP code → home dashboard, authenticated         |
+/// | 4–6  | New sales invoice + line totals computed inline   |
+/// | 7    | Post → INV-YYYY-NNNNNN + audit chain head         |
+/// | 8    | Download PDF, assert legal fields + QR seal       |
+/// | 9    | ETA submission view → Submitted/Pending state     |
+/// | 10   | ETA dashboard shows the just-posted invoice       |
+/// | 11   | /api/v1/verify/{seal} returns VALID               |
+/// | 12   | `dotnet run -- verify-audit` exits 0 + valid:true |
 ///
-/// Until then, the skeleton serves three purposes:
-///   1. Documents the canonical flow shape for implementers.
-///   2. Pins the Playwright bootstrap shape (factory + browser launch
-///      + CleanupAsync) so each future test inherits without
-///      re-deciding the harness.
-///   3. Acts as a CI gate — once the Skip-markers are removed and
-///      this fixture goes GREEN, the SC-008 / SC-013 / FR-035 user-
-///      facing acceptance criteria are observably satisfied.
+/// Once the bodies are written, this fixture goes GREEN and
+/// SC-008 / SC-013 / FR-035 are observably satisfied end-to-end.
 /// </summary>
 public class US1_SalesInvoiceQuickstartTests : IAsyncLifetime
 {
     private const string SkipReason =
-        "Blocked: requires US1 implementation tasks T085+ (login/MFA pages, "
-        + "invoice editor, ETA mock submission, dashboard page, verify route, "
-        + "audit-verify CLI). Remove the Skip on each [Fact] as the corresponding "
-        + "implementation task lands.";
+        "Playwright bodies not yet written. The Blazor pages this test "
+        + "would drive (login, MFA, invoice editor, post, PDF download, "
+        + "ETA dashboard, verify endpoint) all shipped during Wave 1; "
+        + "what's missing is the per-step Playwright code. See the "
+        + "PLANNED comments on each [Fact] for the intended steps.";
 
     private IPlaywright? _playwright;
     private IBrowser? _browser;
