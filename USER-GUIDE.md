@@ -35,6 +35,7 @@ auto-match + Closing-readiness gate). **Last updated:** 2026-05-11.
 22. [Troubleshooting & FAQ](#22-troubleshooting--faq)
 23. [Roles & permissions](#23-roles--permissions)
 24. [Glossary](#24-glossary)
+25. [Post-MVP features (recent additions)](#25-post-mvp-features)
 
 ---
 
@@ -1267,6 +1268,99 @@ Role-by-page enforcement uses ASP.NET Core's `[Authorize(Policy =
 
 ---
 
+## 25. Post-MVP features
+
+Features added on top of the MVP, organized by roadmap wave. Each
+entry links to the URL where it's exposed in the UI.
+
+### G1 — Commercial scale-up
+
+- **G1.2 Bulk sales-invoice upload** — `/invoices/bulk` lets operators
+  drop in an XLSX file (template at `/api/v1/invoices/bulk/template`),
+  preview the parse, then post all rows in one go. Handy when migrating
+  off Excel or onboarding a backlog.
+- **G1.3 Bank statement CSV import** — `/payments/bank-statements/import`
+  auto-detects CIB / NBE / QNB layouts; drag-and-drop CSV → matched
+  + suggested rows in the Unmatched queue.
+- **G1.4 Accountant referral commissions** — `/firm-portal/commissions`
+  ledger for firms bringing in customers (Pending → Earned → Paid,
+  20% of first-year revenue per row).
+
+### G2 — Regulator + customer touchpoints
+
+- **G2.1 ETA item-code suggester** — On `/items` the form now shows
+  live GS1/EGS code suggestions as you type the item name (~70-code
+  bundled corpus + fuzzy matcher).
+- **G2.2 WhatsApp invoice delivery** — On any posted sales invoice,
+  the "Send via WhatsApp" button fires a templated message via the
+  Meta Cloud API (mock dispatcher by default; swap for the real
+  one when WHATSAPP_PHONE_ID + WHATSAPP_TOKEN are configured).
+- **G2.3 Compliance Health page** — `/compliance/health` is a single
+  roll-up of every outstanding compliance item (drafts, missing
+  attachments, failed ETA submissions, unfiled returns) so demos
+  open ONE page instead of five.
+
+### G3 — Tax automation
+
+- **G3.2 Receipt OCR scanner** — On `/expenses/new` the "🧾 صوّر
+  إيصال" / "🧾 Scan receipt" button opens the rear camera on
+  phones, runs Tesseract 5 (Arabic + English language packs), and
+  pre-fills total + date + supplier name. Requires `tessdata/`
+  folder next to the exe with `ara.traineddata` + `eng.traineddata`
+  — download from https://github.com/tesseract-ocr/tessdata_fast.
+  Without those files the button shows a clear "OCR engine not
+  available" message and the operator types fields manually.
+- **G3.3 One-click VAT-return preparation** — `/tax/vat-return` lists
+  generated returns; `/tax/vat-return/new` walks the operator through
+  picking a Locked period, previewing the numbers, generating a
+  frozen snapshot, and recording the regulator's submission /
+  acknowledgement references. Refuses to generate for a non-Locked
+  period (FR-037 + Closing Cockpit gate).
+- **G3.4 One-click annual income-tax return** — `/tax/income-tax-return`
+  is the same shape over a fiscal year. Standard regime applies the
+  Law 91/2005 progressive brackets (0/10/15/20/22.5/25/27.5%) and
+  shows a per-bracket breakdown; Law 6/2025 simplified regime applies
+  the flat turnover-tax rate. Gates on ALL 12 VAT months of the
+  fiscal year being Locked.
+
+### G4 — Vendor-side ops
+
+- **G4.1 Auto-update banner** — Daily background job polls the vendor
+  manifest URL; when a newer version exists, a non-blocking banner
+  appears at the top of every page with the changelog and a download
+  link. No silent self-update — operator restarts manually after
+  reading the changelog.
+- **G4.3 Customer referral codes** — `/settings/referrals` shows the
+  install's deterministic 9-character code (HMAC-derived from HWID,
+  same code across DB wipes). Copy-to-clipboard, WhatsApp + email
+  share buttons with prefilled bilingual message, plus an inline
+  ledger of referrals the operator has logged (Invited → Installed
+  → Purchased; +30 days reward when Purchased fires). Vendor-side
+  reconciliation happens at license-issuance time.
+
+### Gux — UX overhaul (12 modules, all shipped)
+
+- **Gux.1+2** — Sidebar collapsed from 37 flat links into 7 grouped
+  collapsible sections.
+- **Gux.3** — Related Settings pages share a `<SettingsTabStrip>` so
+  five separate URLs feel like two clusters ("Tax setup" and
+  "Money & banks").
+- **Gux.4+5+6+7** — Dashboard rewrite: action buttons at the top,
+  3 colour-coded KPI cards (Penalty Shield / VAT readiness / ETA
+  health), upcoming-deadlines widget.
+- **Gux.8** — 6-month revenue trend mini-chart on the dashboard with
+  ▲/▼ delta percentages per bar (pure CSS, no JS chart lib).
+- **Gux.9** — Closing Cockpit moved into a dashboard drawer triggered
+  by the period banner's "إقفال الشهر" / "Close month" button. The
+  `/cockpit` URL still works for direct links.
+- **Gux.10** — Topbar approvals bell with unread badge.
+- **Gux.11** — Typography pass for the 50yo buyer persona (larger
+  default text, more line-height).
+- **Gux.12** — Mobile bottom-nav bar (one-tap to common destinations
+  on phones).
+
+---
+
 ## Appendix A — Page index (by URL)
 
 | URL | Page |
@@ -1337,6 +1431,18 @@ Role-by-page enforcement uses ASP.NET Core's `[Authorize(Policy =
 | `/settings/fiscal-year` | Fiscal year |
 | `/settings/opening-balances` | Opening balances |
 | `/settings/tax-periods` | Tax periods (lock/reopen list) |
+| `/settings/referrals` | G4.3 — refer-a-friend code + ledger |
+| `/invoices/bulk` | G1.2 — bulk sales-invoice XLSX upload |
+| `/api/v1/invoices/bulk/template` | G1.2 — bulk-upload XLSX template download |
+| `/api/v1/expenses/ocr` | G3.2 — receipt OCR endpoint (POST multipart) |
+| `/tax/vat-return` | G3.3 — VAT-return list |
+| `/tax/vat-return/new` | G3.3 — generate a new VAT return |
+| `/tax/vat-return/{id}` | G3.3 — VAT-return detail + submission tracking |
+| `/tax/income-tax-return` | G3.4 — annual income-tax return list |
+| `/tax/income-tax-return/new` | G3.4 — generate annual income-tax return |
+| `/tax/income-tax-return/{id}` | G3.4 — income-tax return detail |
+| `/firm-portal/commissions` | G1.4 — accountant referral / commission ledger |
+| `/compliance/health` | G2.3 — unified compliance roll-up |
 
 ---
 
@@ -1355,6 +1461,7 @@ Role-by-page enforcement uses ASP.NET Core's `[Authorize(Policy =
 | `ntp-health-check` | `0 */6 * * *` | Verifies system clock is within tolerance for ETA timestamping |
 | `audit-checkpoint` | `0 4 * * *` | Computes the daily SHA-256 audit checkpoint |
 | `inspection-bundle` | manual | Run on demand from `/inspection-bundle` |
+| `update-check` | `0 6 * * *` | G4.1 — fetches the vendor manifest; surfaces a banner when a newer version exists |
 
 Most are visible on Hangfire's built-in dashboard at
 `http://localhost:8088/jobs` (Administrator-only).

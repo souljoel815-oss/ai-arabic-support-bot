@@ -68,6 +68,51 @@ of crowding the noise.
 Without those, the **Phase 1 landing page** and **Phase 2 self-service
 portal** can't ship; everything else can.
 
+---
+
+### Status as of 2026-05-11
+
+Every engineering item that didn't need a user-supplied unblocker
+has shipped. Five items remain, each waiting on a commercial
+decision or external credential.
+
+| Wave | Item | Status |
+|---|---|---|
+| **G0** | Pricing decision | ⏳ blocked: needs three EGP/year numbers |
+| **G0** | Domain | ⏳ blocked: needs `daftarx.com/.app/.eg` |
+| **G0** | Payment processor | ⏳ blocked: needs Paymob account or InstaPay setup |
+| **G1.1** | Arabic landing page | ⏳ blocked on G0 (pricing + domain) |
+| **G1.2** | Bulk invoice upload | ✅ shipped |
+| **G1.3** | Per-bank CSV import | ✅ shipped |
+| **G1.4** | Accountant commission ledger | ✅ shipped |
+| **G1.5** | Self-service license portal | ⏳ blocked on G0.3 (Paymob keys) |
+| **Gux.1** | Collapsible sidebar (37→7) | ✅ shipped |
+| **Gux.2** | Move setup-only items into Settings | ✅ shipped |
+| **Gux.3** | Cluster Settings pages with tab strip | ✅ shipped |
+| **Gux.4** | Dashboard layout (actions on top) | ✅ shipped |
+| **Gux.5** | Colour-coded KPI cards | ✅ shipped |
+| **Gux.6** | Human-readable activity feed | ✅ shipped |
+| **Gux.7** | Upcoming-deadlines widget | ✅ shipped |
+| **Gux.8** | Revenue trend mini-chart | ✅ shipped |
+| **Gux.9** | Closing Cockpit drawer | ✅ shipped |
+| **Gux.10** | Approvals badge in topbar | ✅ shipped |
+| **Gux.11** | Typography pass | ✅ shipped |
+| **Gux.12** | Mobile bottom-nav bar | ✅ shipped |
+| **G2.1** | GS1/EGS coding assistant | ✅ shipped |
+| **G2.2** | WhatsApp invoice delivery | ✅ shipped (mock dispatcher; real on Meta keys) |
+| **G2.3** | Unified Compliance Health page | ✅ shipped |
+| **G2.4** | Marketing copy + collateral | ⏳ blocked on G0.2 (domain) |
+| **G3.1** | Arabic AI tax assistant | ⏳ blocked: needs Anthropic API key + monthly budget approval |
+| **G3.2** | Receipt OCR scanner | ✅ shipped (operator drops tessdata files) |
+| **G3.3** | One-click VAT-return preparation | ✅ shipped |
+| **G3.4** | Annual income-tax return | ✅ shipped |
+| **G4.1** | Auto-update banner | ✅ shipped |
+| **G4.2** | Optional cloud backup | ⏳ blocked: needs S3-compatible bucket + access keys |
+| **G4.3** | Customer referral codes | ✅ shipped |
+
+See [`UNBLOCKERS.md`](../../UNBLOCKERS.md) at the repo root for the
+exact credentials/decisions each blocked item needs.
+
 **Cadence (AI-paired velocity):** v2 is ~4-5 weeks of focused
 shipping (now ~7 days longer than the original v2 estimate because
 of the inserted Gux UX wave). Order: G0 (commercial setup, 1 day)
