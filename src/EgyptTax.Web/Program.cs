@@ -425,6 +425,7 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Tax.GenerateIncomeTaxReturnHa
 // NotificationPrefs). Admin-panel tabs call these without worrying
 // about whether the row exists yet on pre-Gux.13 installs.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.SettingsRepository>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.UpdateInvoiceNumberHandler>();
 
 // G3.2 — Receipt OCR. Tesseract loads native libs + tessdata
 // language packs lazily on first request; if tessdata is missing,

@@ -1,12 +1,227 @@
+@using System.Security.Claims
+@using EgyptTax.Domain.Settings
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Settings
+@using Microsoft.AspNetCore.Components.Authorization
+@inject SettingsRepository Settings
+@inject UpdateInvoiceNumberHandler InvoiceNumberHandler
+@inject AuthenticationStateProvider AuthState
+@inject AppDbContext Db
+
 @*
-    Gux.13 Tab 4 — Invoice Settings placeholder.
-    Real implementation lands in Phase 2f (new entity + period-lock guard).
+    Gux.13 Tab 4 — Invoice Settings. New entity-backed config:
+    template, language mode, prefix, next number (with FR-037
+    period-lock guard), payment terms, footer notes, QR + logo
+    toggles. All field changes auto-save on blur via @bind:after;
+    the Next-Number override goes through a dedicated handler with
+    validation + audit-log entry.
 *@
-<div class="admin-tab-placeholder">
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<section class="invoice-settings-tab">
     <h2>@(IsArabic ? "إعدادات الفواتير" : "Invoice Settings")</h2>
-    <p class="page-subtitle">
+
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+    }
+
+    <div class="form-grid">
+        <label>
+            <span>@(IsArabic ? "قالب الفاتورة" : "Invoice template")</span>
+            <select @bind="_templateId" @bind:after="OnTemplateChangedAsync">
+                <option value="classic">@(IsArabic ? "كلاسيكي" : "Classic")</option>
+                <option value="modern">@(IsArabic ? "حديث" : "Modern")</option>
+                <option value="compact">@(IsArabic ? "مدمج" : "Compact")</option>
+            </select>
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "لغة الفاتورة" : "Invoice language")</span>
+            <select @bind="_language" @bind:after="OnLanguageChangedAsync">
+                <option value="@InvoiceLanguageMode.ArabicOnly">@(IsArabic ? "عربي فقط" : "Arabic only")</option>
+                <option value="@InvoiceLanguageMode.Bilingual">@(IsArabic ? "ثنائي اللغة (عربي + إنجليزي)" : "Bilingual (Arabic + English)")</option>
+            </select>
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "بادئة رقم الفاتورة" : "Invoice prefix")</span>
+            <input type="text" @bind="_prefix" @bind:after="OnPrefixChangedAsync" maxlength="20" />
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "شروط الدفع الافتراضية (يوم)" : "Default payment terms (days)")</span>
+            <input type="number" min="0" max="365" @bind="_paymentTerms" @bind:after="OnPaymentTermsChangedAsync" />
+        </label>
+
+        <label style="grid-column: span 2;">
+            <span>@(IsArabic ? "ملاحظات أسفل الفاتورة" : "Footer notes")</span>
+            <textarea rows="3" @bind="_footer" @bind:after="OnFooterChangedAsync" maxlength="2000"></textarea>
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "إظهار رمز QR" : "Show QR code")</span>
+            <input type="checkbox" @bind="_showQr" @bind:after="OnQrChangedAsync" />
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "إظهار اللوجو" : "Show logo")</span>
+            <input type="checkbox" @bind="_showLogo" @bind:after="OnLogoChangedAsync" />
+        </label>
+    </div>
+
+    <hr style="margin: 24px 0;" />
+
+    <h3>@(IsArabic ? "الترقيم التالي للفواتير" : "Next invoice number")</h3>
+    <p class="page-subtitle" style="font-size:13px;">
         @(IsArabic
-            ? "هذا التبويب قيد التطوير. سيتضمن: قالب الفاتورة، اللغة، بادئة الترقيم، شروط الدفع، QR، اللوجو."
-            : "This tab is under construction. Will include: invoice template, language, prefix, payment terms, QR, logo.")
+            ? "يتم زيادة هذا الرقم تلقائياً مع كل فاتورة جديدة. يمكنك تعديله يدوياً ولكن لازم يكون أكبر من آخر رقم مستخدم. الفترات المقفولة لا تسمح بتغيير الترقيم (FR-037)."
+            : "This number auto-increments with each new invoice. You can override it manually, but the new value must exceed the highest existing invoice number. Locked periods reject number changes (FR-037).")
     </p>
-</div>
+    <div class="form-grid">
+        <label>
+            <span>@(IsArabic ? "الرقم التالي الحالي" : "Current next number")</span>
+            <input type="number" value="@_currentNextNumber" disabled />
+        </label>
+        <label>
+            <span>@(IsArabic ? "رقم جديد" : "New number")</span>
+            <input type="number" min="1" @bind="_newNumberInput" />
+        </label>
+        <label style="grid-column: span 2;">
+            <span>@(IsArabic ? "سبب التغيير (اختياري)" : "Reason for change (optional)")</span>
+            <input type="text" @bind="_overrideReason"
+                   placeholder="@(IsArabic ? "مثال: إعادة بدء ترقيم السنة الجديدة" : "e.g. starting fresh numbering for new fiscal year")" />
+        </label>
+    </div>
+    <div class="invoice-actions" style="margin-top:12px;">
+        <button type="button" class="btn-primary"
+                disabled="@(_savingNumber || _newNumberInput <= _currentNextNumber)"
+                @onclick="OnApplyNewNumberAsync">
+            <Icon Name="check-circle" Class="ic" />
+            @(_savingNumber
+                ? (IsArabic ? "جارٍ الحفظ…" : "Saving…")
+                : (IsArabic ? "تطبيق الرقم الجديد" : "Apply new number"))
+        </button>
+    </div>
+</section>
+
+@code {
+    private bool _loading = true;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    // Local edit-state shadows for two-way binding (entity setters
+    // are private; we mirror the fields and call the domain methods
+    // from the @bind:after hooks).
+    private string _templateId = "";
+    private InvoiceLanguageMode _language;
+    private string _prefix = "";
+    private int _paymentTerms;
+    private string _footer = "";
+    private bool _showQr;
+    private bool _showLogo;
+    private int _currentNextNumber;
+
+    // Next-number override form
+    private int _newNumberInput;
+    private string _overrideReason = "";
+    private bool _savingNumber;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var s = await Settings.GetInvoiceSettingsAsync();
+        _templateId = s.TemplateId;
+        _language = s.Language;
+        _prefix = s.Prefix;
+        _paymentTerms = s.DefaultPaymentTermsDays;
+        _footer = s.FooterNotes ?? "";
+        _showQr = s.ShowQrCode;
+        _showLogo = s.ShowLogo;
+        _currentNextNumber = s.NextNumber;
+        _newNumberInput = s.NextNumber + 1;
+        _loading = false;
+    }
+
+    private async Task ApplyAndSaveAsync(Action<InvoiceSettings> mutate, string? successMsg = null)
+    {
+        try
+        {
+            // Re-fetch through the same scope so the change tracker
+            // sees the entity. The repo's Get* call is idempotent;
+            // the entity it returns IS the tracked instance.
+            var s = await Settings.GetInvoiceSettingsAsync();
+            mutate(s);
+            await Db.SaveChangesAsync();
+            if (successMsg is not null) { _flash = successMsg; _flashClass = "kpi-card kpi-info"; }
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+    }
+
+    private Task OnTemplateChangedAsync()    => ApplyAndSaveAsync(s => s.UpdateTemplate(_templateId));
+    private Task OnLanguageChangedAsync()    => ApplyAndSaveAsync(s => s.UpdateLanguage(_language));
+    private Task OnPrefixChangedAsync()      => ApplyAndSaveAsync(s => s.UpdatePrefix(_prefix));
+    private Task OnPaymentTermsChangedAsync()=> ApplyAndSaveAsync(s => s.UpdatePaymentTerms(_paymentTerms));
+    private Task OnFooterChangedAsync()      => ApplyAndSaveAsync(s => s.UpdateFooterNotes(_footer));
+    private Task OnQrChangedAsync()          => ApplyAndSaveAsync(s => s.UpdateShowQrCode(_showQr));
+    private Task OnLogoChangedAsync()        => ApplyAndSaveAsync(s => s.UpdateShowLogo(_showLogo));
+
+    private async Task OnApplyNewNumberAsync()
+    {
+        _savingNumber = true;
+        _flash = null;
+        try
+        {
+            var auth = await AuthState.GetAuthenticationStateAsync();
+            var sub = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            Guid.TryParse(sub, out var userId);
+
+            var result = await InvoiceNumberHandler.HandleAsync(new UpdateInvoiceNumberCommand(
+                NewNumber: _newNumberInput,
+                OperatorUserId: userId,
+                Reason: string.IsNullOrWhiteSpace(_overrideReason) ? null : _overrideReason));
+
+            _flash = result.GapCreated > 0
+                ? (IsArabic
+                    ? $"✓ تم تحديث الترقيم إلى {result.NewNumber} (تم تخطي {result.GapCreated} رقم)."
+                    : $"✓ Number updated to {result.NewNumber} ({result.GapCreated} number(s) skipped).")
+                : (IsArabic
+                    ? $"✓ تم تحديث الترقيم إلى {result.NewNumber}."
+                    : $"✓ Number updated to {result.NewNumber}.");
+            _flashClass = "kpi-card kpi-info";
+
+            // Re-load to reflect the new state.
+            var refreshed = await Settings.GetInvoiceSettingsAsync();
+            _currentNextNumber = refreshed.NextNumber;
+            _newNumberInput = refreshed.NextNumber + 1;
+            _overrideReason = "";
+        }
+        catch (InvoiceNumberValidationException ex)
+        {
+            _flash = IsArabic ? ex.ArabicMessage : ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        catch (InvoiceNumberPeriodLockedException ex)
+        {
+            _flash = IsArabic ? ex.ArabicMessage : ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally
+        {
+            _savingNumber = false;
+        }
+    }
+}
