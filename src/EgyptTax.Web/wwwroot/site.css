@@ -3303,3 +3303,64 @@ a.btn-secondary .ic {
 .eta-status-red    .eta-status-dot { background: #dc2626; }
 .eta-status-green  { background: #f0fdf4; border-color: #86efac; }
 .eta-status-green  .eta-status-dot { background: #16a34a; }
+
+/* Gux.13 Phase 3a — first-run setup wizard. 4-step progress
+   indicator + content panel. */
+.setup-wizard {
+    max-width: 800px;
+    margin: 32px auto;
+    padding: 0 16px;
+}
+.wizard-progress {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin: 24px 0 32px;
+}
+.wizard-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px;
+    background: var(--bg-elevated, #fff);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 8px;
+    text-align: center;
+}
+.wizard-step.is-active {
+    border-color: var(--accent, #0a66c2);
+    border-width: 2px;
+}
+.wizard-step.is-done {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+.wizard-step-num {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg-subtle, #f3f4f6);
+    color: var(--text-muted, #6b7280);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+}
+.wizard-step.is-active .wizard-step-num {
+    background: var(--accent, #0a66c2);
+    color: white;
+}
+.wizard-step.is-done .wizard-step-num {
+    background: #16a34a;
+    color: white;
+}
+.wizard-step-label {
+    font-size: 12px;
+    color: var(--text-muted, #6b7280);
+}
+.wizard-step.is-active .wizard-step-label,
+.wizard-step.is-done .wizard-step-label {
+    color: var(--text, #111);
+    font-weight: 500;
+}

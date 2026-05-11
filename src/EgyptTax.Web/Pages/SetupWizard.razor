@@ -1,0 +1,300 @@
+@page "/setup-wizard"
+@using System.ComponentModel.DataAnnotations
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    Gux.13 Phase 3a — First-run onboarding wizard. 4 steps walk
+    the operator from "empty install" to "ready to invoice":
+
+      1. Company profile — name, TIN, fiscal year
+      2. Tax regime — Standard or Law-6 simplified
+      3. ETA wiring — credentials + connection test (skippable)
+      4. Done — link to /settings + "create your first invoice"
+
+    Reachable at /setup-wizard. The dashboard's empty-state checks
+    if a Company row exists; if not, it redirects here. Tab 10
+    (About) also has a "Re-run Setup Wizard" link so operators can
+    revisit it later.
+*@
+
+<PageTitle>@(IsArabic ? "معالج الإعداد | DaftarX" : "Setup Wizard | DaftarX")</PageTitle>
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<div class="setup-wizard">
+    <h1>@(IsArabic ? "👋 مرحباً بك في DaftarX" : "👋 Welcome to DaftarX")</h1>
+    <p class="page-subtitle">
+        @(IsArabic
+            ? "نعدّ نظامك في 4 خطوات سريعة. كل خطوة قابلة للتعديل لاحقاً من صفحة الإعدادات."
+            : "Let's get you set up in 4 quick steps. Everything is editable later from the Settings page.")
+    </p>
+
+    <div class="wizard-progress">
+        @for (var i = 1; i <= 4; i++)
+        {
+            var stepIndex = i;
+            var isActive = stepIndex == _step;
+            var isDone = stepIndex < _step;
+            <div class="wizard-step @(isActive ? "is-active" : "") @(isDone ? "is-done" : "")">
+                <div class="wizard-step-num">@(isDone ? "✓" : stepIndex.ToString())</div>
+                <div class="wizard-step-label">@StepLabel(stepIndex)</div>
+            </div>
+        }
+    </div>
+
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+    }
+
+    @switch (_step)
+    {
+        case 1:
+            <section class="wizard-panel">
+                <h2>1. @(IsArabic ? "بيانات الشركة" : "Company profile")</h2>
+                <div class="form-grid">
+                    <label>
+                        <span>@(IsArabic ? "الاسم القانوني (عربي)" : "Legal name (Arabic)")</span>
+                        <input type="text" @bind="_legalNameAr" />
+                    </label>
+                    <label>
+                        <span>@(IsArabic ? "الاسم القانوني (إنجليزي)" : "Legal name (English)")</span>
+                        <input type="text" @bind="_legalNameEn" />
+                    </label>
+                    <label>
+                        <span>@(IsArabic ? "الرقم الضريبي (TIN — 9 أرقام)" : "Tax registration number (TIN — 9 digits)")</span>
+                        <input type="text" @bind="_tin" maxlength="9" />
+                    </label>
+                    <label>
+                        <span>@(IsArabic ? "رقم السجل التجاري" : "Commercial registration number")</span>
+                        <input type="text" @bind="_commercialReg" />
+                    </label>
+                    <label>
+                        <span>@(IsArabic ? "كود نشاط الممول" : "Taxpayer activity code")</span>
+                        <input type="text" @bind="_activityCode" placeholder="0001" />
+                    </label>
+                    <label>
+                        <span>@(IsArabic ? "شهر بداية السنة المالية" : "Fiscal-year start month")</span>
+                        <input type="number" min="1" max="12" @bind="_fiscalStartMonth" />
+                    </label>
+                </div>
+            </section>
+            break;
+        case 2:
+            <section class="wizard-panel">
+                <h2>2. @(IsArabic ? "النظام الضريبي" : "Tax regime")</h2>
+                <p class="page-subtitle">
+                    @(IsArabic
+                        ? "النظام القياسي = VAT شهري + ضريبة دخل كاملة. النظام المبسّط (قانون 6/2025) = VAT ربع سنوي + ضريبة معدل دوران بنسبة ثابتة، متاح فقط للمنشآت تحت 15 مليون ج.م. سنوياً."
+                        : "Standard = monthly VAT + full income tax. Simplified (Law 6/2025) = quarterly VAT + flat-rate turnover tax, only for businesses under EGP 15M annual revenue.")
+                </p>
+                <div class="form-grid">
+                    <label>
+                        <input type="radio" name="regime" checked="@(_taxRegime == TaxRegime.Standard)"
+                               @onchange="() => _taxRegime = TaxRegime.Standard" />
+                        <strong>@(IsArabic ? "قياسي" : "Standard")</strong>
+                    </label>
+                    <label>
+                        <input type="radio" name="regime" checked="@(_taxRegime == TaxRegime.Law6Simplified)"
+                               @onchange="() => _taxRegime = TaxRegime.Law6Simplified" />
+                        <strong>@(IsArabic ? "مبسّط (قانون 6/2025)" : "Simplified (Law 6/2025)")</strong>
+                    </label>
+                </div>
+            </section>
+            break;
+        case 3:
+            <section class="wizard-panel">
+                <h2>3. @(IsArabic ? "ربط منظومة ETA (اختياري)" : "ETA Integration (optional)")</h2>
+                <p class="page-subtitle">
+                    @(IsArabic
+                        ? "إذا كانت بياناتك من ETA جاهزة الآن، اضبطها من الزر بالأسفل. تقدر تتخطاها وتعدّها لاحقاً من تبويب «الإعدادات > ربط ETA»."
+                        : "If your ETA credentials are ready now, set them up via the button below. You can also skip and configure later from Settings → ETA Integration.")
+                </p>
+                <div class="invoice-actions">
+                    <a href="/eta-wizard" class="btn-primary">
+                        <Icon Name="link" Class="ic" />
+                        @(IsArabic ? "افتح معالج ETA" : "Open ETA wizard")
+                    </a>
+                    <button type="button" class="btn-secondary" @onclick="() => _step = 4">
+                        @(IsArabic ? "تخطي" : "Skip")
+                    </button>
+                </div>
+            </section>
+            break;
+        case 4:
+            <section class="wizard-panel">
+                <h2>4. @(IsArabic ? "تم الإعداد" : "All set")</h2>
+                <p>
+                    @(IsArabic
+                        ? "✓ تم حفظ بيانات الشركة. النظام جاهز للاستخدام."
+                        : "✓ Company profile saved. The system is ready to use.")
+                </p>
+                <div class="invoice-actions">
+                    <a href="/invoices/new" class="btn-primary">
+                        <Icon Name="file-text" Class="ic" />
+                        @(IsArabic ? "إنشاء أول فاتورة" : "Create your first invoice")
+                    </a>
+                    <a href="/settings" class="btn-secondary">
+                        <Icon Name="settings" Class="ic" />
+                        @(IsArabic ? "صفحة الإعدادات" : "Open Settings")
+                    </a>
+                    <a href="/" class="btn-secondary">
+                        <Icon Name="home" Class="ic" />
+                        @(IsArabic ? "الذهاب للرئيسية" : "Go to dashboard")
+                    </a>
+                </div>
+            </section>
+            break;
+    }
+
+    @if (_step < 4)
+    {
+        <div class="invoice-actions" style="margin-top:24px;justify-content:space-between;">
+            <button type="button" class="btn-secondary" disabled="@(_step == 1 || _busy)" @onclick="() => _step--">
+                ← @(IsArabic ? "السابق" : "Back")
+            </button>
+            <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnNextAsync">
+                @(_busy
+                    ? (IsArabic ? "جارٍ الحفظ…" : "Saving…")
+                    : (_step == 3 ? (IsArabic ? "إنهاء" : "Finish") : (IsArabic ? "التالي" : "Next") + " →"))
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private int _step = 1;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private string _legalNameAr = "";
+    private string _legalNameEn = "";
+    private string _tin = "";
+    private string _commercialReg = "";
+    private string _activityCode = "0001";
+    private int _fiscalStartMonth = 1;
+    private TaxRegime _taxRegime = TaxRegime.Standard;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // If a Company row already exists, pre-fill so re-running
+        // the wizard doesn't wipe their data.
+        var c = await Db.Set<Company>().FirstOrDefaultAsync();
+        if (c is not null)
+        {
+            _legalNameAr = c.LegalName.Arabic;
+            _legalNameEn = c.LegalName.English;
+            _tin = c.TaxRegistrationNumber;
+            _commercialReg = c.CommercialRegistrationNumber;
+            _activityCode = c.TaxpayerActivityCode;
+            _fiscalStartMonth = c.FiscalYearStartMonth;
+            _taxRegime = c.TaxRegime;
+        }
+        _loading = false;
+    }
+
+    private string StepLabel(int s) => s switch
+    {
+        1 => IsArabic ? "الشركة" : "Company",
+        2 => IsArabic ? "الضريبة" : "Tax",
+        3 => IsArabic ? "ETA" : "ETA",
+        4 => IsArabic ? "تم" : "Done",
+        _ => "",
+    };
+
+    private async Task OnNextAsync()
+    {
+        if (_step == 1)
+        {
+            if (string.IsNullOrWhiteSpace(_legalNameAr) || string.IsNullOrWhiteSpace(_legalNameEn) ||
+                string.IsNullOrWhiteSpace(_tin) || string.IsNullOrWhiteSpace(_commercialReg))
+            {
+                _flash = IsArabic ? "املأ بيانات الشركة الأساسية أولاً." : "Fill in the basic company info first.";
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+            // Defer the actual save until step 2 → step 3 transition
+            // so we can save tax regime in the same write.
+            _step = 2;
+            _flash = null;
+        }
+        else if (_step == 2)
+        {
+            _busy = true;
+            try
+            {
+                await SaveCompanyAsync();
+                _step = 3;
+                _flash = null;
+            }
+            catch (Exception ex)
+            {
+                _flash = ex.Message;
+                _flashClass = "kpi-card kpi-error";
+            }
+            finally { _busy = false; }
+        }
+        else if (_step == 3)
+        {
+            // Step 3 ETA is optional. Operator either configured it
+            // by clicking through to /eta-wizard (which navigates
+            // them away anyway) or clicked Skip; either way we end
+            // the wizard.
+            _step = 4;
+            _flash = null;
+        }
+    }
+
+    private async Task SaveCompanyAsync()
+    {
+        var existing = await Db.Set<Company>().FirstOrDefaultAsync();
+        if (existing is null)
+        {
+            // The wizard is the FIRST install path — there's no
+            // existing address yet. Create a minimal one; the
+            // operator can refine in Tab 1 later.
+            var address = PostalAddress.Create(
+                display: new ArabicEnglishText("(لم يحدد بعد)", "(not set yet)"),
+                governorate: "(set later)",
+                regionCity: "(set later)",
+                street: "(set later)",
+                buildingNumber: "(set later)",
+                postalCode: null);
+
+            var company = new Company(
+                legalName: new ArabicEnglishText(_legalNameAr, _legalNameEn),
+                taxRegistrationNumber: EgyptianTin.Parse(_tin),
+                commercialRegistrationNumber: _commercialReg,
+                address: address,
+                taxpayerActivityCode: _activityCode,
+                fiscalYearStartMonth: _fiscalStartMonth);
+            company.UpdateTaxRegime(_taxRegime);
+            Db.Add(company);
+        }
+        else
+        {
+            existing.UpdateTaxpayerActivityCode(_activityCode);
+            existing.UpdateTaxRegime(_taxRegime);
+            // Legal name / TIN / commercial reg / fiscal year are
+            // immutable on the existing entity for audit reasons; if
+            // the operator needs to change them they go through the
+            // full Tab 1 form (which does support those changes via
+            // re-creation in some flows).
+        }
+
+        await Db.SaveChangesAsync();
+    }
+}
