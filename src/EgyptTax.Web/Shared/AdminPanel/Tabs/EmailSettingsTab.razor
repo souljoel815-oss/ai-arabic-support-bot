@@ -1,12 +1,265 @@
+@using EgyptTax.Domain.Settings
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Settings
+@inject SettingsRepository Settings
+@inject SmtpPasswordProtector Protector
+@inject SmtpTestSender TestSender
+@inject AppDbContext Db
+
 @*
-    Gux.13 Tab 5 — Email Settings placeholder.
-    Real implementation lands in Phase 2g (MAPI + SMTP).
+    Gux.13 Tab 5 — Email Settings. Two-mode flow:
+      Option A: MailClient (default, zero config; MAPI opens
+                Outlook/Thunderbird with the PDF attached).
+      Option B: DirectSmtp (DaftarX sends emails itself; needs
+                server/port/credentials; SMB+ feature).
+    Password is DataProtector-encrypted at rest; plaintext is
+    only ever in memory during the form save / test send.
 *@
-<div class="admin-tab-placeholder">
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<section class="email-settings-tab">
     <h2>@(IsArabic ? "البريد الإلكتروني" : "Email Settings")</h2>
-    <p class="page-subtitle">
-        @(IsArabic
-            ? "هذا التبويب قيد التطوير. سيتضمن: طريقة الإرسال (MAPI أو SMTP مباشر)، إعدادات Gmail/Outlook/Yahoo، اختبار الإرسال."
-            : "This tab is under construction. Will include: send method (MAPI or direct SMTP), Gmail/Outlook/Yahoo presets, test send.")
-    </p>
-</div>
+
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+    }
+
+    <div class="form-grid">
+        <label style="grid-column: span 2;">
+            <span>@(IsArabic ? "طريقة الإرسال" : "Send method")</span>
+            <select @bind="_sendMethod" @bind:after="OnSendMethodChangedAsync">
+                <option value="@EmailSendMethod.MailClient">
+                    @(IsArabic
+                        ? "فتح برنامج البريد على الجهاز (Outlook / Thunderbird) — افتراضي"
+                        : "Open OS mail client (Outlook / Thunderbird) — default")
+                </option>
+                <option value="@EmailSendMethod.DirectSmtp">
+                    @(IsArabic
+                        ? "إرسال مباشر من DaftarX (SMTP)"
+                        : "Send directly from DaftarX (SMTP)")
+                </option>
+            </select>
+        </label>
+    </div>
+
+    @if (_sendMethod == EmailSendMethod.MailClient)
+    {
+        <p class="page-subtitle" style="margin-top:16px;">
+            @(IsArabic
+                ? "لا يحتاج إلى ضبط. عند الضغط على «إرسال بالبريد» في أي فاتورة، يفتح برنامج البريد المُعَدّ افتراضياً مع المرفق جاهز."
+                : "Zero configuration needed. Clicking \"Send by email\" on any invoice opens your default mail client with the PDF pre-attached.")
+        </p>
+    }
+    else
+    {
+        <h3 style="margin-top:24px;">@(IsArabic ? "إعدادات SMTP" : "SMTP configuration")</h3>
+
+        <div class="invoice-actions" style="margin-bottom:8px;">
+            <button type="button" class="btn-secondary" @onclick="() => ApplyPreset(SmtpPreset.Gmail)">Gmail</button>
+            <button type="button" class="btn-secondary" @onclick="() => ApplyPreset(SmtpPreset.Office365)">Outlook 365</button>
+            <button type="button" class="btn-secondary" @onclick="() => ApplyPreset(SmtpPreset.Yahoo)">Yahoo</button>
+        </div>
+
+        <div class="form-grid">
+            <label>
+                <span>SMTP Server</span>
+                <input type="text" @bind="_server" placeholder="smtp.gmail.com" maxlength="200" />
+            </label>
+            <label>
+                <span>@(IsArabic ? "المنفذ" : "Port")</span>
+                <input type="number" min="1" max="65535" @bind="_port" />
+            </label>
+            <label>
+                <span>@(IsArabic ? "اسم المستخدم" : "Username")</span>
+                <input type="text" @bind="_username" placeholder="you@example.com" maxlength="200" />
+            </label>
+            <label>
+                <span>@(IsArabic ? "كلمة المرور" : "Password")</span>
+                <input type="password" @bind="_password"
+                       placeholder="@(string.IsNullOrEmpty(_existingPasswordHint) ? "" : _existingPasswordHint)" />
+            </label>
+            <label>
+                <span>@(IsArabic ? "البريد المرسل منه" : "From address")</span>
+                <input type="email" @bind="_fromAddress" placeholder="info@yourcompany.com" maxlength="200" />
+            </label>
+            <label>
+                <span>@(IsArabic ? "اسم المرسل" : "From name")</span>
+                <input type="text" @bind="_fromName" placeholder="@(IsArabic ? "اسم شركتك" : "Your Company")" maxlength="200" />
+            </label>
+            <label>
+                <span>@(IsArabic ? "استخدام TLS" : "Use TLS")</span>
+                <input type="checkbox" @bind="_useTls" />
+            </label>
+        </div>
+
+        <div class="invoice-actions" style="margin-top:16px;">
+            <button type="button" class="btn-primary" disabled="@_saving" @onclick="OnSaveSmtpAsync">
+                <Icon Name="save" Class="ic" />
+                @(_saving ? (IsArabic ? "جارٍ الحفظ…" : "Saving…") : (IsArabic ? "حفظ الإعدادات" : "Save settings"))
+            </button>
+        </div>
+
+        <hr style="margin:24px 0;" />
+
+        <h3>@(IsArabic ? "اختبار الإرسال" : "Test send")</h3>
+        <p class="page-subtitle" style="font-size:13px;">
+            @(IsArabic
+                ? "احفظ الإعدادات أولاً، ثم أرسل رسالة اختبار للتأكد من أن الإرسال يعمل."
+                : "Save the settings first, then send a test message to verify SMTP works.")
+        </p>
+        <div class="form-grid">
+            <label style="grid-column: span 2;">
+                <span>@(IsArabic ? "إرسال إلى" : "Send to")</span>
+                <input type="email" @bind="_testTo" placeholder="@(_fromAddress.Length > 0 ? _fromAddress : "you@example.com")" />
+            </label>
+        </div>
+        <div class="invoice-actions" style="margin-top:8px;">
+            <button type="button" class="btn-secondary" disabled="@_testing" @onclick="OnTestSendAsync">
+                <Icon Name="send" Class="ic" />
+                @(_testing ? (IsArabic ? "جارٍ الإرسال…" : "Sending…") : (IsArabic ? "إرسال رسالة اختبار" : "Send test email"))
+            </button>
+        </div>
+    }
+</section>
+
+@code {
+    private bool _loading = true;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private EmailSendMethod _sendMethod;
+    private string _server = "";
+    private int _port = 587;
+    private string _username = "";
+    private string _password = ""; // plaintext only in memory; saved encrypted
+    private string _existingPasswordHint = "";
+    private string _fromAddress = "";
+    private string _fromName = "";
+    private bool _useTls = true;
+
+    private string _testTo = "";
+    private bool _saving;
+    private bool _testing;
+
+    private enum SmtpPreset { Gmail, Office365, Yahoo }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var s = await Settings.GetSmtpSettingsAsync();
+        _sendMethod = s.SendMethod;
+        _server = s.Server ?? "";
+        _port = s.Port;
+        _username = s.Username ?? "";
+        _existingPasswordHint = string.IsNullOrEmpty(s.EncryptedPassword)
+            ? ""
+            : (IsArabic ? "(محفوظة — اتركها فارغة للإبقاء عليها)" : "(stored — leave blank to keep)");
+        _fromAddress = s.FromAddress ?? "";
+        _fromName = s.FromName ?? "";
+        _useTls = s.UseTls;
+        _loading = false;
+    }
+
+    private void ApplyPreset(SmtpPreset preset)
+    {
+        switch (preset)
+        {
+            case SmtpPreset.Gmail:
+                _server = "smtp.gmail.com"; _port = 587; _useTls = true; break;
+            case SmtpPreset.Office365:
+                _server = "smtp.office365.com"; _port = 587; _useTls = true; break;
+            case SmtpPreset.Yahoo:
+                _server = "smtp.mail.yahoo.com"; _port = 587; _useTls = true; break;
+        }
+    }
+
+    private async Task OnSendMethodChangedAsync()
+    {
+        try
+        {
+            var s = await Settings.GetSmtpSettingsAsync();
+            if (_sendMethod == EmailSendMethod.MailClient)
+            {
+                s.UseMailClient();
+                await Db.SaveChangesAsync();
+                _flash = IsArabic ? "✓ تم التبديل إلى برنامج البريد المحلي." : "✓ Switched to OS mail client.";
+                _flashClass = "kpi-card kpi-info";
+            }
+            // For DirectSmtp, the user has to fill the form + click Save
+            // before we persist — switching the dropdown alone shouldn't
+            // wipe the previously-saved SMTP fields.
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    private async Task OnSaveSmtpAsync()
+    {
+        _saving = true;
+        _flash = null;
+        try
+        {
+            // Validate first (entity throws on bad input but we want
+            // a friendly Arabic error rather than the raw exception text).
+            if (string.IsNullOrWhiteSpace(_server))
+            {
+                _flash = IsArabic ? "أدخل عنوان السيرفر." : "Server is required.";
+                _flashClass = "kpi-card kpi-error"; return;
+            }
+            if (string.IsNullOrWhiteSpace(_username))
+            {
+                _flash = IsArabic ? "أدخل اسم المستخدم." : "Username is required.";
+                _flashClass = "kpi-card kpi-error"; return;
+            }
+            if (string.IsNullOrWhiteSpace(_fromAddress))
+            {
+                _flash = IsArabic ? "أدخل البريد المرسل منه." : "From address is required.";
+                _flashClass = "kpi-card kpi-error"; return;
+            }
+
+            var s = await Settings.GetSmtpSettingsAsync();
+
+            // Password handling: blank = keep existing ciphertext;
+            // otherwise re-encrypt.
+            var encryptedPassword = string.IsNullOrWhiteSpace(_password)
+                ? (s.EncryptedPassword ?? "")
+                : Protector.Encrypt(_password);
+            if (string.IsNullOrEmpty(encryptedPassword))
+            {
+                _flash = IsArabic ? "أدخل كلمة المرور." : "Password is required.";
+                _flashClass = "kpi-card kpi-error"; return;
+            }
+
+            s.UseDirectSmtp(_server, _port, _username, encryptedPassword,
+                _fromAddress, _fromName, _useTls);
+            await Db.SaveChangesAsync();
+
+            _password = ""; // wipe plaintext from memory + UI
+            _existingPasswordHint = IsArabic ? "(محفوظة — اتركها فارغة للإبقاء عليها)" : "(stored — leave blank to keep)";
+            _flash = IsArabic ? "✓ تم حفظ إعدادات SMTP." : "✓ SMTP settings saved.";
+            _flashClass = "kpi-card kpi-info";
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _saving = false; }
+    }
+
+    private async Task OnTestSendAsync()
+    {
+        _testing = true;
+        _flash = null;
+        try
+        {
+            var s = await Settings.GetSmtpSettingsAsync();
+            var to = string.IsNullOrWhiteSpace(_testTo) ? _fromAddress : _testTo;
+            var result = await TestSender.SendAsync(s, to);
+            _flash = result.Message;
+            _flashClass = result.Ok ? "kpi-card kpi-info" : "kpi-card kpi-error";
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _testing = false; }
+    }
+}

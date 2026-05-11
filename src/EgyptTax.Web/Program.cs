@@ -427,6 +427,12 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Tax.GenerateIncomeTaxReturnHa
 builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.SettingsRepository>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.UpdateInvoiceNumberHandler>();
 
+// Gux.13 Tab 5 — SMTP password protector + test sender. Singleton
+// because IDataProtectionProvider keys are bound to the host's
+// keyring (no per-request state).
+builder.Services.AddSingleton<EgyptTax.Infrastructure.Settings.SmtpPasswordProtector>();
+builder.Services.AddSingleton<EgyptTax.Infrastructure.Settings.SmtpTestSender>();
+
 // G3.2 — Receipt OCR. Tesseract loads native libs + tessdata
 // language packs lazily on first request; if tessdata is missing,
 // the service returns Unavailable rather than crashing so the rest
