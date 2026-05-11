@@ -254,6 +254,8 @@
                 <span>@Tr("الإعدادات", "Settings")</span>
             </summary>
             <nav class="app-nav">
+                @* Gux.13 — single admin panel hosting all settings tabs. Old links below stay for now. *@
+                <a href="settings" class="@ActiveLink("settings")" @onclick="CloseSidebar"><strong>@Tr("⚙️ لوحة الإعدادات", "⚙️ Admin panel")</strong></a>
                 <a href="settings/company" class="@ActiveLink("settings/company")" @onclick="CloseSidebar">@Tr("بيانات الشركة", "Company profile")</a>
                 @* Gux.3 — Tax periods + VAT categories share a tab strip on the page itself, so one sidebar entry is enough. *@
                 <a href="settings/tax-periods" class="@(ActiveLink("settings/tax-periods", "settings/vat-categories"))" @onclick="CloseSidebar">@Tr("إعداد الضرائب", "Tax setup")</a>

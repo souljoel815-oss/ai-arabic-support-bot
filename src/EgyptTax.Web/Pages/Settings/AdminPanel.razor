@@ -1,0 +1,124 @@
+@page "/settings"
+@using System.Security.Claims
+@using EgyptTax.Web.Shared.AdminPanel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    Gux.13 — admin-panel shell. 10 tabs hosted under a single URL.
+    Tab content is rendered by per-tab Razor components (built in
+    Phase 2). Tab navigation uses the `?tab=<slug>` query string so
+    deep-linking works AND old `/settings/X` routes can redirect to
+    the matching tab.
+*@
+
+<PageTitle>@(IsArabic ? "إعدادات الشركة | DaftarX" : "Company Settings | DaftarX")</PageTitle>
+
+@code {
+    private string _activeTab = "company-profile";
+    private List<AdminPanelTabs.Tab> _visibleTabs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Tab from query string. Default = first tab the user is
+        // allowed to see (so a Cashier landing here doesn't get a
+        // blank "Company Profile" they can't access).
+        var qs = QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        var requestedTab = qs.TryGetValue("tab", out var v) ? v.ToString() : "";
+
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var roleCodes = auth.User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList();
+        _visibleTabs = AdminPanelTabs.VisibleFor(roleCodes).ToList();
+
+        if (_visibleTabs.Count == 0)
+        {
+            // User has no role giving them access to any tab.
+            return;
+        }
+
+        var matched = _visibleTabs.FirstOrDefault(t =>
+            string.Equals(t.Slug, requestedTab, StringComparison.OrdinalIgnoreCase));
+        _activeTab = matched?.Slug ?? _visibleTabs[0].Slug;
+    }
+
+    private void SwitchTab(string slug)
+    {
+        _activeTab = slug;
+        // Update the URL so refresh / deep-link works.
+        Nav.NavigateTo($"/settings?tab={slug}", replace: true);
+    }
+}
+
+@if (_visibleTabs.Count == 0)
+{
+    <div class="flash-error">
+        @(IsArabic
+            ? "ليس لديك صلاحية للوصول إلى صفحة الإعدادات. تواصل مع مسؤول النظام."
+            : "You don't have permission to access settings. Contact your administrator.")
+    </div>
+    return;
+}
+
+<div class="admin-panel">
+    <h1 class="admin-panel-h">
+        @(IsArabic ? "⚙️ إعدادات الشركة" : "⚙️ Company Settings")
+    </h1>
+
+    <nav class="admin-panel-tabs" role="tablist">
+        @foreach (var tab in _visibleTabs)
+        {
+            var isActive = string.Equals(tab.Slug, _activeTab, StringComparison.OrdinalIgnoreCase);
+            <button type="button"
+                    role="tab"
+                    aria-selected="@isActive.ToString().ToLowerInvariant()"
+                    class="admin-panel-tab @(isActive ? "is-active" : "")"
+                    @onclick="() => SwitchTab(tab.Slug)">
+                <Icon Name="@tab.Icon" Class="ic" />
+                <span>@(IsArabic ? tab.Ar : tab.En)</span>
+            </button>
+        }
+    </nav>
+
+    <div class="admin-panel-body" role="tabpanel">
+        @switch (_activeTab)
+        {
+            case "company-profile":
+                <CompanyProfileTab />
+                break;
+            case "tax-config":
+                <TaxConfigTab />
+                break;
+            case "eta-integration":
+                <EtaIntegrationTab />
+                break;
+            case "invoice-settings":
+                <InvoiceSettingsTab />
+                break;
+            case "email-settings":
+                <EmailSettingsTab />
+                break;
+            case "user-management":
+                <UserManagementTab />
+                break;
+            case "license":
+                <LicenseTab />
+                break;
+            case "backup":
+                <BackupTab />
+                break;
+            case "notifications":
+                <NotificationsTab />
+                break;
+            case "about":
+                <AboutTab />
+                break;
+            default:
+                <p>@(IsArabic ? "تبويب غير معروف." : "Unknown tab.")</p>
+                break;
+        }
+    </div>
+</div>

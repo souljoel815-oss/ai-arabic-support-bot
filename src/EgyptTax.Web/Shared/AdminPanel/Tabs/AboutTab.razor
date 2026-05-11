@@ -1,0 +1,188 @@
+@using System.Reflection
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+@*
+    Gux.13 Tab 10 — About & Support. Read-only system info,
+    diagnostic-report trigger, support links, re-run-wizard link.
+    Visible to all signed-in users (not admin-only) so any user can
+    grab the diagnostic when support asks.
+*@
+
+<section class="about-tab">
+    <h2>@(IsArabic ? "حول ومساعدة" : "About & Support")</h2>
+
+    <div class="about-grid">
+        <h3>@(IsArabic ? "معلومات النظام" : "System info")</h3>
+        <table class="data-grid">
+            <tbody>
+                <tr>
+                    <td>@(IsArabic ? "إصدار البرنامج" : "App version")</td>
+                    <td><code>@_appVersion</code></td>
+                </tr>
+                <tr>
+                    <td>@(IsArabic ? "نظام التشغيل" : "OS")</td>
+                    <td>@Environment.OSVersion.VersionString</td>
+                </tr>
+                <tr>
+                    <td>.NET</td>
+                    <td>@Environment.Version.ToString()</td>
+                </tr>
+                <tr>
+                    <td>@(IsArabic ? "موفر قاعدة البيانات" : "DB provider")</td>
+                    <td>@_dbProvider</td>
+                </tr>
+                @if (!string.IsNullOrEmpty(_dbVersion))
+                {
+                    <tr>
+                        <td>@(IsArabic ? "إصدار قاعدة البيانات" : "DB version")</td>
+                        <td>@_dbVersion</td>
+                    </tr>
+                }
+                <tr>
+                    <td>@(IsArabic ? "وقت التشغيل" : "Process started")</td>
+                    <td>@_processStarted.ToString("yyyy-MM-dd HH:mm") UTC</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="about-grid" style="margin-top:24px;">
+        <h3>@(IsArabic ? "إجراءات" : "Actions")</h3>
+        <div class="invoice-actions">
+            <a class="btn-primary" href="/diagnostics" target="_blank" rel="noopener">
+                <Icon Name="activity" Class="ic" />
+                @(IsArabic ? "تقرير التشخيص" : "Diagnostic Report")
+            </a>
+            <button type="button" class="btn-secondary" disabled="@_checkingUpdate" @onclick="OnCheckUpdatesAsync">
+                <Icon Name="download-cloud" Class="ic" />
+                @(_checkingUpdate
+                    ? (IsArabic ? "جارٍ التحقق…" : "Checking…")
+                    : (IsArabic ? "التحقق من التحديثات" : "Check for Updates"))
+            </button>
+            <a class="btn-secondary" href="/setup-wizard" >
+                <Icon Name="play-circle" Class="ic" />
+                @(IsArabic ? "إعادة تشغيل معالج الإعداد" : "Re-run Setup Wizard")
+            </a>
+        </div>
+        @if (_updateFlash is not null)
+        {
+            <div class="@_updateFlashClass" style="margin-top:8px;">@_updateFlash</div>
+        }
+    </div>
+
+    <div class="about-grid" style="margin-top:24px;">
+        <h3>@(IsArabic ? "الدعم" : "Support")</h3>
+        <div class="invoice-actions">
+            <a class="btn-secondary" href="https://github.com/anthropics/daftarx-docs" target="_blank" rel="noopener">
+                <Icon Name="book-open" Class="ic" />
+                @(IsArabic ? "دليل المستخدم" : "User Guide")
+            </a>
+            <a class="btn-secondary" href="https://wa.me/201001234567" target="_blank" rel="noopener">
+                <Icon Name="message-circle" Class="ic" />
+                @(IsArabic ? "واتساب الدعم" : "Support WhatsApp")
+            </a>
+            <a class="btn-secondary" href="mailto:support@daftarx.local">
+                <Icon Name="mail" Class="ic" />
+                @(IsArabic ? "بريد الدعم" : "Support Email")
+            </a>
+        </div>
+    </div>
+
+    <div class="about-grid" style="margin-top:24px;">
+        <h3>@(IsArabic ? "الرخصة القانونية" : "Legal")</h3>
+        <p style="color:var(--text-muted);font-size:13px;">
+            DaftarX © 2026. EULA + third-party licenses available in
+            <code>%PROGRAMFILES%\DaftarX\NOTICE.txt</code>.
+        </p>
+    </div>
+</section>
+
+@code {
+    private string _appVersion = "?";
+    private string _dbProvider = "?";
+    private string _dbVersion = "";
+    private DateTime _processStarted = DateTime.UtcNow;
+    private bool _checkingUpdate;
+    private string? _updateFlash;
+    private string _updateFlashClass = "kpi-card kpi-info";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var asm = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
+        _appVersion = asm.GetName().Version?.ToString() ?? "(unknown)";
+        _processStarted = System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        // EF Core's ProviderName is e.g. "Microsoft.EntityFrameworkCore.Sqlite"
+        // — collapse to friendly labels for the operator.
+        _dbProvider = db.Database.ProviderName switch
+        {
+            "Microsoft.EntityFrameworkCore.Sqlite"    => IsArabic ? "SQLite (محلي)" : "SQLite (portable)",
+            "Microsoft.EntityFrameworkCore.SqlServer" => "SQL Server Express",
+            var other                                  => other ?? "(unknown)",
+        };
+        _dbVersion = await TryGetDbVersionAsync(db);
+    }
+
+    private static async Task<string> TryGetDbVersionAsync(AppDbContext db)
+    {
+        try
+        {
+            var query = db.Database.ProviderName switch
+            {
+                "Microsoft.EntityFrameworkCore.Sqlite"    => "SELECT sqlite_version()",
+                "Microsoft.EntityFrameworkCore.SqlServer" => "SELECT @@VERSION",
+                _ => null,
+            };
+            if (query is null) return "";
+            await using var cmd = db.Database.GetDbConnection().CreateCommand();
+            await db.Database.OpenConnectionAsync();
+            cmd.CommandText = query;
+            var result = await cmd.ExecuteScalarAsync();
+            return result?.ToString()?.Split('\n').FirstOrDefault()?.Trim() ?? "";
+        }
+        catch
+        {
+            return ""; // best-effort — don't crash the page
+        }
+    }
+
+    private Task OnCheckUpdatesAsync()
+    {
+        // Wired in a follow-up — UpdateCheckJob is the existing
+        // G4.1 mechanism; this just shows what we already know.
+        _checkingUpdate = true;
+        try
+        {
+            var status = EgyptTax.Application.Updates.UpdateStatus.Latest;
+            if (status is null)
+            {
+                _updateFlash = IsArabic
+                    ? "لم يتم التحقق من التحديثات بعد. يتم التحقق تلقائياً يومياً."
+                    : "Not checked yet. Auto-checks daily.";
+                _updateFlashClass = "kpi-card kpi-info";
+            }
+            else if (EgyptTax.Application.Updates.UpdateStatus.UpdateAvailable)
+            {
+                _updateFlash = IsArabic
+                    ? $"إصدار جديد متاح: {status.LatestVersion}"
+                    : $"Update available: {status.LatestVersion}";
+                _updateFlashClass = "kpi-card kpi-warn";
+            }
+            else
+            {
+                _updateFlash = IsArabic
+                    ? $"أنت على أحدث إصدار ({EgyptTax.Application.Updates.UpdateStatus.CurrentVersion})."
+                    : $"You're up to date ({EgyptTax.Application.Updates.UpdateStatus.CurrentVersion}).";
+                _updateFlashClass = "kpi-card kpi-info";
+            }
+        }
+        finally
+        {
+            _checkingUpdate = false;
+        }
+        return Task.CompletedTask;
+    }
+}

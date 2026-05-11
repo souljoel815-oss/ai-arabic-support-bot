@@ -1,0 +1,46 @@
+@*
+    Gux.13 Tab 7 — License placeholder.
+    Real implementation lands in Phase 2c (edition display + activate/renew).
+*@
+@using EgyptTax.Web.Licensing
+
+<div class="admin-tab-placeholder">
+    <h2>@(IsArabic ? "الترخيص" : "License")</h2>
+    <table class="data-grid">
+        <tbody>
+            <tr>
+                <td>@(IsArabic ? "حالة الترخيص" : "Status")</td>
+                <td><strong>@LicenseStatus.State</strong></td>
+            </tr>
+            <tr>
+                <td>@(IsArabic ? "نوع الخطة" : "Edition")</td>
+                <td>@(IsArabic ? EditionGate.CurrentEdition().ArabicLabel() : EditionGate.CurrentEdition().ToString())</td>
+            </tr>
+            <tr>
+                <td>@(IsArabic ? "العميل" : "Customer")</td>
+                <td>@LicenseStatus.CustomerName</td>
+            </tr>
+            <tr>
+                <td>@(IsArabic ? "معرف الجهاز" : "Device ID")</td>
+                <td><code>@LicenseStatus.Hwid</code></td>
+            </tr>
+            <tr>
+                <td>@(IsArabic ? "تاريخ الانتهاء" : "Expires")</td>
+                <td>@LicenseStatus.ExpiresAtUtc.ToString("yyyy-MM-dd")</td>
+            </tr>
+            <tr>
+                <td>@(IsArabic ? "حد المستخدمين" : "Max users")</td>
+                <td>@(EditionGate.MaxUsers() == int.MaxValue ? (IsArabic ? "غير محدود" : "Unlimited") : EditionGate.MaxUsers().ToString())</td>
+            </tr>
+            <tr>
+                <td>@(IsArabic ? "حد الشركات" : "Max companies")</td>
+                <td>@(EditionGate.MaxCompanies() == int.MaxValue ? (IsArabic ? "غير محدود" : "Unlimited") : EditionGate.MaxCompanies().ToString())</td>
+            </tr>
+        </tbody>
+    </table>
+    <p class="page-subtitle" style="margin-top:16px;">
+        @(IsArabic
+            ? "إجراءات التفعيل والتجديد قيد التطوير في Phase 2c."
+            : "Activate / renew actions land in Phase 2c.")
+    </p>
+</div>
