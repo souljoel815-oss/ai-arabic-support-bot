@@ -112,3 +112,36 @@ vendor-keys.json
 
 # Issue-License.ps1 output — per-customer signed tokens + README.
 licenses/
+
+# Build artefacts (dotnet publish output) — never source-tree.
+publish/
+
+# Foreign Python project unrelated to DaftarX that landed in
+# src/ by accident (see DIAGNOSTIC-REPORT.md Finding 10). Listed
+# here so future `git status` is clean; move them out of the tree
+# when convenient.
+src/trading_bot/
+src/trading_bot.egg-info/
+src/003-crypto-trading-bot/
+src/src.zip
+specs/003-crypto-trading-bot/
+specs/003-crypto-trading-bot.zip
+specs/005-freelancer-billing-platform/
+specs/006-pro-trader-context/
+specs/007-fpl-analyzer/
+specs/007-fpl-analyzer.rar
+specs/fantasy/
+alembic.ini
+pyproject.toml
+migrations/
+tests/__init__.py
+tests/contract/
+tests/integration/
+tests/unit/
+
+# Local scratch
+scratch/
+
+# Agent / spec-kit scaffolding (per-machine, not source-of-truth).
+.claude/
+.specify/
