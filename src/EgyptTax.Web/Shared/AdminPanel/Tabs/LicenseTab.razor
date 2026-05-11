@@ -1,46 +1,181 @@
-@*
-    Gux.13 Tab 7 — License placeholder.
-    Real implementation lands in Phase 2c (edition display + activate/renew).
-*@
 @using EgyptTax.Web.Licensing
+@inject InAppActivationHandler Activator
 
-<div class="admin-tab-placeholder">
+@*
+    Gux.13 Tab 7 — License management. Read-only summary at the top
+    (status, edition, customer, HWID, expiry, caps), Activate/Renew
+    flows below. Both the trial-active state and the licensed state
+    show the same activate path — pasting a new token works whether
+    you're upgrading from trial or renewing an expired license.
+
+    The activate path runs in-process (InAppActivationHandler) so
+    operators don't need filesystem access to %PROGRAMDATA%. After a
+    successful activation, LicenseStatus updates immediately —
+    no service restart needed.
+*@
+
+<section class="license-tab">
     <h2>@(IsArabic ? "الترخيص" : "License")</h2>
-    <table class="data-grid">
+
+    @* ----- Status summary ----- *@
+
+    <div class="kpi-grid kpi-grid-3" style="margin-bottom:16px;">
+        <div class="kpi-card-v2 @StatusCardClass">
+            <div class="kpi-v2-label">@(IsArabic ? "الحالة" : "Status")</div>
+            <div class="kpi-v2-value">@StatusLabel</div>
+            @if (LicenseStatus.State == LicenseState.Trial)
+            {
+                <div class="kpi-v2-meta">@(IsArabic ? $"متبقي {DaysRemaining} يوم" : $"{DaysRemaining} days remaining")</div>
+            }
+            else if (LicenseStatus.State == LicenseState.Active)
+            {
+                <div class="kpi-v2-meta">@(IsArabic ? $"تنتهي في {LicenseStatus.ExpiresAtUtc:yyyy-MM-dd}" : $"Expires {LicenseStatus.ExpiresAtUtc:yyyy-MM-dd}")</div>
+            }
+        </div>
+        <div class="kpi-card-v2 kpi-card-info">
+            <div class="kpi-v2-label">@(IsArabic ? "الخطة" : "Edition")</div>
+            <div class="kpi-v2-value">@(IsArabic ? EditionGate.CurrentEdition().ArabicLabel() : EditionGate.CurrentEdition().ToString())</div>
+        </div>
+        <div class="kpi-card-v2 kpi-card-info">
+            <div class="kpi-v2-label">@(IsArabic ? "الحدود" : "Limits")</div>
+            <div class="kpi-v2-value" style="font-size:14px;">
+                @(EditionGate.MaxUsers() == int.MaxValue ? "∞" : EditionGate.MaxUsers().ToString()) @(IsArabic ? "مستخدم" : "users")
+                / @(EditionGate.MaxCompanies() == int.MaxValue ? "∞" : EditionGate.MaxCompanies().ToString()) @(IsArabic ? "شركة" : "companies")
+            </div>
+        </div>
+    </div>
+
+    <table class="data-grid" style="margin-bottom:24px;">
         <tbody>
-            <tr>
-                <td>@(IsArabic ? "حالة الترخيص" : "Status")</td>
-                <td><strong>@LicenseStatus.State</strong></td>
-            </tr>
-            <tr>
-                <td>@(IsArabic ? "نوع الخطة" : "Edition")</td>
-                <td>@(IsArabic ? EditionGate.CurrentEdition().ArabicLabel() : EditionGate.CurrentEdition().ToString())</td>
-            </tr>
             <tr>
                 <td>@(IsArabic ? "العميل" : "Customer")</td>
                 <td>@LicenseStatus.CustomerName</td>
             </tr>
             <tr>
-                <td>@(IsArabic ? "معرف الجهاز" : "Device ID")</td>
+                <td>@(IsArabic ? "معرف الجهاز (HWID)" : "Device ID (HWID)")</td>
                 <td><code>@LicenseStatus.Hwid</code></td>
             </tr>
             <tr>
-                <td>@(IsArabic ? "تاريخ الانتهاء" : "Expires")</td>
-                <td>@LicenseStatus.ExpiresAtUtc.ToString("yyyy-MM-dd")</td>
+                <td>@(IsArabic ? "الميزات المُفَعَّلة" : "Active features")</td>
+                <td>
+                    <span style="color:var(--text-muted);font-size:13px;">
+                        @EditionGate.ActiveFeatures().Count @(IsArabic ? "ميزة" : "feature(s)")
+                    </span>
+                </td>
             </tr>
-            <tr>
-                <td>@(IsArabic ? "حد المستخدمين" : "Max users")</td>
-                <td>@(EditionGate.MaxUsers() == int.MaxValue ? (IsArabic ? "غير محدود" : "Unlimited") : EditionGate.MaxUsers().ToString())</td>
-            </tr>
-            <tr>
-                <td>@(IsArabic ? "حد الشركات" : "Max companies")</td>
-                <td>@(EditionGate.MaxCompanies() == int.MaxValue ? (IsArabic ? "غير محدود" : "Unlimited") : EditionGate.MaxCompanies().ToString())</td>
-            </tr>
+            @if (!string.IsNullOrEmpty(LicenseStatus.SalesPhone))
+            {
+                <tr>
+                    <td>@(IsArabic ? "اتصال المبيعات" : "Sales contact")</td>
+                    <td>
+                        <a href="tel:@LicenseStatus.SalesPhone">@LicenseStatus.SalesPhone</a> /
+                        <a href="mailto:@LicenseStatus.SalesEmail">@LicenseStatus.SalesEmail</a>
+                    </td>
+                </tr>
+            }
         </tbody>
     </table>
-    <p class="page-subtitle" style="margin-top:16px;">
+
+    @* ----- Activate / Renew ----- *@
+
+    <h3>@(LicenseStatus.State == LicenseState.Active
+        ? (IsArabic ? "تجديد أو ترقية" : "Renew or upgrade")
+        : (IsArabic ? "تفعيل ترخيص" : "Activate a license"))</h3>
+    <p class="page-subtitle" style="font-size:13px;">
         @(IsArabic
-            ? "إجراءات التفعيل والتجديد قيد التطوير في Phase 2c."
-            : "Activate / renew actions land in Phase 2c.")
+            ? "ألصق محتوى ملف license.token بالكامل في الصندوق أدناه. يتم التحقق + التفعيل فوراً بدون الحاجة لإعادة تشغيل الخدمة. للتجديد، استخدم نفس الإجراء بترخيص جديد."
+            : "Paste the full contents of your license.token file below. Validation + activation happens immediately — no service restart needed. For renewal, just paste a new token.")
     </p>
-</div>
+
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+    }
+
+    <textarea rows="10" style="width:100%;font-family:monospace;font-size:12px;"
+              @bind="_pastedToken"
+              placeholder='{ "payload": { ... }, "signature": "..." }'></textarea>
+
+    <div class="invoice-actions" style="margin-top:8px;">
+        <button type="button" class="btn-primary" disabled="@_activating" @onclick="OnActivateAsync">
+            <Icon Name="key" Class="ic" />
+            @(_activating
+                ? (IsArabic ? "جارٍ التفعيل…" : "Activating…")
+                : (LicenseStatus.State == LicenseState.Active
+                    ? (IsArabic ? "تطبيق الترخيص الجديد" : "Apply new license")
+                    : (IsArabic ? "تفعيل" : "Activate")))
+        </button>
+        @if (LicenseStatus.State != LicenseState.Active)
+        {
+            <a class="btn-secondary" href="@RenewUrl" target="_blank" rel="noopener">
+                <Icon Name="shopping-cart" Class="ic" />
+                @(IsArabic ? "شراء أو تجديد" : "Buy or renew")
+            </a>
+        }
+    </div>
+
+    @if (LicenseStatus.State == LicenseState.Trial)
+    {
+        <div class="kpi-card kpi-warn" style="margin-top:16px;">
+            @(IsArabic
+                ? $"⏰ أنت في الفترة التجريبية. متبقي {DaysRemaining} يوم. اشتري ترخيص قبل الانتهاء حتى لا تفقد الوصول."
+                : $"⏰ You're in trial mode — {DaysRemaining} days remaining. Purchase a license before expiry to keep access.")
+        </div>
+    }
+</section>
+
+@code {
+    private string _pastedToken = "";
+    private bool _activating;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private int DaysRemaining =>
+        Math.Max(0, (int)Math.Ceiling((LicenseStatus.TrialExpiresAtUtc - DateTime.UtcNow).TotalDays));
+
+    private string StatusLabel => LicenseStatus.State switch
+    {
+        LicenseState.Active       => IsArabic ? "نشط" : "Active",
+        LicenseState.Trial        => IsArabic ? "تجريبي" : "Trial",
+        LicenseState.Expired      => IsArabic ? "منتهي" : "Expired",
+        LicenseState.NotActivated => IsArabic ? "غير مفعّل" : "Not activated",
+        LicenseState.Tampered     => IsArabic ? "مُعَدَّل / غير صالح" : "Tampered",
+        _                         => "?",
+    };
+
+    private string StatusCardClass => LicenseStatus.State switch
+    {
+        LicenseState.Active  => "kpi-card-ok",
+        LicenseState.Trial   => "kpi-card-warn",
+        LicenseState.Expired or LicenseState.NotActivated or LicenseState.Tampered => "kpi-card-danger",
+        _                    => "kpi-card-info",
+    };
+
+    private string RenewUrl => "https://daftarx.com/buy"; // G0.2 follow-on; placeholder until domain lands
+
+    private async Task OnActivateAsync()
+    {
+        _activating = true;
+        _flash = null;
+        try
+        {
+            var result = await Task.Run(() => Activator.Activate(_pastedToken));
+            _flash = IsArabic ? result.IsArabicMessage : result.EnglishMessage;
+            _flashClass = result.Ok ? "kpi-card kpi-info" : "kpi-card kpi-error";
+            if (result.Ok)
+            {
+                _pastedToken = ""; // wipe from form
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally
+        {
+            _activating = false;
+        }
+    }
+}

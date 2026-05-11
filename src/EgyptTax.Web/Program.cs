@@ -433,6 +433,11 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.UpdateInvoiceNumberH
 builder.Services.AddSingleton<EgyptTax.Infrastructure.Settings.SmtpPasswordProtector>();
 builder.Services.AddSingleton<EgyptTax.Infrastructure.Settings.SmtpTestSender>();
 
+// Gux.13 Tab 7 — in-app license activation. Operator pastes the
+// license.token JSON; this writes it to the canonical disk path
+// and re-runs ActivationFlow. LicenseStatus refreshes immediately.
+builder.Services.AddSingleton<EgyptTax.Web.Licensing.InAppActivationHandler>();
+
 // G3.2 — Receipt OCR. Tesseract loads native libs + tessdata
 // language packs lazily on first request; if tessdata is missing,
 // the service returns Unavailable rather than crashing so the rest
