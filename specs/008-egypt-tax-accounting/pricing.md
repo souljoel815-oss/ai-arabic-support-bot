@@ -89,8 +89,14 @@ relevant rows.
 
 ### Solo — 3,500 EGP/year
 
-**Frame:** "أقل من 350 جنيه في الشهر — أرخص من غرامة تأخير
+**Frame:** "أقل من 300 جنيه في الشهر — أرخص من غرامة تأخير
 واحدة. وبياناتك على جهازك."
+
+(The 300 EGP/month anchor uses the annual price divided by 12. The
+actual monthly-billing rate is 350 EGP/mo — landing-page copy
+emphasises annual because that's the cheaper, recommended path; the
+pricing table makes the monthly rate clearly visible for customers
+who prefer monthly commitment.)
 
 - Cheaper than Wafeq Starter (9,660 EGP) and Daftra Basic
   (12,720 EGP), but not suspiciously cheap. ~4 EGP/day.
