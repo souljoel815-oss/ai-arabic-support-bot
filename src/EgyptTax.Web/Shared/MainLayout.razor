@@ -7,6 +7,7 @@
 @using System.Globalization
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Domain.Periods
+@using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Persistence
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -32,6 +33,48 @@
     private bool _sidebarOpen;
     private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
     private void CloseSidebar() => _sidebarOpen = false;
+
+    /// <summary>Gux.1 — auto-expand the sidebar group containing the
+    /// current page. Each group below calls <see cref="GroupOpen"/>
+    /// with a prefix list; if any prefix matches the current URL
+    /// path, the &lt;details&gt; element gets the open attribute.</summary>
+    private string CurrentPath
+    {
+        get
+        {
+            var uri = new Uri(Nav.Uri);
+            return uri.AbsolutePath.TrimStart('/');
+        }
+    }
+
+    private string GroupOpen(params string[] prefixes)
+    {
+        var path = CurrentPath;
+        return prefixes.Any(p =>
+            string.Equals(path, p, StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase))
+            ? "open" : "";
+    }
+
+    private string ActiveLink(string path) =>
+        string.Equals(CurrentPath, path, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+
+    /// <summary>Splat helper for &lt;details&gt; elements — returns
+    /// the boolean <c>open</c> HTML attribute when the current page
+    /// matches one of the prefixes; an empty dictionary otherwise.
+    /// Blazor's @attributes directive omits null/missing entries
+    /// so the closed state simply renders <c>&lt;details&gt;</c>.</summary>
+    private Dictionary<string, object> OpenAttr(params string[] prefixes) =>
+        GroupOpen(prefixes) == "open"
+            ? new Dictionary<string, object> { ["open"] = "open" }
+            : new Dictionary<string, object>();
+
+    /// <summary>Gux.10 — pending-approvals count for the topbar
+    /// notification badge. Populated alongside the other layout
+    /// state in <see cref="OnInitializedAsync"/>.</summary>
+    private int _pendingApprovalCount;
+    private bool _quickActionsOpen;
+    private void ToggleQuickActions() => _quickActionsOpen = !_quickActionsOpen;
 
     // Once-per-process flag for the lazy default-data seed (VAT
     // categories etc.). Done in MainLayout because it's the first DB
@@ -77,6 +120,11 @@
                 _userDisplayName = name;
                 _userInitial = name.Trim()[..1].ToUpperInvariant();
             }
+
+            // Gux.10 — pending approvals → topbar bell badge.
+            _pendingApprovalCount = await Db.Set<ApprovalRequest>()
+                .AsNoTracking()
+                .CountAsync(a => a.ApprovedByUserId == null && a.RejectedByUserId == null);
         }
         catch
         {
@@ -99,72 +147,133 @@
 
     <div class="sidebar-backdrop" @onclick="CloseSidebar"></div>
 
-    <aside class="app-sidebar" @onclick="CloseSidebar">
+    <aside class="app-sidebar">
         <a href="" class="sidebar-brand" style="text-decoration:none;">
             <div class="sidebar-brand-mark">DX</div>
             <div class="sidebar-brand-name">Daftar<span class="brand-x">X</span></div>
         </a>
 
-        <div class="sidebar-section-label">@Tr("لوحة التحكم", "Dashboard")</div>
-        <nav class="app-nav">
-            <a href=""><Icon Name="home" Class="nav-icon" />@Tr("الرئيسية", "Home")</a>
-            <a href="cockpit"><Icon Name="target" Class="nav-icon" />@Tr("قمرة الإقفال", "Closing cockpit")</a>
-            <a href="approvals"><Icon Name="check-square" Class="nav-icon" />@Tr("اعتماداتي", "My approvals")</a>
+        @* Gux.1 — quick-action launcher pinned at top, always visible *@
+        <div class="sidebar-quick-actions @(_quickActionsOpen ? "is-open" : "")">
+            <button type="button" class="quick-action-btn" @onclick="ToggleQuickActions">
+                <Icon Name="plus" Class="ic" />
+                <span>@Tr("إنشاء جديد", "Create new")</span>
+            </button>
+            @if (_quickActionsOpen)
+            {
+                <div class="quick-action-menu">
+                    <a href="invoices/new" @onclick="CloseSidebar"><Icon Name="file-text" Class="ic" />@Tr("فاتورة مبيعات", "Sales invoice")</a>
+                    <a href="purchase-invoices/new" @onclick="CloseSidebar"><Icon Name="package" Class="ic" />@Tr("فاتورة مشتريات", "Purchase invoice")</a>
+                    <a href="expenses/new" @onclick="CloseSidebar"><Icon Name="credit-card" Class="ic" />@Tr("مصروف", "Expense")</a>
+                    <a href="invoices/bulk" @onclick="CloseSidebar"><Icon Name="archive" Class="ic" />@Tr("رفع جماعي", "Bulk upload")</a>
+                </div>
+            }
+        </div>
+
+        @* Gux.1 — Home (no sub-items, just a link) *@
+        <nav class="app-nav app-nav-toplevel">
+            <a href="" class="@ActiveLink("")" @onclick="CloseSidebar">
+                <Icon Name="home" Class="nav-icon" />@Tr("الرئيسية", "Home")
+            </a>
         </nav>
 
-        <div class="sidebar-section-label">@Tr("العمليات", "Operations")</div>
-        <nav class="app-nav">
-            <a href="invoices"><Icon Name="file-text" Class="nav-icon" />@Tr("فواتير المبيعات", "Sales invoices")</a>
-            <a href="invoices/bulk"><Icon Name="archive" Class="nav-icon" />@Tr("رفع جماعي", "Bulk upload")</a>
-            <a href="purchase-invoices"><Icon Name="package" Class="nav-icon" />@Tr("فواتير المشتريات", "Purchases")</a>
-            <a href="expenses"><Icon Name="credit-card" Class="nav-icon" />@Tr("المصروفات", "Expenses")</a>
-            <a href="payments/bank-statements"><Icon Name="receipt" Class="nav-icon" />@Tr("كشوف البنك", "Bank statements")</a>
-            <a href="payments/unmatched"><Icon Name="search" Class="nav-icon" />@Tr("غير المطابق", "Unmatched")</a>
-        </nav>
+        @* Gux.1 — Invoices & Operations *@
+        <details class="sidebar-group" @attributes="@OpenAttr("invoices", "purchase-invoices", "expenses", "payments")">
+            <summary>
+                <Icon Name="file-text" Class="nav-icon" />
+                <span>@Tr("الفواتير والعمليات", "Invoices & operations")</span>
+            </summary>
+            <nav class="app-nav">
+                <a href="invoices" class="@ActiveLink("invoices")" @onclick="CloseSidebar">@Tr("فواتير المبيعات", "Sales invoices")</a>
+                <a href="invoices/bulk" class="@ActiveLink("invoices/bulk")" @onclick="CloseSidebar">@Tr("رفع جماعي", "Bulk upload")</a>
+                <a href="purchase-invoices" class="@ActiveLink("purchase-invoices")" @onclick="CloseSidebar">@Tr("فواتير المشتريات", "Purchases")</a>
+                <a href="expenses" class="@ActiveLink("expenses")" @onclick="CloseSidebar">@Tr("المصروفات", "Expenses")</a>
+                <a href="payments/bank-statements" class="@ActiveLink("payments/bank-statements")" @onclick="CloseSidebar">@Tr("كشوف البنك", "Bank statements")</a>
+                <a href="payments/unmatched" class="@ActiveLink("payments/unmatched")" @onclick="CloseSidebar">@Tr("بنود غير مطابقة", "Unmatched lines")</a>
+            </nav>
+        </details>
 
-        <div class="sidebar-section-label">@Tr("التقارير", "Reports")</div>
-        <nav class="app-nav">
-            <a href="reports/vat-monthly"><Icon Name="bar-chart" Class="nav-icon" />@Tr("الضريبة الشهرية", "Monthly VAT")</a>
-            <a href="reports/taxable-income"><Icon Name="trending-up" Class="nav-icon" />@Tr("الدخل الخاضع للضريبة", "Taxable income")</a>
-            <a href="reports/trial-balance"><Icon Name="scale" Class="nav-icon" />@Tr("ميزان المراجعة", "Trial balance")</a>
-            <a href="reports/turnover-tax"><Icon Name="percent" Class="nav-icon" />@Tr("ضريبة معدل الدوران", "Turnover tax")</a>
-            <a href="wht"><Icon Name="receipt" Class="nav-icon" />@Tr("دورة الخصم", "WHT lifecycle")</a>
-            <a href="wht/inbound"><Icon Name="paperclip" Class="nav-icon" />@Tr("شهادات خصم واردة", "Inbound WHT")</a>
-        </nav>
+        @* Gux.1 — Customers & Suppliers (was "Master data") *@
+        <details class="sidebar-group" @attributes="@OpenAttr("customers", "suppliers", "items")">
+            <summary>
+                <Icon Name="users" Class="nav-icon" />
+                <span>@Tr("العملاء والموردون", "Customers & suppliers")</span>
+            </summary>
+            <nav class="app-nav">
+                <a href="customers" class="@ActiveLink("customers")" @onclick="CloseSidebar">@Tr("العملاء", "Customers")</a>
+                <a href="suppliers" class="@ActiveLink("suppliers")" @onclick="CloseSidebar">@Tr("الموردون", "Suppliers")</a>
+                <a href="items" class="@ActiveLink("items")" @onclick="CloseSidebar">@Tr("الأصناف", "Items")</a>
+            </nav>
+        </details>
 
-        <div class="sidebar-section-label">@Tr("الامتثال", "Compliance")</div>
-        <nav class="app-nav">
-            <a href="penalty-shield"><Icon Name="shield-check" Class="nav-icon" />@Tr("درع الغرامات", "Penalty Shield")</a>
-            <a href="compliance/calendar"><Icon Name="calendar-range" Class="nav-icon" />@Tr("تقويم الالتزامات", "Compliance calendar")</a>
-            <a href="certificates"><Icon Name="lock" Class="nav-icon" />@Tr("الشهادات الرقمية", "Certificates")</a>
-            <a href="eta-dashboard"><Icon Name="shield" Class="nav-icon" />@Tr("لوحة الفاتورة الإلكترونية", "ETA Dashboard")</a>
-            <a href="eta-wizard"><Icon Name="zap" Class="nav-icon" />@Tr("معالج إعداد ETA", "ETA Setup Wizard")</a>
-            <a href="eta-inbox"><Icon Name="package" Class="nav-icon" />@Tr("صندوق ETA الوارد", "ETA Inbox")</a>
-            <a href="eta-export"><Icon Name="archive" Class="nav-icon" />@Tr("تصدير ETA", "ETA Export")</a>
-            <a href="audit-log"><Icon Name="search" Class="nav-icon" />@Tr("سجل التدقيق", "Audit log")</a>
-            <a href="inspection-bundle"><Icon Name="archive" Class="nav-icon" />@Tr("حزمة الفحص", "Inspection bundle")</a>
-        </nav>
+        @* Gux.1 — Reports *@
+        <details class="sidebar-group" @attributes="@OpenAttr("reports", "wht")">
+            <summary>
+                <Icon Name="bar-chart" Class="nav-icon" />
+                <span>@Tr("التقارير", "Reports")</span>
+            </summary>
+            <nav class="app-nav">
+                <a href="reports/vat-monthly" class="@ActiveLink("reports/vat-monthly")" @onclick="CloseSidebar">@Tr("الضريبة الشهرية", "Monthly VAT")</a>
+                <a href="reports/taxable-income" class="@ActiveLink("reports/taxable-income")" @onclick="CloseSidebar">@Tr("الدخل الخاضع للضريبة", "Taxable income")</a>
+                <a href="reports/trial-balance" class="@ActiveLink("reports/trial-balance")" @onclick="CloseSidebar">@Tr("ميزان المراجعة", "Trial balance")</a>
+                <a href="reports/turnover-tax" class="@ActiveLink("reports/turnover-tax")" @onclick="CloseSidebar">@Tr("ضريبة معدل الدوران", "Turnover tax")</a>
+                <a href="wht" class="@ActiveLink("wht")" @onclick="CloseSidebar">@Tr("دورة الخصم", "WHT lifecycle")</a>
+                <a href="wht/inbound" class="@ActiveLink("wht/inbound")" @onclick="CloseSidebar">@Tr("شهادات خصم واردة", "Inbound WHT")</a>
+            </nav>
+        </details>
 
-        <div class="sidebar-section-label">@Tr("البيانات الأساسية", "Master data")</div>
-        <nav class="app-nav">
-            <a href="customers"><Icon Name="users" Class="nav-icon" />@Tr("العملاء", "Customers")</a>
-            <a href="suppliers"><Icon Name="factory" Class="nav-icon" />@Tr("الموردون", "Suppliers")</a>
-            <a href="items"><Icon Name="boxes" Class="nav-icon" />@Tr("الأصناف", "Items")</a>
-            <a href="expense-categories"><Icon Name="tag" Class="nav-icon" />@Tr("فئات المصروفات", "Expense categories")</a>
-        </nav>
+        @* Gux.1 + Gux.2 — Compliance (setup-only items moved to Settings) *@
+        <details class="sidebar-group" @attributes="@OpenAttr("penalty-shield", "compliance", "eta-dashboard", "eta-inbox", "eta-export", "cockpit")">
+            <summary>
+                <Icon Name="shield" Class="nav-icon" />
+                <span>@Tr("الامتثال", "Compliance")</span>
+            </summary>
+            <nav class="app-nav">
+                <a href="penalty-shield" class="@ActiveLink("penalty-shield")" @onclick="CloseSidebar">@Tr("درع الغرامات", "Penalty Shield")</a>
+                <a href="compliance/calendar" class="@ActiveLink("compliance/calendar")" @onclick="CloseSidebar">@Tr("تقويم الالتزامات", "Compliance calendar")</a>
+                <a href="cockpit" class="@ActiveLink("cockpit")" @onclick="CloseSidebar">@Tr("قمرة الإقفال", "Closing cockpit")</a>
+                <a href="eta-dashboard" class="@ActiveLink("eta-dashboard")" @onclick="CloseSidebar">@Tr("لوحة ETA", "ETA dashboard")</a>
+                <a href="eta-inbox" class="@ActiveLink("eta-inbox")" @onclick="CloseSidebar">@Tr("صندوق ETA الوارد", "ETA inbox")</a>
+                <a href="eta-export" class="@ActiveLink("eta-export")" @onclick="CloseSidebar">@Tr("تصدير ETA", "ETA export")</a>
+            </nav>
+        </details>
 
-        <div class="sidebar-section-label">@Tr("الإعدادات", "Settings")</div>
-        <nav class="app-nav">
-            <a href="settings/company"><Icon Name="building" Class="nav-icon" />@Tr("بيانات الشركة", "Company")</a>
-            <a href="settings/tax-periods"><Icon Name="calendar" Class="nav-icon" />@Tr("الفترات الضريبية", "Tax periods")</a>
-            <a href="settings/vat-categories"><Icon Name="percent" Class="nav-icon" />@Tr("فئات الضريبة", "VAT categories")</a>
-            <a href="settings/chart-of-accounts"><Icon Name="book" Class="nav-icon" />@Tr("دليل الحسابات", "Chart of accounts")</a>
-            <a href="settings/fiscal-year"><Icon Name="calendar-range" Class="nav-icon" />@Tr("السنة المالية", "Fiscal year")</a>
-            <a href="settings/payment-methods"><Icon Name="credit-card" Class="nav-icon" />@Tr("طرق الدفع", "Payment methods")</a>
-            <a href="settings/cash-accounts"><Icon Name="wallet" Class="nav-icon" />@Tr("الخزائن والبنوك", "Cashboxes & Banks")</a>
-            <a href="settings/opening-balances"><Icon Name="trending-up" Class="nav-icon" />@Tr("الأرصدة الافتتاحية", "Opening balances")</a>
-            <a href="firm-portal"><Icon Name="landmark" Class="nav-icon" />@Tr("بوابة المكتب", "Firm portal")</a>
-        </nav>
+        @* Gux.1 + Gux.2 — Settings (absorbs setup-only items from Compliance + Master Data) *@
+        <details class="sidebar-group" @attributes="@OpenAttr("settings", "eta-wizard", "certificates", "expense-categories", "audit-log", "inspection-bundle")">
+            <summary>
+                <Icon Name="building" Class="nav-icon" />
+                <span>@Tr("الإعدادات", "Settings")</span>
+            </summary>
+            <nav class="app-nav">
+                <a href="settings/company" class="@ActiveLink("settings/company")" @onclick="CloseSidebar">@Tr("بيانات الشركة", "Company profile")</a>
+                <a href="settings/tax-periods" class="@ActiveLink("settings/tax-periods")" @onclick="CloseSidebar">@Tr("الفترات الضريبية", "Tax periods")</a>
+                <a href="settings/vat-categories" class="@ActiveLink("settings/vat-categories")" @onclick="CloseSidebar">@Tr("فئات الضريبة", "VAT categories")</a>
+                <a href="settings/fiscal-year" class="@ActiveLink("settings/fiscal-year")" @onclick="CloseSidebar">@Tr("السنة المالية", "Fiscal year")</a>
+                <a href="settings/payment-methods" class="@ActiveLink("settings/payment-methods")" @onclick="CloseSidebar">@Tr("طرق الدفع", "Payment methods")</a>
+                <a href="settings/cash-accounts" class="@ActiveLink("settings/cash-accounts")" @onclick="CloseSidebar">@Tr("الخزائن والبنوك", "Cashboxes & banks")</a>
+                <a href="settings/opening-balances" class="@ActiveLink("settings/opening-balances")" @onclick="CloseSidebar">@Tr("الأرصدة الافتتاحية", "Opening balances")</a>
+                <a href="expense-categories" class="@ActiveLink("expense-categories")" @onclick="CloseSidebar">@Tr("فئات المصروفات", "Expense categories")</a>
+                @* Setup-only ETA items moved here per Gux.2 *@
+                <a href="eta-wizard" class="@ActiveLink("eta-wizard")" @onclick="CloseSidebar">@Tr("معالج إعداد ETA", "ETA setup wizard")</a>
+                <a href="certificates" class="@ActiveLink("certificates")" @onclick="CloseSidebar">@Tr("الشهادات الرقمية", "Digital certificates")</a>
+                @* Advanced — accountant / auditor tools *@
+                <a href="settings/chart-of-accounts" class="@ActiveLink("settings/chart-of-accounts")" @onclick="CloseSidebar">@Tr("دليل الحسابات", "Chart of accounts")</a>
+                <a href="audit-log" class="@ActiveLink("audit-log")" @onclick="CloseSidebar">@Tr("سجل التدقيق", "Audit log")</a>
+                <a href="inspection-bundle" class="@ActiveLink("inspection-bundle")" @onclick="CloseSidebar">@Tr("حزمة الفحص الضريبي", "Inspection bundle")</a>
+            </nav>
+        </details>
+
+        @* Gux.1 — Firm Portal (only relevant for accounting firms; no role-gating yet, ships visible) *@
+        <details class="sidebar-group" @attributes="@OpenAttr("firm-portal")">
+            <summary>
+                <Icon Name="landmark" Class="nav-icon" />
+                <span>@Tr("بوابة المكتب", "Firm portal")</span>
+            </summary>
+            <nav class="app-nav">
+                <a href="firm-portal" class="@ActiveLink("firm-portal")" @onclick="CloseSidebar">@Tr("لوحة مراجعة المكتب", "Accountant review")</a>
+                <a href="firm-portal/switch" class="@ActiveLink("firm-portal/switch")" @onclick="CloseSidebar">@Tr("تبديل الشركة", "Switch company")</a>
+            </nav>
+        </details>
     </aside>
 
     <header class="app-header">
@@ -199,6 +308,16 @@
                     </a>
                 }
             </span>
+
+            @* Gux.10 — approvals as a notification bell, not a sidebar destination *@
+            <a href="approvals" class="topbar-bell @(_pendingApprovalCount > 0 ? "has-unread" : "")"
+               title="@Tr($"{_pendingApprovalCount} اعتماد بانتظارك", $"{_pendingApprovalCount} approvals waiting")">
+                <Icon Name="check-square" Class="ic" />
+                @if (_pendingApprovalCount > 0)
+                {
+                    <span class="topbar-bell-badge">@_pendingApprovalCount</span>
+                }
+            </a>
 
             <AuthorizeView>
                 <Authorized>

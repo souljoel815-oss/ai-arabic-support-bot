@@ -2,6 +2,7 @@
 @using System.Globalization
 @using EgyptTax.Application.Compliance.PenaltyShield
 @using EgyptTax.Domain.Audit
+@using EgyptTax.Domain.Compliance
 @using EgyptTax.Domain.Documents
 @using EgyptTax.Domain.Eta
 @using EgyptTax.Domain.Expenses
@@ -47,6 +48,9 @@
 
     // --- KPI: Penalty Shield ---
     private PenaltyExposureReport? _penalty;
+
+    // --- Gux.7 Upcoming deadlines (next 30 days) ---
+    private List<ComplianceObligation> _upcomingDeadlines = new();
 
     // --- Activity feed ---
     private List<FeedItem> _feed = new();
@@ -228,16 +232,92 @@
             .ToListAsync();
         foreach (var r in recentAudits)
         {
+            // Gux.6 — translate raw audit kinds to human-readable text.
+            var translated = TranslateAuditEvent(r.Kind);
             _feed.Add(new FeedItem(
                 IconName: "search",
                 Tone: "tone-primary",
-                Title: IsArabic ? $"حدث تدقيق: {r.Kind}" : $"Audit event: {r.Kind}",
+                Title: translated,
                 Meta: $"#{r.Index}",
                 Href: "audit-log",
                 At: r.TsUtc));
         }
 
         _feed = _feed.OrderByDescending(f => f.At).Take(8).ToList();
+
+        // Gux.7 — Upcoming deadlines (next 30 days, not yet filed).
+        var deadlineHorizon = DateOnly.FromDateTime(now.AddDays(30));
+        var todayDate = DateOnly.FromDateTime(now);
+        _upcomingDeadlines = await Db.Set<ComplianceObligation>().AsNoTracking()
+            .Where(o => o.Status == ComplianceObligationStatus.Upcoming
+                && o.DueDate >= todayDate
+                && o.DueDate <= deadlineHorizon)
+            .OrderBy(o => o.DueDate)
+            .Take(5)
+            .ToListAsync();
+    }
+
+    /// <summary>Gux.6 — turn audit-log event kinds into a sentence
+    /// the operator can read. Default fallback keeps the raw kind
+    /// so unknown / new events still surface in the feed.</summary>
+    private string TranslateAuditEvent(string kind) => (kind, IsArabic) switch
+    {
+        ("session.opened",                true)  => "تم فتح جلسة جديدة",
+        ("session.opened",                false) => "Session started",
+        ("session.closed",                true)  => "تم إنهاء الجلسة",
+        ("session.closed",                false) => "Session ended",
+        ("user.login.succeeded",          true)  => "تم تسجيل الدخول بنجاح",
+        ("user.login.succeeded",          false) => "User signed in",
+        ("user.login.failed",             true)  => "محاولة تسجيل دخول فاشلة",
+        ("user.login.failed",             false) => "Failed sign-in attempt",
+        ("sales_invoice.posted",          true)  => "تم ترحيل فاتورة مبيعات",
+        ("sales_invoice.posted",          false) => "Sales invoice posted",
+        ("purchase_invoice.posted",       true)  => "تم ترحيل فاتورة مشتريات",
+        ("purchase_invoice.posted",       false) => "Purchase invoice posted",
+        ("expense.posted",                true)  => "تم ترحيل مصروف",
+        ("expense.posted",                false) => "Expense posted",
+        ("eta_submission.acknowledged",   true)  => "تم اعتماد فاتورة من مصلحة الضرائب",
+        ("eta_submission.acknowledged",   false) => "ETA acknowledged a submission",
+        ("eta_submission.rejected",       true)  => "تم رفض فاتورة من مصلحة الضرائب",
+        ("eta_submission.rejected",       false) => "ETA rejected a submission",
+        ("eta_received.inbox_pulled",     true)  => "تم سحب فواتير جديدة من صندوق ETA",
+        ("eta_received.inbox_pulled",     false) => "New documents pulled from ETA inbox",
+        ("tax_period.locked",             true)  => "تم قفل فترة ضريبية",
+        ("tax_period.locked",             false) => "Tax period locked",
+        ("tax_period.locked.forced",      true)  => "تم قفل فترة ضريبية مع تجاوز التحذيرات",
+        ("tax_period.locked.forced",      false) => "Tax period force-locked (warnings overridden)",
+        ("tax_period.reopened",           true)  => "تم إعادة فتح فترة ضريبية",
+        ("tax_period.reopened",           false) => "Tax period reopened",
+        ("approval.requested",            true)  => "طلب اعتماد جديد",
+        ("approval.requested",            false) => "Approval requested",
+        ("approval.granted",              true)  => "تم منح اعتماد",
+        ("approval.granted",              false) => "Approval granted",
+        ("approval.rejected",             true)  => "تم رفض اعتماد",
+        ("approval.rejected",             false) => "Approval rejected",
+        ("audit_checkpoint.written",      true)  => "تم تثبيت نقطة تحقق للسجل",
+        ("audit_checkpoint.written",      false) => "Audit checkpoint written",
+        _ => IsArabic ? $"حدث: {kind}" : $"Event: {kind}",
+    };
+
+    private string DeadlineKindLabel(ComplianceObligationKind kind) => (kind, IsArabic) switch
+    {
+        (ComplianceObligationKind.VatMonthly,        true)  => "إقرار الضريبة الشهري",
+        (ComplianceObligationKind.VatMonthly,        false) => "Monthly VAT return",
+        (ComplianceObligationKind.VatQuarterly,      true)  => "إقرار الضريبة الربع سنوي",
+        (ComplianceObligationKind.VatQuarterly,      false) => "Quarterly VAT return",
+        (ComplianceObligationKind.Form41Quarterly,   true)  => "نموذج 41 — الخصم الربع سنوي",
+        (ComplianceObligationKind.Form41Quarterly,   false) => "Form 41 — quarterly WHT",
+        (ComplianceObligationKind.IncomeTaxAnnual,   true)  => "إقرار ضريبة الدخل السنوي",
+        (ComplianceObligationKind.IncomeTaxAnnual,   false) => "Annual income-tax return",
+        (ComplianceObligationKind.TurnoverTaxAnnual, true)  => "إقرار ضريبة معدل الدوران السنوي",
+        (ComplianceObligationKind.TurnoverTaxAnnual, false) => "Annual turnover-tax return",
+        _ => kind.ToString(),
+    };
+
+    private string DeadlineUrgencyClass(DateOnly due)
+    {
+        var days = due.DayNumber - DateOnly.FromDateTime(DateTime.UtcNow).DayNumber;
+        return days <= 3 ? "deadline-urgent" : days <= 7 ? "deadline-warn" : "deadline-ok";
     }
 
     private string MonthName(int m) => IsArabic
@@ -302,134 +382,176 @@
     </div>
 </div>
 
-<!-- KPI grid -->
-<section class="kpi-grid">
-    @if (_penalty is not null)
-    {
-        var tone = _penalty.CurrentTier switch
-        {
-            PenaltyTier.Tier3 => "kpi-danger",
-            PenaltyTier.Tier2 => "kpi-warning",
-            PenaltyTier.Warning => "kpi-warning",
-            _ => "kpi-success",
-        };
-        <a href="penalty-shield" class="kpi-card @tone" style="text-decoration:none;color:inherit;">
-            <div class="kpi-label"><Icon Name="shield-check" Class="ic" />@(IsArabic ? "🛡️ درع الغرامات" : "🛡️ Penalty Shield")</div>
-            <div class="kpi-value">@_penalty.ProjectedThisMonthEgp.ToString("N0")<span class="kpi-unit">@(IsArabic ? "ج.م. متوقعة" : "EGP projected")</span></div>
-            <div class="kpi-meta">
-                @if (_penalty.AvoidableIfActedTodayEgp > 0)
-                {
-                    <span class="kpi-trend-up">@(IsArabic ? $"وفّر {_penalty.AvoidableIfActedTodayEgp:N0} ج.م. النهارده ←" : $"Save {_penalty.AvoidableIfActedTodayEgp:N0} EGP today →")</span>
-                }
-                else
-                {
-                    @(IsArabic ? "كل الفواتير في الميعاد ✓" : "All invoices on time ✓")
-                }
-            </div>
-        </a>
-    }
+<!-- Gux.4 — Action buttons at the TOP. The most common operator
+     intent is "create a thing"; surface that before any KPI. -->
+<section class="dashboard-actions">
+    <a class="dashboard-action-btn" href="invoices/new">
+        <Icon Name="file-text" Class="ic" />
+        <div>
+            <div class="action-title">@(IsArabic ? "فاتورة مبيعات جديدة" : "New sales invoice")</div>
+            <div class="action-desc">@(IsArabic ? "أنشئ، رحّل، وأرسل لمصلحة الضرائب" : "Create, post, submit to ETA")</div>
+        </div>
+    </a>
+    <a class="dashboard-action-btn" href="expenses/new">
+        <Icon Name="credit-card" Class="ic" />
+        <div>
+            <div class="action-title">@(IsArabic ? "مصروف جديد" : "New expense")</div>
+            <div class="action-desc">@(IsArabic ? "صنّف وأرفق الإيصال" : "Categorise + attach receipt")</div>
+        </div>
+    </a>
+    <a class="dashboard-action-btn" href="purchase-invoices/new">
+        <Icon Name="package" Class="ic" />
+        <div>
+            <div class="action-title">@(IsArabic ? "فاتورة مشتريات" : "New purchase")</div>
+            <div class="action-desc">@(IsArabic ? "سجّل فاتورة من مورد" : "Record a supplier invoice")</div>
+        </div>
+    </a>
+</section>
 
-    <div class="kpi-card kpi-primary">
-        <div class="kpi-label"><Icon Name="bar-chart" Class="ic" />@(IsArabic ? "الضريبة المستحقة الشهر" : "Monthly VAT payable")</div>
-        <div class="kpi-value">@_vatPayable.ToString("N0")<span class="kpi-unit">@(IsArabic ? "ج.م." : "EGP")</span></div>
-        <div class="kpi-meta">
+<!-- Gux.4 + Gux.5 — Three colour-coded KPI cards (was six). Each
+     card has a single clear status (green / amber / red) the operator
+     can read at a glance. -->
+<section class="kpi-grid kpi-grid-3">
+    @{
+        var penaltyTone = _penalty switch
+        {
+            null => "kpi-card-ok",
+            { ProjectedThisMonthEgp: 0 } => "kpi-card-ok",
+            { ProjectedThisMonthEgp: < 5000 } => "kpi-card-warn",
+            _ => "kpi-card-danger",
+        };
+    }
+    <a href="penalty-shield" class="kpi-card-v2 @penaltyTone">
+        <div class="kpi-v2-label"><Icon Name="shield-check" Class="ic" />@(IsArabic ? "درع الغرامات" : "Penalty Shield")</div>
+        <div class="kpi-v2-value">
+            @(_penalty?.ProjectedThisMonthEgp.ToString("N0") ?? "—")
+            <span class="kpi-v2-unit">@(IsArabic ? "ج.م." : "EGP")</span>
+        </div>
+        <div class="kpi-v2-meta">
+            @if (_penalty is { AvoidableIfActedTodayEgp: > 0 })
+            {
+                @(IsArabic ? $"وفّر {_penalty.AvoidableIfActedTodayEgp:N0} ج.م. النهارده ←" : $"Save {_penalty.AvoidableIfActedTodayEgp:N0} EGP today →")
+            }
+            else
+            {
+                @(IsArabic ? "كل الفواتير في الميعاد ✓" : "All invoices on time ✓")
+            }
+        </div>
+    </a>
+
+    @{
+        var vatTone = _vatPayable <= 0 ? "kpi-card-ok"
+                    : _vatPayable < 5000 ? "kpi-card-warn"
+                    : "kpi-card-danger";
+    }
+    <a href="reports/vat-monthly" class="kpi-card-v2 @vatTone">
+        <div class="kpi-v2-label"><Icon Name="percent" Class="ic" />@(IsArabic ? "الضريبة المستحقة" : "VAT due")</div>
+        <div class="kpi-v2-value">
+            @_vatPayable.ToString("N0")<span class="kpi-v2-unit">@(IsArabic ? "ج.م." : "EGP")</span>
+        </div>
+        <div class="kpi-v2-meta">
             @(IsArabic ? "مخرجات" : "Output") @_outputVat.ToString("N0")
-            <span style="opacity:0.5">·</span>
+            <span style="opacity:0.5"> · </span>
             @(IsArabic ? "مدخلات" : "Input") @_inputVat.ToString("N0")
         </div>
-    </div>
+    </a>
 
-    <div class="kpi-card @((_etaFailed > 0 || _etaCriticalCount > 0) ? "kpi-danger" : (_etaPending > 0 ? "kpi-warning" : "kpi-success"))">
-        <div class="kpi-label"><Icon Name="shield" Class="ic" />@(IsArabic ? "الفاتورة الإلكترونية" : "ETA submissions")</div>
-        <div class="kpi-value">@(_etaPending + _etaFailed)<span class="kpi-unit">@(IsArabic ? "إرسال" : "open")</span></div>
-        <div class="kpi-meta">
+    @{
+        var etaTone = (_etaFailed > 0 || _etaCriticalCount > 0) ? "kpi-card-danger"
+                    : _etaPending >= 5 ? "kpi-card-warn"
+                    : _etaPending > 0 ? "kpi-card-warn"
+                    : "kpi-card-ok";
+    }
+    <a href="eta-dashboard" class="kpi-card-v2 @etaTone">
+        <div class="kpi-v2-label"><Icon Name="shield" Class="ic" />@(IsArabic ? "الفاتورة الإلكترونية" : "ETA status")</div>
+        <div class="kpi-v2-value">
+            @(_etaPending + _etaFailed)<span class="kpi-v2-unit">@(IsArabic ? "إرسال" : "open")</span>
+        </div>
+        <div class="kpi-v2-meta">
             @if (_etaFailed > 0)
             {
-                <span class="kpi-trend-down">@_etaFailed @(IsArabic ? "فاشل" : "failed")</span>
-                <span> · </span>
+                <span>@_etaFailed @(IsArabic ? "فاشل" : "failed") · </span>
             }
             <span>@_etaPending @(IsArabic ? "قيد الإرسال" : "pending")</span>
             @if (_etaCriticalCount > 0)
             {
-                <br /><a href="eta-dashboard">@_etaCriticalCount @(IsArabic ? "حرج خلال 24 ساعة ←" : "critical (<24h) →")</a>
+                <span> · </span>
+                <span style="font-weight:600;">@_etaCriticalCount @(IsArabic ? "حرج خلال 24س" : "critical (&lt;24h)")</span>
             }
         </div>
-    </div>
-
-    <div class="kpi-card @((_expensesMissingAttachment + _purchasesMissingAttachment) > 0 ? "kpi-warning" : "kpi-success")">
-        <div class="kpi-label"><Icon Name="paperclip" Class="ic" />@(IsArabic ? "مرفقات ناقصة" : "Missing attachments")</div>
-        <div class="kpi-value">@(_expensesMissingAttachment + _purchasesMissingAttachment)<span class="kpi-unit">@(IsArabic ? "مستند" : "docs")</span></div>
-        <div class="kpi-meta">
-            @(IsArabic ? "مصروفات" : "Expenses") @_expensesMissingAttachment
-            <span style="opacity:0.5">·</span>
-            @(IsArabic ? "مشتريات" : "Purchases") @_purchasesMissingAttachment
-        </div>
-    </div>
-
-    <div class="kpi-card @(_pendingApprovalCount > 0 ? "kpi-warning" : "kpi-success")">
-        <div class="kpi-label"><Icon Name="check-square" Class="ic" />@(IsArabic ? "اعتمادات معلّقة" : "Pending approvals")</div>
-        <div class="kpi-value">@_pendingApprovalCount<span class="kpi-unit">@(IsArabic ? "طلب" : "items")</span></div>
-        <div class="kpi-meta">
-            @if (_pendingApprovalCount > 0)
-            {
-                <a href="approvals">@(IsArabic ? "افتح القائمة ←" : "Open queue →")</a>
-            }
-            else
-            {
-                @(IsArabic ? "لا يوجد ما يحتاج اعتماد" : "Nothing waiting")
-            }
-        </div>
-    </div>
-
-    <div class="kpi-card kpi-info">
-        <div class="kpi-label"><Icon Name="edit" Class="ic" />@(IsArabic ? "مسودات" : "Draft invoices")</div>
-        <div class="kpi-value">@_draftsCount<span class="kpi-unit">@(IsArabic ? "مسودة" : "drafts")</span></div>
-        <div class="kpi-meta">
-            @if (_draftsCount > 0)
-            {
-                <a href="invoices">@(IsArabic ? "اعرض المسودات ←" : "Show drafts →")</a>
-            }
-            else
-            {
-                @(IsArabic ? "كل المبيعات مرحّلة" : "All sales posted")
-            }
-        </div>
-    </div>
+    </a>
 </section>
 
-<!-- Quick actions -->
-<h2>@(IsArabic ? "إجراءات سريعة" : "Quick actions")</h2>
-<section class="quick-actions">
-    <a class="quick-action" href="invoices/new">
-        <div class="quick-action-icon"><Icon Name="file-text" Class="ic" /></div>
-        <div class="quick-action-title">@(IsArabic ? "فاتورة مبيعات جديدة" : "New sales invoice")</div>
-        <div class="quick-action-desc">@(IsArabic ? "أنشئ مسودة وأرسل للاعتماد" : "Draft and send for approval")</div>
-    </a>
-    <a class="quick-action" href="purchase-invoices/new">
-        <div class="quick-action-icon"><Icon Name="package" Class="ic" /></div>
-        <div class="quick-action-title">@(IsArabic ? "فاتورة شراء" : "New purchase")</div>
-        <div class="quick-action-desc">@(IsArabic ? "سجّل فاتورة من مورد" : "Record a supplier invoice")</div>
-    </a>
-    <a class="quick-action" href="expenses/new">
-        <div class="quick-action-icon"><Icon Name="credit-card" Class="ic" /></div>
-        <div class="quick-action-title">@(IsArabic ? "مصروف جديد" : "New expense")</div>
-        <div class="quick-action-desc">@(IsArabic ? "صنّف وأرفق الإيصال" : "Categorize and attach receipt")</div>
-    </a>
-    <a class="quick-action" href="reports/vat-monthly">
-        <div class="quick-action-icon"><Icon Name="bar-chart" Class="ic" /></div>
-        <div class="quick-action-title">@(IsArabic ? "تقرير الضريبة" : "VAT report")</div>
-        <div class="quick-action-desc">@(IsArabic ? "نموذج 10 الشهري" : "Monthly Form 10")</div>
-    </a>
-    <a class="quick-action" href="reports/trial-balance">
-        <div class="quick-action-icon"><Icon Name="scale" Class="ic" /></div>
-        <div class="quick-action-title">@(IsArabic ? "ميزان المراجعة" : "Trial balance")</div>
-        <div class="quick-action-desc">@(IsArabic ? "تحقق من توازن الدفاتر" : "Verify books balance")</div>
-    </a>
-    <a class="quick-action" href="eta-dashboard">
-        <div class="quick-action-icon"><Icon Name="shield" Class="ic" /></div>
-        <div class="quick-action-title">@(IsArabic ? "لوحة الفاتورة الإلكترونية" : "ETA dashboard")</div>
-        <div class="quick-action-desc">@(IsArabic ? "متابعة الإرسال والمواعيد" : "Track submissions and deadlines")</div>
-    </a>
+<!-- Gux.7 — Upcoming-deadlines widget. Tax deadlines are the #1
+     customer anxiety per the market analysis; surface them here so
+     the operator never has to remember to check the calendar. -->
+<section class="dashboard-row">
+    <div class="dashboard-col">
+        <h2 class="dashboard-section-h2">@(IsArabic ? "📅 المواعيد القادمة" : "📅 Upcoming deadlines")</h2>
+        @if (_upcomingDeadlines.Count == 0)
+        {
+            <div class="kpi-card kpi-success">
+                @(IsArabic
+                    ? "لا توجد مواعيد ضريبية في الـ 30 يوم القادمة. ✓"
+                    : "No tax deadlines in the next 30 days. ✓")
+            </div>
+        }
+        else
+        {
+            <ul class="deadline-list">
+                @foreach (var d in _upcomingDeadlines)
+                {
+                    var days = d.DueDate.DayNumber - DateOnly.FromDateTime(DateTime.UtcNow).DayNumber;
+                    <li class="deadline-row @DeadlineUrgencyClass(d.DueDate)">
+                        <div class="deadline-date">
+                            <div class="deadline-date-day">@d.DueDate.Day</div>
+                            <div class="deadline-date-month">@MonthName(d.DueDate.Month)</div>
+                        </div>
+                        <div class="deadline-body">
+                            <div class="deadline-title">@DeadlineKindLabel(d.Kind)</div>
+                            <div class="deadline-meta">
+                                @if (days <= 0)
+                                {
+                                    @(IsArabic ? "مستحقة اليوم" : "due today")
+                                }
+                                else if (days == 1)
+                                {
+                                    @(IsArabic ? "بعد يوم" : "in 1 day")
+                                }
+                                else
+                                {
+                                    @(IsArabic ? $"بعد {days} يوم" : $"in {days} days")
+                                }
+                            </div>
+                        </div>
+                        <a href="compliance/calendar" class="deadline-cta">→</a>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+
+    <div class="dashboard-col">
+        <h2 class="dashboard-section-h2">@(IsArabic ? "🔗 روابط سريعة" : "🔗 Quick links")</h2>
+        <div class="dashboard-quicklinks">
+            <a href="reports/vat-monthly" class="quicklink-row">
+                <Icon Name="bar-chart" Class="ic" />
+                <span>@(IsArabic ? "تقرير الضريبة الشهري" : "Monthly VAT report")</span>
+            </a>
+            <a href="reports/trial-balance" class="quicklink-row">
+                <Icon Name="scale" Class="ic" />
+                <span>@(IsArabic ? "ميزان المراجعة" : "Trial balance")</span>
+            </a>
+            <a href="cockpit" class="quicklink-row">
+                <Icon Name="target" Class="ic" />
+                <span>@(IsArabic ? "قمرة الإقفال الشهري" : "Closing cockpit")</span>
+            </a>
+            <a href="payments/unmatched" class="quicklink-row">
+                <Icon Name="search" Class="ic" />
+                <span>@(IsArabic ? "بنود البنك غير المطابقة" : "Unmatched bank lines")</span>
+            </a>
+        </div>
+    </div>
 </section>
 
 <!-- Activity feed -->
