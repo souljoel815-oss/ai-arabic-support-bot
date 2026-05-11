@@ -57,6 +57,10 @@
     <PackageVersion Include="ClosedXML" Version="0.104.1" />
   </ItemGroup>
 
+  <ItemGroup Label="OCR (G3.2 — receipt scanner)">
+    <PackageVersion Include="Tesseract" Version="5.2.0" />
+  </ItemGroup>
+
   <ItemGroup Label="WiX 5 installer (T247)">
     <PackageVersion Include="WixToolset.Firewall.wixext" Version="5.0.2" />
     <PackageVersion Include="WixToolset.Util.wixext" Version="5.0.2" />

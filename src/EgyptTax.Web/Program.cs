@@ -420,6 +420,16 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Tax.GenerateVatReturnHandler>
 // (Law 91 brackets for Standard, Law 6 turnover for simplified).
 builder.Services.AddScoped<EgyptTax.Infrastructure.Tax.GenerateIncomeTaxReturnHandler>();
 
+// G3.2 — Receipt OCR. Tesseract loads native libs + tessdata
+// language packs lazily on first request; if tessdata is missing,
+// the service returns Unavailable rather than crashing so the rest
+// of the app keeps working. Configure tessdata location via the
+// "Tesseract" config section (defaults to {contentRoot}/tessdata).
+builder.Services.Configure<EgyptTax.Infrastructure.Ocr.TesseractOptions>(
+    builder.Configuration.GetSection("Tesseract"));
+builder.Services.AddSingleton<EgyptTax.Application.Ocr.IReceiptOcrService,
+    EgyptTax.Infrastructure.Ocr.TesseractReceiptOcrService>();
+
 // G2.2 — WhatsApp invoice delivery. Default to the mock dispatcher
 // (writes the audit row + logs but doesn't hit the network); swap
 // to MetaCloudWhatsAppDispatcher when the vendor's Meta WhatsApp
@@ -870,6 +880,46 @@ app.MapFallbackToPage("/_Host");
 // G1.2 — Bulk-invoice template download. Stream the XLSX bytes
 // straight back so the browser fires a Save-As dialog. No DB
 // access required; the template is fixed by code.
+// G3.2 — OCR a receipt image and return draft fields the expense
+// form can pre-fill. POST a multipart/form-data with field name
+// "image" pointing at a JPEG/PNG. Returns 200 with extracted draft
+// + raw text on success; 503 with a "download tessdata" hint when
+// Tesseract isn't installed (graceful degradation rather than 500).
+app.MapPost("/api/v1/expenses/ocr", async (
+    HttpRequest request,
+    EgyptTax.Application.Ocr.IReceiptOcrService ocr,
+    CancellationToken ct) =>
+{
+    if (!request.HasFormContentType)
+        return Results.BadRequest(new { error = "Expected multipart/form-data with an 'image' file." });
+    var form = await request.ReadFormAsync(ct);
+    var file = form.Files.GetFile("image");
+    if (file is null || file.Length == 0)
+        return Results.BadRequest(new { error = "No 'image' file in form data." });
+    if (file.Length > 10 * 1024 * 1024)
+        return Results.BadRequest(new { error = "Image too large (max 10 MB)." });
+
+    using var ms = new MemoryStream();
+    await file.CopyToAsync(ms, ct);
+    var result = await ocr.RecognizeAsync(ms.ToArray(), ct);
+
+    if (!result.Available)
+        return Results.Json(new { available = false, reason = result.UnavailableReason }, statusCode: 503);
+
+    return Results.Ok(new
+    {
+        available = true,
+        draft = new
+        {
+            totalEgp = result.Draft!.TotalEgp,
+            date = result.Draft.Date?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            supplierName = result.Draft.SupplierName,
+            note = result.Draft.ExtractorNote,
+        },
+        rawText = result.RawText,
+    });
+}).RequireAuthorization("FullyAuthenticated");
+
 app.MapGet("/api/v1/invoices/bulk/template", () =>
 {
     var bytes = EgyptTax.Application.Invoices.Bulk.BulkSalesInvoiceTemplate.Build();

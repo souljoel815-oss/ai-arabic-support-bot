@@ -3122,3 +3122,23 @@ a.btn-secondary .ic {
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
+
+/* G3.2 — receipt OCR scan button on /expenses/new. The label wraps
+   a hidden InputFile so the whole pill is clickable. */
+.ocr-scan-section {
+    margin: 12px 0 20px;
+}
+.ocr-scan-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 10px 18px;
+    font-size: 15px;
+    font-weight: 600;
+}
+.ocr-status {
+    margin-inline-start: 12px;
+    color: var(--text-muted, #6b7280);
+    font-size: 14px;
+}

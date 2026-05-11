@@ -17,6 +17,7 @@
 @inject NavigationManager Nav
 @inject UploadAttachmentHandler UploadHandler
 @inject AuthenticationStateProvider AuthState
+@inject EgyptTax.Application.Ocr.IReceiptOcrService Ocr
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <h1>@(_isNew ? (IsArabic ? "مصروف جديد" : "New expense") : (IsArabic ? "تعديل مصروف" : "Edit expense"))</h1>
@@ -47,6 +48,34 @@
 @if (_flash is not null)
 {
     <div class="@_flashClass" role="status">@_flash</div>
+}
+
+@*
+    G3.2 — Mobile-first receipt scan. The capture="environment"
+    attribute opens the rear camera on phones; on desktop it falls
+    back to a file picker so the operator can drop in a scan. After
+    capture we call IReceiptOcrService directly (Blazor Server, no
+    HTTP round-trip needed) and prefill the form with whatever the
+    extractor found.
+*@
+@if (_isNew)
+{
+    <section class="ocr-scan-section">
+        <label class="btn-primary ocr-scan-btn">
+            <Icon Name="camera" Class="ic" />
+            @(IsArabic ? "🧾 صوّر إيصال" : "🧾 Scan receipt")
+            <InputFile OnChange="OnOcrCaptureAsync" accept="image/*" capture="environment"
+                       disabled="@_ocrRunning" style="display:none;" />
+        </label>
+        @if (_ocrRunning)
+        {
+            <span class="ocr-status">@(IsArabic ? "جارٍ القراءة…" : "Reading…")</span>
+        }
+        @if (_ocrFlash is not null)
+        {
+            <div class="@_ocrFlashClass" style="margin-top:8px;">@_ocrFlash</div>
+        }
+    </section>
 }
 
 <EditForm Model="_form" OnValidSubmit="OnSaveDraftAsync" FormName="expense-edit" class="form-grid">
@@ -129,6 +158,11 @@
     private string? _flash;
     private string _flashClass = "flash-success";
     private bool _uploading;
+
+    // G3.2 — receipt OCR scan state
+    private bool _ocrRunning;
+    private string? _ocrFlash;
+    private string _ocrFlashClass = "kpi-card kpi-info";
 
     protected override async Task OnInitializedAsync()
     {
@@ -214,6 +248,82 @@
 
         _flash = IsArabic ? "تم حفظ المسودة." : "Draft saved.";
         _flashClass = "flash-success";
+    }
+
+    private async Task OnOcrCaptureAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        _ocrRunning = true;
+        _ocrFlash = null;
+        try
+        {
+            // 10 MB cap matches the API endpoint guard so the
+            // operator gets a clear error before we do any work.
+            const long maxBytes = 10 * 1024 * 1024;
+            await using var stream = file.OpenReadStream(maxAllowedSize: maxBytes);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var result = await Ocr.RecognizeAsync(ms.ToArray());
+
+            if (!result.Available)
+            {
+                _ocrFlash = IsArabic
+                    ? $"محرك OCR غير متاح: {result.UnavailableReason}"
+                    : $"OCR engine not available: {result.UnavailableReason}";
+                _ocrFlashClass = "kpi-card kpi-warn";
+                return;
+            }
+
+            var draft = result.Draft!;
+            var prefilled = new List<string>();
+            if (draft.TotalEgp is { } amt && amt > 0m)
+            {
+                _form.Amount = amt;
+                prefilled.Add(IsArabic ? "المبلغ" : "amount");
+            }
+            if (draft.Date is { } d)
+            {
+                _form.DocumentDate = d.ToDateTime(TimeOnly.MinValue);
+                prefilled.Add(IsArabic ? "التاريخ" : "date");
+            }
+            if (!string.IsNullOrWhiteSpace(draft.SupplierName))
+            {
+                // Supplier name on the receipt is usually one line —
+                // mirror it into both description fields so the
+                // operator only needs to translate one if at all.
+                if (string.IsNullOrWhiteSpace(_form.DescriptionEnglish))
+                    _form.DescriptionEnglish = draft.SupplierName;
+                if (string.IsNullOrWhiteSpace(_form.DescriptionArabic))
+                    _form.DescriptionArabic = draft.SupplierName;
+                prefilled.Add(IsArabic ? "اسم المحل" : "supplier");
+            }
+
+            if (prefilled.Count == 0)
+            {
+                _ocrFlash = IsArabic
+                    ? "تم قراءة الإيصال لكن لم يتمكن البرنامج من التعرف على أي حقل. اكتب البيانات يدوياً."
+                    : "Receipt read OK but no fields recognised. Please type the values manually.";
+                _ocrFlashClass = "kpi-card kpi-warn";
+            }
+            else
+            {
+                var note = draft.ExtractorNote is { } n ? $" ({n})" : "";
+                _ocrFlash = IsArabic
+                    ? $"✓ تم تعبئة: {string.Join("، ", prefilled)}{note}. راجع الأرقام قبل الحفظ."
+                    : $"✓ Prefilled: {string.Join(", ", prefilled)}{note}. Review before saving.";
+                _ocrFlashClass = "kpi-card kpi-info";
+            }
+        }
+        catch (Exception ex)
+        {
+            _ocrFlash = ex.Message;
+            _ocrFlashClass = "kpi-card kpi-error";
+        }
+        finally
+        {
+            _ocrRunning = false;
+        }
     }
 
     private async Task OnUploadAsync(InputFileChangeEventArgs e)
