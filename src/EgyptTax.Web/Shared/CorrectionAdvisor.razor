@@ -1,0 +1,191 @@
+@*
+    P1.9 — Cancel-vs-Credit-Note decision wizard.
+
+    Egyptian e-invoice rules give an issuer two correction tracks
+    after ETA accepts a sales invoice:
+      - CANCEL (إلغاء): within 7 days, requires buyer approval via ETA portal
+      - CREDIT NOTE (إشعار خصم): within 60 days, no buyer approval needed
+      - After 60 days: no correction possible — book the loss
+
+    This component takes the SalesInvoice + EtaSubmission and renders:
+      1. A 3-segment timeline showing where "now" sits
+      2. The recommended action with countdown
+      3. Action buttons that pre-fill the appropriate flow
+
+    Mounted on SalesInvoiceDetail.razor below the action section for
+    Posted (non-credit-note) invoices.
+*@
+
+@using System.Globalization
+@using EgyptTax.Domain.Eta
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    [Parameter, EditorRequired] public Guid InvoiceId { get; set; }
+    [Parameter, EditorRequired] public string DocumentNumber { get; set; } = "";
+    [Parameter] public DateTime? SubmittedAtUtc { get; set; }
+    [Parameter] public EtaSubmissionStatus EtaStatus { get; set; }
+
+    private const int CancelWindowDays = 7;
+    private const int CreditWindowDays = 60;
+
+    // --- Computed properties ---
+    private bool HasUuid => SubmittedAtUtc.HasValue && EtaStatus == EtaSubmissionStatus.Submitted;
+    private DateTime Now => DateTime.UtcNow;
+    private TimeSpan? Age => SubmittedAtUtc.HasValue ? Now - SubmittedAtUtc.Value : (TimeSpan?)null;
+    private DateTime? CancelDeadline => SubmittedAtUtc?.AddDays(CancelWindowDays);
+    private DateTime? CreditDeadline => SubmittedAtUtc?.AddDays(CreditWindowDays);
+
+    private bool CanCancel => HasUuid && Now <= CancelDeadline;
+    private bool CanCredit => HasUuid && Now <= CreditDeadline;
+    private bool BothBlocked => HasUuid && Now > CreditDeadline;
+
+    // 0..100% position of "now" along the 60-day timeline
+    private double NowPositionPercent
+    {
+        get
+        {
+            if (!HasUuid || Age is null) return 0;
+            var pct = (Age.Value.TotalDays / CreditWindowDays) * 100;
+            return Math.Min(100, Math.Max(0, pct));
+        }
+    }
+
+    private string FormatDaysRemaining(DateTime deadline)
+    {
+        var span = deadline - Now;
+        if (span.TotalDays >= 1)
+        {
+            var days = (int)Math.Floor(span.TotalDays);
+            return IsArabic ? $"{days} يوم" : $"{days} days";
+        }
+        if (span.TotalHours >= 1)
+        {
+            return IsArabic ? $"{(int)span.TotalHours} ساعة" : $"{(int)span.TotalHours} hours";
+        }
+        return IsArabic ? "أقل من ساعة" : "less than an hour";
+    }
+}
+
+<section class="correction-advisor">
+    <div class="advisor-header">
+        <div class="advisor-title">
+            <span class="advisor-icon">
+                <Icon Name="edit" Class="ic" />
+            </span>
+            <h2 style="margin:0;">@(IsArabic ? "تصحيح المستند (FR-013)" : "Document correction (FR-013)")</h2>
+        </div>
+        @if (HasUuid)
+        {
+            <div class="advisor-meta">
+                @(IsArabic ? "أُرسلت إلى مصلحة الضرائب في" : "Submitted to ETA on")
+                <strong>@SubmittedAtUtc!.Value.ToString("yyyy-MM-dd HH:mm")</strong> UTC
+            </div>
+        }
+    </div>
+
+    @if (!HasUuid)
+    {
+        <div class="advisor-blocked">
+            <Icon Name="shield-alert" Class="ic" />
+            <div>
+                <strong>@(IsArabic ? "لم يُقبل المستند من ETA بعد" : "Not yet accepted by ETA")</strong>
+                <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">
+                    @(IsArabic
+                        ? "الإلغاء وإشعار الخصم متاحان فقط بعد قبول مصلحة الضرائب للمستند. تابع لوحة الفاتورة الإلكترونية لإكمال الإرسال أولاً."
+                        : "Cancel and credit-note tracks are only available after ETA accepts the document. Track the ETA dashboard to complete submission first.")
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Timeline -->
+        <div class="advisor-timeline">
+            <div class="timeline-track">
+                <div class="timeline-segment seg-cancel" style="width: @((CancelWindowDays * 100.0 / CreditWindowDays).ToString("0.##", CultureInfo.InvariantCulture))%;">
+                    <div class="seg-label">@(IsArabic ? "نافذة الإلغاء (7 أيام)" : "Cancel window (7 days)")</div>
+                </div>
+                <div class="timeline-segment seg-credit">
+                    <div class="seg-label">@(IsArabic ? "نافذة إشعار الخصم (حتى 60 يوم)" : "Credit-note window (up to 60 days)")</div>
+                </div>
+                <div class="timeline-now" style="inset-inline-start: @(NowPositionPercent.ToString("0.##", CultureInfo.InvariantCulture))%;">
+                    <div class="now-marker"></div>
+                    <div class="now-label">@(IsArabic ? "الآن" : "Now")</div>
+                </div>
+            </div>
+            <div class="timeline-axis">
+                <span>@(IsArabic ? "يوم 0" : "Day 0")</span>
+                <span>@(IsArabic ? "يوم 7" : "Day 7")</span>
+                <span>@(IsArabic ? "يوم 60" : "Day 60")</span>
+            </div>
+        </div>
+
+        <!-- Status banner -->
+        @if (CanCancel)
+        {
+            <div class="advisor-banner banner-info">
+                <Icon Name="check-circle" Class="ic" />
+                <div>
+                    <strong>@(IsArabic ? "كلا الخيارين متاحين" : "Both tracks available")</strong>
+                    <div class="banner-meta">
+                        @(IsArabic
+                            ? $"متبقي {FormatDaysRemaining(CancelDeadline!.Value)} للإلغاء، ثم يتبقى إشعار الخصم لمدة {FormatDaysRemaining(CreditDeadline!.Value)} الباقية."
+                            : $"{FormatDaysRemaining(CancelDeadline!.Value)} left to cancel, then credit-note remains available for {FormatDaysRemaining(CreditDeadline!.Value)}.")
+                    </div>
+                </div>
+            </div>
+        }
+        else if (CanCredit)
+        {
+            <div class="advisor-banner banner-warning">
+                <Icon Name="shield-alert" Class="ic" />
+                <div>
+                    <strong>@(IsArabic ? "إشعار خصم فقط" : "Credit-note only")</strong>
+                    <div class="banner-meta">
+                        @(IsArabic
+                            ? $"انتهت نافذة الإلغاء (7 أيام). متبقي {FormatDaysRemaining(CreditDeadline!.Value)} لإصدار إشعار خصم. بعد ذلك لن يكون التصحيح ممكناً."
+                            : $"Cancel window expired (7 days). {FormatDaysRemaining(CreditDeadline!.Value)} left to issue a credit note. After that, no correction is possible.")
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="advisor-banner banner-danger">
+                <Icon Name="alert-triangle" Class="ic" />
+                <div>
+                    <strong>@(IsArabic ? "انتهت مهلة التصحيح" : "Correction window closed")</strong>
+                    <div class="banner-meta">
+                        @(IsArabic
+                            ? "مرّ أكثر من 60 يوم من قبول الفاتورة. لا يمكن إصدار إشعار خصم. لو في خطأ ضريبي، استشر محاسبك القانوني — قد يحتاج تسوية في الإقرار السنوي."
+                            : "More than 60 days since ETA acceptance. Credit notes are no longer permitted. If a tax error exists, consult your CPA — it may require annual-return adjustment.")
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Action buttons -->
+        <div class="advisor-actions">
+            @if (CanCancel)
+            {
+                <a href="invoices/@InvoiceId/cancel" class="btn-secondary" style="border-color:var(--danger);color:var(--danger-text);">
+                    <Icon Name="alert-triangle" Class="ic" />@(IsArabic ? "طلب إلغاء (يحتاج موافقة العميل)" : "Request cancel (buyer must approve)")
+                </a>
+            }
+            @if (CanCredit)
+            {
+                <a href="invoices/@InvoiceId/credit-note/new" class="btn-primary">
+                    <Icon Name="file-text" Class="ic" />@(IsArabic ? "إصدار إشعار خصم" : "Issue credit note")
+                </a>
+            }
+            @if (BothBlocked)
+            {
+                <span style="color:var(--text-muted);font-style:italic;">
+                    @(IsArabic ? "لا يوجد إجراء متاح من النظام." : "No action available from the system.")
+                </span>
+            }
+        </div>
+    }
+</section>

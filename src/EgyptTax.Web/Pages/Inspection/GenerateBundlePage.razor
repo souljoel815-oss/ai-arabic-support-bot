@@ -8,30 +8,31 @@
 @inject IJSRuntime Js
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Generate tax-inspection bundle (US9 / FR-048)</h1>
+<h1>@(IsArabic ? "إنشاء حزمة فحص ضريبي (US9 / FR-048)" : "Generate tax-inspection bundle (US9 / FR-048)")</h1>
 
 <p>
-    Builds a period-scoped ZIP containing the audit-trail extract, every attachment
-    for posted documents in the period, and a SHA-256 manifest. Hand the bundle to
-    the inspector — they can re-verify integrity on a clean machine using the
-    instructions in the bundled <code>README-FOR-INSPECTOR.md</code>.
+    @(IsArabic
+        ? "ينتج ملف مضغوط (ZIP) للفترة المحددة يحوي مستخرج سجل التدقيق، وكل المرفقات للمستندات المُرحَّلة في الفترة، إلى جانب فهرس SHA-256. سلِّم الحزمة للمفتش — يقدر يعيد التحقق من سلامتها على جهاز نظيف باستخدام التعليمات في README-FOR-INSPECTOR.md المضمّن."
+        : "Builds a period-scoped ZIP containing the audit-trail extract, every attachment for posted documents in the period, and a SHA-256 manifest. Hand the bundle to the inspector — they can re-verify integrity on a clean machine using the instructions in the bundled README-FOR-INSPECTOR.md.")
 </p>
 
 <form class="invoice-toolbar" @onsubmit="OnGenerateAsync" @onsubmit:preventDefault>
     <label>
-        <span>Period start</span>
+        <span>@(IsArabic ? "بداية الفترة" : "Period start")</span>
         <input type="date" @bind="_periodStart" />
     </label>
     <label>
-        <span>Period end</span>
+        <span>@(IsArabic ? "نهاية الفترة" : "Period end")</span>
         <input type="date" @bind="_periodEnd" />
     </label>
     <label>
         <input type="checkbox" @bind="_allowDrafts" />
-        Allow drafts in period (write their ids into the manifest as excluded)
+        @(IsArabic
+            ? "السماح بالمسودات في الفترة (تُكتب أرقامها في الفهرس كمستثناة)"
+            : "Allow drafts in period (write their ids into the manifest as excluded)")
     </label>
     <button type="submit" class="btn-primary" disabled="@_busy">
-        @(_busy ? "Building…" : "Generate bundle")
+        @(_busy ? (IsArabic ? "جارٍ الإنشاء…" : "Building…") : (IsArabic ? "إنشاء الحزمة" : "Generate bundle"))
     </button>
 </form>
 
@@ -43,19 +44,21 @@
 @if (_lastResult is not null)
 {
     <section class="invoice-totals">
-        <div class="grand"><strong>Bundle ready: @_lastResult.SuggestedFilename</strong></div>
-        <div><strong>Files:</strong> @_lastResult.Manifest.Files.Count</div>
-        <div><strong>Audit entries in extract:</strong>
+        <div class="grand"><strong>@(IsArabic ? $"الحزمة جاهزة: {_lastResult.SuggestedFilename}" : $"Bundle ready: {_lastResult.SuggestedFilename}")</strong></div>
+        <div><strong>@(IsArabic ? "الملفات:" : "Files:")</strong> @_lastResult.Manifest.Files.Count</div>
+        <div><strong>@(IsArabic ? "قيود التدقيق في المستخرج:" : "Audit entries in extract:")</strong>
             @(_lastResult.Manifest.AuditChainExtract.EndIndex - _lastResult.Manifest.AuditChainExtract.StartIndex + 1)
-            (indices @_lastResult.Manifest.AuditChainExtract.StartIndex..@_lastResult.Manifest.AuditChainExtract.EndIndex)
+            (@(IsArabic ? "الفهارس" : "indices") @_lastResult.Manifest.AuditChainExtract.StartIndex..@_lastResult.Manifest.AuditChainExtract.EndIndex)
         </div>
-        <div><strong>Top-level archive SHA-256:</strong> <code>@_lastResult.Manifest.TopLevelArchiveSha256[..16]…</code></div>
+        <div><strong>@(IsArabic ? "بصمة الأرشيف الأعلى SHA-256:" : "Top-level archive SHA-256:")</strong> <code>@_lastResult.Manifest.TopLevelArchiveSha256[..16]…</code></div>
         @if (_lastResult.Manifest.DraftsExcluded)
         {
             <div class="flash-error">
-                <strong>Drafts excluded:</strong>
-                @_lastResult.Manifest.ExcludedDraftIds!.Count draft document(s) in period were NOT included.
-                Their ids appear in the manifest's <code>excludedDraftIds</code> field.
+                <strong>@(IsArabic ? "مسودات مستثناة:" : "Drafts excluded:")</strong>
+                @_lastResult.Manifest.ExcludedDraftIds!.Count
+                @(IsArabic
+                    ? "مستند مسودة في الفترة لم يُضمَّن. أرقامها تظهر في حقل excludedDraftIds في الفهرس."
+                    : "draft document(s) in period were NOT included. Their ids appear in the manifest's excludedDraftIds field.")
             </div>
         }
     </section>
@@ -97,7 +100,9 @@
             await Js.InvokeVoidAsync("eval",
                 $"const b=atob('{base64}');const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++){{a[i]=b.charCodeAt(i);}}const u=URL.createObjectURL(new Blob([a],{{type:'application/zip'}}));const link=document.createElement('a');link.href=u;link.download='{_lastResult.SuggestedFilename}';link.click();URL.revokeObjectURL(u);");
 
-            _flash = $"Generated bundle: {_lastResult.SuggestedFilename} ({_lastResult.ZipBytes.Length:N0} bytes).";
+            _flash = IsArabic
+                ? $"تم إنشاء الحزمة: {_lastResult.SuggestedFilename} ({_lastResult.ZipBytes.Length:N0} بايت)."
+                : $"Generated bundle: {_lastResult.SuggestedFilename} ({_lastResult.ZipBytes.Length:N0} bytes).";
             _flashClass = "flash-success";
         }
         catch (Exception ex)

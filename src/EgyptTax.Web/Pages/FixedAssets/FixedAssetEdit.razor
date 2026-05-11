@@ -8,74 +8,74 @@
 @inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<a href="/fixed-assets" class="btn-secondary">← Back to list</a>
+<a href="/fixed-assets" class="btn-secondary">← @(IsArabic ? "العودة إلى القائمة" : "Back to list")</a>
 
-<h1>New fixed asset / أصل ثابت جديد</h1>
+<h1>@(IsArabic ? "أصل ثابت جديد" : "New fixed asset")</h1>
 
 <form @onsubmit="OnSave" @onsubmit:preventDefault>
     <div class="invoice-toolbar">
         <label>
-            <span>Code</span>
+            <span>@(IsArabic ? "الكود" : "Code")</span>
             <input type="text" @bind="_code" required />
         </label>
         <label>
-            <span>Asset category</span>
-            <input type="text" @bind="_category" required placeholder="Equipment / Vehicles / …" />
+            <span>@(IsArabic ? "فئة الأصل" : "Asset category")</span>
+            <input type="text" @bind="_category" required placeholder="@(IsArabic ? "معدات / مركبات / …" : "Equipment / Vehicles / …")" />
         </label>
     </div>
     <div class="invoice-toolbar">
         <label>
-            <span>Description (English)</span>
+            <span>@(IsArabic ? "الوصف (إنجليزي)" : "Description (English)")</span>
             <input type="text" @bind="_descEn" required />
         </label>
         <label>
-            <span>Description (Arabic)</span>
+            <span>@(IsArabic ? "الوصف (عربي)" : "Description (Arabic)")</span>
             <input type="text" @bind="_descAr" required dir="rtl" />
         </label>
     </div>
     <div class="invoice-toolbar">
         <label>
-            <span>Cost (EGP)</span>
+            <span>@(IsArabic ? "التكلفة (ج.م.)" : "Cost (EGP)")</span>
             <input type="number" step="0.01" min="0.01" @bind="_cost" required />
         </label>
         <label>
-            <span>Salvage value (EGP)</span>
+            <span>@(IsArabic ? "القيمة التخريدية (ج.م.)" : "Salvage value (EGP)")</span>
             <input type="number" step="0.01" min="0" @bind="_salvage" />
         </label>
     </div>
     <div class="invoice-toolbar">
         <label>
-            <span>In-service date</span>
+            <span>@(IsArabic ? "تاريخ التشغيل" : "In-service date")</span>
             <input type="date" @bind="_inServiceDate" required />
         </label>
         <label>
-            <span>Useful life (months)</span>
+            <span>@(IsArabic ? "العمر النافع (أشهر)" : "Useful life (months)")</span>
             <input type="number" min="1" @bind="_usefulLifeMonths" required />
         </label>
         <label>
-            <span>Convention</span>
+            <span>@(IsArabic ? "الاصطلاح" : "Convention")</span>
             <select @bind="_convention">
-                <option value="@DepreciationConvention.FullMonth">Full month</option>
-                <option value="@DepreciationConvention.MidMonth">Mid-month (US6 sc 2)</option>
+                <option value="@DepreciationConvention.FullMonth">@(IsArabic ? "شهر كامل" : "Full month")</option>
+                <option value="@DepreciationConvention.MidMonth">@(IsArabic ? "نصف الشهر (US6 سيناريو 2)" : "Mid-month (US6 sc 2)")</option>
             </select>
         </label>
     </div>
     <p>
         <button type="submit" class="btn-primary" disabled="@_saving">
-            @(_saving ? "Saving…" : "Create draft")
+            @(_saving ? (IsArabic ? "جارٍ الحفظ…" : "Saving…") : (IsArabic ? "إنشاء مسودة" : "Create draft"))
         </button>
     </p>
 </form>
 
 @if (_error is not null)
 {
-    <div class="flash-error"><strong>Error:</strong> @_error</div>
+    <div class="flash-error"><strong>@(IsArabic ? "خطأ:" : "Error:")</strong> @_error</div>
 }
 
 <p>
-    <em>The new asset starts in <strong>Draft</strong>. Attach supporting documentation (purchase
-    receipt / installation certificate / etc.) and then put it in service — the FR-016 mirror
-    requires at least one attachment before depreciation can begin.</em>
+    <em>@(IsArabic
+        ? "الأصل الجديد يبدأ في حالة مسودة. أرفق المستندات الداعمة (إيصال الشراء / شهادة التركيب / إلخ.) ثم ضعه في الخدمة — مرآة FR-016 تطلب مرفقاً واحداً على الأقل قبل بدء الإهلاك."
+        : "The new asset starts in Draft. Attach supporting documentation (purchase receipt / installation certificate / etc.) and then put it in service — the FR-016 mirror requires at least one attachment before depreciation can begin.")</em>
 </p>
 
 @code {

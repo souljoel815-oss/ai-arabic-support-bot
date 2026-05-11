@@ -8,7 +8,7 @@
 @inject AppDbContext Db
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Expense categories / فئات المصروفات</h1>
+<h1>@(IsArabic ? "فئات المصروفات" : "Expense categories")</h1>
 
 @if (_savedFlash is not null)
 {
@@ -16,18 +16,23 @@
 }
 
 <section class="master-data-list">
-    <h2>Existing categories</h2>
+    <h2>@(IsArabic ? "الفئات الحالية" : "Existing categories")</h2>
     @if (_categories is null)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else if (_categories.Count == 0)
     {
         <p>
             <em>
-                No categories yet. Categories drive the FR-015 default-deductible flag on Expense documents;
-                add the ones your business uses below. Account-id values currently carry forward without a
-                FK constraint until US4 lands the chart of accounts.
+                @if (IsArabic)
+                {
+                    @:لا توجد فئات بعد. الفئات تتحكم في علامة "قابل للخصم" الافتراضية على مستندات المصروفات (FR-015) — أضف الفئات اللي شركتك بتستخدمها بالأسفل.
+                }
+                else
+                {
+                    @:No categories yet. Categories drive the FR-015 default-deductible flag on Expense documents; add the ones your business uses below.
+                }
             </em>
         </p>
     }
@@ -36,12 +41,12 @@
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Code</th>
-                    <th>Name (English)</th>
-                    <th>Name (Arabic)</th>
-                    <th>Default deductible?</th>
-                    <th>Default account id</th>
-                    <th>Status</th>
+                    <th>@(IsArabic ? "الكود" : "Code")</th>
+                    <th>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</th>
+                    <th>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</th>
+                    <th>@(IsArabic ? "قابل للخصم افتراضياً؟" : "Default deductible?")</th>
+                    <th>@(IsArabic ? "رقم الحساب الافتراضي" : "Default account id")</th>
+                    <th>@(IsArabic ? "الحالة" : "Status")</th>
                     <th></th>
                 </tr>
             </thead>
@@ -52,17 +57,17 @@
                         <td>@c.Code</td>
                         <td>@c.Name.English</td>
                         <td>@c.Name.Arabic</td>
-                        <td>@(c.DefaultDeductible ? "yes" : "no")</td>
+                        <td>@(c.DefaultDeductible ? (IsArabic ? "نعم" : "yes") : (IsArabic ? "لا" : "no"))</td>
                         <td>@c.DefaultAccountId.ToString("D")</td>
                         <td>@c.Status</td>
                         <td>
                             @if (c.Status == DeductibleExpenseCategoryStatus.Active)
                             {
-                                <button type="button" @onclick="() => DeactivateAsync(c.Id)">Deactivate</button>
+                                <button type="button" @onclick="() => DeactivateAsync(c.Id)">@(IsArabic ? "تعطيل" : "Deactivate")</button>
                             }
                             else
                             {
-                                <button type="button" @onclick="() => ReactivateAsync(c.Id)">Reactivate</button>
+                                <button type="button" @onclick="() => ReactivateAsync(c.Id)">@(IsArabic ? "إعادة تفعيل" : "Reactivate")</button>
                             }
                         </td>
                     </tr>
@@ -73,33 +78,33 @@
 </section>
 
 <section class="master-data-create">
-    <h2>Add a category</h2>
+    <h2>@(IsArabic ? "إضافة فئة" : "Add a category")</h2>
     <EditForm Model="_form" OnValidSubmit="OnCreateAsync" FormName="expense-category-create" class="form-grid">
         <DataAnnotationsValidator />
         <ValidationSummary />
 
         <label>
-            <span>Code</span>
+            <span>@(IsArabic ? "الكود" : "Code")</span>
             <InputText @bind-Value="_form.Code" />
         </label>
         <label>
-            <span>Name (English)</span>
+            <span>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</span>
             <InputText @bind-Value="_form.NameEnglish" />
         </label>
         <label>
-            <span>Name (Arabic)</span>
+            <span>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</span>
             <InputText @bind-Value="_form.NameArabic" />
         </label>
         <label>
-            <span>Default deductible</span>
+            <span>@(IsArabic ? "قابل للخصم افتراضياً" : "Default deductible")</span>
             <InputCheckbox @bind-Value="_form.DefaultDeductible" />
         </label>
         <label>
-            <span>Default account id (placeholder Guid until US4 CoA seed)</span>
+            <span>@(IsArabic ? "رقم الحساب الافتراضي" : "Default account id")</span>
             <InputText @bind-Value="_form.DefaultAccountId" />
         </label>
 
-        <button type="submit">Add category</button>
+        <button type="submit">@(IsArabic ? "إضافة فئة" : "Add category")</button>
     </EditForm>
 </section>
 
@@ -120,7 +125,7 @@
     {
         if (!Guid.TryParse(_form.DefaultAccountId, out var accountId))
         {
-            _savedFlash = "Default account id must be a valid Guid.";
+            _savedFlash = IsArabic ? "رقم الحساب الافتراضي يجب أن يكون Guid صالح." : "Default account id must be a valid Guid.";
             return;
         }
 
@@ -133,7 +138,7 @@
         await Db.SaveChangesAsync();
 
         _form = new FormModel();
-        _savedFlash = $"Expense category {category.Code} added.";
+        _savedFlash = IsArabic ? $"تمت إضافة فئة المصروفات {category.Code}." : $"Expense category {category.Code} added.";
         await ReloadAsync();
     }
 
@@ -142,7 +147,7 @@
         var c = await Db.Set<DeductibleExpenseCategory>().FirstAsync(x => x.Id == id);
         c.Deactivate();
         await Db.SaveChangesAsync();
-        _savedFlash = $"Category {c.Code} deactivated.";
+        _savedFlash = IsArabic ? $"تم تعطيل الفئة {c.Code}." : $"Category {c.Code} deactivated.";
         await ReloadAsync();
     }
 
@@ -151,7 +156,7 @@
         var c = await Db.Set<DeductibleExpenseCategory>().FirstAsync(x => x.Id == id);
         c.Reactivate();
         await Db.SaveChangesAsync();
-        _savedFlash = $"Category {c.Code} reactivated.";
+        _savedFlash = IsArabic ? $"تم إعادة تفعيل الفئة {c.Code}." : $"Category {c.Code} reactivated.";
         await ReloadAsync();
     }
 

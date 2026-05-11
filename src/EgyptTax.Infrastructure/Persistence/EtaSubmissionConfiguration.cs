@@ -39,6 +39,20 @@ internal sealed class EtaSubmissionConfiguration : IEntityTypeConfiguration<EtaS
         b.Property(s => s.ErrorCode).HasColumnName("error_code").HasMaxLength(64).IsUnicode(false);
         b.Property(s => s.ErrorMessage).HasColumnName("error_message").HasMaxLength(1024);
 
+        // P1.3 — regulator-side acknowledgement / rejection (populated
+        // by the status-polling job, distinct from transport-level
+        // submission state above).
+        b.Property(s => s.RegulatorLongUuid)
+            .HasColumnName("regulator_long_uuid")
+            .HasMaxLength(64)
+            .IsUnicode(false);
+        b.Property(s => s.RegulatorAcknowledgedAtUtc)
+            .HasColumnName("regulator_acknowledged_at_utc")
+            .HasColumnType("datetime2(3)");
+        b.Property(s => s.RegulatorRejectedAtUtc)
+            .HasColumnName("regulator_rejected_at_utc")
+            .HasColumnType("datetime2(3)");
+
         b.Property(s => s.SubmissionWindowExpiresAtUtc)
             .HasColumnName("submission_window_expires_at_utc")
             .HasColumnType("datetime2(3)")

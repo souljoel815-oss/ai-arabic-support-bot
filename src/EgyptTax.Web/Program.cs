@@ -17,6 +17,7 @@ using EgyptTax.SharedKernel.Time;
 using EgyptTax.Web;
 using EgyptTax.Web.Tools;
 using Hangfire;
+using Hangfire.MemoryStorage;
 using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
@@ -36,6 +37,26 @@ if (VerifyAudit.IsVerifyAuditInvocation(args))
 {
     return await VerifyAuditHost.RunAsync(args, CancellationToken.None);
 }
+
+// Vendor-side licensing CLI verbs. license-keygen produces a fresh
+// Ed25519 keypair; license-issue signs a license envelope for a
+// specific customer HWID. Neither needs to bring up Kestrel.
+if (LicenseKeygenHost.IsLicenseKeygenInvocation(args))
+{
+    return LicenseKeygenHost.Run(args);
+}
+if (LicenseIssueHost.IsLicenseIssueInvocation(args))
+{
+    return LicenseIssueHost.Run(args);
+}
+
+// Boot-time license gate. Runs BEFORE WebApplication.CreateBuilder
+// so it's the first thing in the process — the LicenseStatus
+// singleton + LicenseSentry are populated before any request is
+// served or any DB connection opens.
+EgyptTax.Web.Licensing.LicenseGate.Run();
+EgyptTax.SharedKernel.LicenseSentry.IsLicensedProvider =
+    static () => EgyptTax.Web.Licensing.LicenseStatus.IsLicensed;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -155,6 +176,15 @@ builder.Services.AddScoped<
     EgyptTax.Infrastructure.Wht.SqlWhtLifecycleDashboardQuery
 >();
 
+// P1.14 — inbound WHT certificate matcher. Powers the
+// /wht/inbound page where the operator logs a customer-issued
+// withholding certificate and we suggest which sales invoice it
+// likely relates to (±2% tolerance on the implied withholding).
+builder.Services.AddScoped<
+    EgyptTax.Application.Wht.IInboundWhtMatcher,
+    EgyptTax.Infrastructure.Wht.SqlInboundWhtMatcher
+>();
+
 // US5 / FR-019 / FR-022 — date-driven VAT-rate lookup for the
 // settings page's overlap validation + future invoice-line
 // rate-pickers.
@@ -250,6 +280,39 @@ builder.Services.AddScoped<
     EgyptTax.Application.Reports.ITrialBalanceReportQuery,
     EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery
 >();
+
+// P1.8 (Penalty Shield) — exposure projection. Reads EtaSubmission +
+// SalesInvoice to compute current tier + projected fines + the
+// prioritised work queue. See PenaltyRegime for the constants.
+builder.Services.AddScoped<
+    EgyptTax.Application.Compliance.PenaltyShield.IPenaltyExposureQuery,
+    EgyptTax.Infrastructure.Compliance.PenaltyShield.SqlPenaltyExposureQuery
+>();
+
+// P1.2 (Certificate Monitor) — surfaces HTTPS + ETA signing certs
+// from LocalMachine\My with expiry buckets so the operator never gets
+// blindsided by a Saturday-morning 401-storm. Singleton because it's
+// a thin wrapper over X509Store with no per-request state.
+// On non-Windows hosts (Linux containers in dev/CI) the X509Store
+// LocalMachine\My APIs throw, so swap in the Null implementation
+// which returns an empty inventory and lets the Certificates page
+// render its empty state cleanly.
+if (OperatingSystem.IsWindows())
+{
+#pragma warning disable CA1416 // Guarded by the OS check above.
+    builder.Services.AddSingleton<
+        EgyptTax.Application.Compliance.CertificateMonitor.ICertificateMonitorQuery,
+        EgyptTax.Infrastructure.Compliance.CertificateMonitor.WindowsCertificateMonitorQuery
+    >();
+#pragma warning restore CA1416
+}
+else
+{
+    builder.Services.AddSingleton<
+        EgyptTax.Application.Compliance.CertificateMonitor.ICertificateMonitorQuery,
+        EgyptTax.Infrastructure.Compliance.CertificateMonitor.NullCertificateMonitorQuery
+    >();
+}
 
 // US5 / FR-037 — tax period lock guard + lock/reopen handler. The
 // guard is consumed by the 3 document post handlers via the
@@ -370,6 +433,46 @@ builder.Services.AddSingleton<EgyptTax.Application.Eta.IEtaSubmitter>(
     _ => new EgyptTax.Infrastructure.Eta.MockEtaSubmitter(etaFailureRate)
 );
 
+// P1.3 — ETA Get-Document status query. Mock for the MVP / single-
+// file portable mode; production wires a real-ETA HTTP client. Used
+// by EtaStatusPollingJob to advance Submitted rows to Acknowledged
+// (long UUID issued) or back to Failed (regulator rejected).
+builder.Services.AddSingleton<
+    EgyptTax.Application.Eta.IEtaStatusQuery,
+    EgyptTax.Infrastructure.Eta.MockEtaStatusQuery
+>();
+
+// P1.1 — ETA wizard mock services. Taxpayer lookup auto-fills the
+// company profile from the operator's TIN; the activity-code
+// catalog drives the searchable picker on wizard step 3. Both swap
+// for real-ETA HTTP clients in production deployments.
+builder.Services.AddSingleton<
+    EgyptTax.Application.Eta.IEtaTaxpayerLookup,
+    EgyptTax.Infrastructure.Eta.MockEtaTaxpayerLookup
+>();
+builder.Services.AddSingleton<
+    EgyptTax.Application.Eta.IEtaActivityCodeCatalog,
+    EgyptTax.Infrastructure.Eta.InMemoryEtaActivityCodeCatalog
+>();
+
+// P1.5 — ETA "Get Received Documents" feed. Mock returns a small
+// fixture set so the inbox UI demos end-to-end; production swaps
+// in an HTTP client paginating through the regulator's receiver
+// feed.
+builder.Services.AddSingleton<
+    EgyptTax.Application.Eta.IEtaReceivedDocumentSource,
+    EgyptTax.Infrastructure.Eta.MockEtaReceivedDocumentSource
+>();
+
+// P1.6 — GS1 Egypt + EGS item-code registry. Mock resolves
+// requests after compressed SLA windows (60s for GS1, 90s for EGS)
+// with deterministic outcomes per item id so polling is stable.
+// Production wires HTTP clients against the two real registries.
+builder.Services.AddSingleton<
+    EgyptTax.Application.Eta.IEtaItemCodeRegistry,
+    EgyptTax.Infrastructure.Eta.MockEtaItemCodeRegistry
+>();
+
 // T125 — SignalR hub + in-process status notifier per FR-035 / R-22.
 // AddSignalR is registered before the hub-context-consuming notifier
 // so DI validates the dependency chain. Notifier is a singleton so
@@ -400,17 +503,48 @@ builder.Services.AddSingleton(
 );
 builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.InspectionBundleJob>();
 
-// EF context — primary persistence binding.
+// EF context — primary persistence binding. Provider auto-selected
+// from the connection string shape: "Data Source=foo.db" => SQLite
+// (single-file portable mode); anything else => SQL Server (on-prem
+// install). For SQLite we fall back to a sensible default file under
+// %LOCALAPPDATA%/DaftarX/daftarx.db so the single-EXE first-run "just
+// works" with zero config.
 var primaryConnection =
     builder.Configuration.GetConnectionString("EgyptTax")
-    ?? Environment.GetEnvironmentVariable("EGYPTTAX_CONNECTION");
-builder.Services.AddDbContext<AppDbContext>(opt =>
+    ?? Environment.GetEnvironmentVariable("EGYPTTAX_CONNECTION")
+    ?? PortableDefaults.DefaultSqliteConnection();
+var primaryProvider = EgyptTax.Web.Tools.DatabaseProviderDetector.Detect(primaryConnection);
+PortableDefaults.EnsureSqliteDirectory(primaryConnection, primaryProvider);
+
+// SQLCipher interceptor: applies PRAGMA key on every freshly-opened
+// SQLite connection using the master key reconstructed from the
+// 3 Shamir shares at activation time. SQL Server installs ignore
+// the interceptor (it only fires on SQLite connections).
+var sqlCipherInterceptor = new EgyptTax.Infrastructure.Persistence.SqlCipherKeyInterceptor(
+    masterKeyProvider: static () => EgyptTax.Web.Licensing.IsLicenseValid.MasterKey);
+
+void ConfigurePrimary(DbContextOptionsBuilder opt)
 {
-    if (!string.IsNullOrWhiteSpace(primaryConnection))
+    if (string.IsNullOrWhiteSpace(primaryConnection)) return;
+    if (primaryProvider == EgyptTax.Web.Tools.DatabaseProvider.Sqlite)
+    {
+        opt.UseSqlite(primaryConnection);
+        opt.AddInterceptors(sqlCipherInterceptor);
+    }
+    else
     {
         opt.UseSqlServer(primaryConnection);
     }
-});
+}
+
+builder.Services.AddDbContext<AppDbContext>(ConfigurePrimary);
+// IDbContextFactory<AppDbContext> for Blazor pages — Blazor circuits
+// scope a single DbContext for the whole circuit, so two components
+// (MainLayout + a page) running OnInitializedAsync concurrently
+// trip "A second operation was started on this context instance".
+// The factory hands out a fresh context per query, sidestepping the
+// concurrency conflict for read-only dashboard queries.
+builder.Services.AddDbContextFactory<AppDbContext>(ConfigurePrimary, lifetime: ServiceLifetime.Scoped);
 
 // FR-028 audit checkpoint store + audit log store.
 builder.Services.AddScoped<IAuditLogStore, SqlAuditLogStore>();
@@ -423,6 +557,13 @@ builder.Services.AddSingleton<INtpTimeClient>(_ => new SntpTimeClient());
 builder.Services.AddTransient<NtpHealthCheckJob>();
 builder.Services.AddTransient<AuditCheckpointJob>();
 builder.Services.AddTransient<EtaSubmissionRetryJob>();
+builder.Services.AddTransient<EtaStatusPollingJob>();
+builder.Services.AddTransient<EtaReceivedInboxJob>();
+builder.Services.AddTransient<EtaItemCodeCheckJob>();
+builder.Services.AddTransient<ComplianceCalendarRefreshJob>();
+
+// P3.4 — bank-recon auto-match Hangfire job (scorer is static).
+builder.Services.AddTransient<BankAutoMatchJob>();
 
 // T110 / R-13 — supplier-TIN revalidation cron. The revalidator is
 // still the always-valid stub (the live registry feed is a Near-term
@@ -439,21 +580,26 @@ builder.Services.AddScoped<
 >();
 builder.Services.AddTransient<SupplierTinRevalidationJob>();
 
-// FR-028 / R-03 — Hangfire on its own SQL Server connection
-// (`EgyptTax_Hangfire`) so the job-state schema does not pollute the
-// audit / domain database. Hangfire's storage manages its own schema
-// (`HangFire`) inside that DB.
+// FR-028 / R-03 — Hangfire storage. SQL Server install gets its own
+// EgyptTax_Hangfire database (job-state schema kept off the domain
+// DB). Single-file SQLite install can't use Hangfire.SqlServer (and
+// Hangfire has no first-class SQLite provider), so we fall back to
+// in-memory storage — jobs reset on restart, but for a single-user
+// portable install that's fine.
 var hangfireConnection =
     builder.Configuration.GetConnectionString("EgyptTax_Hangfire")
     ?? Environment.GetEnvironmentVariable("EGYPTTAX_HANGFIRE_CONNECTION");
-if (!string.IsNullOrWhiteSpace(hangfireConnection))
+var hangfireUsesSqlServer =
+    !string.IsNullOrWhiteSpace(hangfireConnection)
+    && primaryProvider == EgyptTax.Web.Tools.DatabaseProvider.SqlServer;
+if (hangfireUsesSqlServer)
 {
     builder.Services.AddHangfire(cfg =>
         cfg.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
             .UseSimpleAssemblyNameTypeSerializer()
             .UseRecommendedSerializerSettings()
             .UseSqlServerStorage(
-                hangfireConnection,
+                hangfireConnection!,
                 new SqlServerStorageOptions
                 {
                     CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
@@ -463,6 +609,16 @@ if (!string.IsNullOrWhiteSpace(hangfireConnection))
                     DisableGlobalLocks = true,
                 }
             )
+    );
+    builder.Services.AddHangfireServer();
+}
+else
+{
+    builder.Services.AddHangfire(cfg =>
+        cfg.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+            .UseSimpleAssemblyNameTypeSerializer()
+            .UseRecommendedSerializerSettings()
+            .UseMemoryStorage()
     );
     builder.Services.AddHangfireServer();
 }
@@ -512,6 +668,11 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 
+// Blazor Server pages that hit local minimal-API endpoints
+// (audit-log verify route etc) need an HttpClient injected. Blazor
+// Server doesn't auto-register one — unlike Blazor WebAssembly.
+builder.Services.AddHttpClient();
+
 // T059 — IStringLocalizer wiring. The .resx files live in
 // EgyptTax.Web/Localization/SharedResources.{ar,en}.resx; the
 // marker class is EgyptTax.Web.Localization.SharedResources.
@@ -538,7 +699,22 @@ app.UseRequestLocalization(
     }
 );
 
+// License gate — short-circuit every request with the activation
+// banner when the boot-time gate failed. Mounted FIRST so even
+// /login, /api, and /_blazor return the banner instead of leaking
+// any other functionality. Health probes pass through (open by
+// design — see LicenseBannerMiddleware).
+app.UseMiddleware<EgyptTax.Web.Licensing.LicenseBannerMiddleware>();
+
+// Static files: serve from disk wwwroot when present (dev / on-prem
+// install), fall back to assembly-embedded wwwroot when running as
+// the single-file portable EXE (the .exe alone, no wwwroot beside).
 app.UseStaticFiles();
+{
+    var embeddedFiles = new Microsoft.Extensions.FileProviders.ManifestEmbeddedFileProvider(
+        typeof(Program).Assembly, "wwwroot");
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = embeddedFiles });
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -548,8 +724,8 @@ app.UseAuthorization();
 app.UseMiddleware<EgyptTax.Web.Logging.CorrelationContextMiddleware>();
 app.UseSerilogRequestLogging();
 
-// Schedule recurring jobs once Hangfire storage is available.
-if (!string.IsNullOrWhiteSpace(hangfireConnection))
+// Schedule recurring jobs once Hangfire storage is available
+// (always true now — either SQL Server or in-memory).
 {
     var recurring = app.Services.GetRequiredService<IRecurringJobManager>();
 
@@ -582,6 +758,50 @@ if (!string.IsNullOrWhiteSpace(hangfireConnection))
         cronExpression: "*/15 * * * *"
     );
 
+    // P1.3 — every minute, poll the regulator for documents that are
+    // Submitted but not yet acknowledged. The mock returns
+    // PendingAck for ~30s after first sight then resolves to
+    // Acknowledged (~85%) or Rejected (~15%); cron frequency mostly
+    // governs how snappy the dashboard's "ETA confirmed!" badge feels
+    // — production with the real ETA endpoint should drop to */5 to
+    // be a polite API citizen.
+    recurring.AddOrUpdate<EtaStatusPollingJob>(
+        recurringJobId: "eta-status-polling",
+        methodCall: j => j.RunOnceAsync(CancellationToken.None),
+        cronExpression: "* * * * *"
+    );
+
+    // P1.5 — pull received documents from the regulator into the
+    // operator's inbox. Daily at 06:00 in production (operator
+    // opens the laptop and the inbox is already populated overnight);
+    // we run every 2 minutes here so the demo is interactive.
+    recurring.AddOrUpdate<EtaReceivedInboxJob>(
+        recurringJobId: "eta-received-inbox",
+        methodCall: j => j.RunOnceAsync(CancellationToken.None),
+        cronExpression: "*/2 * * * *"
+    );
+
+    // P1.6 — check pending GS1 / EGS item-code requests against
+    // the registries. Daily in production (registries take 24-48h
+    // for GS1 and ~15 days for EGS); every minute here so the demo
+    // moves at human speed (mock SLAs are compressed accordingly).
+    recurring.AddOrUpdate<EtaItemCodeCheckJob>(
+        recurringJobId: "eta-item-code-check",
+        methodCall: j => j.RunOnceAsync(CancellationToken.None),
+        cronExpression: "* * * * *"
+    );
+
+    // P2.6 — materialise the compliance calendar for the current
+    // and next year. Daily at 02:00 in production (well before
+    // the operator's morning); we run every 5 minutes here so the
+    // demo is interactive and the table populates immediately
+    // after the company profile lands.
+    recurring.AddOrUpdate<ComplianceCalendarRefreshJob>(
+        recurringJobId: "compliance-calendar-refresh",
+        methodCall: j => j.RunOnceAsync(CancellationToken.None),
+        cronExpression: "*/5 * * * *"
+    );
+
     // R-13 — daily re-validation of supplier TINs against the ETA
     // registry. Currently a no-op against an empty source + always-
     // valid revalidator stub; the cron skeleton ships now so the
@@ -590,6 +810,16 @@ if (!string.IsNullOrWhiteSpace(hangfireConnection))
         recurringJobId: "supplier-tin-revalidation",
         methodCall: j => j.RunOnceAsync(CancellationToken.None),
         cronExpression: "0 3 * * *"
+    );
+
+    // P3.4 — bank statement auto-match. Runs every 10 minutes so
+    // newly-imported statements pick up suggestions / auto-matches
+    // quickly without hammering the DB. Idempotent — only touches
+    // Unmatched lines.
+    recurring.AddOrUpdate<BankAutoMatchJob>(
+        recurringJobId: "bank-auto-match",
+        methodCall: j => j.RunOnceAsync(CancellationToken.None),
+        cronExpression: "*/10 * * * *"
     );
 }
 
@@ -600,6 +830,26 @@ if (!string.IsNullOrWhiteSpace(hangfireConnection))
 app.MapBlazorHub();
 app.MapRazorPages();
 app.MapFallbackToPage("/_Host");
+
+// Language switcher — operator clicks AR/EN in the header, this
+// endpoint writes the .AspNetCore.Culture cookie and bounces back
+// to the page they came from. Cookie is read first by the
+// CookieRequestCultureProvider, so the operator's choice wins
+// over their browser's Accept-Language preference. R-11 — every
+// screen rendered in the chosen language only (not bilingual
+// inline) for installs that prefer a single-language UX.
+app.MapGet("/set-culture", (HttpContext ctx, string culture, string? returnUrl) =>
+{
+    var safeCulture = culture is "ar-EG" or "en-US" ? culture : "ar-EG";
+    ctx.Response.Cookies.Append(
+        Microsoft.AspNetCore.Localization.CookieRequestCultureProvider.DefaultCookieName,
+        Microsoft.AspNetCore.Localization.CookieRequestCultureProvider.MakeCookieValue(
+            new Microsoft.AspNetCore.Localization.RequestCulture(safeCulture)),
+        new CookieOptions { Expires = DateTimeOffset.UtcNow.AddYears(1), IsEssential = true, HttpOnly = false });
+    var safeReturn = !string.IsNullOrEmpty(returnUrl) && Uri.IsWellFormedUriString(returnUrl, UriKind.Relative)
+        ? returnUrl : "/";
+    return Results.Redirect(safeReturn);
+});
 
 // T125 — ETA status hub at /hubs/eta. Auth-gated so external
 // clients need a valid session cookie to subscribe to status
@@ -900,6 +1150,131 @@ app.MapPost(
         }
     )
     .RequireAuthorization("FullyAuthenticated");
+
+// On every startup, ensure the catalog of default Egyptian VAT
+// categories exists. Idempotent — only inserts the four standard
+// rows (Standard 14%, Reduced 5%, Zero-rated, Exempt) if their codes
+// are not already present. Fixes the "no VAT categories defined"
+// empty-state on existing installs without requiring the operator
+// to re-run the MSI seed CLI.
+// Note: the once-per-process default-data seed (VAT categories etc.)
+// runs on first authenticated request via MainLayout, NOT here.
+// Background-task seeding before serving the first HTTP request trips
+// Microsoft.Data.SqlClient's platform guard in self-contained .NET 8.
+// The MainLayout call uses the same proven request-context DbFactory
+// the dashboard already uses.
+
+// P1.10 — ETA bulk export. Streams a ZIP containing one PDF + one
+// JSON per posted sales invoice in the date range. Filename pattern:
+//   {DocumentNumber}_{ETA-UUID-or-pending}.pdf and .json
+// Buries the Chrome-extension cottage industry that scrapes the ETA
+// portal because operators couldn't bulk-download from there.
+app.MapGet(
+        "/api/v1/eta-export.zip",
+        async (
+            DateOnly from,
+            DateOnly to,
+            EgyptTax.Infrastructure.Persistence.AppDbContext db,
+            EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer pdfRenderer,
+            EgyptTax.Application.Eta.IEInvoiceJsonGenerator jsonGenerator,
+            CancellationToken cancellationToken
+        ) =>
+        {
+            if (from > to)
+            {
+                return Results.BadRequest("from must be ≤ to");
+            }
+            // Cap range to 1 year to keep memory bounded.
+            if ((to.DayNumber - from.DayNumber) > 366)
+            {
+                return Results.BadRequest("Range exceeds 366 days");
+            }
+
+            var ids = await db.Set<EgyptTax.Domain.Invoices.SalesInvoice>()
+                .AsNoTracking()
+                .Where(i => i.State == EgyptTax.Domain.Workflow.DocumentState.Posted
+                    && i.DocumentDate >= from && i.DocumentDate <= to)
+                .OrderBy(i => i.DocumentDate)
+                .Select(i => i.Id)
+                .ToListAsync(cancellationToken);
+
+            if (ids.Count == 0)
+            {
+                return Results.NotFound("No posted invoices in range");
+            }
+
+            var memory = new MemoryStream();
+            using (var zip = new System.IO.Compression.ZipArchive(memory, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+            {
+                foreach (var invoiceId in ids)
+                {
+                    var bundle = await EgyptTax.Infrastructure.Invoices.InvoiceRenderingPipeline.LoadAsync(
+                        db, invoiceId, cancellationToken);
+                    if (bundle is null) continue;
+
+                    var docNum = bundle.Invoice.DocumentNumber ?? invoiceId.ToString("N")[..8];
+                    var safeName = string.Join("_",
+                        docNum.Split(System.IO.Path.GetInvalidFileNameChars()));
+
+                    // PDF
+                    var pdfEntry = zip.CreateEntry($"{safeName}.pdf", System.IO.Compression.CompressionLevel.Optimal);
+                    await using (var ps = pdfEntry.Open())
+                    {
+                        var pdfBytes = pdfRenderer.Render(bundle.PdfRequest);
+                        await ps.WriteAsync(pdfBytes, cancellationToken);
+                    }
+
+                    // JSON
+                    var jsonEntry = zip.CreateEntry($"{safeName}.json", System.IO.Compression.CompressionLevel.Optimal);
+                    await using (var js = jsonEntry.Open())
+                    {
+                        var json = jsonGenerator.GenerateAsJson(bundle.EInvoiceRequest);
+                        await js.WriteAsync(System.Text.Encoding.UTF8.GetBytes(json), cancellationToken);
+                    }
+                }
+
+                // Manifest
+                var manifestEntry = zip.CreateEntry("MANIFEST.txt", System.IO.Compression.CompressionLevel.Optimal);
+                await using (var ms2 = manifestEntry.Open())
+                {
+                    var manifest = $"DaftarX ETA bulk export\n" +
+                        $"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC\n" +
+                        $"Period:    {from:yyyy-MM-dd} to {to:yyyy-MM-dd}\n" +
+                        $"Invoices:  {ids.Count}\n\n" +
+                        $"Each invoice has a PDF + JSON pair named after its document number.\n" +
+                        $"For audit purposes, hand the auditor this entire ZIP file.\n";
+                    await ms2.WriteAsync(System.Text.Encoding.UTF8.GetBytes(manifest), cancellationToken);
+                }
+            }
+            memory.Position = 0;
+            return Results.File(memory, "application/zip",
+                $"daftarx-eta-export-{from:yyyyMMdd}-{to:yyyyMMdd}.zip");
+        }
+    )
+    .RequireAuthorization("FullyAuthenticated");
+
+// Public endpoint: serve the DaftarX HTTPS certificate (.cer, public
+// key only) so workstations on the LAN can fetch + trust it without
+// needing a UNC share or pre-shared file. Returns the cert generated
+// by setup-https.ps1 at install time. No auth required because the
+// public cert contains only the public key — safe to expose.
+app.MapGet("/daftarx-cert.cer", () =>
+{
+    var cerPath = @"C:\ProgramData\DaftarX\daftarx-cert.cer";
+    if (!File.Exists(cerPath))
+    {
+        return Results.NotFound("Certificate not yet generated.");
+    }
+    return Results.File(cerPath, "application/x-x509-ca-cert", "daftarx-cert.cer");
+});
+
+// Single-file portable mode: on first launch ensure the schema +
+// admin user exist, then pop the browser. SQL Server on-prem flow
+// is unchanged (the MSI runs `seed` separately during install).
+if (primaryProvider == EgyptTax.Web.Tools.DatabaseProvider.Sqlite)
+{
+    await EgyptTax.Web.Tools.PortableFirstRun.RunAsync(app);
+}
 
 app.Run();
 return 0;

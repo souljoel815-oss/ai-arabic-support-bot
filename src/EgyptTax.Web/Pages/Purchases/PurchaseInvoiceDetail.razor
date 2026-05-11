@@ -18,11 +18,11 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Purchase invoice @(_invoice?.DocumentNumber ?? "(loading)")</h1>
+<h1>@(IsArabic ? $"فاتورة شراء {(_invoice?.DocumentNumber ?? "(جارٍ التحميل)")}" : $"Purchase invoice {(_invoice?.DocumentNumber ?? "(loading)")}")</h1>
 
 @if (_invoice is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
@@ -32,32 +32,55 @@
 }
 
 <section class="invoice-header">
-    <div><strong>Supplier #:</strong> @_invoice.SupplierInvoiceNumber</div>
-    <div><strong>Date received:</strong> @_invoice.DateReceived.ToString("yyyy-MM-dd")</div>
-    <div><strong>State:</strong> <StateBadge State="_invoice.State" /></div>
-    <div><strong>Supplier:</strong> @(_supplier?.Name.English ?? "—") (@(_invoice.SupplierTaxProfileSnapshot.ProfileType))</div>
+    <div><strong>@(IsArabic ? "رقم المورد:" : "Supplier #:")</strong> @_invoice.SupplierInvoiceNumber</div>
+    <div><strong>@(IsArabic ? "تاريخ الاستلام:" : "Date received:")</strong> @_invoice.DateReceived.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "الحالة:" : "State:")</strong> <StateBadge State="_invoice.State" /></div>
+    <div><strong>@(IsArabic ? "المورد:" : "Supplier:")</strong> @(IsArabic ? (_supplier?.Name.Arabic ?? "—") : (_supplier?.Name.English ?? "—")) (@(_invoice.SupplierTaxProfileSnapshot.ProfileType))</div>
     @if (_invoice.PostedAtUtc is { } postedAt)
     {
-        <div><strong>Posted at (UTC):</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
-        <div><strong>Posting mode:</strong> @_invoice.PostingMode</div>
+        <div><strong>@(IsArabic ? "وقت الترحيل (UTC):" : "Posted at (UTC):")</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+        <div><strong>@(IsArabic ? "وضع الترحيل:" : "Posting mode:")</strong> @_invoice.PostingMode</div>
     }
-    <div><strong>Tax Risk Score:</strong> <TaxRiskScoreBadge Findings="_riskFindings" /></div>
+    <div><strong>@(IsArabic ? "درجة المخاطر الضريبية:" : "Tax Risk Score:")</strong> <TaxRiskScoreBadge Findings="_riskFindings" /></div>
 </section>
 
+@* P1.12 — reverse-charge banner. Foreign supplier => we self-account
+   the VAT in our books and the periodic VAT return; the supplier
+   doesn't bill VAT and ETA's e-invoice portal is bypassed entirely. *@
+@if (_invoice.SupplierTaxProfileSnapshot.ReverseChargeFlag)
+{
+    <div class="reverse-charge-banner">
+        <Icon Name="shield-alert" Class="ic" />
+        <div>
+            <div><strong>@(IsArabic ? "ضريبة قيمة مضافة بنظام الخصم العكسي" : "Reverse-charge VAT")</strong></div>
+            <div class="reverse-charge-meta">
+                @(IsArabic
+                    ? "المورّد غير مقيم في مصر — أنت تتحمّل ضريبة القيمة المضافة بنفسك في الإقرار الدوري بدلاً من دفعها للمورّد. القيد المحاسبي بيخصم ضريبة قابلة للاسترداد ويضيف ضريبة مستحقة بنفس المبلغ (صافي صفر)."
+                    : "Supplier is not Egypt-resident — you self-account VAT in the periodic return instead of paying it to the supplier. The journal debits Recoverable Input VAT and credits Output VAT Payable for the same amount (net zero).")
+            </div>
+            <div class="reverse-charge-meta">
+                @(IsArabic
+                    ? "الفاتورة الإلكترونية ETA متخطية لهذه الفاتورة — الإقرار الدوري هو القناة الصحيحة."
+                    : "ETA e-invoicing is bypassed for this document — the periodic VAT return is the correct channel.")
+            </div>
+        </div>
+    </div>
+}
+
 <section>
-    <h2>Lines</h2>
+    <h2>@(IsArabic ? "البنود" : "Lines")</h2>
     <table class="data-grid">
         <thead>
             <tr>
                 <th>#</th>
-                <th>Item / Expense category</th>
-                <th class="num">Qty</th>
-                <th class="num">Unit price</th>
-                <th class="num">Subtotal</th>
-                <th>VAT %</th>
-                <th class="num">VAT</th>
-                <th class="num">Line total</th>
-                <th>Deductible?</th>
+                <th>@(IsArabic ? "الصنف / فئة المصروف" : "Item / Expense category")</th>
+                <th class="num">@(IsArabic ? "الكمية" : "Qty")</th>
+                <th class="num">@(IsArabic ? "سعر الوحدة" : "Unit price")</th>
+                <th class="num">@(IsArabic ? "الإجمالي قبل الضريبة" : "Subtotal")</th>
+                <th>@(IsArabic ? "الضريبة %" : "VAT %")</th>
+                <th class="num">@(IsArabic ? "الضريبة" : "VAT")</th>
+                <th class="num">@(IsArabic ? "إجمالي البند" : "Line total")</th>
+                <th>@(IsArabic ? "قابل للخصم؟" : "Deductible?")</th>
             </tr>
         </thead>
         <tbody>
@@ -73,7 +96,7 @@
                     <td>@line.VatRatePercent.ToString("0.##")%</td>
                     <td class="num">@line.LineVat.Amount.ToString("F2")</td>
                     <td class="num">@line.LineTotal.Amount.ToString("F2")</td>
-                    <td>@(line.DeductibleFlag ? "yes" : "—")</td>
+                    <td>@(line.DeductibleFlag ? (IsArabic ? "نعم" : "yes") : "—")</td>
                 </tr>
                 idx++;
             }
@@ -82,22 +105,28 @@
 </section>
 
 <section class="invoice-totals">
-    <div><strong>Subtotal:</strong> <span class="num">@_invoice.Subtotal.Amount.ToString("F2") EGP</span></div>
-    <div><strong>VAT total:</strong> <span class="num">@_invoice.VatTotal.Amount.ToString("F2") EGP</span></div>
-    <div class="grand"><strong>Grand total:</strong> <span class="num">@_invoice.GrandTotal.Amount.ToString("F2") EGP</span></div>
+    <div><strong>@(IsArabic ? "الإجمالي قبل الضريبة:" : "Subtotal:")</strong> <span class="num">@_invoice.Subtotal.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "إجمالي الضريبة:" : "VAT total:")</strong> <span class="num">@_invoice.VatTotal.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div class="grand"><strong>@(IsArabic ? "الإجمالي الكلي:" : "Grand total:")</strong> <span class="num">@_invoice.GrandTotal.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
 </section>
 
 <section>
-    <h2>Attachments (@_attachments.Count)</h2>
+    <h2>@(IsArabic ? $"المرفقات ({_attachments.Count})" : $"Attachments ({_attachments.Count})")</h2>
     @if (_attachments.Count == 0)
     {
-        <p><em>No attachments uploaded.</em></p>
+        <p><em>@(IsArabic ? "لا توجد مرفقات مرفوعة." : "No attachments uploaded.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
-                <tr><th>Filename</th><th>MIME</th><th class="num">Size (bytes)</th><th>SHA-256 (first 16 hex)</th><th>Uploaded (UTC)</th></tr>
+                <tr>
+                    <th>@(IsArabic ? "اسم الملف" : "Filename")</th>
+                    <th>@(IsArabic ? "النوع" : "MIME")</th>
+                    <th class="num">@(IsArabic ? "الحجم (بايت)" : "Size (bytes)")</th>
+                    <th>@(IsArabic ? "SHA-256 (أول 16 خانة)" : "SHA-256 (first 16 hex)")</th>
+                    <th>@(IsArabic ? "وقت الرفع (UTC)" : "Uploaded (UTC)")</th>
+                </tr>
             </thead>
             <tbody>
                 @foreach (var a in _attachments)
@@ -115,19 +144,41 @@
     }
 </section>
 
+@* P2.4 — one-click WhatsApp nudge to ask the supplier for the
+   missing PDF / corrected amount. Only renders when supplier has a
+   phone on file. *@
+@if (_supplier?.Phone is { Length: > 0 })
+{
+    <section class="invoice-actions">
+        <h2>@(IsArabic ? "تذكير عبر واتساب" : "WhatsApp nudge")</h2>
+        <p style="font-size:13px;color:var(--text-muted);">
+            @(IsArabic
+                ? "ضغطة واحدة لفتح واتساب برسالة جاهزة للمورّد."
+                : "One click to open WhatsApp with a pre-filled message to the supplier.")
+        </p>
+        <WhatsAppNudgeButton
+            Phone="_supplier.Phone"
+            ButtonLabel="@(IsArabic ? "اطلب المرفق من المورّد" : "Request attachment from supplier")"
+            CssClass="btn-primary"
+            MessageText="@(IsArabic
+                ? $"السلام عليكم، نحتاج نسخة PDF من فاتورتكم رقم {_invoice.SupplierInvoiceNumber} بتاريخ {_invoice.DateReceived:yyyy-MM-dd} بمبلغ إجمالي {_invoice.GrandTotal.Amount:N2} ج.م.، عشان نقدر نكمل الترحيل عندنا. شكراً."
+                : $"Hi, could you please send a PDF copy of invoice {_invoice.SupplierInvoiceNumber} dated {_invoice.DateReceived:yyyy-MM-dd} (total EGP {_invoice.GrandTotal.Amount:N2})? We need it to complete posting on our side. Thanks.")" />
+    </section>
+}
+
 @if (_invoice.State is DocumentState.Draft or DocumentState.Submitted or DocumentState.Approved)
 {
     <section class="invoice-actions">
-        <h2>Approval workflow (FR-026)</h2>
+        <h2>@(IsArabic ? "سير عمل الاعتماد (FR-026)" : "Approval workflow (FR-026)")</h2>
         @if (_latestApproval is not null)
         {
             <p>
-                <strong>Latest approval request:</strong> @_latestApproval.Status
-                — submitted by @_latestApproval.SubmittedByUserId.ToString("D")[..8]
-                at @_latestApproval.SubmittedAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC.
+                <strong>@(IsArabic ? "آخر طلب اعتماد:" : "Latest approval request:")</strong> @_latestApproval.Status
+                — @(IsArabic ? "أرسله المستخدم" : "submitted by") @_latestApproval.SubmittedByUserId.ToString("D")[..8]
+                @(IsArabic ? "في" : "at") @_latestApproval.SubmittedAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC.
                 @if (_latestApproval.RejectionReason is { } reason)
                 {
-                    <br /><em>Rejection reason: @reason</em>
+                    <br /><em>@(IsArabic ? "سبب الرفض:" : "Rejection reason:") @reason</em>
                 }
             </p>
         }
@@ -143,17 +194,17 @@
 @if (_invoice.State == DocumentState.Draft)
 {
     <section class="invoice-actions">
-        <a class="btn-primary" href="/purchase-invoices/@_invoice.Id/edit">Edit draft</a>
+        <a class="btn-primary" href="/purchase-invoices/@_invoice.Id/edit">@(IsArabic ? "تعديل المسودة" : "Edit draft")</a>
         <button type="button" class="btn-primary" disabled="@_posting" @onclick="OnPostAsync">
-            @(_posting ? "Posting…" : "Post invoice")
+            @(_posting ? (IsArabic ? "جارٍ الترحيل…" : "Posting…") : (IsArabic ? "ترحيل الفاتورة" : "Post invoice"))
         </button>
-        <a href="/document360/purchase-invoice/@_invoice.Id">📂 Document 360</a>
+        <a href="/document360/purchase-invoice/@_invoice.Id">📂 @(IsArabic ? "ملف المستند الكامل" : "Document 360")</a>
     </section>
 }
 else
 {
     <section class="invoice-actions">
-        <a href="/document360/purchase-invoice/@_invoice.Id">📂 Document 360</a>
+        <a href="/document360/purchase-invoice/@_invoice.Id">📂 @(IsArabic ? "ملف المستند الكامل" : "Document 360")</a>
     </section>
 }
 
@@ -239,8 +290,8 @@ else
 
     private string DescribeLine(PurchaseInvoiceLine line) =>
         line.ItemId is { } itemId
-            ? $"Item {itemId:D}"
+            ? (IsArabic ? $"صنف {itemId:D}" : $"Item {itemId:D}")
             : line.ExpenseCategoryId is { } catId
-                ? $"Expense category {catId:D}"
-                : "(unknown)";
+                ? (IsArabic ? $"فئة مصروف {catId:D}" : $"Expense category {catId:D}")
+                : (IsArabic ? "(غير معروف)" : "(unknown)");
 }

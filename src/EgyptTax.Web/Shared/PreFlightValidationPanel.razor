@@ -1,0 +1,175 @@
+@*
+    P1.7 — Pre-flight ETA Validator panel.
+    Runs PreFlightValidator.Validate against the invoice in-memory and
+    renders findings grouped by severity. The pre-flight runs locally
+    in milliseconds so the operator sees rejections BEFORE submitting
+    to ETA (and BEFORE the Penalty Shield clock starts).
+*@
+
+@using System.Globalization
+@using EgyptTax.Application.Compliance.PreFlight
+@using EgyptTax.Domain.Invoices
+
+@code {
+    [Parameter, EditorRequired] public SalesInvoice Invoice { get; set; } = default!;
+
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private IReadOnlyList<ValidationFinding> _findings = Array.Empty<ValidationFinding>();
+    private int _errors;
+    private int _warnings;
+    private int _infos;
+
+    protected override void OnParametersSet()
+    {
+        _findings = PreFlightValidator.Validate(Invoice);
+        _errors   = _findings.Count(x => x.Severity == FindingSeverity.Error);
+        _warnings = _findings.Count(x => x.Severity == FindingSeverity.Warning);
+        _infos    = _findings.Count(x => x.Severity == FindingSeverity.Info);
+    }
+
+    private string TopBannerClass()
+    {
+        if (_errors > 0)   return "preflight-banner is-error";
+        if (_warnings > 0) return "preflight-banner is-warning";
+        return "preflight-banner is-clean";
+    }
+
+    private string TopBannerIcon()
+    {
+        if (_errors > 0)   return "alert-triangle";
+        if (_warnings > 0) return "shield-alert";
+        return "shield-check";
+    }
+
+    private string TopBannerHeadline()
+    {
+        if (_errors > 0)
+            return Tr(
+                $"{_errors} خطأ يحجب الإرسال إلى ETA" + (_warnings > 0 ? $" و {_warnings} تحذير" : ""),
+                $"{_errors} error{(_errors == 1 ? "" : "s")} block ETA submission" + (_warnings > 0 ? $", {_warnings} warning{(_warnings == 1 ? "" : "s")}" : ""));
+        if (_warnings > 0)
+            return Tr(
+                $"{_warnings} تحذير — يفضل المراجعة قبل الإرسال",
+                $"{_warnings} warning{(_warnings == 1 ? "" : "s")} — review before submitting");
+        return Tr(
+            "الفاتورة جاهزة للإرسال إلى ETA — كل القواعد المحلية مرّت",
+            "Invoice is ready for ETA submission — all local rules pass");
+    }
+
+    private string TopBannerSubtext()
+    {
+        if (_errors > 0)
+            return Tr(
+                "صحّح الأخطاء التالية قبل المحاولة. الإرسال الآن سيرفع عدّاد الغرامات.",
+                "Fix the errors below before submitting. Submitting now will start the penalty clock.");
+        if (_warnings > 0)
+            return Tr(
+                "التحذيرات لا تمنع الإرسال لكن غالباً تُسبّب رفض من ETA.",
+                "Warnings don't block submission but often cause an ETA reject.");
+        return Tr(
+            "هذا الفحص يطبّق محاكاة محلية لـ8 من فحوصات ETA — يُغطي ~80% من أسباب الرفض الفعلية.",
+            "This check simulates 8 ETA validators locally — covering ~80% of real rejection causes.");
+    }
+
+    private string FindingBlockClass(FindingSeverity s) => s switch
+    {
+        FindingSeverity.Error   => "preflight-finding is-error",
+        FindingSeverity.Warning => "preflight-finding is-warning",
+        _                       => "preflight-finding is-info",
+    };
+
+    private string FindingIcon(FindingSeverity s) => s switch
+    {
+        FindingSeverity.Error   => "x-octagon",
+        FindingSeverity.Warning => "alert-triangle",
+        _                       => "info",
+    };
+}
+
+<section class="preflight-panel">
+    <div class="preflight-header">
+        <div class="preflight-title">
+            <Icon Name="shield-check" Class="ic" />
+            <span>@Tr("الفحص المسبق قبل ETA", "Pre-flight ETA validator")</span>
+        </div>
+        <div class="preflight-counts">
+            @if (_errors > 0)
+            {
+                <span class="preflight-count-pill is-error">
+                    <Icon Name="x-octagon" Class="ic" />
+                    @_errors @Tr("خطأ", _errors == 1 ? "error" : "errors")
+                </span>
+            }
+            @if (_warnings > 0)
+            {
+                <span class="preflight-count-pill is-warning">
+                    <Icon Name="alert-triangle" Class="ic" />
+                    @_warnings @Tr("تحذير", _warnings == 1 ? "warning" : "warnings")
+                </span>
+            }
+            @if (_errors == 0 && _warnings == 0)
+            {
+                <span class="preflight-count-pill is-clean">
+                    <Icon Name="shield-check" Class="ic" />
+                    @Tr("نظيفة", "Clean")
+                </span>
+            }
+        </div>
+    </div>
+
+    <div class="@TopBannerClass()">
+        <Icon Name="@TopBannerIcon()" Class="ic preflight-banner-icon" />
+        <div class="preflight-banner-content">
+            <div class="preflight-banner-headline">@TopBannerHeadline()</div>
+            <div class="preflight-banner-subtext">@TopBannerSubtext()</div>
+        </div>
+    </div>
+
+    @if (_findings.Count > 0)
+    {
+        <div class="preflight-findings">
+            @foreach (var group in _findings.GroupBy(f => f.Severity).OrderBy(g => g.Key switch
+            {
+                FindingSeverity.Error   => 0,
+                FindingSeverity.Warning => 1,
+                _                       => 2,
+            }))
+            {
+                <div class="preflight-group">
+                    <div class="preflight-group-label">
+                        @(group.Key switch
+                        {
+                            FindingSeverity.Error   => Tr("الأخطاء", "Errors"),
+                            FindingSeverity.Warning => Tr("التحذيرات", "Warnings"),
+                            _                       => Tr("ملاحظات", "Notes"),
+                        })
+                        <span class="preflight-group-count">@group.Count()</span>
+                    </div>
+                    @foreach (var f in group)
+                    {
+                        <div class="@FindingBlockClass(f.Severity)">
+                            <div class="preflight-finding-head">
+                                <Icon Name="@FindingIcon(f.Severity)" Class="ic preflight-finding-icon" />
+                                <code class="preflight-finding-code">@f.Code</code>
+                                <strong class="preflight-finding-title">@(IsArabic ? f.TitleAr : f.TitleEn)</strong>
+                            </div>
+                            <div class="preflight-finding-fix">
+                                <Icon Name="zap" Class="ic" />
+                                <span>@(IsArabic ? f.FixActionAr : f.FixActionEn)</span>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(f.FieldPath))
+                            {
+                                <div class="preflight-finding-field">
+                                    <Icon Name="target" Class="ic" />
+                                    <code>@f.FieldPath</code>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</section>

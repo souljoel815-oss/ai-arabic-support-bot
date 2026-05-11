@@ -173,7 +173,7 @@ public class ClosingCockpitAggregationTests(SqlServerFixture fixture)
 
         // Lock the month.
         var lockClock = new TestClock(new DateTime(2026, 7, 1, 9, 0, 0, DateTimeKind.Utc));
-        await new LockTaxPeriodHandler(db, lockClock, new CaptureAuditLogStore()).HandleAsync(
+        await new LockTaxPeriodHandler(db, lockClock, new CaptureAuditLogStore(), new AlwaysCleanCockpitQuery()).HandleAsync(
             new LockTaxPeriodCommand(
                 EgyptTax.Domain.Periods.TaxPeriodKind.VatMonth,
                 2026,

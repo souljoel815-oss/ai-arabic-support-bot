@@ -1,0 +1,193 @@
+@page "/eta-export"
+@using System.Globalization
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "تصدير ETA | DaftarX" : "ETA Export | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    private DateTime _from = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    private DateTime _to = DateTime.UtcNow.Date;
+    private int? _previewCount;
+    private decimal _previewTotal;
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await PreviewAsync();
+
+    private async Task PreviewAsync()
+    {
+        _error = null;
+        _loading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var fromD = DateOnly.FromDateTime(_from);
+            var toD = DateOnly.FromDateTime(_to);
+            if (fromD > toD)
+            {
+                _error = IsArabic ? "تاريخ البداية أكبر من تاريخ النهاية." : "Start date is after end date.";
+                return;
+            }
+            if ((toD.DayNumber - fromD.DayNumber) > 366)
+            {
+                _error = IsArabic ? "الفترة لا يمكن أن تتجاوز 366 يوم." : "Period cannot exceed 366 days.";
+                return;
+            }
+            var rows = await db.Set<SalesInvoice>().AsNoTracking()
+                .Where(i => i.State == DocumentState.Posted
+                    && i.DocumentDate >= fromD && i.DocumentDate <= toD)
+                .Select(i => new { i.GrandTotal })
+                .ToListAsync();
+            _previewCount = rows.Count;
+            _previewTotal = rows.Sum(r => r.GrandTotal.Amount);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private string DownloadUrl()
+    {
+        var fromD = DateOnly.FromDateTime(_from);
+        var toD = DateOnly.FromDateTime(_to);
+        return $"/api/v1/eta-export.zip?from={fromD:yyyy-MM-dd}&to={toD:yyyy-MM-dd}";
+    }
+
+    // Quick presets
+    private void PresetThisMonth()
+    {
+        var now = DateTime.UtcNow;
+        _from = new DateTime(now.Year, now.Month, 1);
+        _to = now.Date;
+        _ = PreviewAsync();
+    }
+
+    private void PresetLastMonth()
+    {
+        var now = DateTime.UtcNow.AddMonths(-1);
+        _from = new DateTime(now.Year, now.Month, 1);
+        _to = _from.AddMonths(1).AddDays(-1);
+        _ = PreviewAsync();
+    }
+
+    private void PresetLastQuarter()
+    {
+        var now = DateTime.UtcNow;
+        var qStart = new DateTime(now.Year, ((now.Month - 1) / 3) * 3 + 1, 1).AddMonths(-3);
+        _from = qStart;
+        _to = qStart.AddMonths(3).AddDays(-1);
+        _ = PreviewAsync();
+    }
+
+    private void PresetYTD()
+    {
+        var now = DateTime.UtcNow;
+        _from = new DateTime(now.Year, 1, 1);
+        _to = now.Date;
+        _ = PreviewAsync();
+    }
+}
+
+<h1>@(IsArabic ? "📦 تصدير الفواتير الإلكترونية" : "📦 ETA Bulk Export")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "نزّل كل فواتير الفترة (PDF + JSON الموقّع) في ملف ZIP واحد. مناسب لتسليم الفحص الضريبي، أرشيف العميل، أو نسخة احتياطية مستقلة عن النظام."
+        : "Download every invoice in the period (PDF + signed JSON) as a single ZIP. Use it for tax-audit handoff, customer archives, or a backup independent of the system.")
+</p>
+
+<div class="invoice-toolbar">
+    <button type="button" @onclick="PresetThisMonth">@(IsArabic ? "هذا الشهر" : "This month")</button>
+    <button type="button" @onclick="PresetLastMonth">@(IsArabic ? "الشهر الماضي" : "Last month")</button>
+    <button type="button" @onclick="PresetLastQuarter">@(IsArabic ? "الربع الماضي" : "Last quarter")</button>
+    <button type="button" @onclick="PresetYTD">@(IsArabic ? "من بداية السنة" : "Year-to-date")</button>
+</div>
+
+<div class="form-grid" style="max-width:560px;">
+    <fieldset>
+        <legend>@(IsArabic ? "حدّد الفترة" : "Pick a period")</legend>
+        <label>
+            <span>@(IsArabic ? "من" : "From")</span>
+            <input type="date" @bind="_from" @bind:after="PreviewAsync" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "إلى" : "To")</span>
+            <input type="date" @bind="_to" @bind:after="PreviewAsync" />
+        </label>
+    </fieldset>
+</div>
+
+@if (_error is not null)
+{
+    <div class="flash-error">@_error</div>
+}
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ الحساب…" : "Calculating…")</p>
+}
+else if (_previewCount is { } count)
+{
+    <section class="kpi-grid" style="margin-top:24px;">
+        <div class="kpi-card kpi-primary">
+            <div class="kpi-label"><Icon Name="file-text" Class="ic" />@(IsArabic ? "عدد الفواتير في الفترة" : "Invoices in period")</div>
+            <div class="kpi-value">@count<span class="kpi-unit">@(IsArabic ? "فاتورة" : "invoices")</span></div>
+            <div class="kpi-meta">@(IsArabic ? $"{_from:yyyy-MM-dd} إلى {_to:yyyy-MM-dd}" : $"{_from:yyyy-MM-dd} to {_to:yyyy-MM-dd}")</div>
+        </div>
+        <div class="kpi-card kpi-success">
+            <div class="kpi-label"><Icon Name="bar-chart" Class="ic" />@(IsArabic ? "إجمالي القيم" : "Total amount")</div>
+            <div class="kpi-value">@_previewTotal.ToString("N0")<span class="kpi-unit">@(IsArabic ? "ج.م." : "EGP")</span></div>
+            <div class="kpi-meta">@(IsArabic ? "بيانات للفواتير المرحّلة فقط" : "Posted invoices only")</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label"><Icon Name="archive" Class="ic" />@(IsArabic ? "محتوى الـZIP" : "ZIP contents")</div>
+            <div class="kpi-value">@(count * 2)<span class="kpi-unit">@(IsArabic ? "ملف" : "files")</span></div>
+            <div class="kpi-meta">@(IsArabic ? "PDF + JSON موقّع لكل فاتورة + manifest" : "PDF + signed JSON per invoice + manifest")</div>
+        </div>
+    </section>
+
+    @if (count > 0)
+    {
+        <div class="invoice-actions" style="margin-top:24px;">
+            <a class="btn-primary" href="@DownloadUrl()" download>
+                <Icon Name="archive" Class="ic" />
+                @(IsArabic ? $"تنزيل ZIP ({count} فاتورة)" : $"Download ZIP ({count} invoices)")
+            </a>
+            <span style="color:var(--text-muted);font-size:13px;">
+                @(IsArabic ? "ملحوظة: الفترات الكبيرة (300+ فاتورة) قد تستغرق دقيقتين لإعداد الـZIP." : "Note: large periods (300+ invoices) may take 1-2 minutes to package.")
+            </span>
+        </div>
+    }
+    else
+    {
+        <div class="activity-feed" style="margin-top:24px;">
+            <div class="activity-item" style="border-bottom:none;">
+                <div class="activity-icon tone-info"><Icon Name="file-text" Class="ic" /></div>
+                <div class="activity-content">
+                    @(IsArabic
+                        ? "لا توجد فواتير مرحّلة في هذه الفترة. اختر فترة أخرى أو ابدأ بترحيل أول فاتورة."
+                        : "No posted invoices in this period. Pick a different period or post your first invoice.")
+                </div>
+            </div>
+        </div>
+    }
+}
+
+<section style="margin-top:48px; background: var(--surface); border:1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-xs);">
+    <h3 style="margin-top:0;"><Icon Name="book" Class="ic" /> @(IsArabic ? "ليه التصدير ده مهم؟" : "Why this export matters")</h3>
+    <ul style="margin:8px 0;padding-inline-start:20px;line-height:1.8;color:var(--text-muted);">
+        <li>@(IsArabic ? "بوابة ETA لا تسمح بتنزيل جماعي للـPDFs — الناس بتعتمد على Chrome extensions غير رسمية بتختفي وترجع." : "ETA's portal doesn't allow bulk PDF download — operators rely on unofficial Chrome extensions that come and go.")</li>
+        <li>@(IsArabic ? "وقت الفحص الضريبي، المفتش بيطلب كل فواتير الفترة في ملف واحد. الـZIP ده هو إجابتك." : "During a tax audit, the inspector asks for all invoices in one file. This ZIP is your answer.")</li>
+        <li>@(IsArabic ? "كل فاتورة موقّعة بـUUID من ETA — الـJSON مطابق للنسخة المرسلة، فيه كل البيانات اللي يحتاجها المراجع." : "Every invoice is signed with the ETA UUID — the JSON matches what was submitted, with all the data the auditor needs.")</li>
+    </ul>
+</section>

@@ -1,0 +1,227 @@
+@page "/eta-inbox"
+@using System.Globalization
+@using EgyptTax.Domain.Eta
+@using EgyptTax.Infrastructure.BackgroundJobs
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject EtaReceivedInboxJob InboxJob
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "صندوق ETA الوارد | DaftarX" : "ETA Inbox | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<EtaReceivedDocument> _docs = new();
+    private EtaReceivedDocumentStatus _filter = EtaReceivedDocumentStatus.NeedsReview;
+    private bool _refreshing;
+    private string? _refreshResult;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _docs = await db.Set<EtaReceivedDocument>()
+            .AsNoTracking()
+            .Where(d => d.Status == _filter)
+            .OrderByDescending(d => d.FirstSeenAtUtc)
+            .ToListAsync();
+    }
+
+    private async Task TriggerInboxPullAsync()
+    {
+        _refreshing = true;
+        _refreshResult = null;
+        try
+        {
+            var result = await InboxJob.RunOnceAsync();
+            _refreshResult = Tr(
+                $"تم السحب من ETA: {result.FetchedCount} وارد، أُضيف {result.InsertedCount}، تم تخطّي {result.SkippedExistingCount}.",
+                $"Pulled from ETA: fetched {result.FetchedCount}, added {result.InsertedCount}, skipped {result.SkippedExistingCount} (already known).");
+        }
+        catch (Exception ex)
+        {
+            _refreshResult = ex.Message;
+        }
+        finally
+        {
+            _refreshing = false;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task SetFilterAsync(EtaReceivedDocumentStatus status)
+    {
+        _filter = status;
+        await ReloadAsync();
+    }
+
+    private async Task IgnoreAsync(Guid id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.Set<EtaReceivedDocument>().FirstOrDefaultAsync(d => d.Id == id);
+        if (row is null) return;
+        row.MarkIgnored(DateTime.UtcNow);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ImportAsync(Guid id)
+    {
+        // MVP slice: stamp the row as "Imported" with a synthetic
+        // PurchaseInvoice id so the inbox unblocks. Real conversion
+        // (auto-create PurchaseInvoice draft + supplier match) ships
+        // in the follow-up push.
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.Set<EtaReceivedDocument>().FirstOrDefaultAsync(d => d.Id == id);
+        if (row is null) return;
+        row.MarkImported(Guid.NewGuid(), DateTime.UtcNow);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private string StatusLabel(EtaReceivedDocumentStatus s) => IsArabic
+        ? s switch
+        {
+            EtaReceivedDocumentStatus.NeedsReview => "بانتظار المراجعة",
+            EtaReceivedDocumentStatus.Imported => "مستورد",
+            EtaReceivedDocumentStatus.Ignored => "متجاهل",
+            _ => s.ToString(),
+        }
+        : s switch
+        {
+            EtaReceivedDocumentStatus.NeedsReview => "Needs review",
+            EtaReceivedDocumentStatus.Imported => "Imported",
+            EtaReceivedDocumentStatus.Ignored => "Ignored",
+            _ => s.ToString(),
+        };
+
+    private string StatusBadgeClass(EtaReceivedDocumentStatus s) => s switch
+    {
+        EtaReceivedDocumentStatus.NeedsReview => "state-submitted",
+        EtaReceivedDocumentStatus.Imported    => "state-approved",
+        EtaReceivedDocumentStatus.Ignored     => "state-rejected",
+        _ => "",
+    };
+}
+
+<h1>@(IsArabic ? "📥 صندوق ETA الوارد" : "📥 ETA Inbox")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "كل فاتورة أرسلها مورّدوك لـ ETA باسمك. راجعها واستوردها كفاتورة شراء بدل إعادة إدخالها يدوياً."
+        : "Every document your suppliers submitted to ETA in your name. Review and import as a Purchase Invoice instead of re-keying.")
+</p>
+
+<div class="invoice-toolbar">
+    <button type="button" class="btn-primary" @onclick="TriggerInboxPullAsync" disabled="@_refreshing">
+        <Icon Name="activity" Class="ic" />
+        @(_refreshing ? Tr("جارٍ السحب…", "Pulling…") : Tr("سحب من ETA الآن", "Pull from ETA now"))
+    </button>
+    <span style="color:var(--text-muted);font-size:13px;">
+        @(IsArabic ? "تلقائي كل دقيقتين في الخلفية." : "Runs automatically every 2 minutes in the background.")
+    </span>
+</div>
+
+@if (_refreshResult is not null)
+{
+    <div class="kpi-card kpi-info" style="margin-top:16px;">@_refreshResult</div>
+}
+
+<div class="invoice-toolbar" style="margin-top:24px;">
+    <button type="button"
+            class="@(_filter == EtaReceivedDocumentStatus.NeedsReview ? "btn-primary" : "")"
+            @onclick="@(() => SetFilterAsync(EtaReceivedDocumentStatus.NeedsReview))">
+        @Tr("بانتظار المراجعة", "Needs review")
+    </button>
+    <button type="button"
+            class="@(_filter == EtaReceivedDocumentStatus.Imported ? "btn-primary" : "")"
+            @onclick="@(() => SetFilterAsync(EtaReceivedDocumentStatus.Imported))">
+        @Tr("مستورد", "Imported")
+    </button>
+    <button type="button"
+            class="@(_filter == EtaReceivedDocumentStatus.Ignored ? "btn-primary" : "")"
+            @onclick="@(() => SetFilterAsync(EtaReceivedDocumentStatus.Ignored))">
+        @Tr("متجاهل", "Ignored")
+    </button>
+</div>
+
+@if (_docs.Count == 0)
+{
+    <div class="activity-feed" style="margin-top:24px;">
+        <div class="activity-item" style="border-bottom:none;">
+            <div class="activity-icon tone-info"><Icon Name="package" Class="ic" /></div>
+            <div class="activity-content">
+                @(_filter == EtaReceivedDocumentStatus.NeedsReview
+                    ? Tr("لا توجد فواتير جديدة بانتظار المراجعة.", "No new documents awaiting review.")
+                    : Tr("لا يوجد شيء في هذا التصنيف.", "Nothing in this bucket."))
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <table class="data-grid" style="margin-top:24px;">
+        <thead>
+            <tr>
+                <th>@Tr("المورّد", "Supplier")</th>
+                <th>@Tr("رقم الفاتورة", "Invoice #")</th>
+                <th>@Tr("التاريخ", "Date")</th>
+                <th class="num">@Tr("الصافي", "Net")</th>
+                <th class="num">@Tr("الضريبة", "VAT")</th>
+                <th class="num">@Tr("الإجمالي", "Total")</th>
+                <th>@Tr("الحالة", "Status")</th>
+                <th>@Tr("منذ", "First seen")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var d in _docs)
+            {
+                <tr>
+                    <td>
+                        <strong>@d.SupplierLegalName</strong><br />
+                        <code style="font-size:12px;color:var(--text-muted);">@d.SupplierTin</code>
+                    </td>
+                    <td>@d.DocumentNumber</td>
+                    <td>@d.DocumentDate.ToString("yyyy-MM-dd")</td>
+                    <td class="num">@d.NetBeforeVatEgp.ToString("N2")</td>
+                    <td class="num">@d.VatTotalEgp.ToString("N2")</td>
+                    <td class="num"><strong>@d.GrandTotalEgp.ToString("N2")</strong></td>
+                    <td><span class="state-badge @StatusBadgeClass(d.Status)">@StatusLabel(d.Status)</span></td>
+                    <td>@d.FirstSeenAtUtc.ToString("yyyy-MM-dd HH:mm") UTC</td>
+                    <td>
+                        @if (d.Status == EtaReceivedDocumentStatus.NeedsReview)
+                        {
+                            <button type="button" class="btn-primary" @onclick="@(() => ImportAsync(d.Id))">
+                                <Icon Name="check-circle" Class="ic" />@Tr("استيراد", "Import")
+                            </button>
+                            <button type="button" class="btn-secondary" @onclick="@(() => IgnoreAsync(d.Id))">
+                                @Tr("تجاهل", "Ignore")
+                            </button>
+                        }
+                        else
+                        {
+                            <code style="font-size:11px;color:var(--text-muted);">@d.RegulatorLongUuid</code>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<section style="margin-top:48px; background: var(--surface); border:1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-xs);">
+    <h3 style="margin-top:0;"><Icon Name="book" Class="ic" /> @Tr("ليه ده مهم؟", "Why this matters")</h3>
+    <ul style="margin:8px 0;padding-inline-start:20px;line-height:1.8;color:var(--text-muted);">
+        <li>@Tr("قبل ETA: المورّد يبعت فاتورة، أنت تعيد إدخالها يدوياً، تكتب سعر غلط بـ 0.01 ج.م.، VAT close يفشل.",
+              "Before ETA: supplier sends invoice → you re-key → typo of 0.01 EGP → VAT close mismatches.")</li>
+        <li>@Tr("بعد ETA: نسخة المصلحة الرسمية تتنزّل عندك مباشرة. مفيش إعادة إدخال، مفيش أخطاء نقل.",
+              "After ETA: the regulator's authoritative copy lands here directly. No re-keying, no transcription errors.")</li>
+        <li>@Tr("كل فاتورة عندها رقم ETA الرسمي — لما المراجع يطلب، تعرضه فوراً.",
+              "Every document carries its official ETA UUID — auditors get a verifiable reference instantly.")</li>
+    </ul>
+</section>

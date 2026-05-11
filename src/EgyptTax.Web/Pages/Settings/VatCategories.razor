@@ -9,41 +9,36 @@
 @inject IVatRateLookup VatLookup
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>VAT categories (FR-019 / FR-022) / فئات ضريبة القيمة المضافة</h1>
+<h1>@(IsArabic ? "فئات ضريبة القيمة المضافة" : "VAT categories (FR-019 / FR-022)")</h1>
 
 <p>
     <em>
-        Effective-from-dated rate table. Supersede a code by inserting
-        a new row with a later <strong>effective from</strong> — old
-        rows stay so historical sales/purchase invoices keep computing
-        against the rate in force on their document date. The
-        <strong>overlap check</strong> below flags configuration
-        mistakes (two rows whose effective windows cover the same
-        date) so the operator can resolve them before posting docs at
-        an ambiguous rate.
+        @(IsArabic
+            ? "جدول معدلات بتواريخ سريان. لتغيير معدل، أضف صفاً جديداً بنفس الكود وتاريخ سريان جديد — الصفوف القديمة بتفضل عشان الفواتير القديمة تحسب بالمعدل اللي كان ساري وقت تاريخها. فحص التداخل بالأسفل بيكشف الأخطاء (صفّين مغطيين نفس التاريخ) عشان تحلها قبل ما ترحّل مستندات بمعدل غامض."
+            : "Effective-from-dated rate table. Supersede a code by inserting a new row with a later effective from — old rows stay so historical invoices keep computing against the rate in force on their document date. The overlap check below flags configuration mistakes (two rows whose effective windows cover the same date) so the operator can resolve them before posting docs at an ambiguous rate.")
     </em>
 </p>
 
 @if (_rows is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 @if (_overlaps.Count > 0)
 {
     <div class="flash-error" role="alert">
-        <strong>Overlapping effective windows detected:</strong>
+        <strong>@(IsArabic ? "تم اكتشاف نوافذ سريان متداخلة:" : "Overlapping effective windows detected:")</strong>
         <ul>
             @foreach (var ov in _overlaps)
             {
                 <li>
-                    Code <code>@ov.Code</code> — rows
-                    <code>@ov.Left.ToString("yyyy-MM-dd")</code> and
+                    @(IsArabic ? "الكود" : "Code") <code>@ov.Code</code> — @(IsArabic ? "الصفوف" : "rows")
+                    <code>@ov.Left.ToString("yyyy-MM-dd")</code> @(IsArabic ? "و" : "and")
                     <code>@ov.Right.ToString("yyyy-MM-dd")</code>
-                    overlap. Cap the older one with an
-                    <em>effective to</em> date strictly before the
-                    newer row's <em>effective from</em>.
+                    @(IsArabic
+                        ? "متداخلة. قيّد الأقدم منهم بـ تاريخ نهاية سريان قبل تاريخ بداية الصف الأحدث."
+                        : "overlap. Cap the older one with an effective to date strictly before the newer row's effective from.")
                 </li>
             }
         </ul>
@@ -53,14 +48,14 @@
 <table class="data-grid">
     <thead>
         <tr>
-            <th>Code</th>
-            <th>Name (English)</th>
-            <th>Name (Arabic)</th>
-            <th class="num">Rate %</th>
-            <th>Effective from</th>
-            <th>Effective to</th>
-            <th>Recoverable input?</th>
-            <th>Active today?</th>
+            <th>@(IsArabic ? "الكود" : "Code")</th>
+            <th>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</th>
+            <th>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</th>
+            <th class="num">@(IsArabic ? "المعدل %" : "Rate %")</th>
+            <th>@(IsArabic ? "بداية السريان" : "Effective from")</th>
+            <th>@(IsArabic ? "نهاية السريان" : "Effective to")</th>
+            <th>@(IsArabic ? "ضريبة مدخلات قابلة للاسترداد؟" : "Recoverable input?")</th>
+            <th>@(IsArabic ? "نشطة اليوم؟" : "Active today?")</th>
         </tr>
     </thead>
     <tbody>
@@ -75,60 +70,60 @@
                 <td>@c.Name.Arabic</td>
                 <td class="num">@c.RatePercent.ToString("0.##")</td>
                 <td>@c.EffectiveFromDate.ToString("yyyy-MM-dd")</td>
-                <td>@(c.EffectiveToDate?.ToString("yyyy-MM-dd") ?? "(open)")</td>
-                <td>@(c.RecoverableInputVat ? "yes" : "no")</td>
-                <td>@(active ? "yes" : "no")</td>
+                <td>@(c.EffectiveToDate?.ToString("yyyy-MM-dd") ?? (IsArabic ? "(مفتوح)" : "(open)"))</td>
+                <td>@(c.RecoverableInputVat ? (IsArabic ? "نعم" : "yes") : (IsArabic ? "لا" : "no"))</td>
+                <td>@(active ? (IsArabic ? "نعم" : "yes") : (IsArabic ? "لا" : "no"))</td>
             </tr>
         }
     </tbody>
 </table>
 
-<h2>+ Add new category (or supersede an existing code)</h2>
+<h2>@(IsArabic ? "+ إضافة فئة جديدة (أو استبدال كود موجود)" : "+ Add new category (or supersede an existing code)")</h2>
 <form @onsubmit="OnCreate" @onsubmit:preventDefault>
     <div class="invoice-toolbar">
         <label>
-            <span>Code (e.g., Standard, Reduced, ZeroRated, Exempt)</span>
+            <span>@(IsArabic ? "الكود (مثال: قياسي، مخفض، صفري، معفى)" : "Code (e.g., Standard, Reduced, ZeroRated, Exempt)")</span>
             <input type="text" @bind="_code" required />
         </label>
         <label>
-            <span>Rate %</span>
+            <span>@(IsArabic ? "المعدل %" : "Rate %")</span>
             <input type="number" step="0.01" min="0" max="100" @bind="_rate" required />
         </label>
         <label>
-            <span>Recoverable input VAT?</span>
+            <span>@(IsArabic ? "ضريبة مدخلات قابلة للاسترداد؟" : "Recoverable input VAT?")</span>
             <input type="checkbox" @bind="_recoverable" />
         </label>
     </div>
     <div class="invoice-toolbar">
         <label>
-            <span>Name (English)</span>
+            <span>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</span>
             <input type="text" @bind="_nameEn" required />
         </label>
         <label>
-            <span>Name (Arabic)</span>
+            <span>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</span>
             <input type="text" @bind="_nameAr" required dir="rtl" />
         </label>
     </div>
     <div class="invoice-toolbar">
         <label>
-            <span>Effective from</span>
+            <span>@(IsArabic ? "بداية السريان" : "Effective from")</span>
             <input type="date" @bind="_effFrom" required />
         </label>
         <label>
-            <span>Effective to (optional — leave blank for open-ended)</span>
+            <span>@(IsArabic ? "نهاية السريان (اختياري — اتركه فارغ للمفتوح)" : "Effective to (optional — leave blank for open-ended)")</span>
             <input type="date" @bind="_effTo" />
         </label>
     </div>
     <p>
         <button type="submit" class="btn-primary" disabled="@_busy">
-            @(_busy ? "Saving…" : "Add category")
+            @(_busy ? (IsArabic ? "جارٍ الحفظ…" : "Saving…") : (IsArabic ? "إضافة فئة" : "Add category"))
         </button>
     </p>
 </form>
 
 @if (_error is not null)
 {
-    <div class="flash-error"><strong>Error:</strong> @_error</div>
+    <div class="flash-error"><strong>@(IsArabic ? "خطأ:" : "Error:")</strong> @_error</div>
 }
 @if (_flash is not null)
 {
@@ -200,10 +195,14 @@
                     && (ex.EffectiveToDate is null || ex.EffectiveToDate >= newFrom);
                 if (exCovers)
                 {
-                    _error = $"Code '{_code}' already has an active row covering {newFrom:yyyy-MM-dd} "
-                        + $"(rate {ex.RatePercent:0.##}%, effective from {ex.EffectiveFromDate:yyyy-MM-dd}). "
-                        + "Cap that row with an 'effective to' date strictly before the new effective-from, "
-                        + "then add this one.";
+                    _error = IsArabic
+                        ? $"الكود '{_code}' عنده صف نشط بالفعل بيغطي {newFrom:yyyy-MM-dd} "
+                            + $"(المعدل {ex.RatePercent:0.##}%، بداية السريان {ex.EffectiveFromDate:yyyy-MM-dd}). "
+                            + "قيّد هذا الصف بـ تاريخ نهاية سريان قبل تاريخ بداية الصف الجديد، ثم أضف هذا."
+                        : $"Code '{_code}' already has an active row covering {newFrom:yyyy-MM-dd} "
+                            + $"(rate {ex.RatePercent:0.##}%, effective from {ex.EffectiveFromDate:yyyy-MM-dd}). "
+                            + "Cap that row with an 'effective to' date strictly before the new effective-from, "
+                            + "then add this one.";
                     return;
                 }
             }
@@ -218,7 +217,9 @@
             Db.Add(cat);
             await Db.SaveChangesAsync();
 
-            _flash = $"VAT category {cat.Code} @ {cat.RatePercent:0.##}% added (effective {cat.EffectiveFromDate:yyyy-MM-dd}).";
+            _flash = IsArabic
+                ? $"تمت إضافة فئة الضريبة {cat.Code} بمعدل {cat.RatePercent:0.##}% (بدأت {cat.EffectiveFromDate:yyyy-MM-dd})."
+                : $"VAT category {cat.Code} @ {cat.RatePercent:0.##}% added (effective {cat.EffectiveFromDate:yyyy-MM-dd}).";
             _code = ""; _nameEn = ""; _nameAr = ""; _rate = 14m;
             _effTo = null;
             await Refresh();

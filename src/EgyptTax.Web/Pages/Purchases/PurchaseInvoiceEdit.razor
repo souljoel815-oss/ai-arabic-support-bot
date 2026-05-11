@@ -19,26 +19,28 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>@(_isNew ? "New purchase invoice" : "Edit purchase invoice")</h1>
+<h1>@(_isNew ? (IsArabic ? "فاتورة شراء جديدة" : "New purchase invoice") : (IsArabic ? "تعديل فاتورة شراء" : "Edit purchase invoice"))</h1>
 
 @if (_loading)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 @if (!_isNew && _invoice is null)
 {
-    <div class="flash-error">Purchase invoice not found.</div>
+    <div class="flash-error">@(IsArabic ? "فاتورة الشراء غير موجودة." : "Purchase invoice not found.")</div>
     return;
 }
 
 @if (!_isNew && _invoice!.State != DocumentState.Draft)
 {
     <div class="flash-error">
-        Invoice @_invoice.DocumentNumber is in state @_invoice.State; only drafts are editable (FR-027).
+        @(IsArabic
+            ? $"الفاتورة {_invoice.DocumentNumber} في حالة {_invoice.State}؛ المسودات فقط قابلة للتعديل (FR-027)."
+            : $"Invoice {_invoice.DocumentNumber} is in state {_invoice.State}; only drafts are editable (FR-027).")
     </div>
-    <a href="/purchase-invoices/@_invoice.Id">← View invoice</a>
+    <a href="/purchase-invoices/@_invoice.Id">← @(IsArabic ? "عرض الفاتورة" : "View invoice")</a>
     return;
 }
 
@@ -52,32 +54,32 @@
     <ValidationSummary />
 
     <fieldset>
-        <legend>Header</legend>
+        <legend>@(IsArabic ? "البيانات الأساسية" : "Header")</legend>
         <label>
-            <span>Supplier</span>
+            <span>@(IsArabic ? "المورد" : "Supplier")</span>
             <InputSelect @bind-Value="_form.SupplierId">
-                <option value="@Guid.Empty">— select —</option>
+                <option value="@Guid.Empty">— @(IsArabic ? "اختر" : "select") —</option>
                 @foreach (var s in _suppliers)
                 {
-                    <option value="@s.Id">@s.Code — @s.Name.English (@s.TaxProfile.ProfileType)</option>
+                    <option value="@s.Id">@s.Code — @(IsArabic ? s.Name.Arabic : s.Name.English) (@s.TaxProfile.ProfileType)</option>
                 }
             </InputSelect>
         </label>
         <label>
-            <span>Supplier invoice number</span>
+            <span>@(IsArabic ? "رقم فاتورة المورد" : "Supplier invoice number")</span>
             <InputText @bind-Value="_form.SupplierInvoiceNumber" />
         </label>
         <label>
-            <span>Date received</span>
+            <span>@(IsArabic ? "تاريخ الاستلام" : "Date received")</span>
             <InputDate @bind-Value="_form.DateReceived" />
         </label>
     </fieldset>
 
     <fieldset>
-        <legend>Lines</legend>
+        <legend>@(IsArabic ? "البنود" : "Lines")</legend>
         @if (_form.Lines.Count == 0)
         {
-            <p><em>No lines yet — add one below.</em></p>
+            <p><em>@(IsArabic ? "لا توجد بنود بعد — أضف بنداً بالأسفل." : "No lines yet — add one below.")</em></p>
         }
         else
         {
@@ -85,11 +87,11 @@
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Item / Category</th>
-                        <th>VAT</th>
-                        <th class="num">Qty</th>
-                        <th class="num">Unit price</th>
-                        <th>Deductible</th>
+                        <th>@(IsArabic ? "الصنف / الفئة" : "Item / Category")</th>
+                        <th>@(IsArabic ? "الضريبة" : "VAT")</th>
+                        <th class="num">@(IsArabic ? "الكمية" : "Qty")</th>
+                        <th class="num">@(IsArabic ? "سعر الوحدة" : "Unit price")</th>
+                        <th>@(IsArabic ? "قابل للخصم" : "Deductible")</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -104,8 +106,8 @@
                             <td>@DescribeVat(line.VatCategoryId)</td>
                             <td class="num">@line.Quantity.ToString("0.##")</td>
                             <td class="num">@line.UnitPrice.ToString("F2")</td>
-                            <td>@(line.DeductibleFlag ? "yes" : "no")</td>
-                            <td><button type="button" @onclick="() => _form.Lines.RemoveAt(idx)">Remove</button></td>
+                            <td>@(line.DeductibleFlag ? (IsArabic ? "نعم" : "yes") : (IsArabic ? "لا" : "no"))</td>
+                            <td><button type="button" @onclick="() => _form.Lines.RemoveAt(idx)">@(IsArabic ? "حذف" : "Remove")</button></td>
                         </tr>
                     }
                 </tbody>
@@ -114,23 +116,23 @@
     </fieldset>
 
     <fieldset>
-        <legend>Add a line</legend>
+        <legend>@(IsArabic ? "إضافة بند" : "Add a line")</legend>
         <label>
-            <span>Line kind</span>
+            <span>@(IsArabic ? "نوع البند" : "Line kind")</span>
             <InputSelect @bind-Value="_newLine.Kind">
-                <option value="@LineKind.Item">Item (inventory / trading goods)</option>
-                <option value="@LineKind.Expense">Expense category</option>
+                <option value="@LineKind.Item">@(IsArabic ? "صنف (مخزون / بضاعة)" : "Item (inventory / trading goods)")</option>
+                <option value="@LineKind.Expense">@(IsArabic ? "فئة مصروف" : "Expense category")</option>
             </InputSelect>
         </label>
         @if (_newLine.Kind == LineKind.Item)
         {
             <label>
-                <span>Item</span>
+                <span>@(IsArabic ? "الصنف" : "Item")</span>
                 <InputSelect @bind-Value="_newLine.ItemId">
-                    <option value="@Guid.Empty">— select —</option>
+                    <option value="@Guid.Empty">— @(IsArabic ? "اختر" : "select") —</option>
                     @foreach (var i in _items)
                     {
-                        <option value="@i.Id">@i.Code — @i.Name.English</option>
+                        <option value="@i.Id">@i.Code — @(IsArabic ? i.Name.Arabic : i.Name.English)</option>
                     }
                 </InputSelect>
             </label>
@@ -138,20 +140,20 @@
         else
         {
             <label>
-                <span>Expense category</span>
+                <span>@(IsArabic ? "فئة المصروف" : "Expense category")</span>
                 <InputSelect @bind-Value="_newLine.ExpenseCategoryId">
-                    <option value="@Guid.Empty">— select —</option>
+                    <option value="@Guid.Empty">— @(IsArabic ? "اختر" : "select") —</option>
                     @foreach (var c in _categories)
                     {
-                        <option value="@c.Id">@c.Code — @c.Name.English (@(c.DefaultDeductible ? "deductible by default" : "non-deductible by default"))</option>
+                        <option value="@c.Id">@c.Code — @(IsArabic ? c.Name.Arabic : c.Name.English) (@(c.DefaultDeductible ? (IsArabic ? "قابل للخصم افتراضياً" : "deductible by default") : (IsArabic ? "غير قابل للخصم افتراضياً" : "non-deductible by default")))</option>
                     }
                 </InputSelect>
             </label>
         }
         <label>
-            <span>VAT category</span>
+            <span>@(IsArabic ? "فئة الضريبة" : "VAT category")</span>
             <InputSelect @bind-Value="_newLine.VatCategoryId">
-                <option value="@Guid.Empty">— select —</option>
+                <option value="@Guid.Empty">— @(IsArabic ? "اختر" : "select") —</option>
                 @foreach (var v in _vatCategories)
                 {
                     <option value="@v.Id">@v.Code (@v.RatePercent.ToString("0.##")%)</option>
@@ -159,38 +161,38 @@
             </InputSelect>
         </label>
         <label>
-            <span>Quantity</span>
+            <span>@(IsArabic ? "الكمية" : "Quantity")</span>
             <InputNumber @bind-Value="_newLine.Quantity" step="0.01" />
         </label>
         <label>
-            <span>Unit price</span>
+            <span>@(IsArabic ? "سعر الوحدة" : "Unit price")</span>
             <InputNumber @bind-Value="_newLine.UnitPrice" step="0.01" />
         </label>
         <label>
-            <span>Deductible (input VAT recoverable)</span>
+            <span>@(IsArabic ? "قابل للخصم (ضريبة المدخلات قابلة للاسترداد)" : "Deductible (input VAT recoverable)")</span>
             <InputCheckbox @bind-Value="_newLine.DeductibleFlag" />
         </label>
-        <button type="button" @onclick="OnAddLine">Add line</button>
+        <button type="button" @onclick="OnAddLine">@(IsArabic ? "إضافة بند" : "Add line")</button>
     </fieldset>
 
-    <button type="submit">@(_isNew ? "Save draft" : "Update draft")</button>
-    <a href="/purchase-invoices">Cancel</a>
+    <button type="submit">@(_isNew ? (IsArabic ? "حفظ المسودة" : "Save draft") : (IsArabic ? "تحديث المسودة" : "Update draft"))</button>
+    <a href="/purchase-invoices">@(IsArabic ? "إلغاء" : "Cancel")</a>
 </EditForm>
 
 @if (!_isNew && _invoice is not null)
 {
     <section class="upload-section">
-        <h2>Attachments (FR-016 — required for deductible lines)</h2>
+        <h2>@(IsArabic ? "المرفقات (FR-016 — مطلوبة للبنود القابلة للخصم)" : "Attachments (FR-016 — required for deductible lines)")</h2>
         @if (_attachments.Count == 0)
         {
-            <p><em>No attachments yet. Deductible lines require at least one supporting document before posting.</em></p>
+            <p><em>@(IsArabic ? "لا توجد مرفقات بعد. البنود القابلة للخصم تتطلب مستنداً داعماً واحداً على الأقل قبل الترحيل." : "No attachments yet. Deductible lines require at least one supporting document before posting.")</em></p>
         }
         else
         {
             <ul>
                 @foreach (var a in _attachments)
                 {
-                    <li>@a.FilenameOriginal — @a.MimeType — @a.SizeBytes.ToString("N0") bytes</li>
+                    <li>@a.FilenameOriginal — @a.MimeType — @a.SizeBytes.ToString("N0") @(IsArabic ? "بايت" : "bytes")</li>
                 }
             </ul>
         }
@@ -198,7 +200,7 @@
         <InputFile OnChange="OnUploadAsync" accept=".pdf,.jpg,.jpeg,.png" disabled="@_uploading" />
         @if (_uploading)
         {
-            <span> Uploading…</span>
+            <span> @(IsArabic ? "جارٍ الرفع…" : "Uploading…")</span>
         }
     </section>
 }
@@ -279,19 +281,19 @@
     {
         if (_newLine.VatCategoryId == Guid.Empty || _newLine.Quantity <= 0m)
         {
-            _flash = "Select a VAT category and a positive quantity.";
+            _flash = IsArabic ? "اختر فئة ضريبة وكمية موجبة." : "Select a VAT category and a positive quantity.";
             _flashClass = "flash-error";
             return;
         }
         if (_newLine.Kind == LineKind.Item && _newLine.ItemId == Guid.Empty)
         {
-            _flash = "Select an item.";
+            _flash = IsArabic ? "اختر صنفاً." : "Select an item.";
             _flashClass = "flash-error";
             return;
         }
         if (_newLine.Kind == LineKind.Expense && _newLine.ExpenseCategoryId == Guid.Empty)
         {
-            _flash = "Select an expense category.";
+            _flash = IsArabic ? "اختر فئة مصروف." : "Select an expense category.";
             _flashClass = "flash-error";
             return;
         }
@@ -315,13 +317,13 @@
     {
         if (_form.SupplierId == Guid.Empty)
         {
-            _flash = "Select a supplier.";
+            _flash = IsArabic ? "اختر مورداً." : "Select a supplier.";
             _flashClass = "flash-error";
             return;
         }
         if (_form.Lines.Count == 0)
         {
-            _flash = "Add at least one line.";
+            _flash = IsArabic ? "أضف بنداً واحداً على الأقل." : "Add at least one line.";
             _flashClass = "flash-error";
             return;
         }
@@ -363,7 +365,7 @@
         }
         await Db.SaveChangesAsync();
 
-        _flash = "Draft saved.";
+        _flash = IsArabic ? "تم حفظ المسودة." : "Draft saved.";
         _flashClass = "flash-success";
     }
 
@@ -396,7 +398,7 @@
                     && a.DocumentType == DocumentType.PurchaseInvoice)
                 .OrderBy(a => a.UploadedAtUtc)
                 .ToListAsync();
-            _flash = $"Uploaded {file.Name}.";
+            _flash = IsArabic ? $"تم رفع {file.Name}." : $"Uploaded {file.Name}.";
             _flashClass = "flash-success";
         }
         catch (Exception ex)
@@ -415,14 +417,14 @@
         if (line.ItemId is { } itemId)
         {
             var item = _items.FirstOrDefault(i => i.Id == itemId);
-            return item is null ? itemId.ToString("D") : $"{item.Code} — {item.Name.English}";
+            return item is null ? itemId.ToString("D") : $"{item.Code} — {(IsArabic ? item.Name.Arabic : item.Name.English)}";
         }
         if (line.ExpenseCategoryId is { } catId)
         {
             var cat = _categories.FirstOrDefault(c => c.Id == catId);
-            return cat is null ? catId.ToString("D") : $"{cat.Code} — {cat.Name.English}";
+            return cat is null ? catId.ToString("D") : $"{cat.Code} — {(IsArabic ? cat.Name.Arabic : cat.Name.English)}";
         }
-        return "(unknown)";
+        return IsArabic ? "(غير معروف)" : "(unknown)";
     }
 
     private string DescribeVat(Guid vatId)

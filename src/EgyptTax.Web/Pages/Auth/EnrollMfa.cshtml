@@ -1,32 +1,48 @@
 @page "/mfa/enroll"
 @model EgyptTax.Web.Pages.Auth.EnrollMfaModel
 @{
-    ViewData["Title"] = "Enroll MFA";
+    ViewData["Title"] = IsArabic ? "تسجيل المصادقة الثنائية" : "Enroll MFA";
+    ViewData["BodyClass"] = "auth-page";
 }
 
-<h1>Enrol multi-factor authentication / تسجيل المصادقة الثنائية</h1>
-<p>Per FR-002, Administrator and Approver roles require MFA. Scan the provisioning URI into your authenticator app, then enter the 6-digit verification code.</p>
+<div class="auth-page-shell">
+    <div class="auth-page-card">
+        <div class="auth-brand">
+            <div class="auth-brand-mark">DX</div>
+            <div class="auth-brand-name">DaftarX</div>
+        </div>
 
-@if (!string.IsNullOrEmpty(Model.ErrorMessage))
-{
-    <div class="auth-error" role="alert">@Model.ErrorMessage</div>
-}
+        <h1>@(IsArabic ? "تسجيل المصادقة الثنائية" : "Enrol multi-factor authentication")</h1>
+        <p>@(IsArabic
+            ? "وفقاً لـ FR-002، الأدوار المدير والمعتِمد تتطلب المصادقة الثنائية. امسح رابط التهيئة في تطبيق المصادقة، ثم أدخل رمز التحقق."
+            : "Per FR-002, Administrator and Approver roles require MFA. Scan the provisioning URI into your authenticator app, then enter the 6-digit verification code.")</p>
 
-<section class="auth-mfa-secret">
-    <h2>Provisioning URI</h2>
-    <code id="provisioning-uri">@Model.ProvisioningUri</code>
-    <h2>Or enter manually</h2>
-    <p>Account: @User.Identity?.Name &emsp; Issuer: EgyptTax &emsp; Secret: <code id="enrollment-secret">@Model.Secret</code></p>
-</section>
+        @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        {
+            <div class="auth-error" role="alert">@Model.ErrorMessage</div>
+        }
 
-<form method="post" class="auth-form">
-    @Html.AntiForgeryToken()
-    <input asp-for="Input.StagedSecretCipher" type="hidden" value="@Model.StagedSecretCipher" />
+        <section class="auth-mfa-secret">
+            <strong style="display:block;margin-bottom:8px;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">@(IsArabic ? "رابط التهيئة" : "Provisioning URI")</strong>
+            <code id="provisioning-uri">@Model.ProvisioningUri</code>
+            <strong style="display:block;margin:16px 0 8px;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">@(IsArabic ? "أو أدخل يدوياً" : "Or enter manually")</strong>
+            <p style="margin:0;font-size:13px;">
+                @(IsArabic ? "الحساب:" : "Account:") @User.Identity?.Name<br />
+                @(IsArabic ? "الجهة المصدرة:" : "Issuer:") EgyptTax<br />
+                @(IsArabic ? "السر:" : "Secret:") <code id="enrollment-secret">@Model.Secret</code>
+            </p>
+        </section>
 
-    <label>
-        <span>Verification code (TOTP)</span>
-        <input asp-for="Input.TotpCode" type="text" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" maxlength="6" required />
-    </label>
+        <form method="post" class="auth-form">
+            @Html.AntiForgeryToken()
+            <input asp-for="Input.StagedSecretCipher" type="hidden" value="@Model.StagedSecretCipher" />
 
-    <button type="submit">Enrol</button>
-</form>
+            <label>
+                <span>@(IsArabic ? "رمز التحقق (TOTP)" : "Verification code (TOTP)")</span>
+                <input asp-for="Input.TotpCode" type="text" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" maxlength="6" required />
+            </label>
+
+            <button type="submit">@(IsArabic ? "تسجيل" : "Enrol")</button>
+        </form>
+    </div>
+</div>

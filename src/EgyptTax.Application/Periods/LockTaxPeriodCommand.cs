@@ -12,7 +12,15 @@ public sealed record LockTaxPeriodCommand(
     int Year,
     int MonthOrQuarter,
     Guid LockedByUserId,
-    string? Reason
+    string? Reason,
+    /// <summary>
+    /// P3.6 — non-null + non-blank means "I see soft blockers and
+    /// I'm overriding them anyway". Hard blockers are never
+    /// bypassed regardless of this value. Recorded verbatim in the
+    /// <c>tax_period.locked.forced</c> audit row so the auditor can
+    /// see why the operator chose to lock past the warnings.
+    /// </summary>
+    string? ForceLockReason = null
 );
 
 /// <summary>FR-037 — Administrator-only reopen.</summary>

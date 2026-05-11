@@ -5,19 +5,19 @@
 @inject ITaxableIncomeReportQuery ReportQuery
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Taxable income report (FR-023) / تقرير الدخل الخاضع للضريبة</h1>
+<h1>@(IsArabic ? "تقرير الدخل الخاضع للضريبة" : "Taxable income report (FR-023)")</h1>
 
 <form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
     <label>
-        <span>Period start</span>
+        <span>@(IsArabic ? "بداية الفترة" : "Period start")</span>
         <input type="date" @bind="_periodStart" />
     </label>
     <label>
-        <span>Period end</span>
+        <span>@(IsArabic ? "نهاية الفترة" : "Period end")</span>
         <input type="date" @bind="_periodEnd" />
     </label>
     <button type="submit" class="btn-primary" disabled="@_loading">
-        @(_loading ? "Computing…" : "Run report")
+        @(_loading ? (IsArabic ? "جارٍ الحساب…" : "Computing…") : (IsArabic ? "تشغيل التقرير" : "Run report"))
     </button>
 </form>
 
@@ -25,45 +25,45 @@
 {
     @if (_loading)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else
     {
-        <p><em>Pick a period above and click "Run report".</em></p>
+        <p><em>@(IsArabic ? "اختر الفترة بالأعلى ثم اضغط «تشغيل التقرير»." : "Pick a period above and click \"Run report\".")</em></p>
     }
     return;
 }
 
 <section class="invoice-totals">
-    <div><strong>Period:</strong> @_report.PeriodStart.ToString("yyyy-MM-dd") to @_report.PeriodEnd.ToString("yyyy-MM-dd")</div>
-    <div><strong>Revenue:</strong> <span class="num">@_report.Revenue.Amount.ToString("F2") EGP</span></div>
-    <div><strong>Deductible expenses:</strong> <span class="num">(@_report.DeductibleExpenses.Amount.ToString("F2")) EGP</span></div>
-    <div><strong>Non-deductible adjustments (added back):</strong> <span class="num">+@_report.NonDeductibleAdjustments.Amount.ToString("F2") EGP</span></div>
-    <div><strong>Management P&amp;L:</strong> <span class="num">@_report.ManagementProfitLoss.Amount.ToString("F2") EGP</span></div>
+    <div><strong>@(IsArabic ? "الفترة:" : "Period:")</strong> @_report.PeriodStart.ToString("yyyy-MM-dd") @(IsArabic ? "إلى" : "to") @_report.PeriodEnd.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "الإيرادات:" : "Revenue:")</strong> <span class="num">@_report.Revenue.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "المصروفات القابلة للخصم:" : "Deductible expenses:")</strong> <span class="num">(@_report.DeductibleExpenses.Amount.ToString("F2")) @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "التسويات غير القابلة للخصم (تُضاف):" : "Non-deductible adjustments (added back):")</strong> <span class="num">+@_report.NonDeductibleAdjustments.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "الربح/الخسارة الإدارية:" : "Management P&L:")</strong> <span class="num">@_report.ManagementProfitLoss.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
     <div class="grand">
-        <strong>Taxable income:</strong>
-        <span class="num">@_report.TaxableIncome.Amount.ToString("F2") EGP</span>
+        <strong>@(IsArabic ? "الدخل الخاضع للضريبة:" : "Taxable income:")</strong>
+        <span class="num">@_report.TaxableIncome.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span>
     </div>
-    <p><em>Identity: TaxableIncome = ManagementP&amp;L + NonDeductibleAdjustments. Non-deductible items appear in P&amp;L but are added back when computing taxable profit (US2 acceptance scenario 2).</em></p>
+    <p><em>@(IsArabic ? "الهوية الحسابية: الدخل الخاضع للضريبة = الربح الإداري + التسويات غير القابلة للخصم. البنود غير القابلة للخصم تظهر في قائمة الدخل لكن تُضاف مرة أخرى عند حساب الربح الخاضع للضريبة (سيناريو القبول 2 من US2)." : "Identity: TaxableIncome = ManagementP&L + NonDeductibleAdjustments. Non-deductible items appear in P&L but are added back when computing taxable profit (US2 acceptance scenario 2).")</em></p>
 </section>
 
 <section>
-    <h2>Contributing documents (@_report.Rows.Count)</h2>
+    <h2>@(IsArabic ? $"المستندات المساهمة ({_report.Rows.Count})" : $"Contributing documents ({_report.Rows.Count})")</h2>
     @if (_report.Rows.Count == 0)
     {
-        <p><em>No posted documents in this period.</em></p>
+        <p><em>@(IsArabic ? "لا توجد مستندات مرحّلة في هذه الفترة." : "No posted documents in this period.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Date</th>
-                    <th>Bucket</th>
-                    <th>Type</th>
-                    <th>Document #</th>
-                    <th>Description</th>
-                    <th class="num">Amount</th>
+                    <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                    <th>@(IsArabic ? "الفئة" : "Bucket")</th>
+                    <th>@(IsArabic ? "النوع" : "Type")</th>
+                    <th>@(IsArabic ? "رقم المستند" : "Document #")</th>
+                    <th>@(IsArabic ? "الوصف" : "Description")</th>
+                    <th class="num">@(IsArabic ? "المبلغ" : "Amount")</th>
                     <th></th>
                 </tr>
             </thead>
@@ -74,10 +74,10 @@
                         <td>@row.DocumentDate.ToString("yyyy-MM-dd")</td>
                         <td>@row.Bucket</td>
                         <td>@row.DocumentType</td>
-                        <td>@(row.DocumentNumber ?? "(draft)")</td>
+                        <td>@(row.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)"))</td>
                         <td>@row.Description</td>
                         <td class="num">@row.Amount.Amount.ToString("F2")</td>
-                        <td><a href="@DrillDownUrl(row)">Open</a></td>
+                        <td><a href="@DrillDownUrl(row)">@(IsArabic ? "فتح" : "Open")</a></td>
                     </tr>
                 }
             </tbody>

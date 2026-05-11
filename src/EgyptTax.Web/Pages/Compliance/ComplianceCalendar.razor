@@ -1,0 +1,233 @@
+@page "/compliance/calendar"
+@using System.Globalization
+@using EgyptTax.Domain.Compliance
+@using EgyptTax.Infrastructure.BackgroundJobs
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ComplianceCalendarRefreshJob RefreshJob
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "تقويم الالتزامات | DaftarX" : "Compliance Calendar | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<ComplianceObligation> _obligations = new();
+    private DateOnly _today = DateOnly.FromDateTime(DateTime.UtcNow);
+    private string? _flash;
+    private bool _refreshing;
+
+    // Filter state
+    private bool _showFiled;
+    private int _yearFilter = DateTime.UtcNow.Year;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var query = db.Set<ComplianceObligation>().AsNoTracking()
+            .Where(o => o.PeriodYear == _yearFilter);
+        if (!_showFiled)
+        {
+            query = query.Where(o => o.Status != ComplianceObligationStatus.Filed);
+        }
+        _obligations = await query.OrderBy(o => o.DueDate).ThenBy(o => o.Kind).ToListAsync();
+    }
+
+    private async Task RefreshFromGeneratorAsync()
+    {
+        _refreshing = true;
+        _flash = null;
+        try
+        {
+            var inserted = await RefreshJob.RunOnceAsync();
+            _flash = Tr(
+                $"تم التحديث: {inserted} التزام جديد.",
+                $"Refreshed: {inserted} new obligation(s) added.");
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+        }
+        finally
+        {
+            _refreshing = false;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task MarkFiledAsync(Guid id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.Set<ComplianceObligation>().FirstOrDefaultAsync(o => o.Id == id);
+        if (row is null) return;
+        row.MarkFiled(DateTime.UtcNow, reference: null, proofAttachmentId: null);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReopenAsync(Guid id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.Set<ComplianceObligation>().FirstOrDefaultAsync(o => o.Id == id);
+        if (row is null) return;
+        row.Reopen();
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task SetYearAsync(int year)
+    {
+        _yearFilter = year;
+        await ReloadAsync();
+    }
+
+    private string KindLabel(ComplianceObligationKind k) => IsArabic
+        ? k switch
+        {
+            ComplianceObligationKind.VatMonthly => "ضريبة قيمة مضافة شهرية",
+            ComplianceObligationKind.VatQuarterly => "ضريبة قيمة مضافة ربع سنوية",
+            ComplianceObligationKind.Form41Quarterly => "نموذج 41 ربع سنوي",
+            ComplianceObligationKind.IncomeTaxAnnual => "ضريبة الدخل السنوية",
+            ComplianceObligationKind.TurnoverTaxAnnual => "ضريبة معدل الدوران (قانون 6)",
+            _ => k.ToString(),
+        }
+        : k switch
+        {
+            ComplianceObligationKind.VatMonthly => "Monthly VAT",
+            ComplianceObligationKind.VatQuarterly => "Quarterly VAT",
+            ComplianceObligationKind.Form41Quarterly => "Form 41 (quarterly WHT)",
+            ComplianceObligationKind.IncomeTaxAnnual => "Annual income tax",
+            ComplianceObligationKind.TurnoverTaxAnnual => "Turnover tax (Law 6)",
+            _ => k.ToString(),
+        };
+
+    private (string label, string cls) UrgencyChip(ComplianceObligationUrgency u) => u switch
+    {
+        ComplianceObligationUrgency.Overdue       => (Tr("متأخّر", "Overdue"),       "preflight-count-pill is-error"),
+        ComplianceObligationUrgency.DueToday      => (Tr("اليوم/غداً", "Due today"), "preflight-count-pill is-error"),
+        ComplianceObligationUrgency.DueThisWeek   => (Tr("هذا الأسبوع", "This week"), "preflight-count-pill is-warning"),
+        ComplianceObligationUrgency.Soon          => (Tr("قريباً", "Soon"),          "preflight-count-pill is-warning"),
+        ComplianceObligationUrgency.Filed         => (Tr("تم التقديم", "Filed"),     "preflight-count-pill is-clean"),
+        _ => (Tr("لاحقاً", "Later"), "preflight-count-pill"),
+    };
+}
+
+<h1>@(IsArabic ? "🗓️ تقويم الالتزامات الضريبية" : "🗓️ Compliance Calendar")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "كل المواعيد النهائية لتقديمات ETA + ضريبة الدخل + Form 41. مولّدة تلقائياً من إعدادات الشركة (النظام، السنة المالية)."
+        : "Every ETA, income tax, and Form 41 deadline — auto-generated from your company profile (regime, fiscal year).")
+</p>
+
+<div class="invoice-toolbar">
+    <button type="button" class="@(_yearFilter == DateTime.UtcNow.Year - 1 ? "btn-primary" : "")"
+            @onclick="@(() => SetYearAsync(DateTime.UtcNow.Year - 1))">@(DateTime.UtcNow.Year - 1)</button>
+    <button type="button" class="@(_yearFilter == DateTime.UtcNow.Year ? "btn-primary" : "")"
+            @onclick="@(() => SetYearAsync(DateTime.UtcNow.Year))">@DateTime.UtcNow.Year</button>
+    <button type="button" class="@(_yearFilter == DateTime.UtcNow.Year + 1 ? "btn-primary" : "")"
+            @onclick="@(() => SetYearAsync(DateTime.UtcNow.Year + 1))">@(DateTime.UtcNow.Year + 1)</button>
+    <label style="display:inline-flex;align-items:center;gap:6px;margin-inline-start:16px;">
+        <input type="checkbox" @bind="_showFiled" @bind:after="ReloadAsync" />
+        @Tr("عرض المُقدَّمة", "Show filed")
+    </label>
+    <button type="button" class="btn-secondary" @onclick="RefreshFromGeneratorAsync" disabled="@_refreshing"
+            style="margin-inline-start:auto;">
+        <Icon Name="activity" Class="ic" />
+        @(_refreshing ? Tr("جارٍ التحديث…", "Refreshing…") : Tr("توليد الالتزامات الناقصة", "Generate missing obligations"))
+    </button>
+</div>
+
+@if (_flash is not null)
+{
+    <div class="kpi-card kpi-info" style="margin-top:16px;">@_flash</div>
+}
+
+@if (_obligations.Count == 0)
+{
+    <div class="activity-feed" style="margin-top:24px;">
+        <div class="activity-item" style="border-bottom:none;">
+            <div class="activity-icon tone-info"><Icon Name="calendar" Class="ic" /></div>
+            <div class="activity-content">
+                @Tr("لا توجد التزامات في هذه السنة. اضغط \"توليد\" أو ادخل بيانات الشركة أولاً من الإعدادات.",
+                    "No obligations for this year. Click 'Generate', or fill in the company profile from Settings first.")
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <table class="data-grid" style="margin-top:24px;">
+        <thead>
+            <tr>
+                <th>@Tr("الالتزام", "Obligation")</th>
+                <th>@Tr("الفترة", "Period")</th>
+                <th>@Tr("الموعد النهائي", "Due date")</th>
+                <th class="num">@Tr("الأيام المتبقية", "Days left")</th>
+                <th>@Tr("الحالة", "Urgency")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var o in _obligations)
+            {
+                var urgency = o.UrgencyAsOf(_today);
+                var (label, cls) = UrgencyChip(urgency);
+                var daysLeft = o.DueDate.DayNumber - _today.DayNumber;
+                <tr class="@(urgency == ComplianceObligationUrgency.Overdue ? "row-overdue" : urgency == ComplianceObligationUrgency.DueToday ? "row-critical" : urgency == ComplianceObligationUrgency.DueThisWeek ? "row-warning" : "")">
+                    <td><strong>@KindLabel(o.Kind)</strong></td>
+                    <td>@o.PeriodStart.ToString("yyyy-MM-dd") → @o.PeriodEnd.ToString("yyyy-MM-dd")</td>
+                    <td>@o.DueDate.ToString("yyyy-MM-dd")</td>
+                    <td class="num">
+                        @if (o.Status == ComplianceObligationStatus.Filed)
+                        {
+                            <text>—</text>
+                        }
+                        else
+                        {
+                            <text>@daysLeft</text>
+                        }
+                    </td>
+                    <td><span class="@cls">@label</span></td>
+                    <td>
+                        @if (o.Status == ComplianceObligationStatus.Filed)
+                        {
+                            <button type="button" class="btn-secondary" @onclick="@(() => ReopenAsync(o.Id))">
+                                @Tr("فتح من جديد", "Reopen")
+                            </button>
+                            @if (o.FiledAtUtc is { } at)
+                            {
+                                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+                                    @Tr("تم التقديم", "Filed") @at.ToString("yyyy-MM-dd")
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <button type="button" class="btn-primary" @onclick="@(() => MarkFiledAsync(o.Id))">
+                                <Icon Name="check-circle" Class="ic" />
+                                @Tr("تم التقديم", "Mark filed")
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<section style="margin-top:48px; background: var(--surface); border:1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-xs);">
+    <h3 style="margin-top:0;"><Icon Name="book" Class="ic" /> @Tr("ليه ده مهم؟", "Why this matters")</h3>
+    <ul style="margin:8px 0;padding-inline-start:20px;line-height:1.8;color:var(--text-muted);">
+        <li>@Tr("VAT شهري متأخر = 5,000 ج.م. غرامة (المستوى 2). Form 41 متأخر = غرامة منفصلة.",
+              "Late monthly VAT = 5,000 EGP fine (Tier 2). Late Form 41 = separate fine.")</li>
+        <li>@Tr("Excel reminders بتفشل أول ما الموظف اللي بيمسكها يسافر/يخرج إجازة. التقويم هنا مش بينسى.",
+              "Excel reminders break the moment the person owning them is on leave. This calendar doesn't forget.")</li>
+        <li>@Tr("التواريخ مولّدة من نظام الشركة (Standard أو قانون 6) — لو حوّلت، التقويم بيتحدّث تلقائياً.",
+              "Dates are derived from your regime (Standard or Law 6) — switch regimes and the calendar adapts automatically.")</li>
+    </ul>
+</section>

@@ -12,12 +12,12 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Tax periods (FR-037) / فترات الضريبة</h1>
+<h1>@(IsArabic ? "الفترات الضريبية (FR-037)" : "Tax periods (FR-037)")</h1>
 
 <p>
-    Lock a VAT month after filing the return so backdated posts into that period are rejected
-    automatically. Reopen only when a late supplier invoice or correction needs to land. Both
-    actions are recorded in the audit log.
+    @(IsArabic
+        ? "اقفل شهر الضريبة بعد تقديم الإقرار عشان الترحيلات بأثر رجعي ترفض أوتوماتيك. أعد الفتح فقط لو فاتورة مورد متأخرة أو تصحيح محتاج يدخل. الإجراءين مسجلين في سجل التدقيق."
+        : "Lock a VAT month after filing the return so backdated posts into that period are rejected automatically. Reopen only when a late supplier invoice or correction needs to land. Both actions are recorded in the audit log.")
 </p>
 
 @if (_flash is not null)
@@ -25,27 +25,44 @@
     <div class="@_flashClass" role="status">@_flash</div>
 }
 
+@if (_blockedDecision is not null)
+{
+    <div class="kpi-card kpi-error" style="margin-top:12px;">
+        <strong>@(IsArabic ? "القفل مرفوض — افتح قمرة الإقفال (`/cockpit`) لمعالجة:" : "Lock refused — open the cockpit (/cockpit) to resolve:")</strong>
+        <ul>
+            @foreach (var b in _blockedDecision.HardBlockers)
+            {
+                <li>@(IsArabic ? b.DescriptionAr : b.DescriptionEn)</li>
+            }
+            @foreach (var b in _blockedDecision.SoftBlockers)
+            {
+                <li>@(IsArabic ? b.DescriptionAr : b.DescriptionEn) — @(IsArabic ? "قابل للتجاوز من الكوكبيت بسبب موثَّق" : "force-lockable from the cockpit with a written reason")</li>
+            }
+        </ul>
+    </div>
+}
+
 <section class="master-data-list">
-    <h2>Locked + recently-touched periods</h2>
+    <h2>@(IsArabic ? "الفترات المقفولة + المتأخرة" : "Locked + recently-touched periods")</h2>
     @if (_periods is null)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else if (_periods.Count == 0)
     {
-        <p><em>No periods on record. Lock one below.</em></p>
+        <p><em>@(IsArabic ? "لا توجد فترات مسجلة. اقفل واحدة بالأسفل." : "No periods on record. Lock one below.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Kind</th>
-                    <th>Year</th>
-                    <th>Month / Quarter</th>
-                    <th>Status</th>
-                    <th>Locked at (UTC)</th>
-                    <th>Reason</th>
+                    <th>@(IsArabic ? "النوع" : "Kind")</th>
+                    <th>@(IsArabic ? "السنة" : "Year")</th>
+                    <th>@(IsArabic ? "الشهر / الربع" : "Month / Quarter")</th>
+                    <th>@(IsArabic ? "الحالة" : "Status")</th>
+                    <th>@(IsArabic ? "وقت القفل (UTC)" : "Locked at (UTC)")</th>
+                    <th>@(IsArabic ? "السبب" : "Reason")</th>
                     <th></th>
                 </tr>
             </thead>
@@ -62,11 +79,11 @@
                         <td>
                             @if (p.Status == TaxPeriodStatus.Locked)
                             {
-                                <button type="button" @onclick="() => OnReopenAsync(p)">Reopen</button>
+                                <button type="button" @onclick="() => OnReopenAsync(p)">@(IsArabic ? "إعادة فتح" : "Reopen")</button>
                             }
                             else
                             {
-                                <em>Open</em>
+                                <em>@(IsArabic ? "مفتوحة" : "Open")</em>
                             }
                         </td>
                     </tr>
@@ -77,17 +94,17 @@
 </section>
 
 <section class="master-data-create">
-    <h2>Lock a VAT month</h2>
+    <h2>@(IsArabic ? "قفل شهر ضريبي" : "Lock a VAT month")</h2>
     <EditForm Model="_form" OnValidSubmit="OnLockAsync" FormName="tax-period-lock" class="form-grid">
         <DataAnnotationsValidator />
         <ValidationSummary />
 
         <label>
-            <span>Year</span>
+            <span>@(IsArabic ? "السنة" : "Year")</span>
             <InputNumber @bind-Value="_form.Year" min="2000" max="9999" />
         </label>
         <label>
-            <span>Month</span>
+            <span>@(IsArabic ? "الشهر" : "Month")</span>
             <InputSelect @bind-Value="_form.Month">
                 @for (var m = 1; m <= 12; m++)
                 {
@@ -96,11 +113,11 @@
             </InputSelect>
         </label>
         <label>
-            <span>Reason (optional but recommended)</span>
-            <InputText @bind-Value="_form.Reason" placeholder="e.g. VAT return filed for May 2026" />
+            <span>@(IsArabic ? "السبب (اختياري لكن مستحسن)" : "Reason (optional but recommended)")</span>
+            <InputText @bind-Value="_form.Reason" placeholder="@(IsArabic ? "مثال: الإقرار قُدِّم لمايو 2026" : "e.g. VAT return filed for May 2026")" />
         </label>
 
-        <button type="submit">Lock period</button>
+        <button type="submit">@(IsArabic ? "قفل الفترة" : "Lock period")</button>
     </EditForm>
 </section>
 
@@ -109,6 +126,7 @@
     private FormModel _form = new();
     private string? _flash;
     private string _flashClass = "flash-success";
+    private PeriodLockReadinessDecision? _blockedDecision;
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
@@ -124,6 +142,7 @@
 
     private async Task OnLockAsync()
     {
+        _blockedDecision = null;
         try
         {
             var operatorUserId = await ResolveOperatorIdAsync();
@@ -132,10 +151,20 @@
                 operatorUserId, string.IsNullOrWhiteSpace(_form.Reason) ? null : _form.Reason),
                 CancellationToken.None);
 
-            _flash = $"Locked VAT period {_form.Year}-{_form.Month:D2}.";
+            _flash = IsArabic
+                ? $"تم قفل فترة الضريبة {_form.Year}-{_form.Month:D2}."
+                : $"Locked VAT period {_form.Year}-{_form.Month:D2}.";
             _flashClass = "flash-success";
             _form = new FormModel();
             await ReloadAsync();
+        }
+        catch (PeriodLockBlockedException ex)
+        {
+            _blockedDecision = ex.Decision;
+            _flash = IsArabic
+                ? "القفل مرفوض من قمرة الإقفال — افتح /cockpit لمعالجة المشاكل."
+                : "Lock refused by the closing-cockpit gate — open /cockpit to resolve.";
+            _flashClass = "flash-error";
         }
         catch (Exception ex)
         {
@@ -154,7 +183,9 @@
                 operatorUserId, "Reopened from settings UI"),
                 CancellationToken.None);
 
-            _flash = $"Reopened {period.PeriodKind} {period.Year}-{period.MonthOrQuarter:D2}.";
+            _flash = IsArabic
+                ? $"تم إعادة فتح {period.PeriodKind} {period.Year}-{period.MonthOrQuarter:D2}."
+                : $"Reopened {period.PeriodKind} {period.Year}-{period.MonthOrQuarter:D2}.";
             _flashClass = "flash-success";
             await ReloadAsync();
         }

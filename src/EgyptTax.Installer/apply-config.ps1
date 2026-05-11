@@ -27,6 +27,12 @@
     NTP server for clock-drift defense. Defaults to
     time.windows.com.
 
+.PARAMETER BindUrl
+    Kestrel bind URL the EgyptTax Windows service listens on.
+    Defaults to http://+:8088 to match the MSI's firewall rule.
+    Operators wanting HTTPS instead should pass
+    https://+:443 + run setup-https.ps1 to provision the cert.
+
 .NOTES
     InstallFolder is derived from $PSScriptRoot rather than a
     parameter. This sidesteps the MSI INSTALLFOLDER trailing-
@@ -45,7 +51,8 @@ param(
     [Parameter(Mandatory)] [string] $SqlConnection,
     [Parameter()] [string] $AuditCheckpointMode = "Sql",
     [Parameter()] [string] $AttachmentsRoot = "C:\ProgramData\EgyptTax\attachments",
-    [Parameter()] [string] $NtpServer = "time.windows.com"
+    [Parameter()] [string] $NtpServer = "time.windows.com",
+    [Parameter()] [string] $BindUrl = "http://+:8088"
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,6 +76,11 @@ $config = [ordered]@{
     InspectionBundles = [ordered]@{
         RootDirectory = "C:\ProgramData\EgyptTax\inspection-bundles"
     }
+    # ASP.NET Core reads "Urls" from configuration to know which
+    # endpoints to bind. Equivalent to passing --urls or setting
+    # ASPNETCORE_URLS at process start, but config-driven so the
+    # Windows service registration doesn't need an env-var dance.
+    Urls = $BindUrl
 }
 
 $json = $config | ConvertTo-Json -Depth 5

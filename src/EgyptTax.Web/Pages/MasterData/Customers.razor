@@ -8,7 +8,7 @@
 @inject AppDbContext Db
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Customers / العملاء</h1>
+<h1>@(IsArabic ? "العملاء" : "Customers")</h1>
 
 @if (_savedFlash is not null)
 {
@@ -16,26 +16,26 @@
 }
 
 <section class="master-data-list">
-    <h2>Existing customers</h2>
+    <h2>@(IsArabic ? "العملاء الحاليون" : "Existing customers")</h2>
     @if (_customers is null)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else if (_customers.Count == 0)
     {
-        <p><em>No customers yet — add one below.</em></p>
+        <p><em>@(IsArabic ? "لا يوجد عملاء بعد — أضف عميلاً بالأسفل." : "No customers yet — add one below.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Code</th>
-                    <th>Name (English)</th>
-                    <th>Name (Arabic)</th>
-                    <th>Profile</th>
-                    <th>TIN</th>
-                    <th>Status</th>
+                    <th>@(IsArabic ? "الكود" : "Code")</th>
+                    <th>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</th>
+                    <th>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</th>
+                    <th>@(IsArabic ? "نوع الملف" : "Profile")</th>
+                    <th>@(IsArabic ? "الرقم الضريبي" : "TIN")</th>
+                    <th>@(IsArabic ? "الحالة" : "Status")</th>
                     <th></th>
                 </tr>
             </thead>
@@ -52,11 +52,11 @@
                         <td>
                             @if (c.Status == CustomerStatus.Active)
                             {
-                                <button type="button" @onclick="() => DeactivateAsync(c.Id)">Deactivate</button>
+                                <button type="button" @onclick="() => DeactivateAsync(c.Id)">@(IsArabic ? "تعطيل" : "Deactivate")</button>
                             }
                             else
                             {
-                                <button type="button" @onclick="() => ReactivateAsync(c.Id)">Reactivate</button>
+                                <button type="button" @onclick="() => ReactivateAsync(c.Id)">@(IsArabic ? "إعادة تفعيل" : "Reactivate")</button>
                             }
                         </td>
                     </tr>
@@ -67,60 +67,60 @@
 </section>
 
 <section class="master-data-create">
-    <h2>Add a customer</h2>
+    <h2>@(IsArabic ? "إضافة عميل" : "Add a customer")</h2>
     <EditForm Model="_form" OnValidSubmit="OnCreateAsync" FormName="customer-create" class="form-grid">
         <DataAnnotationsValidator />
         <ValidationSummary />
 
         <fieldset>
-            <legend>Identity</legend>
+            <legend>@(IsArabic ? "الهوية" : "Identity")</legend>
             <label>
-                <span>Code</span>
+                <span>@(IsArabic ? "الكود" : "Code")</span>
                 <InputText @bind-Value="_form.Code" />
             </label>
             <label>
-                <span>Name (English)</span>
+                <span>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</span>
                 <InputText @bind-Value="_form.NameEnglish" />
             </label>
             <label>
-                <span>Name (Arabic)</span>
+                <span>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</span>
                 <InputText @bind-Value="_form.NameArabic" />
             </label>
             <label>
-                <span>Phone (optional)</span>
+                <span>@(IsArabic ? "الهاتف (اختياري)" : "Phone (optional)")</span>
                 <InputText @bind-Value="_form.Phone" />
             </label>
             <label>
-                <span>Email (optional)</span>
+                <span>@(IsArabic ? "البريد الإلكتروني (اختياري)" : "Email (optional)")</span>
                 <InputText @bind-Value="_form.Email" />
             </label>
         </fieldset>
 
         <fieldset>
-            <legend>Tax profile (FR-040)</legend>
+            <legend>@(IsArabic ? "الملف الضريبي (FR-040)" : "Tax profile (FR-040)")</legend>
             <label>
-                <span>Profile type</span>
+                <span>@(IsArabic ? "نوع الملف" : "Profile type")</span>
                 <InputSelect @bind-Value="_form.ProfileType">
-                    <option value="@CustomerTaxProfileType.B2BRegistered">B2B — Registered</option>
-                    <option value="@CustomerTaxProfileType.B2BUnregistered">B2B — Unregistered</option>
-                    <option value="@CustomerTaxProfileType.B2CConsumer">B2C — Consumer</option>
+                    <option value="@CustomerTaxProfileType.B2BRegistered">@(IsArabic ? "شركة — مسجلة ضريبياً" : "B2B — Registered")</option>
+                    <option value="@CustomerTaxProfileType.B2BUnregistered">@(IsArabic ? "شركة — غير مسجلة" : "B2B — Unregistered")</option>
+                    <option value="@CustomerTaxProfileType.B2CConsumer">@(IsArabic ? "مستهلك نهائي" : "B2C — Consumer")</option>
                 </InputSelect>
             </label>
             @if (_form.ProfileType == CustomerTaxProfileType.B2BRegistered)
             {
                 <label>
-                    <span>TIN (9 digits) — required for B2B Registered</span>
+                    <span>@(IsArabic ? "الرقم الضريبي (9 أرقام) — مطلوب للشركات المسجلة" : "TIN (9 digits) — required for B2B Registered")</span>
                     <InputText @bind-Value="_form.Tin" />
                 </label>
             }
             <label>
-                <span>VAT exempt</span>
+                <span>@(IsArabic ? "معفى من الضريبة" : "VAT exempt")</span>
                 <InputCheckbox @bind-Value="_form.VatExemption" />
             </label>
             <label>
-                <span>Default sales VAT category</span>
+                <span>@(IsArabic ? "فئة الضريبة الافتراضية للمبيعات" : "Default sales VAT category")</span>
                 <InputSelect @bind-Value="_form.DefaultVatCategoryId">
-                    <option value="@Guid.Empty">— none —</option>
+                    <option value="@Guid.Empty">@(IsArabic ? "— لا شيء —" : "— none —")</option>
                     @if (_vatCategories is not null)
                     {
                         @foreach (var v in _vatCategories)
@@ -133,34 +133,34 @@
         </fieldset>
 
         <fieldset>
-            <legend>Address</legend>
+            <legend>@(IsArabic ? "العنوان" : "Address")</legend>
             <label>
-                <span>Display (English)</span>
+                <span>@(IsArabic ? "العرض (إنجليزي)" : "Display (English)")</span>
                 <InputText @bind-Value="_form.AddressDisplayEnglish" />
             </label>
             <label>
-                <span>Display (Arabic)</span>
+                <span>@(IsArabic ? "العرض (عربي)" : "Display (Arabic)")</span>
                 <InputText @bind-Value="_form.AddressDisplayArabic" />
             </label>
             <label>
-                <span>Governorate</span>
+                <span>@(IsArabic ? "المحافظة" : "Governorate")</span>
                 <InputText @bind-Value="_form.AddressGovernorate" />
             </label>
             <label>
-                <span>Region / city</span>
+                <span>@(IsArabic ? "المنطقة / المدينة" : "Region / city")</span>
                 <InputText @bind-Value="_form.AddressRegionCity" />
             </label>
             <label>
-                <span>Street</span>
+                <span>@(IsArabic ? "الشارع" : "Street")</span>
                 <InputText @bind-Value="_form.AddressStreet" />
             </label>
             <label>
-                <span>Building number</span>
+                <span>@(IsArabic ? "رقم العقار" : "Building number")</span>
                 <InputText @bind-Value="_form.AddressBuildingNumber" />
             </label>
         </fieldset>
 
-        <button type="submit">Add customer</button>
+        <button type="submit">@(IsArabic ? "إضافة عميل" : "Add customer")</button>
     </EditForm>
 </section>
 
@@ -187,7 +187,9 @@
         if (_form.ProfileType == CustomerTaxProfileType.B2BRegistered
             && string.IsNullOrWhiteSpace(_form.Tin))
         {
-            _savedFlash = "TIN is required for B2B Registered customers.";
+            _savedFlash = IsArabic
+                ? "الرقم الضريبي مطلوب للعملاء من نوع شركة مسجلة."
+                : "TIN is required for B2B Registered customers.";
             return;
         }
 
@@ -223,7 +225,9 @@
         await Db.SaveChangesAsync();
 
         _form = new FormModel();
-        _savedFlash = $"Customer {customer.Code} added.";
+        _savedFlash = IsArabic
+            ? $"تمت إضافة العميل {customer.Code}."
+            : $"Customer {customer.Code} added.";
         await ReloadAsync();
     }
 
@@ -232,7 +236,9 @@
         var c = await Db.Set<Customer>().FirstAsync(x => x.Id == id);
         c.Deactivate();
         await Db.SaveChangesAsync();
-        _savedFlash = $"Customer {c.Code} deactivated.";
+        _savedFlash = IsArabic
+            ? $"تم تعطيل العميل {c.Code}."
+            : $"Customer {c.Code} deactivated.";
         await ReloadAsync();
     }
 
@@ -241,7 +247,9 @@
         var c = await Db.Set<Customer>().FirstAsync(x => x.Id == id);
         c.Reactivate();
         await Db.SaveChangesAsync();
-        _savedFlash = $"Customer {c.Code} reactivated.";
+        _savedFlash = IsArabic
+            ? $"تم إعادة تفعيل العميل {c.Code}."
+            : $"Customer {c.Code} reactivated.";
         await ReloadAsync();
     }
 

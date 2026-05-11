@@ -63,13 +63,35 @@
     <!-- Operator-prompted properties (see comment above for current
          msiexec-command-line bootstrap path). -->
     <Property Id="SQL_CONNECTION"
-              Value="Server=.;Database=EgyptTax;Trusted_Connection=True;TrustServerCertificate=True"
+              Value="Server=.\SQLEXPRESS;Database=EgyptTax;Trusted_Connection=True;TrustServerCertificate=True"
               Secure="yes" />
     <Property Id="AUDIT_CHECKPOINT_MODE" Value="Sql" Secure="yes" />
     <Property Id="ATTACHMENTS_ROOT"
               Value="C:\ProgramData\EgyptTax\attachments"
               Secure="yes" />
     <Property Id="NTP_SERVER" Value="time.windows.com" Secure="yes" />
+
+    <!-- Initial admin credentials. Bundle wires these from the
+         setup-wizard PowerShell GUI; if invoked directly with msiexec,
+         the bundle's defaults remain the safe fallbacks below.
+         The seed CLI applies them on first install only — re-running
+         the MSI does not overwrite an existing admin's email/password. -->
+    <Property Id="ADMIN_EMAIL" Value="admin@daftarx.local" Secure="yes" />
+    <Property Id="ADMIN_PASSWORD" Value="TempP@ssw0rd!2026" Secure="yes" />
+
+    <!-- Optional internal-network domain so workstations can reach the
+         server at https://<INTERNAL_DOMAIN>/ instead of an IP. The
+         setup-https.ps1 CA bakes it into the cert SAN list. Default
+         to a sensible placeholder; the bundle overrides via MsiProperty
+         (or empty string passed when the operator skipped the field). -->
+    <Property Id="INTERNAL_DOMAIN" Value="daftarx.local" Secure="yes" />
+
+    <!-- Kestrel bind URL — what the EgyptTax Windows service listens
+         on. Default matches the firewall rule below (HTTP on 8088).
+         Operators who want HTTPS instead can pass BIND_URL=https://+:443
+         on the msiexec command line + run setup-https.ps1 separately
+         to provision the cert. -->
+    <Property Id="BIND_URL" Value="http://+:8088" Secure="yes" />
 
     <!-- Reject downgrade installs; require uninstall first. -->
     <MajorUpgrade DowngradeErrorMessage="A newer version of EgyptTax is already installed." />
@@ -84,6 +106,7 @@
              AllowAbsent="no">
       <ComponentGroupRef Id="EgyptTaxFiles" />
       <ComponentGroupRef Id="EgyptTaxScripts" />
+      <ComponentGroupRef Id="EgyptTaxWorkstationTools" />
       <ComponentRef Id="FirewallComponent" />
     </Feature>
 
@@ -127,6 +150,39 @@
               Source="$(var.ProjectDir)register-service.ps1"
               KeyPath="yes" />
       </Component>
+      <Component Id="SetupHttpsScriptComponent"
+                 Guid="E5F6A7B8-C9D0-1234-5678-90ABCDEF1234">
+        <File Id="SetupHttpsScript"
+              Source="$(var.ProjectDir)setup-https.ps1"
+              KeyPath="yes" />
+      </Component>
+      <Component Id="GrantSqlPermissionsScriptComponent"
+                 Guid="B7C8D9E0-F1A2-3456-7890-1234567890AB">
+        <File Id="GrantSqlPermissionsScript"
+              Source="$(var.ProjectDir)grant-sql-permissions.ps1"
+              KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Workstation-tools subfolder. Copied to:
+         C:\Program Files\EgyptTax\workstation-tools\
+         IT staff grab these files from the server and run them on
+         each workstation to trust the SSL cert + add the hosts entry.
+         Distinct ComponentGroup so the Files element scopes
+         correctly into the WorkstationToolsFolder Directory. -->
+    <ComponentGroup Id="EgyptTaxWorkstationTools" Directory="WORKSTATIONTOOLSFOLDER">
+      <Component Id="WorkstationTrustCmd"
+                 Guid="F6A7B8C9-D0E1-2345-6789-0ABCDEF12345">
+        <File Id="WorkstationTrustCmdFile"
+              Source="$(var.ProjectDir)workstation-tools\Trust-DaftarX-Cert.cmd"
+              KeyPath="yes" />
+      </Component>
+      <Component Id="WorkstationTrustPs1"
+                 Guid="A7B8C9D0-E1F2-3456-7890-ABCDEF123456">
+        <File Id="WorkstationTrustPs1File"
+              Source="$(var.ProjectDir)workstation-tools\trust-cert.ps1"
+              KeyPath="yes" />
+      </Component>
     </ComponentGroup>
 
     <!-- Windows service registration via PowerShell wrapper
@@ -166,10 +222,12 @@
                   Impersonate="no"
                   Return="ignore" />
 
-    <!-- HTTPS port 443 inbound rule so accountants on the LAN can
-         reach the web app. Operators running on a non-standard
-         port need to either edit Kestrel config + open that port
-         instead, or expose via IIS reverse-proxy on 443.
+    <!-- HTTP port 8088 inbound rule so accountants on the LAN can
+         reach the web app at http://<server>:8088/. Matches the
+         BIND_URL default above. Operators who switch to HTTPS via
+         setup-https.ps1 should add a 443 rule manually OR re-run
+         the MSI with BIND_URL=https://+:443 (which re-binds and
+         the cert flow handles 443 itself).
 
          Uses a registry value as keypath so the firewall rule can
          live independently of any installed file (the firewall
@@ -183,10 +241,10 @@
                      Type="integer"
                      Value="1"
                      KeyPath="yes" />
-      <fw:FirewallException Id="EgyptTaxHttps"
-                            Name="EgyptTax HTTPS (443)"
-                            Description="Inbound HTTPS for the EgyptTax web service"
-                            Port="443"
+      <fw:FirewallException Id="EgyptTaxHttp8088"
+                            Name="EgyptTax HTTP (8088)"
+                            Description="Inbound HTTP for the EgyptTax web service on port 8088"
+                            Port="8088"
                             Protocol="tcp"
                             Scope="any"
                             Profile="all"
@@ -224,7 +282,7 @@
          from. Mismatching IDs gives WixQuietExec error 0x80070057
          "Failed to get command line data". -->
     <SetProperty Id="ApplyConfig"
-                 Value='"powershell.exe" -ExecutionPolicy Bypass -File "[INSTALLFOLDER]apply-config.ps1" -SqlConnection "[SQL_CONNECTION]"'
+                 Value='"powershell.exe" -ExecutionPolicy Bypass -File "[INSTALLFOLDER]apply-config.ps1" -SqlConnection "[SQL_CONNECTION]" -BindUrl "[BIND_URL]"'
                  Sequence="execute"
                  Before="ApplyConfig" />
     <CustomAction Id="ApplyConfig"
@@ -248,9 +306,39 @@
          installing user's context lets Trusted_Connection
          authenticate against SQL the same way the operator's
          own sqlcmd / SSMS sessions do. -->
+    <!-- Same SetProperty/util:WixQuietExec pattern as ApplyConfig:
+         resolves [ADMIN_EMAIL] + [ADMIN_PASSWORD] at execute-sequence
+         time (when public props are visible) and routes them as the
+         deferred CA's CustomActionData. The seed CLI uses
+         the admin-email + bootstrap-password flags it already supports. -->
+    <SetProperty Id="ApplyMigrationsAndSeed"
+                 Value='"[INSTALLFOLDER]EgyptTax.Web.exe" seed --apply-migrations --admin-email "[ADMIN_EMAIL]" --bootstrap-password "[ADMIN_PASSWORD]"'
+                 Sequence="execute"
+                 Before="ApplyMigrationsAndSeed" />
     <CustomAction Id="ApplyMigrationsAndSeed"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="check" />
+
+    <!-- Grant the EgyptTax Windows service account (NetworkService)
+         a SQL login + db_owner on the EgyptTax database. Without
+         this, the service starts but every DB query throws "Login
+         failed for user NT AUTHORITY\NETWORK SERVICE" (the SQL
+         Express install only adds BUILTIN\Administrators as
+         sysadmin by default, and our service runs under a different
+         account).
+
+         Runs as the installing user (impersonate=yes) so the script
+         inherits the SQL Express sysadmin grant for
+         BUILTIN\Administrators. Sequenced AFTER the schema is
+         created (ApplyMigrationsAndSeed) and BEFORE the service is
+         registered (RegisterService) so the first time the service
+         calls DB it already has access. -->
+    <CustomAction Id="GrantSqlPermissions"
                   Directory="INSTALLFOLDER"
-                  ExeCommand="[INSTALLFOLDER]EgyptTax.Web.exe seed --apply-migrations"
+                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLFOLDER]grant-sql-permissions.ps1"'
                   Execute="deferred"
                   Impersonate="yes"
                   Return="check" />
@@ -271,6 +359,21 @@
                   ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLFOLDER]verify-health.ps1"'
                   Execute="deferred"
                   Impersonate="yes"
+                  Return="ignore" />
+
+    <!-- Generate self-signed HTTPS cert + bind Kestrel to 443.
+         SetProperty resolves [INTERNAL_DOMAIN] at execute-sequence
+         time so the deferred CA receives the operator-supplied domain
+         (or empty string) as CustomActionData via util:WixQuietExec. -->
+    <SetProperty Id="SetupHttps"
+                 Value='"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "[INSTALLFOLDER]setup-https.ps1" -InstallFolder "[INSTALLFOLDER]" -InternalDomain "[INTERNAL_DOMAIN]"'
+                 Sequence="execute"
+                 Before="SetupHttps" />
+    <CustomAction Id="SetupHttps"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="no"
                   Return="ignore" />
 
     <!-- Sequence the custom actions:
@@ -296,11 +399,17 @@
       <Custom Action="ApplyMigrationsAndSeed"
               After="ApplyConfig"
               Condition="NOT REMOVE" />
-      <Custom Action="RegisterService"
+      <Custom Action="GrantSqlPermissions"
               After="ApplyMigrationsAndSeed"
               Condition="NOT REMOVE" />
-      <Custom Action="VerifyHealthReady"
+      <Custom Action="RegisterService"
+              After="GrantSqlPermissions"
+              Condition="NOT REMOVE" />
+      <Custom Action="SetupHttps"
               After="RegisterService"
+              Condition="NOT REMOVE" />
+      <Custom Action="VerifyHealthReady"
+              After="SetupHttps"
               Condition="NOT REMOVE" />
 
       <Custom Action="StopService"
@@ -313,7 +422,9 @@
 
     <!-- Standard install directory layout. -->
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="EgyptTax" />
+      <Directory Id="INSTALLFOLDER" Name="EgyptTax">
+        <Directory Id="WORKSTATIONTOOLSFOLDER" Name="workstation-tools" />
+      </Directory>
     </StandardDirectory>
 
   </Package>

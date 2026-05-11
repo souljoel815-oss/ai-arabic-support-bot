@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using EgyptTax.Application.Eta;
 using EgyptTax.Domain.Eta;
+using EgyptTax.SharedKernel;
 
 namespace EgyptTax.Infrastructure.Eta;
 
@@ -43,6 +44,9 @@ public sealed class MockEtaSubmitter : IEtaSubmitter
         CancellationToken cancellationToken = default
     )
     {
+        // Scattered honeypot — refuse to push to ETA from an
+        // unlicensed install even if the boot-time gate was patched.
+        LicenseSentry.EnsureLicensed("MockEtaSubmitter.SubmitAsync");
         ArgumentException.ThrowIfNullOrWhiteSpace(eInvoiceJson);
 
         // RandomNumberGenerator gives a per-call independent draw —

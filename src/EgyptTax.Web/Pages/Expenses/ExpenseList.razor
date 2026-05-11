@@ -11,14 +11,14 @@
 @inject AppDbContext Db
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Expenses / المصروفات</h1>
+<h1>@(IsArabic ? "المصروفات" : "Expenses")</h1>
 
 <div class="invoice-toolbar">
-    <a class="btn-primary" href="/expenses/new">+ New expense</a>
-    <input type="search" placeholder="Search by document number or description…"
+    <a class="btn-primary" href="/expenses/new">+ @(IsArabic ? "مصروف جديد" : "New expense")</a>
+    <input type="search" placeholder="@(IsArabic ? "بحث برقم المستند أو الوصف…" : "Search by document number or description…")"
            @bind="_search" @bind:event="oninput" />
     <select @bind="_stateFilter">
-        <option value="">All states</option>
+        <option value="">@(IsArabic ? "كل الحالات" : "All states")</option>
         @foreach (var state in Enum.GetValues<DocumentState>())
         {
             <option value="@state">@state</option>
@@ -28,25 +28,25 @@
 
 @if (_rows is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
 }
 else if (_rows.Count == 0)
 {
-    <p><em>No expenses match the current filters.</em></p>
+    <p><em>@(IsArabic ? "لا توجد مصروفات مطابقة للفلاتر الحالية." : "No expenses match the current filters.")</em></p>
 }
 else
 {
     <table class="data-grid">
         <thead>
             <tr>
-                <th>Document #</th>
-                <th>Date</th>
-                <th>Category</th>
-                <th>Description</th>
-                <th>State</th>
-                <th>Risk</th>
-                <th>Deductible?</th>
-                <th class="num">Amount</th>
+                <th>@(IsArabic ? "رقم المستند" : "Document #")</th>
+                <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                <th>@(IsArabic ? "الفئة" : "Category")</th>
+                <th>@(IsArabic ? "الوصف" : "Description")</th>
+                <th>@(IsArabic ? "الحالة" : "State")</th>
+                <th>@(IsArabic ? "المخاطر" : "Risk")</th>
+                <th>@(IsArabic ? "قابل للخصم؟" : "Deductible?")</th>
+                <th class="num">@(IsArabic ? "المبلغ" : "Amount")</th>
                 <th></th>
             </tr>
         </thead>
@@ -54,22 +54,22 @@ else
             @foreach (var row in Filtered)
             {
                 <tr>
-                    <td>@(row.Expense.DocumentNumber ?? "(draft)")</td>
+                    <td>@(row.Expense.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)"))</td>
                     <td>@row.Expense.DocumentDate.ToString("yyyy-MM-dd")</td>
                     <td>@row.CategoryCode</td>
-                    <td>@row.Expense.Description.English</td>
+                    <td>@(IsArabic ? row.Expense.Description.Arabic : row.Expense.Description.English)</td>
                     <td><StateBadge State="row.Expense.State" /></td>
                     <td><TaxRiskScoreDot Findings="row.RiskFindings" /></td>
-                    <td>@(row.Expense.DeductibleFlag ? "yes" : "—")</td>
+                    <td>@(row.Expense.DeductibleFlag ? (IsArabic ? "نعم" : "yes") : "—")</td>
                     <td class="num">@row.Expense.Amount.Amount.ToString("F2")</td>
                     <td>
                         @if (row.Expense.State == DocumentState.Draft)
                         {
-                            <a href="/expenses/@row.Expense.Id/edit">Edit</a>
+                            <a href="/expenses/@row.Expense.Id/edit">@(IsArabic ? "تعديل" : "Edit")</a>
                         }
                         else
                         {
-                            <a href="/expenses/@row.Expense.Id">View</a>
+                            <a href="/expenses/@row.Expense.Id">@(IsArabic ? "عرض" : "View")</a>
                         }
                     </td>
                 </tr>

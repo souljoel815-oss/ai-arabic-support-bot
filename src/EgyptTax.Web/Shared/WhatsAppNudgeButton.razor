@@ -1,0 +1,51 @@
+@*
+    P2.4 — Generate a one-click "open WhatsApp Web with a draft message"
+    link. The operator's phone (web or mobile) opens WhatsApp with the
+    text pre-filled; they tap send. No credentials, no API integration —
+    fastest possible nudge.
+
+    Phone is normalised to digits only and prefixed with the Egypt
+    country code (+20) when missing.
+*@
+
+@code {
+    [Parameter, EditorRequired] public string? Phone { get; set; }
+    [Parameter, EditorRequired] public string MessageText { get; set; } = "";
+    [Parameter] public string ButtonLabel { get; set; } = "WhatsApp";
+    [Parameter] public string CssClass { get; set; } = "btn-secondary";
+
+    private string? Url
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Phone)) return null;
+            var digits = new string(Phone.Where(char.IsDigit).ToArray());
+            if (string.IsNullOrEmpty(digits)) return null;
+            // Egypt mobile numbers start 010/011/012/015 → 10 digits.
+            // If the operator entered without country code, prefix +20.
+            if (digits.Length == 11 && digits.StartsWith("0", StringComparison.Ordinal))
+            {
+                digits = "20" + digits[1..];
+            }
+            else if (digits.Length == 10 && (digits.StartsWith("10") || digits.StartsWith("11") || digits.StartsWith("12") || digits.StartsWith("15")))
+            {
+                digits = "20" + digits;
+            }
+            var encoded = Uri.EscapeDataString(MessageText ?? "");
+            return $"https://wa.me/{digits}?text={encoded}";
+        }
+    }
+}
+
+@if (Url is not null)
+{
+    <a href="@Url" target="_blank" rel="noopener" class="@CssClass" title="@MessageText">
+        <Icon Name="zap" Class="ic" />@ButtonLabel
+    </a>
+}
+else
+{
+    <span style="color:var(--text-muted);font-size:13px;">
+        @(string.IsNullOrWhiteSpace(Phone) ? "(no phone on file)" : "(invalid phone)")
+    </span>
+}

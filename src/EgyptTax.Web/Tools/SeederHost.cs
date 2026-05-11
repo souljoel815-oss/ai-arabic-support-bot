@@ -37,42 +37,43 @@ internal static class SeederHost
         var connectionString =
             configuration.GetConnectionString("EgyptTax")
             ?? configuration["ConnectionStrings:EgyptTax"]
-            ?? Environment.GetEnvironmentVariable("EGYPTTAX_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString))
+            ?? Environment.GetEnvironmentVariable("EGYPTTAX_CONNECTION")
+            ?? PortableDefaults.DefaultSqliteConnection();
+        var provider = DatabaseProviderDetector.Detect(connectionString);
+        PortableDefaults.EnsureSqliteDirectory(connectionString, provider);
+
+        var optsBuilder = new DbContextOptionsBuilder<AppDbContext>();
+        if (provider == DatabaseProvider.Sqlite)
         {
-            await Console
-                .Error.WriteLineAsync(
-                    "[seed] No connection string found. Set ConnectionStrings:EgyptTax in appsettings or EGYPTTAX_CONNECTION env var."
-                )
-                .WaitAsync(cancellationToken);
-            return 4;
+            optsBuilder.UseSqlite(connectionString);
         }
+        else
+        {
+            optsBuilder.UseSqlServer(connectionString);
+        }
+        await using var db = new AppDbContext(optsBuilder.Options);
 
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(connectionString)
-            .Options;
-        await using var db = new AppDbContext(options);
-
-        // Apply migrations BEFORE seeding so a fresh install (no
-        // database, or no schema) bootstraps cleanly. MigrateAsync
-        // is idempotent — no-ops when the schema is up to date —
-        // so it's safe to always run regardless of the
-        // --apply-migrations flag (which is preserved as an arg
-        // for documentation purposes + future fine-grained control).
-        // This is the path the MSI's ApplyMigrationsAndSeed custom
-        // action takes; without it, MSI install on a machine with
-        // SQL Server reachable but no EgyptTax database fails with
-        // SQL error 4060 "Cannot open database" before seeding can
-        // even start.
+        // Bootstrap schema. SQL Server install runs the migration
+        // pipeline (MigrateAsync — idempotent). SQLite single-file
+        // mode skips migrations (provider-specific migrations don't
+        // exist for SQLite) and uses EnsureCreatedAsync — sufficient
+        // for a clean install where the file doesn't yet exist.
         try
         {
-            await db.Database.MigrateAsync(cancellationToken);
+            if (provider == DatabaseProvider.Sqlite)
+            {
+                await db.Database.EnsureCreatedAsync(cancellationToken);
+            }
+            else
+            {
+                await db.Database.MigrateAsync(cancellationToken);
+            }
         }
         catch (Exception ex)
         {
             await Console
                 .Error.WriteLineAsync(
-                    $"[seed] Failed to apply EF migrations: {ex.Message}"
+                    $"[seed] Failed to bootstrap schema: {ex.Message}"
                 )
                 .WaitAsync(cancellationToken);
             return 5;

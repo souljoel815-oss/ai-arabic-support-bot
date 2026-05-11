@@ -5,71 +5,71 @@
 @inject IWhtLifecycleDashboardQuery Query
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>WHT lifecycle (FR-047) / دورة حياة الخصم</h1>
+<h1>@(IsArabic ? "دورة حياة الخصم" : "WHT lifecycle (FR-047)")</h1>
 
 <form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
     <label>
-        <span>As-of</span>
+        <span>@(IsArabic ? "حتى تاريخ" : "As-of")</span>
         <input type="date" @bind="_asOf" />
     </label>
     <button type="submit" class="btn-primary" disabled="@_loading">
-        @(_loading ? "Loading…" : "Refresh")
+        @(_loading ? (IsArabic ? "جارٍ التحميل…" : "Loading…") : (IsArabic ? "تحديث" : "Refresh"))
     </button>
-    <a href="/settings/wht-categories" class="btn-secondary">Manage categories</a>
-    <a href="/wht/form41/new" class="btn-secondary">+ Generate Form 41</a>
-    <a href="/wht/form41" class="btn-secondary">All filings</a>
+    <a href="/settings/wht-categories" class="btn-secondary">@(IsArabic ? "إدارة الفئات" : "Manage categories")</a>
+    <a href="/wht/form41/new" class="btn-secondary">+ @(IsArabic ? "إصدار نموذج 41" : "Generate Form 41")</a>
+    <a href="/wht/form41" class="btn-secondary">@(IsArabic ? "كل الإقرارات" : "All filings")</a>
 </form>
 
 @if (_dashboard is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 <section class="invoice-totals">
     <div>
-        <strong>Owed (unfiled):</strong>
-        <span class="num">@_dashboard.Owed.TotalAccruedNotYetFiled.ToString("F2") EGP</span>
-        across @_dashboard.Owed.CertCount cert(s)
+        <strong>@(IsArabic ? "مستحق (لم يُقدَّم):" : "Owed (unfiled):")</strong>
+        <span class="num">@_dashboard.Owed.TotalAccruedNotYetFiled.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span>
+        @(IsArabic ? $"على {_dashboard.Owed.CertCount} شهادة" : $"across {_dashboard.Owed.CertCount} cert(s)")
         @if (_dashboard.Owed.OldestUnfiledCertDate is { } d)
         {
-            <span> — oldest @d.ToString("yyyy-MM-dd")</span>
+            <span> — @(IsArabic ? "الأقدم" : "oldest") @d.ToString("yyyy-MM-dd")</span>
         }
     </div>
     <div>
-        <strong>Expected (customer-withheld):</strong>
-        <span class="num">@_dashboard.Expected.TotalReceivableFromCustomerWht.ToString("F2") EGP</span>
-        across @_dashboard.Expected.InboundCertCount cert(s)
+        <strong>@(IsArabic ? "متوقع (خصم العملاء):" : "Expected (customer-withheld):")</strong>
+        <span class="num">@_dashboard.Expected.TotalReceivableFromCustomerWht.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span>
+        @(IsArabic ? $"على {_dashboard.Expected.InboundCertCount} شهادة" : $"across {_dashboard.Expected.InboundCertCount} cert(s)")
     </div>
     <div>
-        <strong>Filings:</strong> @_dashboard.Filings.Count
-        — @_dashboard.Filings.Count(f => f.DerivedStatus == Form41Status.Filed) Filed,
-        @_dashboard.Filings.Count(f => f.DerivedStatus == Form41Status.Unfiled) Unfiled,
+        <strong>@(IsArabic ? "الإقرارات:" : "Filings:")</strong> @_dashboard.Filings.Count
+        — @_dashboard.Filings.Count(f => f.DerivedStatus == Form41Status.Filed) @(IsArabic ? "مُقدَّمة" : "Filed"),
+        @_dashboard.Filings.Count(f => f.DerivedStatus == Form41Status.Unfiled) @(IsArabic ? "غير مُقدَّمة" : "Unfiled"),
         <span class="@(_dashboard.Filings.Any(f => f.DerivedStatus == Form41Status.Overdue) ? "flash-error" : "")">
-            @_dashboard.Filings.Count(f => f.DerivedStatus == Form41Status.Overdue) Overdue
+            @_dashboard.Filings.Count(f => f.DerivedStatus == Form41Status.Overdue) @(IsArabic ? "متأخرة" : "Overdue")
         </span>
     </div>
 </section>
 
 <section>
-    <h2>Filings</h2>
+    <h2>@(IsArabic ? "الإقرارات" : "Filings")</h2>
     @if (_dashboard.Filings.Count == 0)
     {
-        <p><em>No Form 41 filings yet. Click "+ Generate Form 41" to start.</em></p>
+        <p><em>@(IsArabic ? "لا توجد إقرارات نموذج 41 بعد. اضغط «+ إصدار نموذج 41» للبدء." : "No Form 41 filings yet. Click \"+ Generate Form 41\" to start.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Year</th>
-                    <th>Quarter</th>
-                    <th>Status</th>
-                    <th>Due date</th>
-                    <th class="num">Days overdue</th>
-                    <th class="num">Lines</th>
-                    <th class="num">WHT total (EGP)</th>
-                    <th class="num">Estimated penalty (EGP)</th>
+                    <th>@(IsArabic ? "السنة" : "Year")</th>
+                    <th>@(IsArabic ? "الربع" : "Quarter")</th>
+                    <th>@(IsArabic ? "الحالة" : "Status")</th>
+                    <th>@(IsArabic ? "تاريخ الاستحقاق" : "Due date")</th>
+                    <th class="num">@(IsArabic ? "أيام التأخير" : "Days overdue")</th>
+                    <th class="num">@(IsArabic ? "البنود" : "Lines")</th>
+                    <th class="num">@(IsArabic ? "إجمالي الخصم (ج.م.)" : "WHT total (EGP)")</th>
+                    <th class="num">@(IsArabic ? "الغرامة المقدرة (ج.م.)" : "Estimated penalty (EGP)")</th>
                     <th></th>
                 </tr>
             </thead>
@@ -84,7 +84,7 @@
                     };
                     <tr class="@rowClass">
                         <td>@f.FiscalYear</td>
-                        <td>Q@f.Quarter</td>
+                        <td>@(IsArabic ? "ر" : "Q")@f.Quarter</td>
                         <td>
                             <span class="kind-badge kind-@f.DerivedStatus.ToString().ToLowerInvariant()">
                                 @f.DerivedStatus
@@ -96,7 +96,7 @@
                         <td class="num">@f.TotalWhtPayable.ToString("F2")</td>
                         <td class="num">@(f.EstimatedPenalty?.ToString("F2") ?? "")</td>
                         <td>
-                            <a href="@($"/wht/form41/{f.Id:D}")" class="btn-secondary">Open</a>
+                            <a href="@($"/wht/form41/{f.Id:D}")" class="btn-secondary">@(IsArabic ? "فتح" : "Open")</a>
                         </td>
                     </tr>
                 }

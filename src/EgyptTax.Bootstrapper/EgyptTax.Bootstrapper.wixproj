@@ -1,0 +1,37 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <!--
+    Offline-capable Burn bundle. Wraps three packages into a single
+    Setup.exe (~390 MB) that customers run with no internet:
+      1. .NET 8 ASP.NET Core Hosting Bundle (~106 MB) — required runtime
+      2. SQL Server 2019 Express (~266 MB) — installed as SQLEXPRESS instance
+      3. EgyptTax.Installer.msi (~17 MB) — our app
+    All three packages are Compressed="yes" so they're embedded inside
+    Setup.exe rather than downloaded at install time.
+  -->
+
+  <PropertyGroup>
+    <OutputName>DaftarX-Setup</OutputName>
+    <OutputType>Bundle</OutputType>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+    <SuppressIces>ICE60</SuppressIces>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Bundle.wxs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Standard bootstrapper application (provides install UI). -->
+    <PackageReference Include="WixToolset.Bal.wixext" />
+    <!-- Util extension provides RegistrySearch for prereq detection. -->
+    <PackageReference Include="WixToolset.Util.wixext" />
+    <!-- NetFx extension provides .NET runtime detection helpers. -->
+    <PackageReference Include="WixToolset.NetFx.wixext" />
+  </ItemGroup>
+
+</Project>

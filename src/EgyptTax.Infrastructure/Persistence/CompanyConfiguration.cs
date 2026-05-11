@@ -98,5 +98,13 @@ internal sealed class CompanyConfiguration : IEntityTypeConfiguration<Company>
             .HasMaxLength(16)
             .IsUnicode(false)
             .IsRequired();
+
+        // Day 8 / Law 6 of 2025 — tax regime classification.
+        b.Property(c => c.TaxRegime)
+            .HasColumnName("tax_regime")
+            .HasConversion<string>()
+            .HasMaxLength(24)
+            .IsUnicode(false)
+            .IsRequired();
     }
 }

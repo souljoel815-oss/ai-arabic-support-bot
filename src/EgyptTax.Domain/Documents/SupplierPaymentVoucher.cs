@@ -31,6 +31,14 @@ public sealed class SupplierPaymentVoucher
     public DateTime? PostedAtUtc { get; private set; }
     public Guid? PostedByUserId { get; private set; }
 
+    /// <summary>
+    /// P3.1 — which specific cashbox / bank account the payment came
+    /// from. Nullable for backward-compat with vouchers issued before
+    /// multi-cashbox support; the JE emitter falls back to the legacy
+    /// hard-coded <c>1100 Cash</c> account when null.
+    /// </summary>
+    public Guid? CashAccountId { get; private set; }
+
     public MoneyEgp GrossPaymentAmount { get; private set; } = MoneyEgp.Zero;
 
     /// <summary>FR-051 / US7 — withholding-tax payable on this payment.
@@ -132,6 +140,25 @@ public sealed class SupplierPaymentVoucher
         );
         _allocations.Add(allocation);
         return allocation;
+    }
+
+    /// <summary>
+    /// P3.1 — pin the voucher to a specific cashbox / bank account.
+    /// Allowed only while still in Draft (post-time emitter snaps it
+    /// onto the JE; changing it after Post would diverge the books).
+    /// </summary>
+    public void SetCashAccount(Guid cashAccountId)
+    {
+        if (cashAccountId == Guid.Empty)
+        {
+            throw new ArgumentException("CashAccountId is required.", nameof(cashAccountId));
+        }
+        if (State != DocumentState.Draft)
+        {
+            throw new InvalidOperationException(
+                $"Cannot change the cash account on supplier payment voucher {Id}: state {State} is not Draft.");
+        }
+        CashAccountId = cashAccountId;
     }
 
     public void RemoveAllocation(Guid allocationId)

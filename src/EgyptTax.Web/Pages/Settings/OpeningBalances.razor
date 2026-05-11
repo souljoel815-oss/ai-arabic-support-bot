@@ -1,0 +1,218 @@
+@page "/settings/opening-balances"
+@using System.Globalization
+@using EgyptTax.Domain.Accounting
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "الأرصدة الافتتاحية | DaftarX" : "Opening Balances | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<CashAccount> _cashAccounts = new();
+    private Dictionary<Guid, decimal> _balances = new();
+    private DateTime _asOf = DateTime.UtcNow.Date;
+    private bool _saving;
+    private string? _flash;
+    private bool _alreadyPosted;
+
+    private const string OpeningBalanceVoucherNumber = "OPENING-001";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _cashAccounts = await db.Set<CashAccount>().AsNoTracking()
+            .Where(a => a.Status == CashAccountStatus.Active)
+            .OrderBy(a => a.AccountCode)
+            .ToListAsync();
+        foreach (var a in _cashAccounts) _balances[a.Id] = 0m;
+
+        // Idempotency check: opening voucher already posted?
+        _alreadyPosted = await db.Set<JournalEntry>().AsNoTracking()
+            .AnyAsync(je => je.SourceDocumentNumber == OpeningBalanceVoucherNumber);
+    }
+
+    private decimal TotalDebit() =>
+        _balances.Values.Where(v => v > 0m).Sum();
+
+    private decimal TotalCredit() =>
+        _balances.Values.Where(v => v < 0m).Sum() * -1m;
+
+    private async Task PostOpeningJeAsync()
+    {
+        _flash = null;
+        _saving = true;
+        try
+        {
+            // Build a balanced JE: each cash account is debited (positive
+            // balance) or credited (negative balance — overdraft). The
+            // opposite leg lands in "Opening Balance Equity" (3000).
+            var lines = new List<(string AccountCode, MoneyEgp Debit, MoneyEgp Credit, string Description)>(_balances.Count + 1);
+            foreach (var kv in _balances.Where(b => b.Value != 0m))
+            {
+                var acc = _cashAccounts.First(a => a.Id == kv.Key);
+                if (kv.Value > 0m)
+                {
+                    lines.Add((acc.AccountCode, MoneyEgp.From(kv.Value), MoneyEgp.Zero,
+                        $"Opening balance — {acc.AccountCode}"));
+                }
+                else
+                {
+                    lines.Add((acc.AccountCode, MoneyEgp.Zero, MoneyEgp.From(-kv.Value),
+                        $"Opening balance — {acc.AccountCode} (overdraft)"));
+                }
+            }
+            if (lines.Count == 0)
+            {
+                _flash = Tr("لم يتم إدخال أي رصيد افتتاحي.", "No opening balances entered.");
+                return;
+            }
+            var debitTotal = lines.Sum(l => l.Debit.Amount);
+            var creditTotal = lines.Sum(l => l.Credit.Amount);
+            // Opposite leg lands in Opening Balance Equity (3000) so the
+            // entry balances. Net flow into equity = debits - credits;
+            // if positive → credit equity by that amount; if negative →
+            // debit equity.
+            var net = debitTotal - creditTotal;
+            if (net > 0m)
+            {
+                lines.Add(("3000", MoneyEgp.Zero, MoneyEgp.From(net), "Opening balance equity (offset)"));
+            }
+            else if (net < 0m)
+            {
+                lines.Add(("3000", MoneyEgp.From(-net), MoneyEgp.Zero, "Opening balance equity (offset)"));
+            }
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var entry = JournalEntry.Create(
+                sourceDocumentId: Guid.NewGuid(),
+                sourceDocumentNumber: OpeningBalanceVoucherNumber,
+                sourceDocumentType: DocumentType.JournalVoucher,
+                postedAtUtc: _asOf.ToUniversalTime(),
+                lines: lines);
+            db.Add(entry);
+            await db.SaveChangesAsync();
+
+            _alreadyPosted = true;
+            _flash = Tr(
+                $"تم ترحيل قيد الافتتاح. مدين: {debitTotal:N2} / دائن: {creditTotal:N2}.",
+                $"Opening journal posted. Debit: {debitTotal:N2} / Credit: {creditTotal:N2}.");
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}
+
+<h1>@(IsArabic ? "🧾 الأرصدة الافتتاحية" : "🧾 Opening Balances")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "أوّل ما تنتقل من نظامك القديم لـ DaftarX، أدخل أرصدة كل حساب بنكي/خزينة هنا — هنترحّل قيد افتتاح متوازن من الـ Opening Balance Equity (حساب 3000)."
+        : "When you migrate from a legacy system, enter the opening balances per cashbox/bank here. We post a balanced opening journal against Opening Balance Equity (3000).")
+</p>
+
+@if (_alreadyPosted)
+{
+    <div class="kpi-card kpi-info" style="margin-top:16px;">
+        @Tr($"قيد الافتتاح ({OpeningBalanceVoucherNumber}) موجود بالفعل. لا يمكن إعادة الترحيل من هذه الصفحة. للتعديل، استخدم سند يومية يدوي.",
+            $"An opening voucher ({OpeningBalanceVoucherNumber}) is already posted. Re-posting from this page is blocked. For corrections, use a manual journal voucher.")
+    </div>
+}
+
+@if (_flash is not null)
+{
+    <div class="kpi-card kpi-info" style="margin-top:16px;">@_flash</div>
+}
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("التاريخ الافتتاحي", "As-of date")</h2>
+    <div class="form-grid" style="max-width:320px;">
+        <label>
+            <span>@Tr("التاريخ", "Date")</span>
+            <input type="date" @bind="_asOf" disabled="@_alreadyPosted" />
+        </label>
+    </div>
+</section>
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("الأرصدة لكل حساب", "Per-account balances")</h2>
+    <p style="font-size:13px;color:var(--text-muted);">
+        @Tr("القيمة موجبة = مدين (رصيد لصالح الشركة). القيمة سالبة = دائن (overdraft).",
+            "Positive value = debit (asset). Negative value = credit (overdraft).")
+    </p>
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>@Tr("الكود", "Code")</th>
+                <th>@Tr("الحساب", "Account")</th>
+                <th>@Tr("النوع", "Kind")</th>
+                <th class="num">@Tr("الرصيد الافتتاحي (ج.م.)", "Opening balance (EGP)")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in _cashAccounts)
+            {
+                <tr>
+                    <td><code>@a.AccountCode</code></td>
+                    <td>@(IsArabic ? a.Name.Arabic : a.Name.English)</td>
+                    <td>@(a.Kind == CashAccountKind.Cash ? Tr("نقدي", "Cash") : Tr("بنك", "Bank"))</td>
+                    <td class="num">
+                        <input type="number" step="0.01"
+                               value="@_balances[a.Id]"
+                               @onchange="@(e => { decimal.TryParse(e.Value?.ToString(), out var v); _balances[a.Id] = v; })"
+                               disabled="@_alreadyPosted"
+                               style="width:160px;text-align:end;" />
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</section>
+
+<section class="kpi-grid" style="margin-top:24px;">
+    <div class="kpi-card kpi-success">
+        <div class="kpi-label">@Tr("إجمالي المدين", "Total debit")</div>
+        <div class="kpi-value">@TotalDebit().ToString("N2")<span class="kpi-unit">@Tr("ج.م.", "EGP")</span></div>
+    </div>
+    <div class="kpi-card kpi-warning">
+        <div class="kpi-label">@Tr("إجمالي الدائن", "Total credit")</div>
+        <div class="kpi-value">@TotalCredit().ToString("N2")<span class="kpi-unit">@Tr("ج.م.", "EGP")</span></div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">@Tr("الفرق ↦ حقوق الملكية الافتتاحية (3000)", "Balancing leg → Opening Equity (3000)")</div>
+        <div class="kpi-value">@(Math.Abs(TotalDebit() - TotalCredit())).ToString("N2")<span class="kpi-unit">@Tr("ج.م.", "EGP")</span></div>
+        <div class="kpi-meta">
+            @if (TotalDebit() > TotalCredit())
+            {
+                <text>CR 3000</text>
+            }
+            else if (TotalCredit() > TotalDebit())
+            {
+                <text>DR 3000</text>
+            }
+            else
+            {
+                <text>—</text>
+            }
+        </div>
+    </div>
+</section>
+
+<div class="invoice-actions" style="margin-top:24px;">
+    <button type="button" class="btn-primary" @onclick="PostOpeningJeAsync" disabled="@(_saving || _alreadyPosted)">
+        <Icon Name="check-circle" Class="ic" />
+        @(_saving ? Tr("جارٍ الترحيل…", "Posting…") : Tr("ترحيل قيد الافتتاح", "Post opening journal"))
+    </button>
+</div>

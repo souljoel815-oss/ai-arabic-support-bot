@@ -17,11 +17,11 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Expense @(_expense?.DocumentNumber ?? "(loading)")</h1>
+<h1>@(IsArabic ? $"مصروف {(_expense?.DocumentNumber ?? "(جارٍ التحميل)")}" : $"Expense {(_expense?.DocumentNumber ?? "(loading)")}")</h1>
 
 @if (_expense is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
@@ -31,35 +31,48 @@
 }
 
 <section class="invoice-header">
-    <div><strong>Date:</strong> @_expense.DocumentDate.ToString("yyyy-MM-dd")</div>
-    <div><strong>State:</strong> <StateBadge State="_expense.State" /></div>
-    <div><strong>Category:</strong> @(_category?.Code ?? "?") — @(_category?.Name.English ?? "")</div>
-    <div><strong>Deductible:</strong> @(_expense.DeductibleFlag ? "yes" : "no")</div>
-    <div><strong>Amount:</strong> <span class="num">@_expense.Amount.Amount.ToString("F2") EGP</span></div>
+    <div><strong>@(IsArabic ? "التاريخ:" : "Date:")</strong> @_expense.DocumentDate.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "الحالة:" : "State:")</strong> <StateBadge State="_expense.State" /></div>
+    <div><strong>@(IsArabic ? "الفئة:" : "Category:")</strong> @(_category?.Code ?? "?") — @(IsArabic ? (_category?.Name.Arabic ?? "") : (_category?.Name.English ?? ""))</div>
+    <div><strong>@(IsArabic ? "قابل للخصم:" : "Deductible:")</strong> @(_expense.DeductibleFlag ? (IsArabic ? "نعم" : "yes") : (IsArabic ? "لا" : "no"))</div>
+    <div><strong>@(IsArabic ? "المبلغ:" : "Amount:")</strong> <span class="num">@_expense.Amount.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
     @if (_expense.PostedAtUtc is { } postedAt)
     {
-        <div><strong>Posted at (UTC):</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
-        <div><strong>Posting mode:</strong> @_expense.PostingMode</div>
+        <div><strong>@(IsArabic ? "وقت الترحيل (UTC):" : "Posted at (UTC):")</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+        <div><strong>@(IsArabic ? "وضع الترحيل:" : "Posting mode:")</strong> @_expense.PostingMode</div>
     }
-    <div><strong>Tax Risk Score:</strong> <TaxRiskScoreBadge Findings="_riskFindings" /></div>
+    <div><strong>@(IsArabic ? "درجة المخاطر الضريبية:" : "Tax Risk Score:")</strong> <TaxRiskScoreBadge Findings="_riskFindings" /></div>
 </section>
 
 <section>
-    <h2>Description</h2>
-    <p>@_expense.Description.English</p>
-    <p dir="rtl">@_expense.Description.Arabic</p>
+    <h2>@(IsArabic ? "الوصف" : "Description")</h2>
+    @if (IsArabic)
+    {
+        <p dir="rtl">@_expense.Description.Arabic</p>
+    }
+    else
+    {
+        <p>@_expense.Description.English</p>
+    }
 </section>
 
 <section>
-    <h2>Attachments (@_attachments.Count)</h2>
+    <h2>@(IsArabic ? $"المرفقات ({_attachments.Count})" : $"Attachments ({_attachments.Count})")</h2>
     @if (_attachments.Count == 0)
     {
-        <p><em>No attachments.</em></p>
+        <p><em>@(IsArabic ? "لا توجد مرفقات." : "No attachments.")</em></p>
     }
     else
     {
         <table class="data-grid">
-            <thead><tr><th>Filename</th><th>MIME</th><th class="num">Size</th><th>Uploaded (UTC)</th></tr></thead>
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "اسم الملف" : "Filename")</th>
+                    <th>@(IsArabic ? "النوع" : "MIME")</th>
+                    <th class="num">@(IsArabic ? "الحجم" : "Size")</th>
+                    <th>@(IsArabic ? "وقت الرفع (UTC)" : "Uploaded (UTC)")</th>
+                </tr>
+            </thead>
             <tbody>
                 @foreach (var a in _attachments)
                 {
@@ -78,16 +91,16 @@
 @if (_expense.State is DocumentState.Draft or DocumentState.Submitted or DocumentState.Approved)
 {
     <section class="invoice-actions">
-        <h2>Approval workflow (FR-026)</h2>
+        <h2>@(IsArabic ? "سير عمل الاعتماد (FR-026)" : "Approval workflow (FR-026)")</h2>
         @if (_latestApproval is not null)
         {
             <p>
-                <strong>Latest approval request:</strong> @_latestApproval.Status
-                — submitted by @_latestApproval.SubmittedByUserId.ToString("D")[..8]
-                at @_latestApproval.SubmittedAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC.
+                <strong>@(IsArabic ? "آخر طلب اعتماد:" : "Latest approval request:")</strong> @_latestApproval.Status
+                — @(IsArabic ? "أرسله المستخدم" : "submitted by") @_latestApproval.SubmittedByUserId.ToString("D")[..8]
+                @(IsArabic ? "في" : "at") @_latestApproval.SubmittedAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC.
                 @if (_latestApproval.RejectionReason is { } reason)
                 {
-                    <br /><em>Rejection reason: @reason</em>
+                    <br /><em>@(IsArabic ? "سبب الرفض:" : "Rejection reason:") @reason</em>
                 }
             </p>
         }
@@ -103,17 +116,17 @@
 @if (_expense.State == DocumentState.Draft)
 {
     <section class="invoice-actions">
-        <a class="btn-primary" href="/expenses/@_expense.Id/edit">Edit draft</a>
+        <a class="btn-primary" href="/expenses/@_expense.Id/edit">@(IsArabic ? "تعديل المسودة" : "Edit draft")</a>
         <button type="button" class="btn-primary" disabled="@_posting" @onclick="OnPostAsync">
-            @(_posting ? "Posting…" : "Post expense")
+            @(_posting ? (IsArabic ? "جارٍ الترحيل…" : "Posting…") : (IsArabic ? "ترحيل المصروف" : "Post expense"))
         </button>
-        <a href="/document360/expense/@_expense.Id">📂 Document 360</a>
+        <a href="/document360/expense/@_expense.Id">📂 @(IsArabic ? "ملف المستند الكامل" : "Document 360")</a>
     </section>
 }
 else
 {
     <section class="invoice-actions">
-        <a href="/document360/expense/@_expense.Id">📂 Document 360</a>
+        <a href="/document360/expense/@_expense.Id">📂 @(IsArabic ? "ملف المستند الكامل" : "Document 360")</a>
     </section>
 }
 

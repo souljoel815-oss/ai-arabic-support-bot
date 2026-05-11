@@ -14,6 +14,7 @@ internal sealed class SupplierPaymentVoucherConfiguration
         b.Property(v => v.Id).HasColumnName("id").ValueGeneratedNever();
 
         b.Property(v => v.SupplierId).HasColumnName("supplier_id").IsRequired();
+        b.Property(v => v.CashAccountId).HasColumnName("cash_account_id");
         b.Property(v => v.PaymentDate)
             .HasColumnName("payment_date")
             .HasColumnType("date")

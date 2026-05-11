@@ -20,6 +20,14 @@ namespace EgyptTax.Infrastructure.Accounting;
 ///     vat) — the non-recoverable VAT is sunk into the expense.
 ///   * One CR AP closes the entry at the grand total.
 ///
+/// P1.12 — reverse-charge variant (foreign supplier, FR-041): the
+/// supplier didn't charge VAT (they're outside Egypt's VAT system),
+/// so we self-account: DR Input VAT + CR Output VAT for the same
+/// amount. Net cash effect on the period is zero, but both totals
+/// surface in the VAT return — the regulator wants to see the
+/// reverse-charge flow declared, not netted away. AP is credited
+/// at NetBeforeVat (we owe the supplier the net only).
+///
 /// Lines aggregate per-account so the journal stays compact: 5,000
 /// lines on the source invoice still produce a 3-row journal
 /// (Expense + InputVAT + AP) when everything's deductible, or 2
@@ -54,10 +62,17 @@ public sealed class PurchaseInvoiceJournalEmitter : IPurchaseInvoiceJournalEmitt
             );
         }
 
+        // P1.12 — reverse-charge mode is set on the snapshot at
+        // post-time (foreign supplier => ReverseChargeFlag = true).
+        // When true, we self-account the VAT instead of paying it to
+        // the supplier; the AP credit covers only the net.
+        var isReverseCharge = invoice.SupplierTaxProfileSnapshot.ReverseChargeFlag;
+
         // Aggregate per-account so the emitted journal stays compact
         // even for invoices with hundreds of lines.
         decimal expenseDebit = 0m;
         decimal inputVatDebit = 0m;
+        decimal reverseChargeOutputVatCredit = 0m;
 
         foreach (var line in invoice.Lines)
         {
@@ -65,6 +80,13 @@ public sealed class PurchaseInvoiceJournalEmitter : IPurchaseInvoiceJournalEmitt
             {
                 expenseDebit += line.LineSubtotal.Amount;
                 inputVatDebit += line.LineVat.Amount;
+                if (isReverseCharge)
+                {
+                    // Mirror the input-VAT debit with an output-VAT
+                    // credit for the same amount — that's the
+                    // self-accounting leg.
+                    reverseChargeOutputVatCredit += line.LineVat.Amount;
+                }
             }
             else
             {
@@ -73,7 +95,13 @@ public sealed class PurchaseInvoiceJournalEmitter : IPurchaseInvoiceJournalEmitt
             }
         }
 
-        var apCredit = invoice.GrandTotal.Amount;
+        // For reverse-charge, the supplier didn't bill VAT, so AP
+        // covers only the net amount we actually owe them. Purchase
+        // invoices don't carry invoice-level discounts so Subtotal
+        // is the net.
+        var apCredit = isReverseCharge
+            ? invoice.Subtotal.Amount
+            : invoice.GrandTotal.Amount;
 
         // Build the line list. InputVAT row is OMITTED when the
         // entire invoice is non-deductible — emitting a zero-amount
@@ -84,7 +112,7 @@ public sealed class PurchaseInvoiceJournalEmitter : IPurchaseInvoiceJournalEmitt
             MoneyEgp Debit,
             MoneyEgp Credit,
             string Description
-        )>(3)
+        )>(4)
         {
             (
                 ChartOfAccountCodes.GenericExpense,
@@ -101,7 +129,25 @@ public sealed class PurchaseInvoiceJournalEmitter : IPurchaseInvoiceJournalEmitt
                     ChartOfAccountCodes.InputVatRecoverable,
                     MoneyEgp.From(decimal.Round(inputVatDebit, 2, MidpointRounding.ToEven)),
                     MoneyEgp.Zero,
-                    $"Purchase {invoice.DocumentNumber} — recoverable input VAT"
+                    isReverseCharge
+                        ? $"Purchase {invoice.DocumentNumber} — recoverable input VAT (reverse-charge self-account)"
+                        : $"Purchase {invoice.DocumentNumber} — recoverable input VAT"
+                )
+            );
+        }
+
+        // P1.12 — reverse-charge self-accounting: credit Output VAT
+        // by the same amount we just debited Input VAT. Net cash on
+        // the period is zero, but both halves land in the VAT return
+        // (regulator wants the flow declared, not netted away).
+        if (isReverseCharge && reverseChargeOutputVatCredit > 0m)
+        {
+            lines.Add(
+                (
+                    ChartOfAccountCodes.OutputVatPayable,
+                    MoneyEgp.Zero,
+                    MoneyEgp.From(decimal.Round(reverseChargeOutputVatCredit, 2, MidpointRounding.ToEven)),
+                    $"Purchase {invoice.DocumentNumber} — reverse-charge output VAT (self-declared)"
                 )
             );
         }
@@ -111,7 +157,9 @@ public sealed class PurchaseInvoiceJournalEmitter : IPurchaseInvoiceJournalEmitt
                 ChartOfAccountCodes.AccountsPayable,
                 MoneyEgp.Zero,
                 MoneyEgp.From(decimal.Round(apCredit, 2, MidpointRounding.ToEven)),
-                $"Purchase {invoice.DocumentNumber} — accrue payable to supplier"
+                isReverseCharge
+                    ? $"Purchase {invoice.DocumentNumber} — accrue payable (net only — VAT self-accounted)"
+                    : $"Purchase {invoice.DocumentNumber} — accrue payable to supplier"
             )
         );
 

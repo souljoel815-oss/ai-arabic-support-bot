@@ -30,6 +30,13 @@ public sealed class CustomerReceiptVoucher
     public DateTime? PostedAtUtc { get; private set; }
     public Guid? PostedByUserId { get; private set; }
 
+    /// <summary>
+    /// P3.1 — which specific cashbox / bank account received the
+    /// payment. Nullable for backward-compat; the JE emitter falls
+    /// back to the legacy hard-coded <c>1100 Cash</c> account when null.
+    /// </summary>
+    public Guid? CashAccountId { get; private set; }
+
     public MoneyEgp GrossReceiptAmount { get; private set; } = MoneyEgp.Zero;
 
     /// <summary>FR-052 / US7 — withholding tax the customer withheld
@@ -126,6 +133,24 @@ public sealed class CustomerReceiptVoucher
         );
         _allocations.Add(allocation);
         return allocation;
+    }
+
+    /// <summary>
+    /// P3.1 — pin the voucher to a specific cashbox / bank account.
+    /// Allowed only while still in Draft.
+    /// </summary>
+    public void SetCashAccount(Guid cashAccountId)
+    {
+        if (cashAccountId == Guid.Empty)
+        {
+            throw new ArgumentException("CashAccountId is required.", nameof(cashAccountId));
+        }
+        if (State != DocumentState.Draft)
+        {
+            throw new InvalidOperationException(
+                $"Cannot change the cash account on customer receipt voucher {Id}: state {State} is not Draft.");
+        }
+        CashAccountId = cashAccountId;
     }
 
     public void RemoveAllocation(Guid allocationId)

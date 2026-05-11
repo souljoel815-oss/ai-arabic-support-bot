@@ -14,6 +14,7 @@ internal sealed class CustomerReceiptVoucherConfiguration
         b.Property(v => v.Id).HasColumnName("id").ValueGeneratedNever();
 
         b.Property(v => v.CustomerId).HasColumnName("customer_id").IsRequired();
+        b.Property(v => v.CashAccountId).HasColumnName("cash_account_id");
         b.Property(v => v.ReceiptDate)
             .HasColumnName("receipt_date")
             .HasColumnType("date")

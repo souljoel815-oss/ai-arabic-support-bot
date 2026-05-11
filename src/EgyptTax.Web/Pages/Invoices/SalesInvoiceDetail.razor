@@ -13,41 +13,46 @@
 @inject DocumentRiskScorer RiskScorer
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Sales invoice @(_invoice?.DocumentNumber ?? "(loading)")</h1>
+<h1>@(IsArabic ? $"فاتورة مبيعات {(_invoice?.DocumentNumber ?? "(جارٍ التحميل)")}" : $"Sales invoice {(_invoice?.DocumentNumber ?? "(loading)")}")</h1>
 
 @if (_invoice is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 <section class="invoice-header">
-    <div><strong>Date:</strong> @_invoice.DocumentDate.ToString("yyyy-MM-dd")</div>
-    <div><strong>State:</strong> <StateBadge State="_invoice.State" /></div>
-    <div><strong>Customer:</strong> @(_customer?.Name.English ?? "—") (@(_invoice.CustomerTaxProfileSnapshot.ProfileType))</div>
+    <div><strong>@(IsArabic ? "التاريخ:" : "Date:")</strong> @_invoice.DocumentDate.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "الحالة:" : "State:")</strong> <StateBadge State="_invoice.State" /></div>
+    <div><strong>@(IsArabic ? "العميل:" : "Customer:")</strong> @(_customer?.Name.English ?? "—") (@(_invoice.CustomerTaxProfileSnapshot.ProfileType))</div>
     @if (_invoice.PostedAtUtc is { } postedAt)
     {
-        <div><strong>Posted at (UTC):</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
-        <div><strong>Posting mode:</strong> @_invoice.PostingMode</div>
+        <div><strong>@(IsArabic ? "وقت الترحيل (UTC):" : "Posted at (UTC):")</strong> @postedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+        <div><strong>@(IsArabic ? "وضع الترحيل:" : "Posting mode:")</strong> @_invoice.PostingMode</div>
     }
-    <div><strong>Tax Risk Score:</strong> <TaxRiskScoreBadge Findings="_riskFindings" /></div>
+    <div><strong>@(IsArabic ? "درجة المخاطر الضريبية:" : "Tax Risk Score:")</strong> <TaxRiskScoreBadge Findings="_riskFindings" /></div>
 </section>
 
+@* P1.7 — Pre-flight ETA validator. Always-on (cheap in-memory pass).
+   Catches the local rules that cause ~80% of ETA rejections BEFORE
+   the operator hits submit. *@
+<PreFlightValidationPanel Invoice="_invoice" />
+
 <section>
-    <h2>Lines</h2>
+    <h2>@(IsArabic ? "البنود" : "Lines")</h2>
     <table class="data-grid">
         <thead>
             <tr>
                 <th>#</th>
-                <th>Item</th>
-                <th class="num">Qty</th>
-                <th class="num">Unit price</th>
-                <th class="num">Subtotal</th>
-                <th class="num">Apportioned discount</th>
-                <th class="num">Net</th>
-                <th>VAT %</th>
-                <th class="num">VAT</th>
-                <th class="num">Line total</th>
+                <th>@(IsArabic ? "الصنف" : "Item")</th>
+                <th class="num">@(IsArabic ? "الكمية" : "Qty")</th>
+                <th class="num">@(IsArabic ? "سعر الوحدة" : "Unit price")</th>
+                <th class="num">@(IsArabic ? "الإجمالي قبل الخصم" : "Subtotal")</th>
+                <th class="num">@(IsArabic ? "الخصم الموزّع" : "Apportioned discount")</th>
+                <th class="num">@(IsArabic ? "الصافي" : "Net")</th>
+                <th>@(IsArabic ? "الضريبة %" : "VAT %")</th>
+                <th class="num">@(IsArabic ? "الضريبة" : "VAT")</th>
+                <th class="num">@(IsArabic ? "إجمالي البند" : "Line total")</th>
             </tr>
         </thead>
         <tbody>
@@ -75,32 +80,32 @@
 </section>
 
 <section class="invoice-totals">
-    <div><strong>Subtotal:</strong> <span class="num">@_invoice.Subtotal.Amount.ToString("F2") EGP</span></div>
+    <div><strong>@(IsArabic ? "الإجمالي قبل الضريبة:" : "Subtotal:")</strong> <span class="num">@_invoice.Subtotal.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
     @if (_invoice.InvoiceLevelDiscountAmount.Amount > 0)
     {
         <div>
-            <strong>Discount@(_invoice.InvoiceLevelDiscountPercent > 0 ? $" ({_invoice.InvoiceLevelDiscountPercent:0.##}%)" : ""):</strong>
-            <span class="num">@_invoice.InvoiceLevelDiscountAmount.Amount.ToString("F2") EGP</span>
+            <strong>@(IsArabic ? "الخصم" : "Discount")@(_invoice.InvoiceLevelDiscountPercent > 0 ? $" ({_invoice.InvoiceLevelDiscountPercent:0.##}%)" : ""):</strong>
+            <span class="num">@_invoice.InvoiceLevelDiscountAmount.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span>
         </div>
     }
-    <div><strong>Net before VAT:</strong> <span class="num">@_invoice.NetBeforeVat.Amount.ToString("F2") EGP</span></div>
-    <div><strong>VAT total:</strong> <span class="num">@_invoice.VatTotal.Amount.ToString("F2") EGP</span></div>
-    <div class="grand"><strong>Grand total:</strong> <span class="num">@_invoice.GrandTotal.Amount.ToString("F2") EGP</span></div>
+    <div><strong>@(IsArabic ? "الصافي قبل الضريبة:" : "Net before VAT:")</strong> <span class="num">@_invoice.NetBeforeVat.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "إجمالي الضريبة:" : "VAT total:")</strong> <span class="num">@_invoice.VatTotal.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div class="grand"><strong>@(IsArabic ? "الإجمالي الكلي:" : "Grand total:")</strong> <span class="num">@_invoice.GrandTotal.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
 </section>
 
 @if (_invoice.State is DocumentState.Draft or DocumentState.Submitted or DocumentState.Approved)
 {
     <section class="invoice-actions">
-        <h2>Approval workflow (FR-026)</h2>
+        <h2>@(IsArabic ? "سير عمل الاعتماد (FR-026)" : "Approval workflow (FR-026)")</h2>
         @if (_latestApproval is not null)
         {
             <p>
-                <strong>Latest approval request:</strong> @_latestApproval.Status
-                — submitted by @_latestApproval.SubmittedByUserId.ToString("D")[..8]
-                at @_latestApproval.SubmittedAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC.
+                <strong>@(IsArabic ? "آخر طلب اعتماد:" : "Latest approval request:")</strong> @_latestApproval.Status
+                — @(IsArabic ? "أرسله المستخدم" : "submitted by") @_latestApproval.SubmittedByUserId.ToString("D")[..8]
+                @(IsArabic ? "في" : "at") @_latestApproval.SubmittedAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC.
                 @if (_latestApproval.RejectionReason is { } reason)
                 {
-                    <br /><em>Rejection reason: @reason</em>
+                    <br /><em>@(IsArabic ? "سبب الرفض:" : "Rejection reason:") @reason</em>
                 }
             </p>
         }
@@ -116,37 +121,85 @@
 @if (_invoice.State == DocumentState.Posted)
 {
     <section class="invoice-actions">
-        <a class="btn-primary" href="/invoices/@_invoice.Id/pdf" target="_blank">📄 Download PDF</a>
-        <a href="/invoices/@_invoice.Id/einvoice.json" target="_blank">View eInvoice JSON</a>
+        <a class="btn-primary" href="/invoices/@_invoice.Id/pdf" target="_blank">📄 @(IsArabic ? "تنزيل PDF" : "Download PDF")</a>
+        <a href="/invoices/@_invoice.Id/einvoice.json" target="_blank">@(IsArabic ? "عرض JSON الفاتورة الإلكترونية" : "View eInvoice JSON")</a>
         @if (_seal is not null)
         {
-            <a href="/api/v1/verify/@_seal" target="_blank">Verify QR seal</a>
+            <a href="/api/v1/verify/@_seal" target="_blank">@(IsArabic ? "التحقق من رمز QR" : "Verify QR seal")</a>
         }
-        @if (!_invoice.IsCreditNote)
-        {
-            <a href="/invoices/@_invoice.Id/credit-note/new">Issue credit note</a>
-        }
-        <a href="/document360/@(_invoice.IsCreditNote ? "credit-note" : "sales-invoice")/@_invoice.Id">📂 Document 360</a>
+        <a href="/document360/@(_invoice.IsCreditNote ? "credit-note" : "sales-invoice")/@_invoice.Id">📂 @(IsArabic ? "ملف المستند الكامل" : "Document 360")</a>
     </section>
 
+    @* P1.9 — Cancel-vs-Credit-Note correction wizard. Only for
+       non-credit-note posted invoices (a credit note can't be
+       corrected by another credit note recursively). *@
+    @if (!_invoice.IsCreditNote)
+    {
+        <CorrectionAdvisor
+            InvoiceId="_invoice.Id"
+            DocumentNumber="@(_invoice.DocumentNumber ?? "")"
+            SubmittedAtUtc="_etaSubmission?.LastAttemptAtUtc"
+            EtaStatus="_etaSubmission?.Status ?? EtaSubmissionStatus.Pending" />
+    }
+
     <section class="invoice-eta">
-        <h2>ETA submission</h2>
+        <h2>@(IsArabic ? "إرسال الفاتورة الإلكترونية" : "ETA submission")</h2>
         @if (_etaSubmission is null)
         {
-            <p><em>No ETA submission row — this should not happen for a posted document. Check the post flow.</em></p>
+            <p><em>@(IsArabic ? "لا يوجد سجل إرسال — لازم يحصل للمستندات المرحّلة. راجع تدفق الترحيل." : "No ETA submission row — this should not happen for a posted document. Check the post flow.")</em></p>
         }
         else
         {
-            <div><strong>Status:</strong> <span class="eta-badge eta-@_etaSubmission.Status.ToString().ToLowerInvariant()">@_etaSubmission.Status</span></div>
-            <div><strong>Window expires:</strong> @_etaSubmission.SubmissionWindowExpiresAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC</div>
-            <div><strong>Attempts:</strong> @_etaSubmission.AttemptCount</div>
+            <div><strong>@(IsArabic ? "الحالة:" : "Status:")</strong> <span class="eta-badge eta-@_etaSubmission.Status.ToString().ToLowerInvariant()">@_etaSubmission.Status</span></div>
+            <div><strong>@(IsArabic ? "ينتهي وقت الإرسال في:" : "Window expires:")</strong> @_etaSubmission.SubmissionWindowExpiresAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC</div>
+            <div><strong>@(IsArabic ? "عدد المحاولات:" : "Attempts:")</strong> @_etaSubmission.AttemptCount</div>
             @if (_etaSubmission.SubmissionUuid is { } uuid)
             {
-                <div><strong>Submission UUID:</strong> @uuid</div>
+                <div><strong>@(IsArabic ? "رقم الإرسال:" : "Submission UUID:")</strong> @uuid</div>
             }
-            @if (_etaSubmission.ErrorMessage is { } err)
+            @* P1.3 — regulator-side acknowledgement state, populated
+               by the EtaStatusPollingJob. Shows up minutes after the
+               initial submit; gives the operator the citable long
+               UUID they hand to a tax inspector. *@
+            @if (_etaSubmission.RegulatorAcknowledgedAtUtc is { } ackAt)
             {
-                <div class="flash-error"><strong>Last error:</strong> @err</div>
+                <div class="eta-ack-banner">
+                    <Icon Name="shield-check" Class="ic" />
+                    <div>
+                        <div><strong>@(IsArabic ? "اعتمدت ETA الوثيقة" : "Acknowledged by ETA")</strong></div>
+                        <div class="eta-ack-meta">
+                            @(IsArabic ? "وقت الاعتماد:" : "Acknowledged at:") @ackAt.ToString("yyyy-MM-dd HH:mm:ss") UTC
+                            <br />
+                            @(IsArabic ? "رقم ETA الرسمي:" : "ETA long UUID:")
+                            <code class="eta-long-uuid">@_etaSubmission.RegulatorLongUuid</code>
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (_etaSubmission.Status == EtaSubmissionStatus.Submitted
+                     && _etaSubmission.RegulatorRejectedAtUtc is null)
+            {
+                <div class="eta-pending-banner">
+                    <Icon Name="activity" Class="ic" />
+                    @(IsArabic
+                        ? "أُرسلت الوثيقة. ETA لسه بتراجع — هنحدّث الحالة كل دقيقة."
+                        : "Submitted. ETA is still validating — status refreshes every minute.")
+                </div>
+            }
+            else if (_etaSubmission.RegulatorRejectedAtUtc is { } rejAt)
+            {
+                <div class="eta-reject-banner">
+                    <Icon Name="x-octagon" Class="ic" />
+                    <div>
+                        <div><strong>@(IsArabic ? "رفضتها ETA" : "Rejected by ETA")</strong></div>
+                        <div class="eta-ack-meta">@(IsArabic ? "وقت الرفض:" : "Rejected at:") @rejAt.ToString("yyyy-MM-dd HH:mm:ss") UTC</div>
+                    </div>
+                </div>
+            }
+            @if (!string.IsNullOrWhiteSpace(_etaSubmission.ErrorMessage) || !string.IsNullOrWhiteSpace(_etaSubmission.ErrorCode))
+            {
+                <EtaErrorBadge ErrorCode="_etaSubmission.ErrorCode"
+                               ErrorMessage="_etaSubmission.ErrorMessage" />
             }
         }
     </section>

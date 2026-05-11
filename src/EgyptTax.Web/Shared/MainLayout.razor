@@ -1,50 +1,203 @@
 @*
-    R-11 — Shared layout. The dir/lang attributes live on <html> in
-    _Layout.cshtml so the entire DOM tree inherits the correct
-    direction; this layout is structural only (header / nav / main /
-    footer slots) and lets each page decide its own content.
+    DaftarX — Modern SaaS layout (navy palette, SVG icons).
+    Sidebar: grouped nav with active-state accent bar + section headers.
+    Topbar: company name + current period (with lock state) + language switcher + user menu.
 *@
 @inherits LayoutComponentBase
+@using System.Globalization
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Periods
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject NavigationManager Nav
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthState
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+    private string CurrentReturnUrl => new Uri(Nav.Uri).PathAndQuery;
+
+    private string? _companyName;
+    private string _periodLabel = "";
+    private bool _periodLocked;
+    private string? _userInitial;
+    private string? _userDisplayName;
+
+    // Once-per-process flag for the lazy default-data seed (VAT
+    // categories etc.). Done in MainLayout because it's the first DB
+    // hit on every authenticated request, and the request context has
+    // SqlClient fully warmed (unlike background startup tasks).
+    private static int _defaultsSeeded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await using var Db = await DbFactory.CreateDbContextAsync();
+
+            if (System.Threading.Interlocked.CompareExchange(ref _defaultsSeeded, 1, 0) == 0)
+            {
+                try
+                {
+                    await EgyptTax.Web.Tools.StartupSeed.EnsureDefaultsAsync(Db);
+                }
+                catch
+                {
+                    // Reset so a future request can retry.
+                    System.Threading.Interlocked.Exchange(ref _defaultsSeeded, 0);
+                }
+            }
+
+            var company = await Db.Set<Company>().AsNoTracking().FirstOrDefaultAsync();
+            _companyName = company is null
+                ? Tr("لم تُكوَّن بعد", "Not configured")
+                : (IsArabic ? company.LegalName.Arabic : company.LegalName.English);
+
+            var now = DateTime.UtcNow;
+            var period = await Db.Set<TaxPeriod>().AsNoTracking()
+                .FirstOrDefaultAsync(p => p.PeriodKind == TaxPeriodKind.VatMonth
+                    && p.Year == now.Year && p.MonthOrQuarter == now.Month);
+            _periodLocked = period?.Status == TaxPeriodStatus.Locked;
+            _periodLabel = $"{MonthName(now.Month)} {now.Year}";
+
+            var auth = await AuthState.GetAuthenticationStateAsync();
+            var name = auth.User.Identity?.Name;
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                _userDisplayName = name;
+                _userInitial = name.Trim()[..1].ToUpperInvariant();
+            }
+        }
+        catch
+        {
+            // Topbar context is decorative — never block layout if a query fails.
+        }
+    }
+
+    private string MonthName(int m) => IsArabic
+        ? m switch
+        {
+            1 => "يناير", 2 => "فبراير", 3 => "مارس", 4 => "أبريل",
+            5 => "مايو", 6 => "يونيو", 7 => "يوليو", 8 => "أغسطس",
+            9 => "سبتمبر", 10 => "أكتوبر", 11 => "نوفمبر", 12 => "ديسمبر",
+            _ => $"الشهر {m}",
+        }
+        : CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m);
+}
 
 <div class="app-shell">
-    <header class="app-header">
-        <div class="brand">EgyptTax</div>
+
+    <aside class="app-sidebar">
+        <a href="" class="sidebar-brand" style="text-decoration:none;">
+            <div class="sidebar-brand-mark">DX</div>
+            <div class="sidebar-brand-name">Daftar<span class="brand-x">X</span></div>
+        </a>
+
+        <div class="sidebar-section-label">@Tr("لوحة التحكم", "Dashboard")</div>
         <nav class="app-nav">
-            <a href="/">Home</a>
-            <a href="/customers">Customers</a>
-            <a href="/suppliers">Suppliers</a>
-            <a href="/items">Items</a>
-            <a href="/expense-categories">Expense categories</a>
-            <a href="/invoices">Sales invoices</a>
-            <a href="/purchase-invoices">Purchase invoices</a>
-            <a href="/expenses">Expenses</a>
-            <a href="/reports/vat-monthly">VAT report</a>
-            <a href="/reports/taxable-income">Taxable income</a>
-            <a href="/reports/trial-balance">Trial balance</a>
-            <a href="/cockpit">Closing cockpit</a>
-            <a href="/eta-dashboard">ETA Dashboard</a>
-            <a href="/audit-log">Audit log</a>
-            <a href="/approvals">My approvals</a>
-            <a href="/inspection-bundle">Inspection bundle</a>
-            <a href="/settings/company">Company</a>
-            <a href="/settings/tax-periods">Tax periods</a>
-            <a href="/settings/vat-categories">VAT categories</a>
-            <a href="/settings/expense-categories">Expense categories (settings)</a>
-            <a href="/settings/chart-of-accounts">Chart of accounts</a>
-            <a href="/settings/fiscal-year">Fiscal year</a>
-            <a href="/settings/payment-methods">Payment methods</a>
-            <a href="/firm-portal">Firm portal</a>
+            <a href=""><Icon Name="home" Class="nav-icon" />@Tr("الرئيسية", "Home")</a>
+            <a href="cockpit"><Icon Name="target" Class="nav-icon" />@Tr("قمرة الإقفال", "Closing cockpit")</a>
+            <a href="approvals"><Icon Name="check-square" Class="nav-icon" />@Tr("اعتماداتي", "My approvals")</a>
+        </nav>
+
+        <div class="sidebar-section-label">@Tr("العمليات", "Operations")</div>
+        <nav class="app-nav">
+            <a href="invoices"><Icon Name="file-text" Class="nav-icon" />@Tr("فواتير المبيعات", "Sales invoices")</a>
+            <a href="purchase-invoices"><Icon Name="package" Class="nav-icon" />@Tr("فواتير المشتريات", "Purchases")</a>
+            <a href="expenses"><Icon Name="credit-card" Class="nav-icon" />@Tr("المصروفات", "Expenses")</a>
+            <a href="payments/bank-statements"><Icon Name="receipt" Class="nav-icon" />@Tr("كشوف البنك", "Bank statements")</a>
+            <a href="payments/unmatched"><Icon Name="search" Class="nav-icon" />@Tr("غير المطابق", "Unmatched")</a>
+        </nav>
+
+        <div class="sidebar-section-label">@Tr("التقارير", "Reports")</div>
+        <nav class="app-nav">
+            <a href="reports/vat-monthly"><Icon Name="bar-chart" Class="nav-icon" />@Tr("الضريبة الشهرية", "Monthly VAT")</a>
+            <a href="reports/taxable-income"><Icon Name="trending-up" Class="nav-icon" />@Tr("الدخل الخاضع للضريبة", "Taxable income")</a>
+            <a href="reports/trial-balance"><Icon Name="scale" Class="nav-icon" />@Tr("ميزان المراجعة", "Trial balance")</a>
+            <a href="reports/turnover-tax"><Icon Name="percent" Class="nav-icon" />@Tr("ضريبة معدل الدوران", "Turnover tax")</a>
+            <a href="wht"><Icon Name="receipt" Class="nav-icon" />@Tr("دورة الخصم", "WHT lifecycle")</a>
+            <a href="wht/inbound"><Icon Name="paperclip" Class="nav-icon" />@Tr("شهادات خصم واردة", "Inbound WHT")</a>
+        </nav>
+
+        <div class="sidebar-section-label">@Tr("الامتثال", "Compliance")</div>
+        <nav class="app-nav">
+            <a href="penalty-shield"><Icon Name="shield-check" Class="nav-icon" />@Tr("درع الغرامات", "Penalty Shield")</a>
+            <a href="compliance/calendar"><Icon Name="calendar-range" Class="nav-icon" />@Tr("تقويم الالتزامات", "Compliance calendar")</a>
+            <a href="certificates"><Icon Name="lock" Class="nav-icon" />@Tr("الشهادات الرقمية", "Certificates")</a>
+            <a href="eta-dashboard"><Icon Name="shield" Class="nav-icon" />@Tr("لوحة الفاتورة الإلكترونية", "ETA Dashboard")</a>
+            <a href="eta-wizard"><Icon Name="zap" Class="nav-icon" />@Tr("معالج إعداد ETA", "ETA Setup Wizard")</a>
+            <a href="eta-inbox"><Icon Name="package" Class="nav-icon" />@Tr("صندوق ETA الوارد", "ETA Inbox")</a>
+            <a href="eta-export"><Icon Name="archive" Class="nav-icon" />@Tr("تصدير ETA", "ETA Export")</a>
+            <a href="audit-log"><Icon Name="search" Class="nav-icon" />@Tr("سجل التدقيق", "Audit log")</a>
+            <a href="inspection-bundle"><Icon Name="archive" Class="nav-icon" />@Tr("حزمة الفحص", "Inspection bundle")</a>
+        </nav>
+
+        <div class="sidebar-section-label">@Tr("البيانات الأساسية", "Master data")</div>
+        <nav class="app-nav">
+            <a href="customers"><Icon Name="users" Class="nav-icon" />@Tr("العملاء", "Customers")</a>
+            <a href="suppliers"><Icon Name="factory" Class="nav-icon" />@Tr("الموردون", "Suppliers")</a>
+            <a href="items"><Icon Name="boxes" Class="nav-icon" />@Tr("الأصناف", "Items")</a>
+            <a href="expense-categories"><Icon Name="tag" Class="nav-icon" />@Tr("فئات المصروفات", "Expense categories")</a>
+        </nav>
+
+        <div class="sidebar-section-label">@Tr("الإعدادات", "Settings")</div>
+        <nav class="app-nav">
+            <a href="settings/company"><Icon Name="building" Class="nav-icon" />@Tr("بيانات الشركة", "Company")</a>
+            <a href="settings/tax-periods"><Icon Name="calendar" Class="nav-icon" />@Tr("الفترات الضريبية", "Tax periods")</a>
+            <a href="settings/vat-categories"><Icon Name="percent" Class="nav-icon" />@Tr("فئات الضريبة", "VAT categories")</a>
+            <a href="settings/chart-of-accounts"><Icon Name="book" Class="nav-icon" />@Tr("دليل الحسابات", "Chart of accounts")</a>
+            <a href="settings/fiscal-year"><Icon Name="calendar-range" Class="nav-icon" />@Tr("السنة المالية", "Fiscal year")</a>
+            <a href="settings/payment-methods"><Icon Name="credit-card" Class="nav-icon" />@Tr("طرق الدفع", "Payment methods")</a>
+            <a href="settings/cash-accounts"><Icon Name="wallet" Class="nav-icon" />@Tr("الخزائن والبنوك", "Cashboxes & Banks")</a>
+            <a href="settings/opening-balances"><Icon Name="trending-up" Class="nav-icon" />@Tr("الأرصدة الافتتاحية", "Opening balances")</a>
+            <a href="firm-portal"><Icon Name="landmark" Class="nav-icon" />@Tr("بوابة المكتب", "Firm portal")</a>
+        </nav>
+    </aside>
+
+    <header class="app-header">
+        <div class="topbar-context">
+            <div class="topbar-company">@(_companyName ?? Tr("جارٍ التحميل…", "Loading…"))</div>
+            <div class="topbar-period @(_periodLocked ? "is-locked" : "")">
+                <span class="period-dot"></span>
+                @Tr("الفترة الحالية:", "Current period:") @_periodLabel
+                @if (_periodLocked)
+                {
+                    <span>· @Tr("مقفولة", "Locked")</span>
+                }
+            </div>
+        </div>
+
+        <div class="topbar-actions">
+            <span class="lang-toggle">
+                @if (IsArabic)
+                {
+                    <a href="set-culture?culture=en-US&returnUrl=@(Uri.EscapeDataString(CurrentReturnUrl))" class="topbar-btn">
+                        <Icon Name="globe" Class="ic" />English
+                    </a>
+                }
+                else
+                {
+                    <a href="set-culture?culture=ar-EG&returnUrl=@(Uri.EscapeDataString(CurrentReturnUrl))" class="topbar-btn">
+                        <Icon Name="globe" Class="ic" />العربية
+                    </a>
+                }
+            </span>
+
             <AuthorizeView>
                 <Authorized>
-                    <a href="/logout" class="logout-link">Sign out</a>
+                    <a href="logout" class="topbar-user" title="@_userDisplayName">
+                        <span>@(_userDisplayName ?? Tr("المستخدم", "User"))</span>
+                        <span class="topbar-avatar">@(_userInitial ?? "U")</span>
+                    </a>
                 </Authorized>
             </AuthorizeView>
-        </nav>
+        </div>
     </header>
+
     <main class="app-main">
         @Body
     </main>
-    <footer class="app-footer">
-        <small>EgyptTax — Phase 3 scaffold (US1 implementation in progress).</small>
-    </footer>
+
 </div>

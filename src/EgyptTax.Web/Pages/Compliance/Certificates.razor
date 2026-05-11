@@ -1,0 +1,215 @@
+@page "/certificates"
+@using System.Globalization
+@using EgyptTax.Application.Compliance.CertificateMonitor
+@using Microsoft.AspNetCore.Authorization
+@inject ICertificateMonitorQuery CertQuery
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "الشهادات | DaftarX" : "Certificates | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private IReadOnlyList<CertificateInfo> _certs = Array.Empty<CertificateInfo>();
+
+    protected override void OnInitialized()
+    {
+        _certs = CertQuery.List(DateTime.UtcNow);
+    }
+
+    private string RoleLabel(CertificateRole r) => IsArabic
+        ? r switch
+        {
+            CertificateRole.DaftarXHttps => "شهادة HTTPS الخاصة بـDaftarX",
+            CertificateRole.EtaSigning   => "شهادة توقيع ETA",
+            _ => "أخرى",
+        }
+        : r switch
+        {
+            CertificateRole.DaftarXHttps => "DaftarX HTTPS",
+            CertificateRole.EtaSigning   => "ETA Signing",
+            _ => "Other",
+        };
+
+    private string UrgencyLabel(CertificateUrgency u) => IsArabic
+        ? u switch
+        {
+            CertificateUrgency.Healthy      => "آمن",
+            CertificateUrgency.PlanRenewal  => "خطّط للتجديد",
+            CertificateUrgency.RenewSoon    => "جدّد هذا الأسبوع",
+            CertificateUrgency.Critical     => "حرج — جدّد اليوم",
+            CertificateUrgency.Expired      => "منتهية الصلاحية",
+            _ => u.ToString(),
+        }
+        : u switch
+        {
+            CertificateUrgency.Healthy      => "Healthy",
+            CertificateUrgency.PlanRenewal  => "Plan renewal",
+            CertificateUrgency.RenewSoon    => "Renew soon",
+            CertificateUrgency.Critical     => "Critical — renew today",
+            CertificateUrgency.Expired      => "Expired",
+            _ => u.ToString(),
+        };
+
+    private string UrgencyClass(CertificateUrgency u) => u switch
+    {
+        CertificateUrgency.Healthy      => "kpi-success",
+        CertificateUrgency.PlanRenewal  => "kpi-warning",
+        CertificateUrgency.RenewSoon    => "kpi-warning",
+        CertificateUrgency.Critical     => "kpi-danger",
+        CertificateUrgency.Expired      => "kpi-danger",
+        _ => "",
+    };
+
+    private string UrgencyBadgeClass(CertificateUrgency u) => u switch
+    {
+        CertificateUrgency.Healthy     => "state-posted",
+        CertificateUrgency.PlanRenewal => "state-approved",
+        CertificateUrgency.RenewSoon   => "state-approved",
+        CertificateUrgency.Critical    => "state-rejected",
+        CertificateUrgency.Expired     => "state-rejected",
+        _ => "state-draft",
+    };
+
+    private (int Critical, int Soon, int Expired, int Healthy) Tally()
+    {
+        return (
+            _certs.Count(c => c.Urgency == CertificateUrgency.Critical),
+            _certs.Count(c => c.Urgency is CertificateUrgency.RenewSoon or CertificateUrgency.PlanRenewal),
+            _certs.Count(c => c.Urgency == CertificateUrgency.Expired),
+            _certs.Count(c => c.Urgency == CertificateUrgency.Healthy));
+    }
+}
+
+<h1>@(IsArabic ? "🔐 الشهادات الرقمية" : "🔐 Digital Certificates")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "متابعة شهادات HTTPS وتوقيع ETA من Windows certificate store. تجديد الشهادة قبل انتهائها بفترة كافية يمنع كارثة \"السبت الصبح كل الفواتير 401\"."
+        : "Monitor HTTPS + ETA signing certificates from the Windows store. Renewing on time prevents the \"Saturday-morning 401 storm\" every Egyptian accountant has lived through.")
+</p>
+
+@{ var t = Tally(); }
+
+<section class="kpi-grid">
+    <div class="kpi-card @(t.Expired > 0 ? "kpi-danger" : "kpi-success")">
+        <div class="kpi-label"><Icon Name="alert-triangle" Class="ic" />@(IsArabic ? "منتهية الصلاحية" : "Expired")</div>
+        <div class="kpi-value">@t.Expired<span class="kpi-unit">@(IsArabic ? "شهادة" : "certs")</span></div>
+        <div class="kpi-meta">
+            @if (t.Expired > 0)
+            {
+                <span class="kpi-trend-down">@(IsArabic ? "إرسال ETA يفشل النهارده!" : "ETA submissions failing now!")</span>
+            }
+            else
+            {
+                @(IsArabic ? "كل الشهادات سارية" : "All currently valid")
+            }
+        </div>
+    </div>
+
+    <div class="kpi-card @(t.Critical > 0 ? "kpi-danger" : "kpi-success")">
+        <div class="kpi-label"><Icon Name="zap" Class="ic" />@(IsArabic ? "حرج (≤7 أيام)" : "Critical (≤7 days)")</div>
+        <div class="kpi-value">@t.Critical<span class="kpi-unit">@(IsArabic ? "شهادة" : "certs")</span></div>
+        <div class="kpi-meta">@(IsArabic ? "جدّد اليوم — Egypt Trust بياخد 3-5 أيام عمل" : "Renew today — Egypt Trust takes 3-5 business days")</div>
+    </div>
+
+    <div class="kpi-card @(t.Soon > 0 ? "kpi-warning" : "kpi-success")">
+        <div class="kpi-label"><Icon Name="calendar" Class="ic" />@(IsArabic ? "قريب (8-30 يوم)" : "Soon (8-30 days)")</div>
+        <div class="kpi-value">@t.Soon<span class="kpi-unit">@(IsArabic ? "شهادة" : "certs")</span></div>
+        <div class="kpi-meta">@(IsArabic ? "خطّط للتجديد قبل ما تتحول لحرجة" : "Plan renewal before they go critical")</div>
+    </div>
+
+    <div class="kpi-card kpi-success">
+        <div class="kpi-label"><Icon Name="shield-check" Class="ic" />@(IsArabic ? "آمن (>30 يوم)" : "Healthy (>30 days)")</div>
+        <div class="kpi-value">@t.Healthy<span class="kpi-unit">@(IsArabic ? "شهادة" : "certs")</span></div>
+        <div class="kpi-meta">@(IsArabic ? "لا حاجة لإجراء" : "No action needed")</div>
+    </div>
+</section>
+
+@if (_certs.Count == 0)
+{
+    <section class="activity-feed">
+        <div class="activity-item" style="border-bottom:none;">
+            <div class="activity-icon tone-info"><Icon Name="shield" Class="ic" /></div>
+            <div class="activity-content">
+                <strong>@(IsArabic ? "لا توجد شهادات DaftarX أو ETA في المتجر" : "No DaftarX or ETA certificates found in store")</strong>
+                <div class="activity-meta">
+                    @(IsArabic
+                        ? "شهادة HTTPS بتتولّد بـsetup-https.ps1 وقت التثبيت. شهادة توقيع ETA يثبّتها العميل بنفسه من Egypt Trust أو MCDR."
+                        : "HTTPS cert is generated by setup-https.ps1 at install time. ETA signing cert is installed by the customer from Egypt Trust or MCDR.")
+                </div>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    <h2>@(IsArabic ? "تفاصيل الشهادات" : "Certificate inventory")</h2>
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>@(IsArabic ? "الحالة" : "Status")</th>
+                <th>@(IsArabic ? "النوع" : "Role")</th>
+                <th>@(IsArabic ? "الموضوع" : "Subject")</th>
+                <th>@(IsArabic ? "تنتهي في" : "Expires")</th>
+                <th class="num">@(IsArabic ? "أيام متبقية" : "Days left")</th>
+                <th>@(IsArabic ? "Thumbprint" : "Thumbprint")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in _certs)
+            {
+                <tr class="@(c.Urgency switch { CertificateUrgency.Expired => "row-overdue", CertificateUrgency.Critical => "row-overdue", CertificateUrgency.RenewSoon => "row-warning", CertificateUrgency.PlanRenewal => "row-warning", _ => "" })">
+                    <td>
+                        <span class="state-badge @UrgencyBadgeClass(c.Urgency)">
+                            @UrgencyLabel(c.Urgency)
+                        </span>
+                    </td>
+                    <td><strong>@RoleLabel(c.Role)</strong></td>
+                    <td title="@c.Subject" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">@c.FriendlyName</td>
+                    <td>@c.NotAfterUtc.ToString("yyyy-MM-dd")</td>
+                    <td class="num" style="font-weight:700;">
+                        @if (c.IsExpired)
+                        {
+                            <span style="color:var(--danger-text)">@($"{Math.Abs(c.DaysUntilExpiry)} {(IsArabic ? "يوم منتهية" : "days expired")}")</span>
+                        }
+                        else
+                        {
+                            @c.DaysUntilExpiry
+                        }
+                    </td>
+                    <td><code style="font-size:11px;">@c.Thumbprint.Substring(0, 16)…</code></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<!-- Renewal guidance footer -->
+<section style="margin-top:48px; background: var(--surface); border:1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-xs);">
+    <h3 style="margin-top:0;"><Icon Name="book" Class="ic" /> @(IsArabic ? "كيف تجدّد الشهادات" : "How to renew certificates")</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;margin-top:16px;">
+        <div>
+            <h4 style="margin:0 0 8px;color:var(--text);">@(IsArabic ? "شهادة DaftarX HTTPS" : "DaftarX HTTPS cert")</h4>
+            <p style="font-size:14px;color:var(--text-muted);margin:0 0 8px;">
+                @(IsArabic
+                    ? "اعمل re-run لـsetup-https.ps1 من مجلد التثبيت. هيتولّد certificate جديدة صالحة 5 سنين تلقائياً."
+                    : "Re-run setup-https.ps1 from the install folder. A new 5-year cert is generated automatically.")
+            </p>
+            <code style="font-size:12px;background:var(--bg-2);padding:6px 10px;border-radius:6px;display:inline-block;">
+                cd "C:\Program Files\EgyptTax"<br/>
+                .\setup-https.ps1
+            </code>
+        </div>
+        <div>
+            <h4 style="margin:0 0 8px;color:var(--text);">@(IsArabic ? "شهادة توقيع ETA" : "ETA Signing cert")</h4>
+            <p style="font-size:14px;color:var(--text-muted);margin:0 0 8px;">
+                @(IsArabic
+                    ? "محتاج التواصل مع المُصدِر (Egypt Trust أو MCDR). التجديد بياخد 3-5 أيام عمل، فابدأ قبل الانتهاء بـ14 يوم على الأقل."
+                    : "Contact your issuer (Egypt Trust or MCDR). Renewal takes 3-5 business days; start at least 14 days before expiry.")
+            </p>
+            <ul style="font-size:13px;color:var(--text-muted);margin:8px 0 0;padding-inline-start:20px;">
+                <li>Egypt Trust: <code>www.egypttrust.com</code></li>
+                <li>MCDR: <code>www.mcdr.com.eg</code></li>
+            </ul>
+        </div>
+    </div>
+</section>

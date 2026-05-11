@@ -1,7 +1,17 @@
 @page "/logout"
 @model EgyptTax.Web.Pages.Auth.LogoutModel
 @{
-    ViewData["Title"] = "Signed out";
+    ViewData["Title"] = IsArabic ? "تم تسجيل الخروج" : "Signed out";
+    ViewData["BodyClass"] = "auth-page";
 }
 
-<h1>Signing out…</h1>
+<div class="auth-page-shell">
+    <div class="auth-page-card" style="text-align:center;">
+        <div class="auth-brand" style="justify-content:center;">
+            <div class="auth-brand-mark">DX</div>
+            <div class="auth-brand-name">DaftarX</div>
+        </div>
+        <h1>@(IsArabic ? "جارٍ تسجيل الخروج…" : "Signing out…")</h1>
+        <p>@(IsArabic ? "إعادة التوجيه إلى صفحة الدخول." : "Redirecting to the sign-in page.")</p>
+    </div>
+</div>

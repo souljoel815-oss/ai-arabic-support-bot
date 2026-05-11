@@ -4,7 +4,16 @@
     <RootNamespace>EgyptTax.Web</RootNamespace>
     <AssemblyName>EgyptTax.Web</AssemblyName>
     <UserSecretsId>egypttax-web-dev-local</UserSecretsId>
+    <!-- Single-file portable mode: bundle wwwroot into the assembly
+         so the static-files middleware can serve them via
+         ManifestEmbeddedFileProvider when the EXE is run from a
+         folder that doesn't have wwwroot beside it. -->
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="wwwroot\**" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\EgyptTax.Infrastructure\EgyptTax.Infrastructure.csproj" />
@@ -19,6 +28,10 @@
   <ItemGroup>
     <PackageReference Include="MediatR" />
     <PackageReference Include="Hangfire.AspNetCore" />
+    <PackageReference Include="Hangfire.MemoryStorage" />
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" />
+    <PackageReference Include="BouncyCastle.Cryptography" />
+    <PackageReference Include="System.Management" />
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.MSSqlServer" />
     <PackageReference Include="Serilog.Sinks.File" />

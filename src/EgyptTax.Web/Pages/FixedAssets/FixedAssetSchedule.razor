@@ -5,33 +5,33 @@
 @inject IFixedAssetQuery Query
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<a href="/fixed-assets" class="btn-secondary">← Back to list</a>
+<a href="/fixed-assets" class="btn-secondary">← @(IsArabic ? "العودة إلى القائمة" : "Back to list")</a>
 
-<h1>Depreciation schedule / جدول الإهلاك</h1>
+<h1>@(IsArabic ? "جدول الإهلاك" : "Depreciation schedule")</h1>
 
 @if (_loading)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 @if (_asset is null)
 {
-    <p class="flash-error">Fixed asset @Id not found.</p>
+    <p class="flash-error">@(IsArabic ? $"الأصل الثابت {Id} غير موجود." : $"Fixed asset {Id} not found.")</p>
     return;
 }
 
 <section class="invoice-totals">
-    <div><strong>Code:</strong> <code>@_asset.Code</code></div>
-    <div><strong>Description:</strong> @_asset.Description.English (@_asset.Description.Arabic)</div>
-    <div><strong>Status:</strong> <span class="kind-badge kind-@_asset.Status.ToString().ToLowerInvariant()">@_asset.Status</span></div>
-    <div><strong>Cost:</strong> @_asset.Cost.Amount.ToString("F2") EGP</div>
-    <div><strong>Salvage:</strong> @_asset.SalvageValue.Amount.ToString("F2") EGP</div>
-    <div><strong>In service:</strong> @_asset.InServiceDate.ToString("yyyy-MM-dd")</div>
-    <div><strong>Useful life:</strong> @_asset.UsefulLifeMonths months</div>
-    <div><strong>Method / Convention:</strong> @_asset.DepreciationMethod / @_asset.Convention</div>
+    <div><strong>@(IsArabic ? "الكود:" : "Code:")</strong> <code>@_asset.Code</code></div>
+    <div><strong>@(IsArabic ? "الوصف:" : "Description:")</strong> @(IsArabic ? $"{_asset.Description.Arabic} ({_asset.Description.English})" : $"{_asset.Description.English} ({_asset.Description.Arabic})")</div>
+    <div><strong>@(IsArabic ? "الحالة:" : "Status:")</strong> <span class="kind-badge kind-@_asset.Status.ToString().ToLowerInvariant()">@_asset.Status</span></div>
+    <div><strong>@(IsArabic ? "التكلفة:" : "Cost:")</strong> @_asset.Cost.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+    <div><strong>@(IsArabic ? "القيمة التخريدية:" : "Salvage:")</strong> @_asset.SalvageValue.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+    <div><strong>@(IsArabic ? "تاريخ التشغيل:" : "In service:")</strong> @_asset.InServiceDate.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "العمر النافع:" : "Useful life:")</strong> @_asset.UsefulLifeMonths @(IsArabic ? "شهراً" : "months")</div>
+    <div><strong>@(IsArabic ? "الطريقة / الاصطلاح:" : "Method / Convention:")</strong> @_asset.DepreciationMethod / @_asset.Convention</div>
     @if (_asset.DisposedOn is { } d)
     {
-        <div><strong>Disposed on:</strong> @d.ToString("yyyy-MM-dd")</div>
+        <div><strong>@(IsArabic ? "تاريخ الاستبعاد:" : "Disposed on:")</strong> @d.ToString("yyyy-MM-dd")</div>
     }
 </section>
 
@@ -40,27 +40,27 @@
     <p>
         <em>
             @(_asset.Status == FixedAssetStatus.Draft
-                ? "Draft assets aren't depreciable yet — put the asset in service first."
-                : "No depreciation lines for this asset (cost ≤ salvage, or already fully depreciated).")
+                ? (IsArabic ? "أصول المسودة ليست قابلة للإهلاك بعد — ضع الأصل في الخدمة أولاً." : "Draft assets aren't depreciable yet — put the asset in service first.")
+                : (IsArabic ? "لا توجد بنود إهلاك لهذا الأصل (التكلفة ≤ القيمة التخريدية، أو مُهلك بالكامل)." : "No depreciation lines for this asset (cost ≤ salvage, or already fully depreciated)."))
         </em>
     </p>
     return;
 }
 
 <section>
-    <h2>Schedule (@_schedule.Count periods)</h2>
+    <h2>@(IsArabic ? $"الجدول ({_schedule.Count} فترة)" : $"Schedule ({_schedule.Count} periods)")</h2>
     <p>
-        Lifetime depreciation: <strong>@_schedule.Sum(l => l.Amount.Amount).ToString("F2") EGP</strong>
-        — equals cost − salvage exactly thanks to the rounding-remainder absorption.
+        @(IsArabic ? "إجمالي الإهلاك خلال العمر:" : "Lifetime depreciation:") <strong>@_schedule.Sum(l => l.Amount.Amount).ToString("F2") @(IsArabic ? "ج.م." : "EGP")</strong>
+        — @(IsArabic ? "يساوي بالضبط (التكلفة − القيمة التخريدية) بفضل امتصاص بقايا التقريب." : "equals cost − salvage exactly thanks to the rounding-remainder absorption.")
     </p>
     <table class="data-grid">
         <thead>
             <tr>
                 <th class="num">#</th>
-                <th>Period (first of month)</th>
-                <th class="num">Depreciation (EGP)</th>
-                <th class="num">Cumulative (EGP)</th>
-                <th class="num">NBV after period (EGP)</th>
+                <th>@(IsArabic ? "الفترة (أول الشهر)" : "Period (first of month)")</th>
+                <th class="num">@(IsArabic ? "الإهلاك (ج.م.)" : "Depreciation (EGP)")</th>
+                <th class="num">@(IsArabic ? "التراكمي (ج.م.)" : "Cumulative (EGP)")</th>
+                <th class="num">@(IsArabic ? "القيمة الدفترية بعد الفترة (ج.م.)" : "NBV after period (EGP)")</th>
             </tr>
         </thead>
         <tbody>

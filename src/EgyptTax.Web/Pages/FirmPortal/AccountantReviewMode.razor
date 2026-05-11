@@ -13,16 +13,14 @@
 @inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Firm portal — review mode (Differentiator 3) / وضع المراجعة</h1>
+<h1>@(IsArabic ? "وضع المراجعة" : "Firm portal — review mode (Differentiator 3)")</h1>
 
 <p>
     <em>
-        Surface for accounting firms working on this client's
-        installation. Lists active <strong>review-locks</strong>
-        (the soft FR-050 handshake the bookkeeper raised when
-        their books were ready), plus this installation's firm-
-        user roster. Switching to a different client installation
-        is on the <a href="/firm-portal/switch">switcher page</a>.
+        @(IsArabic
+            ? "صفحة المكاتب المحاسبية العاملة على تثبيت هذا العميل. تعرض أقفال المراجعة النشطة (مصافحة FR-050 الناعمة التي يرفعها مَن يمسك الدفاتر عندما تكون السجلات جاهزة)، إضافة إلى قائمة مستخدمي المكتب على هذا التثبيت. للتبديل إلى تثبيت عميل آخر استخدم"
+            : "Surface for accounting firms working on this client's installation. Lists active review-locks (the soft FR-050 handshake the bookkeeper raised when their books were ready), plus this installation's firm-user roster. Switching to a different client installation is on the")
+        <a href="/firm-portal/switch">@(IsArabic ? "صفحة التبديل" : "switcher page")</a>.
     </em>
 </p>
 
@@ -36,19 +34,18 @@
 }
 
 <section>
-    <h2>Active review-locks (FR-050)</h2>
+    <h2>@(IsArabic ? "أقفال المراجعة النشطة (FR-050)" : "Active review-locks (FR-050)")</h2>
     @if (_activeLocks is null)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else if (_activeLocks.Count == 0)
     {
         <p>
             <em>
-                No months are currently locked for review. The
-                bookkeeper raises the lock from the closing
-                cockpit when they're done editing a month and
-                want a firm reviewer to look at it.
+                @(IsArabic
+                    ? "لا يوجد شهر مقفول للمراجعة حالياً. مَن يمسك الدفاتر يرفع القفل من قمرة الإقفال عند انتهائه من تعديل الشهر ورغبته في مراجعة أحد المكتب له."
+                    : "No months are currently locked for review. The bookkeeper raises the lock from the closing cockpit when they're done editing a month and want a firm reviewer to look at it.")
             </em>
         </p>
     }
@@ -57,12 +54,12 @@
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Period</th>
-                    <th>Locked at (UTC)</th>
-                    <th>Locked by (user id)</th>
-                    <th>Note</th>
-                    <th class="num">Adjusting actions so far</th>
-                    <th>Actions</th>
+                    <th>@(IsArabic ? "الفترة" : "Period")</th>
+                    <th>@(IsArabic ? "وقت القفل (UTC)" : "Locked at (UTC)")</th>
+                    <th>@(IsArabic ? "أقفله (رقم المستخدم)" : "Locked by (user id)")</th>
+                    <th>@(IsArabic ? "ملاحظة" : "Note")</th>
+                    <th class="num">@(IsArabic ? "تعديلات حتى الآن" : "Adjusting actions so far")</th>
+                    <th>@(IsArabic ? "إجراءات" : "Actions")</th>
                 </tr>
             </thead>
             <tbody>
@@ -77,7 +74,7 @@
                         <td>
                             <button type="button" class="btn-primary"
                                 @onclick="() => OnReleaseAsync(l.Id)" disabled="@_busy">
-                                Release
+                                @(IsArabic ? "تحرير" : "Release")
                             </button>
                         </td>
                     </tr>
@@ -88,63 +85,66 @@
 </section>
 
 <section>
-    <h2>+ Lock a month for review</h2>
+    <h2>+ @(IsArabic ? "إقفال شهر للمراجعة" : "Lock a month for review")</h2>
     <p>
         <em>
-            Bookkeepers raise the lock from the
-            <a href="/cockpit">closing cockpit</a>. Firm reviewers
-            can also raise it themselves if they want to "freeze"
-            a month while they're working through it.
+            @(IsArabic
+                ? "ماسكو الدفاتر يرفعون القفل من"
+                : "Bookkeepers raise the lock from the")
+            <a href="/cockpit">@(IsArabic ? "قمرة الإقفال" : "closing cockpit")</a>.
+            @(IsArabic
+                ? "ومراجعو المكاتب يقدرون يرفعونه بأنفسهم لو حابين «يجمدوا» الشهر أثناء عملهم عليه."
+                : "Firm reviewers can also raise it themselves if they want to \"freeze\" a month while they're working through it.")
         </em>
     </p>
     <form @onsubmit="OnLockAsync" @onsubmit:preventDefault>
         <div class="invoice-toolbar">
             <label>
-                <span>Year</span>
+                <span>@(IsArabic ? "السنة" : "Year")</span>
                 <input type="number" min="2020" max="2099" @bind="_lockYear" required />
             </label>
             <label>
-                <span>Month</span>
+                <span>@(IsArabic ? "الشهر" : "Month")</span>
                 <input type="number" min="1" max="12" @bind="_lockMonth" required />
             </label>
             <label>
-                <span>Locked-by user id</span>
+                <span>@(IsArabic ? "رقم المستخدم القافل" : "Locked-by user id")</span>
                 <input type="text" @bind="_lockByUserId" required />
             </label>
         </div>
         <div class="invoice-toolbar">
             <label style="flex: 1;">
-                <span>Note (optional)</span>
+                <span>@(IsArabic ? "ملاحظة (اختياري)" : "Note (optional)")</span>
                 <input type="text" @bind="_lockNote" />
             </label>
         </div>
         <p>
             <button type="submit" class="btn-primary" disabled="@_busy">
-                @(_busy ? "Saving…" : "Lock for review")
+                @(_busy ? (IsArabic ? "جارٍ الحفظ…" : "Saving…") : (IsArabic ? "إقفال للمراجعة" : "Lock for review"))
             </button>
         </p>
     </form>
 </section>
 
 <section>
-    <h2>Released review-locks (history)</h2>
+    <h2>@(IsArabic ? "أقفال المراجعة المُحرَّرة (التاريخ)" : "Released review-locks (history)")</h2>
     @if (_releasedLocks is null)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else if (_releasedLocks.Count == 0)
     {
-        <p><em>No released locks yet.</em></p>
+        <p><em>@(IsArabic ? "لا توجد أقفال مُحرَّرة بعد." : "No released locks yet.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Period</th>
-                    <th>Locked at (UTC)</th>
-                    <th>Released at (UTC)</th>
-                    <th class="num">Adjusting actions during lock</th>
+                    <th>@(IsArabic ? "الفترة" : "Period")</th>
+                    <th>@(IsArabic ? "وقت القفل (UTC)" : "Locked at (UTC)")</th>
+                    <th>@(IsArabic ? "وقت التحرير (UTC)" : "Released at (UTC)")</th>
+                    <th class="num">@(IsArabic ? "تعديلات أثناء القفل" : "Adjusting actions during lock")</th>
                 </tr>
             </thead>
             <tbody>
@@ -163,25 +163,25 @@
 </section>
 
 <section>
-    <h2>Firm-user roster on this installation</h2>
+    <h2>@(IsArabic ? "قائمة مستخدمي المكتب على هذا التثبيت" : "Firm-user roster on this installation")</h2>
     @if (_firmUsers is null)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else if (_firmUsers.Count == 0)
     {
-        <p><em>No firm users invited yet.</em></p>
+        <p><em>@(IsArabic ? "لم يتم دعوة أي مستخدم مكتب بعد." : "No firm users invited yet.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Firm</th>
-                    <th>Contact</th>
-                    <th>Invited at (UTC)</th>
-                    <th>Accepted at</th>
-                    <th>Status</th>
+                    <th>@(IsArabic ? "المكتب" : "Firm")</th>
+                    <th>@(IsArabic ? "جهة الاتصال" : "Contact")</th>
+                    <th>@(IsArabic ? "تاريخ الدعوة (UTC)" : "Invited at (UTC)")</th>
+                    <th>@(IsArabic ? "تاريخ القبول" : "Accepted at")</th>
+                    <th>@(IsArabic ? "الحالة" : "Status")</th>
                 </tr>
             </thead>
             <tbody>
@@ -191,19 +191,19 @@
                         <td><strong>@u.FirmName</strong></td>
                         <td><code>@u.FirmExternalIdentifier</code></td>
                         <td>@u.InvitedAtUtc.ToString("yyyy-MM-dd")</td>
-                        <td>@(u.AcceptedAtUtc?.ToString("yyyy-MM-dd") ?? "(pending)")</td>
+                        <td>@(u.AcceptedAtUtc?.ToString("yyyy-MM-dd") ?? (IsArabic ? "(قيد القبول)" : "(pending)"))</td>
                         <td>
                             @if (u.RevokedAtUtc is not null)
                             {
-                                <span class="flash-error">Revoked @u.RevokedAtUtc?.ToString("yyyy-MM-dd")</span>
+                                <span class="flash-error">@(IsArabic ? "مُلغى" : "Revoked") @u.RevokedAtUtc?.ToString("yyyy-MM-dd")</span>
                             }
                             else if (u.AcceptedAtUtc is not null)
                             {
-                                <span>Active</span>
+                                <span>@(IsArabic ? "نشط" : "Active")</span>
                             }
                             else
                             {
-                                <span>Pending</span>
+                                <span>@(IsArabic ? "قيد القبول" : "Pending")</span>
                             }
                         </td>
                     </tr>
@@ -252,7 +252,7 @@
         {
             if (!Guid.TryParse(_lockByUserId, out var lockedBy))
             {
-                _error = "Locked-by user id must be a valid Guid.";
+                _error = IsArabic ? "رقم المستخدم القافل يجب أن يكون Guid صالح." : "Locked-by user id must be a valid Guid.";
                 return;
             }
             var auditStore = new EgyptTax.Infrastructure.Audit.SqlAuditLogStore(Db);
@@ -263,7 +263,9 @@
                 LockedByUserId: lockedBy,
                 Note: string.IsNullOrWhiteSpace(_lockNote) ? null : _lockNote),
                 CancellationToken.None);
-            _savedFlash = $"Locked {locked.PeriodYear}-{locked.PeriodMonth:D2} for review.";
+            _savedFlash = IsArabic
+                ? $"تم إقفال {locked.PeriodYear}-{locked.PeriodMonth:D2} للمراجعة."
+                : $"Locked {locked.PeriodYear}-{locked.PeriodMonth:D2} for review.";
             _lockNote = "";
             await ReloadAsync();
         }
@@ -278,13 +280,17 @@
         {
             if (!Guid.TryParse(_lockByUserId, out var releasedBy))
             {
-                _error = "Set Locked-by user id (used here as releaser) before releasing.";
+                _error = IsArabic
+                    ? "اضبط رقم المستخدم القافل (يُستخدم هنا كمحرِّر) قبل التحرير."
+                    : "Set Locked-by user id (used here as releaser) before releasing.";
                 return;
             }
             var auditStore = new EgyptTax.Infrastructure.Audit.SqlAuditLogStore(Db);
             var handler = new PeriodReviewLockHandler(Db, Clock, auditStore);
             var released = await handler.ReleaseAsync(new ReleaseReviewCommand(lockId, releasedBy), CancellationToken.None);
-            _savedFlash = $"Released {released.PeriodYear}-{released.PeriodMonth:D2} after {released.AccountantActionsDuringLock} adjusting action(s).";
+            _savedFlash = IsArabic
+                ? $"تم تحرير {released.PeriodYear}-{released.PeriodMonth:D2} بعد {released.AccountantActionsDuringLock} تعديل."
+                : $"Released {released.PeriodYear}-{released.PeriodMonth:D2} after {released.AccountantActionsDuringLock} adjusting action(s).";
             await ReloadAsync();
         }
         catch (Exception ex) { _error = ex.Message; }

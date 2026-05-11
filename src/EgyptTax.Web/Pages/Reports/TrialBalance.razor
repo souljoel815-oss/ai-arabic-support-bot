@@ -4,19 +4,19 @@
 @inject ITrialBalanceReportQuery ReportQuery
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Trial balance (FR-024) / ميزان المراجعة</h1>
+<h1>@(IsArabic ? "ميزان المراجعة" : "Trial balance (FR-024)")</h1>
 
 <form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
     <label>
-        <span>Period start</span>
+        <span>@(IsArabic ? "بداية الفترة" : "Period start")</span>
         <input type="date" @bind="_periodStart" />
     </label>
     <label>
-        <span>Period end</span>
+        <span>@(IsArabic ? "نهاية الفترة" : "Period end")</span>
         <input type="date" @bind="_periodEnd" />
     </label>
     <button type="submit" class="btn-primary" disabled="@_loading">
-        @(_loading ? "Computing…" : "Run report")
+        @(_loading ? (IsArabic ? "جارٍ الحساب…" : "Computing…") : (IsArabic ? "تشغيل التقرير" : "Run report"))
     </button>
 </form>
 
@@ -24,48 +24,49 @@
 {
     @if (_loading)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else
     {
-        <p><em>Pick a period above and click "Run report".</em></p>
+        <p><em>@(IsArabic ? "اختر الفترة بالأعلى ثم اضغط «تشغيل التقرير»." : "Pick a period above and click \"Run report\".")</em></p>
     }
     return;
 }
 
 <section class="invoice-totals">
-    <div><strong>Period:</strong> @_report.PeriodStart.ToString("yyyy-MM-dd") to @_report.PeriodEnd.ToString("yyyy-MM-dd")</div>
-    <div><strong>Total debits:</strong> <span class="num">@_report.TotalDebits.Amount.ToString("F2") EGP</span></div>
-    <div><strong>Total credits:</strong> <span class="num">@_report.TotalCredits.Amount.ToString("F2") EGP</span></div>
+    <div><strong>@(IsArabic ? "الفترة:" : "Period:")</strong> @_report.PeriodStart.ToString("yyyy-MM-dd") @(IsArabic ? "إلى" : "to") @_report.PeriodEnd.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "إجمالي المدين:" : "Total debits:")</strong> <span class="num">@_report.TotalDebits.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "إجمالي الدائن:" : "Total credits:")</strong> <span class="num">@_report.TotalCredits.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
     @if (_report.IsBalanced)
     {
-        <div class="grand"><strong>Balanced ✓</strong> debits == credits</div>
+        <div class="grand"><strong>@(IsArabic ? "متوازن ✓" : "Balanced ✓")</strong> @(IsArabic ? "المدين = الدائن" : "debits == credits")</div>
     }
     else
     {
         <div class="flash-error">
-            <strong>NOT BALANCED ✗</strong> — difference @((_report.TotalDebits.Amount - _report.TotalCredits.Amount).ToString("F2")) EGP.
-            The journal-entry factory enforces the invariant at write time, so a non-balanced
-            trial balance indicates out-of-band tampering with the accounting tables.
+            <strong>@(IsArabic ? "غير متوازن ✗" : "NOT BALANCED ✗")</strong> — @(IsArabic ? "الفرق" : "difference") @((_report.TotalDebits.Amount - _report.TotalCredits.Amount).ToString("F2")) @(IsArabic ? "ج.م." : "EGP").
+            @(IsArabic
+                ? "مصنع قيود اليومية يفرض الثابت عند الكتابة، فظهور ميزان مراجعة غير متوازن يدل على تلاعب خارجي بجداول المحاسبة."
+                : "The journal-entry factory enforces the invariant at write time, so a non-balanced trial balance indicates out-of-band tampering with the accounting tables.")
         </div>
     }
 </section>
 
 <section>
-    <h2>Account activity (@_report.Rows.Count accounts)</h2>
+    <h2>@(IsArabic ? $"حركة الحسابات ({_report.Rows.Count} حساباً)" : $"Account activity ({_report.Rows.Count} accounts)")</h2>
     @if (_report.Rows.Count == 0)
     {
-        <p><em>No journal-entry activity in this period.</em></p>
+        <p><em>@(IsArabic ? "لا توجد حركة قيود يومية في هذه الفترة." : "No journal-entry activity in this period.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Account code</th>
-                    <th class="num">Debit</th>
-                    <th class="num">Credit</th>
-                    <th class="num">Net (debit − credit)</th>
+                    <th>@(IsArabic ? "كود الحساب" : "Account code")</th>
+                    <th class="num">@(IsArabic ? "مدين" : "Debit")</th>
+                    <th class="num">@(IsArabic ? "دائن" : "Credit")</th>
+                    <th class="num">@(IsArabic ? "الصافي (مدين − دائن)" : "Net (debit − credit)")</th>
                 </tr>
             </thead>
             <tbody>

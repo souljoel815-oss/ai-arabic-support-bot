@@ -42,7 +42,7 @@ public class BackdateRejectionTests(SqlServerFixture fixture)
 
         // Step 1: Administrator locks the May 2026 VAT period.
         var lockClock = new TestClock(new DateTime(2026, 6, 1, 9, 0, 0, DateTimeKind.Utc));
-        var lockHandler = new LockTaxPeriodHandler(db, lockClock, captureAudit);
+        var lockHandler = new LockTaxPeriodHandler(db, lockClock, captureAudit, new AlwaysCleanCockpitQuery());
         await lockHandler.HandleAsync(
             new LockTaxPeriodCommand(
                 TaxPeriodKind.VatMonth,
@@ -109,7 +109,7 @@ public class BackdateRejectionTests(SqlServerFixture fixture)
 
         // Step 3: Administrator reopens the period.
         var reopenClock = new TestClock(new DateTime(2026, 6, 2, 14, 0, 0, DateTimeKind.Utc));
-        var reopenHandler = new LockTaxPeriodHandler(db, reopenClock, captureAudit);
+        var reopenHandler = new LockTaxPeriodHandler(db, reopenClock, captureAudit, new AlwaysCleanCockpitQuery());
         await reopenHandler.ReopenAsync(
             new ReopenTaxPeriodCommand(
                 TaxPeriodKind.VatMonth,
@@ -167,7 +167,7 @@ public class BackdateRejectionTests(SqlServerFixture fixture)
         var captureAudit = new CaptureAuditLogStore();
 
         var lockClock = new TestClock(new DateTime(2026, 6, 1, 9, 0, 0, DateTimeKind.Utc));
-        await new LockTaxPeriodHandler(db, lockClock, captureAudit).HandleAsync(
+        await new LockTaxPeriodHandler(db, lockClock, captureAudit, new AlwaysCleanCockpitQuery()).HandleAsync(
             new LockTaxPeriodCommand(TaxPeriodKind.VatMonth, 2026, 5, admin.Id, "filed"),
             CancellationToken.None
         );

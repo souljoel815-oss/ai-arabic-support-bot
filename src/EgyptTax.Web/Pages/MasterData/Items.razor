@@ -8,7 +8,7 @@
 @inject AppDbContext Db
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Items / الأصناف</h1>
+<h1>@(IsArabic ? "الأصناف" : "Items")</h1>
 
 @if (_savedFlash is not null)
 {
@@ -16,25 +16,26 @@
 }
 
 <section class="master-data-list">
-    <h2>Existing items</h2>
+    <h2>@(IsArabic ? "الأصناف الحالية" : "Existing items")</h2>
     @if (_items is null)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else if (_items.Count == 0)
     {
-        <p><em>No items yet — add one below.</em></p>
+        <p><em>@(IsArabic ? "لا توجد أصناف بعد — أضف صنفاً بالأسفل." : "No items yet — add one below.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Code</th>
-                    <th>Name (English)</th>
-                    <th>Name (Arabic)</th>
-                    <th>Default VAT</th>
-                    <th>Status</th>
+                    <th>@(IsArabic ? "الكود" : "Code")</th>
+                    <th>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</th>
+                    <th>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</th>
+                    <th>@(IsArabic ? "فئة الضريبة الافتراضية" : "Default VAT")</th>
+                    <th>@(IsArabic ? "كود ETA" : "ETA code")</th>
+                    <th>@(IsArabic ? "الحالة" : "Status")</th>
                     <th></th>
                 </tr>
             </thead>
@@ -46,15 +47,26 @@
                         <td>@item.Name.English</td>
                         <td>@item.Name.Arabic</td>
                         <td>@VatCodeFor(item.DefaultVatCategoryId)</td>
+                        <td>@RenderEtaCodeCell(item)</td>
                         <td>@item.Status</td>
                         <td>
+                            @if (item.EtaCodeStatus == EtaItemCodeStatus.None
+                                 || item.EtaCodeStatus == EtaItemCodeStatus.Failed)
+                            {
+                                <button type="button" class="btn-secondary" @onclick="@(() => RequestCodeAsync(item.Id, EtaItemCodeKind.Gs1))">
+                                    GS1
+                                </button>
+                                <button type="button" class="btn-secondary" @onclick="@(() => RequestCodeAsync(item.Id, EtaItemCodeKind.Egs))">
+                                    EGS
+                                </button>
+                            }
                             @if (item.Status == ItemStatus.Active)
                             {
-                                <button type="button" @onclick="() => DeactivateAsync(item.Id)">Deactivate</button>
+                                <button type="button" @onclick="() => DeactivateAsync(item.Id)">@(IsArabic ? "تعطيل" : "Deactivate")</button>
                             }
                             else
                             {
-                                <button type="button" @onclick="() => ReactivateAsync(item.Id)">Reactivate</button>
+                                <button type="button" @onclick="() => ReactivateAsync(item.Id)">@(IsArabic ? "إعادة تفعيل" : "Reactivate")</button>
                             }
                         </td>
                     </tr>
@@ -65,10 +77,10 @@
 </section>
 
 <section class="master-data-create">
-    <h2>Add an item</h2>
+    <h2>@(IsArabic ? "إضافة صنف" : "Add an item")</h2>
     @if (_vatCategories is null || _vatCategories.Count == 0)
     {
-        <p class="flash-error">No VAT categories defined yet. The seed profile creates a Standard 14% category — run <code>dotnet run -- seed --profile us1-minimum</code> if missing.</p>
+        <p class="flash-error">@(IsArabic ? "لم يتم تعريف أي فئات ضريبة بعد. شغّل البذرة لإنشاء فئة افتراضية." : "No VAT categories defined yet. Run the seeder to create a default Standard 14% category.")</p>
     }
     else
     {
@@ -77,19 +89,19 @@
             <ValidationSummary />
 
             <label>
-                <span>Code</span>
+                <span>@(IsArabic ? "الكود" : "Code")</span>
                 <InputText @bind-Value="_form.Code" />
             </label>
             <label>
-                <span>Name (English)</span>
+                <span>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</span>
                 <InputText @bind-Value="_form.NameEnglish" />
             </label>
             <label>
-                <span>Name (Arabic)</span>
+                <span>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</span>
                 <InputText @bind-Value="_form.NameArabic" />
             </label>
             <label>
-                <span>Default VAT category</span>
+                <span>@(IsArabic ? "فئة الضريبة الافتراضية" : "Default VAT category")</span>
                 <InputSelect @bind-Value="_form.DefaultVatCategoryId">
                     @foreach (var v in _vatCategories)
                     {
@@ -98,7 +110,7 @@
                 </InputSelect>
             </label>
 
-            <button type="submit">Add item</button>
+            <button type="submit">@(IsArabic ? "إضافة صنف" : "Add item")</button>
         </EditForm>
     }
 </section>
@@ -122,13 +134,30 @@
     {
         _items = await Db.Set<Item>().AsNoTracking().OrderBy(i => i.Code).ToListAsync();
         _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
+
+        // Defensive auto-seed — if no VAT categories exist when an
+        // operator opens the Items page, populate the standard
+        // Egyptian catalog so they don't see an "empty / run seed CLI"
+        // dead-end. Idempotent; later pages reuse the same seed.
+        if (_vatCategories.Count == 0)
+        {
+            try
+            {
+                await EgyptTax.Web.Tools.StartupSeed.EnsureDefaultsAsync(Db);
+                _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
+            }
+            catch
+            {
+                // Show the existing empty-state error if seed fails.
+            }
+        }
     }
 
     private async Task OnCreateAsync()
     {
         if (_form.DefaultVatCategoryId == Guid.Empty)
         {
-            _savedFlash = "Pick a default VAT category before saving.";
+            _savedFlash = IsArabic ? "اختر فئة ضريبة افتراضية قبل الحفظ." : "Pick a default VAT category before saving.";
             return;
         }
 
@@ -143,7 +172,7 @@
         {
             DefaultVatCategoryId = _vatCategories?.FirstOrDefault()?.Id ?? Guid.Empty,
         };
-        _savedFlash = $"Item {item.Code} added.";
+        _savedFlash = IsArabic ? $"تمت إضافة الصنف {item.Code}." : $"Item {item.Code} added.";
         await ReloadAsync();
     }
 
@@ -152,7 +181,7 @@
         var item = await Db.Set<Item>().FirstAsync(x => x.Id == id);
         item.Deactivate();
         await Db.SaveChangesAsync();
-        _savedFlash = $"Item {item.Code} deactivated.";
+        _savedFlash = IsArabic ? $"تم تعطيل الصنف {item.Code}." : $"Item {item.Code} deactivated.";
         await ReloadAsync();
     }
 
@@ -161,7 +190,7 @@
         var item = await Db.Set<Item>().FirstAsync(x => x.Id == id);
         item.Reactivate();
         await Db.SaveChangesAsync();
-        _savedFlash = $"Item {item.Code} reactivated.";
+        _savedFlash = IsArabic ? $"تم إعادة تفعيل الصنف {item.Code}." : $"Item {item.Code} reactivated.";
         await ReloadAsync();
     }
 
@@ -169,6 +198,69 @@
         _vatCategories?.FirstOrDefault(v => v.Id == id) is { } v
             ? $"{v.Code} ({v.RatePercent:0.##}%)"
             : "—";
+
+    // P1.6 — render the ETA-code cell with status badge + countdown
+    // for Pending rows. Done as a method so the table row stays
+    // legible.
+    private RenderFragment RenderEtaCodeCell(Item item) => builder =>
+    {
+        var (label, cls) = item.EtaCodeStatus switch
+        {
+            EtaItemCodeStatus.None        => (IsArabic ? "بدون كود" : "No code", "state-rejected"),
+            EtaItemCodeStatus.PendingGs1  => (IsArabic ? "GS1 قيد الانتظار" : "GS1 pending", "state-submitted"),
+            EtaItemCodeStatus.PendingEgs  => (IsArabic ? "EGS قيد الانتظار" : "EGS pending", "state-submitted"),
+            EtaItemCodeStatus.Active      => (IsArabic ? "نشط" : "Active", "state-approved"),
+            EtaItemCodeStatus.Failed      => (IsArabic ? "مرفوض" : "Failed", "state-rejected"),
+            _ => (item.EtaCodeStatus.ToString(), ""),
+        };
+        builder.OpenElement(0, "div");
+        builder.OpenElement(1, "span");
+        builder.AddAttribute(2, "class", $"state-badge {cls}");
+        builder.AddContent(3, label);
+        builder.CloseElement();
+
+        if (item.EtaCodeStatus == EtaItemCodeStatus.Active && !string.IsNullOrEmpty(item.EtaItemCode))
+        {
+            builder.OpenElement(4, "div");
+            builder.AddAttribute(5, "style", "font-size:11px;font-family:monospace;color:var(--text-muted);margin-top:4px;");
+            builder.AddContent(6, item.EtaItemCode);
+            builder.CloseElement();
+        }
+        else if (item.EtaCodeStatus is EtaItemCodeStatus.PendingGs1 or EtaItemCodeStatus.PendingEgs
+                 && item.EtaCodeRequestedAtUtc is { } requested)
+        {
+            var elapsedDays = (DateTime.UtcNow - requested).TotalDays;
+            var slaDays = item.EtaCodeStatus == EtaItemCodeStatus.PendingGs1 ? 2 : 15;
+            // Snap small numbers (so the demo's compressed-second SLAs
+            // still read like a sane countdown).
+            var dayNum = (int)Math.Max(1, Math.Ceiling(elapsedDays));
+            builder.OpenElement(7, "div");
+            builder.AddAttribute(8, "style", "font-size:12px;color:var(--text-muted);margin-top:4px;");
+            builder.AddContent(9, IsArabic
+                ? $"اليوم {dayNum} من ~{slaDays}"
+                : $"Day {dayNum} of ~{slaDays}");
+            builder.CloseElement();
+        }
+        else if (item.EtaCodeStatus == EtaItemCodeStatus.Failed && !string.IsNullOrEmpty(item.EtaCodeFailureReason))
+        {
+            builder.OpenElement(10, "div");
+            builder.AddAttribute(11, "style", "font-size:11px;color:var(--danger-text);margin-top:4px;");
+            builder.AddContent(12, item.EtaCodeFailureReason);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+
+    private async Task RequestCodeAsync(Guid itemId, EtaItemCodeKind kind)
+    {
+        var item = await Db.Set<Item>().FirstAsync(x => x.Id == itemId);
+        item.RequestEtaCode(kind, DateTime.UtcNow);
+        await Db.SaveChangesAsync();
+        _savedFlash = IsArabic
+            ? $"تم تقديم طلب {kind} للصنف {item.Code}. هنحدّث الحالة لما السجل يرد."
+            : $"{kind} code requested for {item.Code}. Status will update when the registry responds.";
+        await ReloadAsync();
+    }
 
     private sealed class FormModel
     {

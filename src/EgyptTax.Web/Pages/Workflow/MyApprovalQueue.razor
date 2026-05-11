@@ -15,12 +15,12 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>My approval queue (Differentiator 3)</h1>
+<h1>@(IsArabic ? "قائمة الاعتمادات الخاصة بي" : "My approval queue (Differentiator 3)")</h1>
 
 <p>
-    Documents your colleagues have submitted that need an approval decision.
-    FR-004 prevents you from approving your own submissions; those are hidden
-    from this list.
+    @(IsArabic
+        ? "المستندات التي قدّمها زملاؤك وتحتاج إلى قرار اعتماد. وفقاً لـ FR-004، لا يمكنك اعتماد ما قدمته بنفسك؛ هذه الطلبات مخفية من القائمة."
+        : "Documents your colleagues have submitted that need an approval decision. FR-004 prevents you from approving your own submissions; those are hidden from this list.")
 </p>
 
 @if (_flash is not null)
@@ -30,25 +30,25 @@
 
 @if (_rows is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 @if (_rows.Count == 0)
 {
-    <p><em>No documents awaiting your approval.</em></p>
+    <p><em>@(IsArabic ? "لا توجد مستندات بانتظار اعتمادك." : "No documents awaiting your approval.")</em></p>
     return;
 }
 
 <table class="data-grid">
     <thead>
         <tr>
-            <th>Submitted (UTC)</th>
-            <th>Type</th>
-            <th>Document #</th>
-            <th>Counterparty</th>
-            <th class="num">Total</th>
-            <th>Submitted by</th>
+            <th>@(IsArabic ? "وقت التقديم (UTC)" : "Submitted (UTC)")</th>
+            <th>@(IsArabic ? "النوع" : "Type")</th>
+            <th>@(IsArabic ? "رقم المستند" : "Document #")</th>
+            <th>@(IsArabic ? "الطرف الآخر" : "Counterparty")</th>
+            <th class="num">@(IsArabic ? "الإجمالي" : "Total")</th>
+            <th>@(IsArabic ? "أرسله" : "Submitted by")</th>
             <th></th>
         </tr>
     </thead>
@@ -58,22 +58,22 @@
             <tr>
                 <td>@row.Request.SubmittedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
                 <td>@row.Request.DocumentType</td>
-                <td><a href="@DrillDownUrl(row.Request.DocumentType, row.Request.DocumentId)">@(row.DocumentNumber ?? "(draft)")</a></td>
+                <td><a href="@DrillDownUrl(row.Request.DocumentType, row.Request.DocumentId)">@(row.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)"))</a></td>
                 <td>@row.CounterpartyName</td>
-                <td class="num">@row.GrandTotal.ToString("F2") EGP</td>
+                <td class="num">@row.GrandTotal.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</td>
                 <td>@row.SubmitterDisplayName</td>
                 <td>
-                    <button type="button" @onclick="() => OnApproveAsync(row.Request)">Approve</button>
+                    <button type="button" @onclick="() => OnApproveAsync(row.Request)">@(IsArabic ? "اعتماد" : "Approve")</button>
                     <button type="button" @onclick="() => ToggleRejectFor(row.Request.Id)">
-                        @(_rejectingFor == row.Request.Id ? "Cancel" : "Reject")
+                        @(_rejectingFor == row.Request.Id ? (IsArabic ? "إلغاء" : "Cancel") : (IsArabic ? "رفض" : "Reject"))
                     </button>
                     @if (_rejectingFor == row.Request.Id)
                     {
                         <div class="reject-form">
-                            <textarea rows="2" placeholder="Reason for rejection (required)…"
+                            <textarea rows="2" placeholder="@(IsArabic ? "سبب الرفض (مطلوب)…" : "Reason for rejection (required)…")"
                                       @bind="_rejectReason" @bind:event="oninput"></textarea>
                             <button type="button" @onclick="() => OnRejectAsync(row.Request)">
-                                Confirm reject
+                                @(IsArabic ? "تأكيد الرفض" : "Confirm reject")
                             </button>
                         </div>
                     }
@@ -151,13 +151,13 @@
             ? new Dictionary<Guid, string>()
             : await Db.Set<EgyptTax.Domain.MasterData.Customer>().AsNoTracking()
                 .Where(c => customerIds.Contains(c.Id))
-                .ToDictionaryAsync(c => c.Id, c => c.Name.English);
+                .ToDictionaryAsync(c => c.Id, c => IsArabic ? c.Name.Arabic : c.Name.English);
         var supplierIds = purchases.Values.Select(t => t.Item3).Distinct().ToArray();
         var supplierNames = supplierIds.Length == 0
             ? new Dictionary<Guid, string>()
             : await Db.Set<EgyptTax.Domain.MasterData.Supplier>().AsNoTracking()
                 .Where(s => supplierIds.Contains(s.Id))
-                .ToDictionaryAsync(s => s.Id, s => s.Name.English);
+                .ToDictionaryAsync(s => s.Id, s => IsArabic ? s.Name.Arabic : s.Name.English);
         var categoryIds = expenses.Values.Select(t => t.Item3).Distinct().ToArray();
         var categoryNames = categoryIds.Length == 0
             ? new Dictionary<Guid, string>()
@@ -170,7 +170,7 @@
             ? new Dictionary<Guid, string>()
             : await Db.Set<EgyptTax.Domain.Identity.User>().AsNoTracking()
                 .Where(u => submitterIds.Contains(u.Id))
-                .ToDictionaryAsync(u => u.Id, u => u.DisplayName.English);
+                .ToDictionaryAsync(u => u.Id, u => IsArabic ? u.DisplayName.Arabic : u.DisplayName.English);
 
         _rows = pending.Select(r =>
         {
@@ -212,7 +212,9 @@
             await ApprovalHandler.ApproveAsync(new ApproveDocumentCommand(
                 request.DocumentId, request.DocumentType, _currentUserId),
                 CancellationToken.None);
-            _flash = $"Approved {request.DocumentType} {request.DocumentId:D}.";
+            _flash = IsArabic
+                ? $"تم اعتماد {request.DocumentType} {request.DocumentId:D}."
+                : $"Approved {request.DocumentType} {request.DocumentId:D}.";
             _flashClass = "flash-success";
             _rejectingFor = null;
             await ReloadAsync();
@@ -234,7 +236,7 @@
     {
         if (string.IsNullOrWhiteSpace(_rejectReason))
         {
-            _flash = "Reason is required to reject.";
+            _flash = IsArabic ? "السبب مطلوب للرفض." : "Reason is required to reject.";
             _flashClass = "flash-error";
             return;
         }
@@ -243,7 +245,9 @@
             await ApprovalHandler.RejectAsync(new RejectDocumentCommand(
                 request.DocumentId, request.DocumentType, _currentUserId, _rejectReason),
                 CancellationToken.None);
-            _flash = $"Rejected {request.DocumentType} {request.DocumentId:D}.";
+            _flash = IsArabic
+                ? $"تم رفض {request.DocumentType} {request.DocumentId:D}."
+                : $"Rejected {request.DocumentType} {request.DocumentId:D}.";
             _flashClass = "flash-success";
             _rejectingFor = null;
             _rejectReason = "";

@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace EgyptTax.Web.Pages.Auth;
 
@@ -52,6 +53,7 @@ public sealed class LoginModel : PageModel
     private readonly IMfaSecretProtector _protector;
     private readonly ISessionService _sessions;
     private readonly IClock _clock;
+    private readonly bool _requireMfa;
 
     public LoginModel(
         AppDbContext db,
@@ -59,7 +61,8 @@ public sealed class LoginModel : PageModel
         ITotpService totp,
         IMfaSecretProtector protector,
         ISessionService sessions,
-        IClock clock
+        IClock clock,
+        IConfiguration config
     )
     {
         _db = db;
@@ -68,6 +71,10 @@ public sealed class LoginModel : PageModel
         _protector = protector;
         _sessions = sessions;
         _clock = clock;
+        // Features:RequireMfa — when false (default), the login flow
+        // bypasses MFA enrollment + challenge entirely. Re-enable per
+        // FR-002 by setting this to true in appsettings.
+        _requireMfa = config.GetValue("Features:RequireMfa", false);
     }
 
     [BindProperty]
@@ -127,22 +134,17 @@ public sealed class LoginModel : PageModel
             return Page();
         }
 
-        // PasswordMustChange (FR-038) — sign in at the
-        // `password-verified` stage and route to force-change.
-        if (user.PasswordMustChange)
-        {
-            await SignInAsync(
-                user,
-                AuthClaims.StagePasswordVerified,
-                sessionId: null,
-                cancellationToken
-            );
-            return RedirectToPage("/Auth/ChangePassword", new { returnUrl });
-        }
+        // PasswordMustChange (FR-038) — historically forced a redirect
+        // to ChangePassword on first login. Removed 2026-05-11 because
+        // it was tripping up new installs. Operators can change the
+        // password from /settings/profile at any time; the flag is
+        // kept on the User entity so future reset-by-admin flows can
+        // re-instate the prompt without re-introducing the hard gate.
 
         // MFA required but not enrolled — same `password-verified`
-        // stage, route to enrolment.
-        if (user.RequiresMfa() && user.MfaSecretEncrypted is null)
+        // stage, route to enrolment. Skipped entirely when
+        // Features:RequireMfa is false (default).
+        if (_requireMfa && user.RequiresMfa() && user.MfaSecretEncrypted is null)
         {
             await SignInAsync(
                 user,
@@ -155,8 +157,8 @@ public sealed class LoginModel : PageModel
 
         // MFA required and enrolled — challenge for the TOTP code
         // BEFORE issuing any cookie. Re-renders the page with the MFA
-        // input field shown.
-        if (user.RequiresMfa() && user.MfaSecretEncrypted is not null)
+        // input field shown. Skipped when Features:RequireMfa is false.
+        if (_requireMfa && user.RequiresMfa() && user.MfaSecretEncrypted is not null)
         {
             if (string.IsNullOrWhiteSpace(Input.TotpCode))
             {
@@ -217,10 +219,13 @@ public sealed class LoginModel : PageModel
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
     }
 
-    private IActionResult SafeRedirect(string? returnUrl) =>
+    // Home is the Blazor Index.razor page at "/" — RedirectToPage looks
+    // up Razor Pages (.cshtml) only and can't find it. Redirect to the
+    // literal path instead so the Blazor router takes over.
+    private RedirectResult SafeRedirect(string? returnUrl) =>
         !string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl)
             ? Redirect(returnUrl)
-            : RedirectToPage("/Index");
+            : Redirect("~/");
 
     private static string Canonicalize(string email)
     {

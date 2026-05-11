@@ -13,14 +13,14 @@
 @inject IPurchaseInvoiceFingerprintQuery FingerprintQuery
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Purchase invoices / فواتير الشراء</h1>
+<h1>@(IsArabic ? "فواتير الشراء" : "Purchase invoices")</h1>
 
 <div class="invoice-toolbar">
-    <a class="btn-primary" href="/purchase-invoices/new">+ New purchase invoice</a>
-    <input type="search" placeholder="Search by document or supplier number…"
+    <a class="btn-primary" href="/purchase-invoices/new">+ @(IsArabic ? "فاتورة شراء جديدة" : "New purchase invoice")</a>
+    <input type="search" placeholder="@(IsArabic ? "بحث برقم المستند أو رقم المورد…" : "Search by document or supplier number…")"
            @bind="_search" @bind:event="oninput" />
     <select @bind="_stateFilter">
-        <option value="">All states</option>
+        <option value="">@(IsArabic ? "كل الحالات" : "All states")</option>
         @foreach (var state in Enum.GetValues<DocumentState>())
         {
             <option value="@state">@state</option>
@@ -30,26 +30,26 @@
 
 @if (_rows is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
 }
 else if (_rows.Count == 0)
 {
-    <p><em>No purchase invoices match the current filters.</em></p>
+    <p><em>@(IsArabic ? "لا توجد فواتير شراء مطابقة للفلاتر الحالية." : "No purchase invoices match the current filters.")</em></p>
 }
 else
 {
     <table class="data-grid">
         <thead>
             <tr>
-                <th>Document #</th>
-                <th>Supplier #</th>
-                <th>Supplier</th>
-                <th>Date received</th>
-                <th>State</th>
-                <th>Risk</th>
-                <th class="num">Subtotal</th>
-                <th class="num">VAT</th>
-                <th class="num">Grand total</th>
+                <th>@(IsArabic ? "رقم المستند" : "Document #")</th>
+                <th>@(IsArabic ? "رقم المورد" : "Supplier #")</th>
+                <th>@(IsArabic ? "المورد" : "Supplier")</th>
+                <th>@(IsArabic ? "تاريخ الاستلام" : "Date received")</th>
+                <th>@(IsArabic ? "الحالة" : "State")</th>
+                <th>@(IsArabic ? "المخاطر" : "Risk")</th>
+                <th class="num">@(IsArabic ? "الإجمالي قبل الضريبة" : "Subtotal")</th>
+                <th class="num">@(IsArabic ? "الضريبة" : "VAT")</th>
+                <th class="num">@(IsArabic ? "الإجمالي الكلي" : "Grand total")</th>
                 <th></th>
             </tr>
         </thead>
@@ -57,7 +57,7 @@ else
             @foreach (var row in Filtered)
             {
                 <tr>
-                    <td>@(row.Invoice.DocumentNumber ?? "(draft)")</td>
+                    <td>@(row.Invoice.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)"))</td>
                     <td>@row.Invoice.SupplierInvoiceNumber</td>
                     <td>@row.SupplierName</td>
                     <td>@row.Invoice.DateReceived.ToString("yyyy-MM-dd")</td>
@@ -69,11 +69,11 @@ else
                     <td>
                         @if (row.Invoice.State == DocumentState.Draft)
                         {
-                            <a href="/purchase-invoices/@row.Invoice.Id/edit">Edit</a>
+                            <a href="/purchase-invoices/@row.Invoice.Id/edit">@(IsArabic ? "تعديل" : "Edit")</a>
                         }
                         else
                         {
-                            <a href="/purchase-invoices/@row.Invoice.Id">View</a>
+                            <a href="/purchase-invoices/@row.Invoice.Id">@(IsArabic ? "عرض" : "View")</a>
                         }
                     </td>
                 </tr>

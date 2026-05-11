@@ -8,33 +8,32 @@
 @inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>WHT categories (FR-045) / فئات الخصم</h1>
+<h1>@(IsArabic ? "فئات الخصم" : "WHT categories (FR-045)")</h1>
 
 <p>
     <em>
-        Effective-from-dated rate table mirroring VAT categories.
-        Supersede a category by inserting a new row with a later
-        <strong>effective from</strong> date — the old row stays for
-        historical certificates.
+        @(IsArabic
+            ? "جدول معدلات بتواريخ سريان مطابق لفئات الضريبة. لاستبدال فئة، أضف صفاً جديداً بتاريخ سريان لاحق — الصف القديم بيفضل عشان الشهادات القديمة."
+            : "Effective-from-dated rate table mirroring VAT categories. Supersede a category by inserting a new row with a later effective from date — the old row stays for historical certificates.")
     </em>
 </p>
 
 @if (_categories is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 <table class="data-grid">
     <thead>
         <tr>
-            <th>Code</th>
-            <th>Name (English)</th>
-            <th>Name (Arabic)</th>
-            <th class="num">Rate %</th>
-            <th>Effective from</th>
-            <th>Effective to</th>
-            <th>Applies to</th>
+            <th>@(IsArabic ? "الكود" : "Code")</th>
+            <th>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</th>
+            <th>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</th>
+            <th class="num">@(IsArabic ? "المعدل %" : "Rate %")</th>
+            <th>@(IsArabic ? "بداية السريان" : "Effective from")</th>
+            <th>@(IsArabic ? "نهاية السريان" : "Effective to")</th>
+            <th>@(IsArabic ? "تنطبق على" : "Applies to")</th>
         </tr>
     </thead>
     <tbody>
@@ -47,63 +46,63 @@
                 <td>@c.Name.Arabic</td>
                 <td class="num">@c.RatePercent.ToString("0.##")</td>
                 <td>@c.EffectiveFromDate.ToString("yyyy-MM-dd")</td>
-                <td>@(c.EffectiveToDate?.ToString("yyyy-MM-dd") ?? "(open)")</td>
+                <td>@(c.EffectiveToDate?.ToString("yyyy-MM-dd") ?? (IsArabic ? "(مفتوح)" : "(open)"))</td>
                 <td>@DirectionLabel(c.ApplicableTo)</td>
             </tr>
         }
     </tbody>
 </table>
 
-<h2>+ Add new category (or supersede an existing code)</h2>
+<h2>@(IsArabic ? "+ إضافة فئة جديدة (أو استبدال كود موجود)" : "+ Add new category (or supersede an existing code)")</h2>
 <form @onsubmit="OnCreate" @onsubmit:preventDefault>
     <div class="invoice-toolbar">
         <label>
-            <span>Code (e.g., Services)</span>
+            <span>@(IsArabic ? "الكود (مثال: خدمات)" : "Code (e.g., Services)")</span>
             <input type="text" @bind="_code" required />
         </label>
         <label>
-            <span>Rate %</span>
+            <span>@(IsArabic ? "المعدل %" : "Rate %")</span>
             <input type="number" step="0.01" min="0" max="100" @bind="_rate" required />
         </label>
         <label>
-            <span>Applies to</span>
+            <span>@(IsArabic ? "تنطبق على" : "Applies to")</span>
             <select @bind="_applicableTo">
-                <option value="@WhtApplicableTo.SuppliersServices">Suppliers (services)</option>
-                <option value="@WhtApplicableTo.CustomersServices">Customers (services)</option>
-                <option value="@WhtApplicableTo.Both">Both</option>
+                <option value="@WhtApplicableTo.SuppliersServices">@(IsArabic ? "الموردون (خدمات)" : "Suppliers (services)")</option>
+                <option value="@WhtApplicableTo.CustomersServices">@(IsArabic ? "العملاء (خدمات)" : "Customers (services)")</option>
+                <option value="@WhtApplicableTo.Both">@(IsArabic ? "الاثنين" : "Both")</option>
             </select>
         </label>
     </div>
     <div class="invoice-toolbar">
         <label>
-            <span>Name (English)</span>
+            <span>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</span>
             <input type="text" @bind="_nameEn" required />
         </label>
         <label>
-            <span>Name (Arabic)</span>
+            <span>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</span>
             <input type="text" @bind="_nameAr" required dir="rtl" />
         </label>
     </div>
     <div class="invoice-toolbar">
         <label>
-            <span>Effective from</span>
+            <span>@(IsArabic ? "بداية السريان" : "Effective from")</span>
             <input type="date" @bind="_effFrom" required />
         </label>
         <label>
-            <span>Effective to (optional — leave blank for open-ended)</span>
+            <span>@(IsArabic ? "نهاية السريان (اختياري — اتركه فارغ للمفتوح)" : "Effective to (optional — leave blank for open-ended)")</span>
             <input type="date" @bind="_effTo" />
         </label>
     </div>
     <p>
         <button type="submit" class="btn-primary" disabled="@_busy">
-            @(_busy ? "Saving…" : "Add category")
+            @(_busy ? (IsArabic ? "جارٍ الحفظ…" : "Saving…") : (IsArabic ? "إضافة فئة" : "Add category"))
         </button>
     </p>
 </form>
 
 @if (_error is not null)
 {
-    <div class="flash-error"><strong>Error:</strong> @_error</div>
+    <div class="flash-error"><strong>@(IsArabic ? "خطأ:" : "Error:")</strong> @_error</div>
 }
 
 @code {
@@ -150,11 +149,11 @@
         finally { _busy = false; }
     }
 
-    private static string DirectionLabel(WhtApplicableTo a) => a switch
+    private string DirectionLabel(WhtApplicableTo a) => a switch
     {
-        WhtApplicableTo.SuppliersServices => "Suppliers (services)",
-        WhtApplicableTo.CustomersServices => "Customers (services)",
-        WhtApplicableTo.Both => "Both",
+        WhtApplicableTo.SuppliersServices => IsArabic ? "الموردون (خدمات)" : "Suppliers (services)",
+        WhtApplicableTo.CustomersServices => IsArabic ? "العملاء (خدمات)" : "Customers (services)",
+        WhtApplicableTo.Both => IsArabic ? "الاثنين" : "Both",
         _ => a.ToString(),
     };
 }

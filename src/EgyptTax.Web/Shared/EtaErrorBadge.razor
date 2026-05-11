@@ -1,0 +1,93 @@
+@*
+    P1.4 — Renders an ETA submission error in the operator's language
+    with a concrete fix action. Falls back to raw text when no catalog
+    entry matches. Pass ErrorCode + ErrorMessage from any EtaSubmission.
+*@
+
+@using System.Globalization
+@using EgyptTax.Application.Compliance.EtaErrors
+
+@code {
+    [Parameter] public string? ErrorCode { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    private EtaErrorExplanation? _explanation;
+    private bool _showRaw;
+
+    protected override void OnParametersSet()
+    {
+        _explanation = EtaErrorTranslator.Translate(ErrorCode, ErrorMessage);
+    }
+
+    private string SeverityClass(EtaErrorSeverity s) => s switch
+    {
+        EtaErrorSeverity.Critical => "eta-error-critical",
+        EtaErrorSeverity.High     => "eta-error-high",
+        EtaErrorSeverity.Medium   => "eta-error-medium",
+        EtaErrorSeverity.Low      => "eta-error-low",
+        _ => "",
+    };
+
+    private string SeverityIcon(EtaErrorSeverity s) => s switch
+    {
+        EtaErrorSeverity.Critical => "alert-triangle",
+        EtaErrorSeverity.High     => "shield-alert",
+        EtaErrorSeverity.Medium   => "shield",
+        EtaErrorSeverity.Low      => "shield-check",
+        _ => "shield",
+    };
+}
+
+@if (string.IsNullOrWhiteSpace(ErrorCode) && string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    @* nothing to show *@
+}
+else if (_explanation is null)
+{
+    @* No catalog match — show raw with a friendly wrapper *@
+    <div class="eta-error-block eta-error-medium">
+        <div class="eta-error-header">
+            <Icon Name="shield-alert" Class="ic" />
+            <strong>@(IsArabic ? "خطأ من ETA لم يُترجم بعد" : "Untranslated ETA error")</strong>
+        </div>
+        <div class="eta-error-body">
+            <p style="margin:0 0 8px;">@(IsArabic ? "النص الخام كما رد به ETA:" : "Raw text from ETA:")</p>
+            <code class="eta-error-raw">@(ErrorMessage ?? ErrorCode)</code>
+        </div>
+    </div>
+}
+else
+{
+    <div class="eta-error-block @SeverityClass(_explanation.Severity)">
+        <div class="eta-error-header">
+            <Icon Name="@SeverityIcon(_explanation.Severity)" Class="ic" />
+            <strong>@(IsArabic ? _explanation.CategoryAr : _explanation.CategoryEn)</strong>
+        </div>
+        <div class="eta-error-body">
+            <p>@(IsArabic ? _explanation.ExplanationAr : _explanation.ExplanationEn)</p>
+            <div class="eta-error-fix">
+                <Icon Name="zap" Class="ic" />
+                <span>@(IsArabic ? _explanation.FixActionAr : _explanation.FixActionEn)</span>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(ErrorMessage) || !string.IsNullOrWhiteSpace(ErrorCode))
+            {
+                <details class="eta-error-details" @ontoggle="@(() => _showRaw = !_showRaw)">
+                    <summary>@(IsArabic ? "تفاصيل تقنية" : "Technical details")</summary>
+                    <code class="eta-error-raw">
+                        @if (!string.IsNullOrWhiteSpace(ErrorCode))
+                        {
+                            <text>[code] </text>@ErrorCode<br />
+                        }
+                        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                        {
+                            <text>[message] </text>@ErrorMessage
+                        }
+                    </code>
+                </details>
+            }
+        </div>
+    </div>
+}

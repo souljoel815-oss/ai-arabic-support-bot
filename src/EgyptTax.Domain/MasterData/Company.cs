@@ -24,6 +24,16 @@ public sealed class Company
     public Language DefaultLanguage { get; private set; } = Language.Ar;
     public string TaxpayerActivityCode { get; private set; } = default!;
 
+    /// <summary>
+    /// Day 8 / Law 6 of 2025 — tax regime the company operates under.
+    /// <see cref="TaxRegime.Standard"/> = monthly VAT + full corporate
+    /// income tax; <see cref="TaxRegime.Law6Simplified"/> = quarterly
+    /// VAT + bracketed turnover tax (only available to companies under
+    /// the EGP 15M annual turnover threshold). Defaults to Standard
+    /// for backward-compat with installs that pre-date the new regime.
+    /// </summary>
+    public TaxRegime TaxRegime { get; private set; } = TaxRegime.Standard;
+
     private Company() { }
 
     public Company(
@@ -64,4 +74,19 @@ public sealed class Company
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         TaxpayerActivityCode = code;
     }
+
+    /// <summary>Day 8 — switch the company between Standard and the Law 6 simplified regime.</summary>
+    public void UpdateTaxRegime(TaxRegime regime) => TaxRegime = regime;
+}
+
+/// <summary>
+/// Day 8 / Law 6 of 2025 — tax regime classification. Determines the
+/// VAT-return cadence + the income-tax compute path.
+/// </summary>
+public enum TaxRegime
+{
+    /// <summary>Monthly VAT, full corporate income tax (default for businesses &gt;15M EGP).</summary>
+    Standard,
+    /// <summary>Quarterly VAT, bracketed turnover tax (Law 6 of 2025; eligibility cap = EGP 15M annual revenue).</summary>
+    Law6Simplified,
 }

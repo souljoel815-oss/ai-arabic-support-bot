@@ -1,0 +1,313 @@
+@page "/eta-wizard"
+@using System.Globalization
+@using EgyptTax.Application.Eta
+@using Microsoft.AspNetCore.Authorization
+@inject IEtaTaxpayerLookup TaxpayerLookup
+@inject IEtaActivityCodeCatalog ActivityCodes
+@inject IEtaSubmitter Submitter
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "إعداد ETA | DaftarX" : "ETA Setup | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private enum Step { Tin, Cert, Activity, Environment, Test, Done }
+    private Step _step = Step.Tin;
+
+    // Step 1 — TIN
+    private string _tin = "";
+    private EtaTaxpayerLookupResult? _taxpayer;
+    private bool _tinLooking;
+    private string? _tinError;
+
+    // Step 2 — eSeal cert
+    private CertSource _certSource = CertSource.UsbToken;
+    private string _certThumbprintOrPath = "";
+
+    // Step 3 — Activity codes
+    private string _activitySearch = "";
+    private readonly HashSet<string> _selectedCodes = new(StringComparer.Ordinal);
+
+    // Step 4 — Environment
+    private EtaEnvironment _env = EtaEnvironment.Preprod;
+
+    // Step 5 — Test invoice
+    private string? _testResult;
+    private bool _testRunning;
+    private bool _testOk;
+
+    private async Task LookupTinAsync()
+    {
+        _tinError = null;
+        _taxpayer = null;
+        _tinLooking = true;
+        try
+        {
+            _taxpayer = await TaxpayerLookup.LookupByTinAsync(_tin);
+            if (_taxpayer is null)
+            {
+                _tinError = Tr(
+                    "الرقم الضريبي غير مسجّل. سجّل الشركة أوّلاً في بوابة ETA.",
+                    "TIN not registered. Register the company at the ETA portal first.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _tinError = ex.Message;
+        }
+        finally { _tinLooking = false; }
+    }
+
+    private async Task RunTestSubmissionAsync()
+    {
+        _testRunning = true;
+        _testResult = null;
+        try
+        {
+            var attempt = await Submitter.SubmitAsync(
+                Guid.NewGuid(),
+                "{\"test\":true,\"wizard\":true}");
+            _testOk = attempt.OutcomeStatus == EgyptTax.Domain.Eta.EtaSubmissionStatus.Submitted;
+            _testResult = _testOk
+                ? Tr($"نجح الإرسال. UUID: {attempt.SubmissionUuid}", $"Submission OK. UUID: {attempt.SubmissionUuid}")
+                : Tr($"فشل: {attempt.ErrorMessage}", $"Failed: {attempt.ErrorMessage}");
+            if (_testOk) _step = Step.Done;
+        }
+        catch (Exception ex)
+        {
+            _testOk = false;
+            _testResult = ex.Message;
+        }
+        finally { _testRunning = false; }
+    }
+
+    private void Next() => _step = (Step)((int)_step + 1);
+    private void Back() { if ((int)_step > 0) _step = (Step)((int)_step - 1); }
+
+    private bool CanAdvance() => _step switch
+    {
+        Step.Tin => _taxpayer is not null,
+        Step.Cert => !string.IsNullOrWhiteSpace(_certThumbprintOrPath),
+        Step.Activity => _selectedCodes.Count > 0,
+        Step.Environment => true,
+        Step.Test => _testOk,
+        _ => true,
+    };
+
+    private string StepLabel(Step s) => s switch
+    {
+        Step.Tin => Tr("الرقم الضريبي", "TIN"),
+        Step.Cert => Tr("شهادة الختم", "eSeal"),
+        Step.Activity => Tr("نشاط المنشأة", "Activity"),
+        Step.Environment => Tr("البيئة", "Environment"),
+        Step.Test => Tr("فاتورة تجريبية", "Test invoice"),
+        _ => Tr("تم", "Done"),
+    };
+
+    private enum CertSource { UsbToken, FileBasedPfx }
+    private enum EtaEnvironment { Preprod, Prod }
+}
+
+<h1>@(IsArabic ? "🧰 معالج إعداد ETA" : "🧰 ETA Setup Wizard")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "خمس خطوات لتجهيز اتصالك بمصلحة الضرائب. كل خطوة تتأكد من الإعدادات قبل أن تنتقل للتالية."
+        : "Five steps to wire up your ETA connection. Each step validates before letting you advance.")
+</p>
+
+<!-- Step indicator -->
+<ol class="wizard-steps">
+    @foreach (Step s in Enum.GetValues<Step>())
+    {
+        var done = (int)s < (int)_step;
+        var current = s == _step;
+        var cls = done ? "is-done" : current ? "is-current" : "is-future";
+        <li class="wizard-step @cls">
+            <span class="wizard-step-num">@((int)s + 1)</span>
+            <span class="wizard-step-label">@StepLabel(s)</span>
+        </li>
+    }
+</ol>
+
+<section class="wizard-panel">
+
+@switch (_step)
+{
+    case Step.Tin:
+        <h2>@Tr("الخطوة 1 — الرقم الضريبي للشركة", "Step 1 — Company TIN")</h2>
+        <p class="page-subtitle">
+            @Tr("هندخل الرقم الضريبي ونجيب بيانات الشركة من ETA أوتوماتيك.",
+                "Enter the company TIN; we'll auto-fill the rest from ETA's registry.")
+        </p>
+        <div class="form-grid" style="max-width:520px;">
+            <label>
+                <span>@Tr("الرقم الضريبي (9 أو 14 رقم)", "TIN (9 or 14 digits)")</span>
+                <input type="text" @bind="_tin" placeholder="123456789" />
+            </label>
+            <button class="btn-primary" type="button" @onclick="LookupTinAsync" disabled="@_tinLooking">
+                @(_tinLooking ? Tr("جارٍ البحث…", "Looking up…") : Tr("بحث في ETA", "Look up in ETA"))
+            </button>
+        </div>
+
+        @if (_tinError is not null)
+        {
+            <div class="flash-error" style="margin-top:16px;">@_tinError</div>
+        }
+
+        @if (_taxpayer is { } t)
+        {
+            <div class="kpi-card kpi-success" style="margin-top:24px;">
+                <div class="kpi-label"><Icon Name="check-circle" Class="ic" />@Tr("تم العثور على الشركة", "Taxpayer found")</div>
+                <div style="margin-top:8px; line-height:1.7;">
+                    <strong>@(IsArabic ? t.LegalNameAr : t.LegalNameEn)</strong><br />
+                    <span style="color:var(--text-muted);">@(IsArabic ? t.AddressAr : t.AddressEn)</span><br />
+                    <span style="font-size:13px;color:var(--text-muted);">@Tr("الكيان:", "Kind:") @t.Kind · @Tr("الأنشطة المسجّلة:", "Registered activities:") @string.Join(", ", t.RegisteredActivityCodes)</span>
+                </div>
+            </div>
+        }
+        break;
+
+    case Step.Cert:
+        <h2>@Tr("الخطوة 2 — شهادة الختم الإلكتروني", "Step 2 — eSeal certificate")</h2>
+        <p class="page-subtitle">
+            @Tr("ETA تطلب شهادة eSeal لتوقيع الفواتير. اختر مصدر الشهادة.",
+                "ETA requires an eSeal certificate to sign invoices. Pick the source.")
+        </p>
+        <div class="form-grid" style="max-width:520px;">
+            <label>
+                <input type="radio" name="cert" checked="@(_certSource == CertSource.UsbToken)" @onchange="@(() => _certSource = CertSource.UsbToken)" />
+                @Tr("USB Token (Egypt Trust / MCDR)", "USB Token (Egypt Trust / MCDR)")
+            </label>
+            <label>
+                <input type="radio" name="cert" checked="@(_certSource == CertSource.FileBasedPfx)" @onchange="@(() => _certSource = CertSource.FileBasedPfx)" />
+                @Tr("ملف PFX على القرص", "PFX file on disk")
+            </label>
+            <label>
+                <span>@(_certSource == CertSource.UsbToken ? Tr("بصمة الشهادة (Thumbprint)", "Certificate thumbprint") : Tr("مسار ملف PFX", "PFX file path"))</span>
+                <input type="text" @bind="_certThumbprintOrPath"
+                       placeholder="@(_certSource == CertSource.UsbToken ? "AB12CD34…" : @"C:\certs\daftarx.pfx")" />
+            </label>
+        </div>
+        <div class="activity-feed" style="margin-top:24px;">
+            <div class="activity-item" style="border-bottom:none;">
+                <div class="activity-icon tone-info"><Icon Name="info" Class="ic" /></div>
+                <div class="activity-content">
+                    @Tr("تنبيه: شهادات USB Token تنتهي كل سنة. درع الغرامات هينبهك قبل 30 يوم من الانتهاء.",
+                        "Heads-up: USB token certs expire annually. Penalty Shield warns you 30 days before.")
+                </div>
+            </div>
+        </div>
+        break;
+
+    case Step.Activity:
+        <h2>@Tr("الخطوة 3 — أنشطة المنشأة", "Step 3 — Business activity codes")</h2>
+        <p class="page-subtitle">
+            @Tr("اختر النشاط/الأنشطة المسجّلة عند ETA. يبقى نفس الكود اللي ينطبع على الفواتير.",
+                "Pick the activity codes registered with ETA. They drive what gets stamped on every invoice.")
+        </p>
+        <input type="text" placeholder="@Tr("ابحث بالاسم أو الكود…", "Search by name or code…")"
+               @bind="_activitySearch" @bind:event="oninput" style="max-width:520px; margin-bottom:16px;" />
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>@Tr("الكود", "Code")</th>
+                    <th>@Tr("النشاط", "Activity")</th>
+                    <th>@Tr("الفئة", "Category")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in ActivityCodes.Search(_activitySearch))
+                {
+                    <tr>
+                        <td>
+                            <input type="checkbox"
+                                   checked="@_selectedCodes.Contains(c.Code)"
+                                   @onchange="@(e => { if ((bool)(e.Value ?? false)) _selectedCodes.Add(c.Code); else _selectedCodes.Remove(c.Code); })" />
+                        </td>
+                        <td><code>@c.Code</code></td>
+                        <td>@(IsArabic ? c.NameAr : c.NameEn)</td>
+                        <td><span style="color:var(--text-muted);font-size:13px;">@(IsArabic ? c.CategoryAr : c.CategoryEn)</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (_selectedCodes.Count > 0)
+        {
+            <div style="margin-top:12px;color:var(--text-muted);">
+                @Tr($"المختار: {_selectedCodes.Count}", $"Selected: {_selectedCodes.Count}")
+            </div>
+        }
+        break;
+
+    case Step.Environment:
+        <h2>@Tr("الخطوة 4 — اختيار البيئة", "Step 4 — Pick environment")</h2>
+        <p class="page-subtitle">
+            @Tr("ابدأ بـ Preprod لاختبار الفاتورة الأولى. لما تتأكد، حول إلى Prod من إعدادات الشركة.",
+                "Start with Preprod for the test invoice. Switch to Prod from Company Settings once verified.")
+        </p>
+        <div class="form-grid" style="max-width:520px;">
+            <label>
+                <input type="radio" name="env" checked="@(_env == EtaEnvironment.Preprod)" @onchange="@(() => _env = EtaEnvironment.Preprod)" />
+                @Tr("Preprod (تجارب — مُوصى للبداية)", "Preprod (testing — recommended to start)")
+            </label>
+            <label>
+                <input type="radio" name="env" checked="@(_env == EtaEnvironment.Prod)" @onchange="@(() => _env = EtaEnvironment.Prod)" />
+                @Tr("Production (إرسال فعلي)", "Production (live submission)")
+            </label>
+        </div>
+        @if (_env == EtaEnvironment.Prod)
+        {
+            <div class="flash-error" style="margin-top:16px;">
+                @Tr("تنبيه: الفواتير في Production تذهب لمصلحة الضرائب فعلاً ولا يمكن إلغاؤها بسهولة.",
+                    "Heads-up: Production invoices go to ETA for real and can't be easily cancelled.")
+            </div>
+        }
+        break;
+
+    case Step.Test:
+        <h2>@Tr("الخطوة 5 — فاتورة تجريبية", "Step 5 — Test invoice")</h2>
+        <p class="page-subtitle">
+            @Tr("نرسل فاتورة فاضية لتجربة الاتصال. لما تنجح، الإعداد جاهز.",
+                "Submit an empty test document to verify the connection. Once it succeeds, setup is complete.")
+        </p>
+        <button class="btn-primary" type="button" @onclick="RunTestSubmissionAsync" disabled="@_testRunning">
+            @(_testRunning ? Tr("جارٍ الإرسال…", "Submitting…") : Tr("إرسال فاتورة تجريبية", "Submit test invoice"))
+        </button>
+        @if (_testResult is not null)
+        {
+            <div class="@(_testOk ? "kpi-card kpi-success" : "flash-error")" style="margin-top:16px;">
+                @_testResult
+            </div>
+        }
+        break;
+
+    case Step.Done:
+        <h2><Icon Name="check-circle" Class="ic" /> @Tr("اكتمل الإعداد!", "Setup complete!")</h2>
+        <p>@Tr("الاتصال بـ ETA جاهز. تقدر تبدأ بإصدار فواتير حقيقية.",
+              "ETA connection is ready. You can start issuing real invoices now.")</p>
+        <div class="invoice-actions" style="margin-top:24px;">
+            <a href="invoices/new" class="btn-primary"><Icon Name="plus" Class="ic" />@Tr("إنشاء فاتورة جديدة", "Create new invoice")</a>
+            <a href="eta-dashboard"><Icon Name="shield" Class="ic" />@Tr("افتح لوحة ETA", "Open ETA dashboard")</a>
+        </div>
+        break;
+}
+
+@if (_step != Step.Done)
+{
+    <div class="invoice-actions" style="margin-top:32px; padding-top:16px; border-top:1px solid var(--border);">
+        <button type="button" class="btn-secondary" @onclick="Back" disabled="@(_step == Step.Tin)">
+            <Icon Name="arrow-left" Class="ic" />@Tr("السابق", "Back")
+        </button>
+        @if (_step != Step.Test)
+        {
+            <button type="button" class="btn-primary" @onclick="Next" disabled="@(!CanAdvance())">
+                @Tr("التالي", "Next")<Icon Name="arrow-right" Class="ic" />
+            </button>
+        }
+    </div>
+}
+
+</section>

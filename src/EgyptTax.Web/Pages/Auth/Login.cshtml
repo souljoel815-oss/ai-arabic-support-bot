@@ -1,37 +1,61 @@
 @page "/login"
+@using System.Globalization
 @model EgyptTax.Web.Pages.Auth.LoginModel
 @{
-    ViewData["Title"] = "Sign in";
+    var isArabic = CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    ViewData["Title"] = isArabic ? "تسجيل الدخول" : "Sign in";
+    ViewData["BodyClass"] = "auth-page";
 }
 
-<h1>Sign in / تسجيل الدخول</h1>
+<div class="auth-page-shell">
+    <div class="auth-page-card">
+        <div class="auth-brand">
+            <div class="auth-brand-mark">DX</div>
+            <div class="auth-brand-name">DaftarX</div>
+        </div>
 
-@if (!string.IsNullOrEmpty(Model.ErrorMessage))
-{
-    <div class="auth-error" role="alert">@Model.ErrorMessage</div>
-}
+        <h1>@(isArabic ? "تسجيل الدخول" : "Sign in")</h1>
+        <p>@(isArabic ? "ادخل بياناتك للوصول إلى حسابك المحاسبي." : "Enter your credentials to access your accounting workspace.")</p>
 
-<form method="post" class="auth-form">
-    @Html.AntiForgeryToken()
-    <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+        @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        {
+            <div class="auth-error" role="alert">@Model.ErrorMessage</div>
+        }
 
-    <label>
-        <span>Email</span>
-        <input asp-for="Input.Email" type="email" autocomplete="username" required />
-    </label>
+        <form method="post" class="auth-form">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
 
-    <label>
-        <span>Password</span>
-        <input asp-for="Input.Password" type="password" autocomplete="current-password" required />
-    </label>
+            <label>
+                <span>@(isArabic ? "البريد الإلكتروني" : "Email")</span>
+                <input asp-for="Input.Email" type="email" autocomplete="username" required />
+            </label>
 
-    @if (Model.ShowMfaPrompt)
-    {
-        <label>
-            <span>Verification code (TOTP) / رمز التحقق</span>
-            <input asp-for="Input.TotpCode" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" />
-        </label>
-    }
+            <label>
+                <span>@(isArabic ? "كلمة المرور" : "Password")</span>
+                <input asp-for="Input.Password" type="password" autocomplete="current-password" required />
+            </label>
 
-    <button type="submit">Sign in</button>
-</form>
+            @if (Model.ShowMfaPrompt)
+            {
+                <label>
+                    <span>@(isArabic ? "رمز التحقق (TOTP)" : "Verification code (TOTP)")</span>
+                    <input asp-for="Input.TotpCode" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" />
+                </label>
+            }
+
+            <button type="submit">@(isArabic ? "تسجيل الدخول" : "Sign in")</button>
+        </form>
+
+        <p style="margin-top: 1.5rem; margin-bottom: 0; text-align: center; font-size: 13px;">
+            @if (isArabic)
+            {
+                <a href="/set-culture?culture=en-US&returnUrl=/login">English</a>
+            }
+            else
+            {
+                <a href="/set-culture?culture=ar-EG&returnUrl=/login">العربية</a>
+            }
+        </p>
+    </div>
+</div>

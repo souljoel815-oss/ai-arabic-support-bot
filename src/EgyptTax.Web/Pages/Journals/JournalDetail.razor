@@ -5,57 +5,57 @@
 @inject IJournalLedgerQuery Query
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<a href="/journals" class="btn-secondary">← Back to ledger</a>
+<a href="/journals" class="btn-secondary">← @(IsArabic ? "العودة إلى الدفتر" : "Back to ledger")</a>
 
-<h1>Journal entry / قيد يومية</h1>
+<h1>@(IsArabic ? "قيد يومية" : "Journal entry")</h1>
 
 @if (_loading)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 @if (_detail is null)
 {
-    <p class="flash-error">Journal entry @Id not found.</p>
+    <p class="flash-error">@(IsArabic ? $"قيد اليومية {Id} غير موجود." : $"Journal entry {Id} not found.")</p>
     return;
 }
 
 <section class="invoice-totals">
-    <div><strong>Id:</strong> <code>@_detail.Id</code></div>
-    <div><strong>Kind:</strong> @KindLabel(_detail.Kind)</div>
-    <div><strong>Posted (UTC):</strong> @_detail.PostedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</div>
-    <div><strong>Narration:</strong> @_detail.Narration</div>
-    <div><strong>Total debits:</strong> <span class="num">@_detail.TotalDebits.ToString("F2") EGP</span></div>
-    <div><strong>Total credits:</strong> <span class="num">@_detail.TotalCredits.ToString("F2") EGP</span></div>
+    <div><strong>@(IsArabic ? "الرقم:" : "Id:")</strong> <code>@_detail.Id</code></div>
+    <div><strong>@(IsArabic ? "النوع:" : "Kind:")</strong> @KindLabel(_detail.Kind)</div>
+    <div><strong>@(IsArabic ? "وقت الترحيل (UTC):" : "Posted (UTC):")</strong> @_detail.PostedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</div>
+    <div><strong>@(IsArabic ? "البيان:" : "Narration:")</strong> @_detail.Narration</div>
+    <div><strong>@(IsArabic ? "إجمالي المدين:" : "Total debits:")</strong> <span class="num">@_detail.TotalDebits.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "إجمالي الدائن:" : "Total credits:")</strong> <span class="num">@_detail.TotalCredits.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
     @if (_detail.TotalDebits == _detail.TotalCredits)
     {
-        <div class="grand"><strong>Balanced ✓</strong></div>
+        <div class="grand"><strong>@(IsArabic ? "متوازن ✓" : "Balanced ✓")</strong></div>
     }
     else
     {
-        <div class="flash-error"><strong>NOT BALANCED ✗</strong> — investigate immediately.</div>
+        <div class="flash-error"><strong>@(IsArabic ? "غير متوازن ✗" : "NOT BALANCED ✗")</strong> — @(IsArabic ? "ابحث فوراً." : "investigate immediately.")</div>
     }
 </section>
 
 @if (DrillBackUrl is { } drillUrl)
 {
     <p>
-        <strong>FR-025 drill-back:</strong>
+        <strong>@(IsArabic ? "تتبع FR-025:" : "FR-025 drill-back:")</strong>
         <a href="@drillUrl" class="btn-primary">
-            Open @DrillBackLabel
+            @(IsArabic ? "افتح" : "Open") @DrillBackLabel
         </a>
     </p>
 }
 
 <section>
-    <h2>Lines (@_detail.Lines.Count)</h2>
+    <h2>@(IsArabic ? $"البنود ({_detail.Lines.Count})" : $"Lines ({_detail.Lines.Count})")</h2>
     <table class="data-grid">
         <thead>
             <tr>
-                <th>Account code</th>
-                <th>Description</th>
-                <th class="num">Debit</th>
-                <th class="num">Credit</th>
+                <th>@(IsArabic ? "كود الحساب" : "Account code")</th>
+                <th>@(IsArabic ? "البيان" : "Description")</th>
+                <th class="num">@(IsArabic ? "مدين" : "Debit")</th>
+                <th class="num">@(IsArabic ? "دائن" : "Credit")</th>
             </tr>
         </thead>
         <tbody>
@@ -130,25 +130,26 @@
         get
         {
             if (_detail is null) return "";
-            if (_detail.Kind == JournalEntryKind.Reversal) return "the original voucher";
+            if (_detail.Kind == JournalEntryKind.Reversal)
+                return IsArabic ? "السند الأصلي" : "the original voucher";
             return _detail.SourceDocumentType switch
             {
                 DocumentType.SalesInvoice or DocumentType.CreditNote
-                    => $"sales doc {_detail.SourceDocumentNumber}",
+                    => IsArabic ? $"مستند مبيعات {_detail.SourceDocumentNumber}" : $"sales doc {_detail.SourceDocumentNumber}",
                 DocumentType.PurchaseInvoice
-                    => $"purchase doc {_detail.SourceDocumentNumber}",
+                    => IsArabic ? $"مستند مشتريات {_detail.SourceDocumentNumber}" : $"purchase doc {_detail.SourceDocumentNumber}",
                 DocumentType.Expense
-                    => $"expense doc {_detail.SourceDocumentNumber}",
-                _ => "the source document",
+                    => IsArabic ? $"مستند مصروف {_detail.SourceDocumentNumber}" : $"expense doc {_detail.SourceDocumentNumber}",
+                _ => IsArabic ? "المستند المصدر" : "the source document",
             };
         }
     }
 
-    private static string KindLabel(JournalEntryKind kind) => kind switch
+    private string KindLabel(JournalEntryKind kind) => kind switch
     {
-        JournalEntryKind.AutoEmitted => "Auto-emitted (post-time)",
-        JournalEntryKind.ManualAdjusting => "Manual adjusting voucher",
-        JournalEntryKind.Reversal => "Reversal voucher",
+        JournalEntryKind.AutoEmitted => IsArabic ? "أوتوماتيكي (وقت الترحيل)" : "Auto-emitted (post-time)",
+        JournalEntryKind.ManualAdjusting => IsArabic ? "سند تسوية يدوي" : "Manual adjusting voucher",
+        JournalEntryKind.Reversal => IsArabic ? "سند عكسي" : "Reversal voucher",
         _ => kind.ToString(),
     };
 }

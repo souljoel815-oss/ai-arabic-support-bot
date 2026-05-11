@@ -165,6 +165,217 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.ToTable("audit_log", "audit");
                 });
 
+            modelBuilder.Entity("EgyptTax.Domain.Banking.BankStatement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CashAccountId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("cash_account_id");
+
+                    b.Property<DateTime>("ImportedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("imported_at_utc");
+
+                    b.Property<DateOnly>("PeriodEnd")
+                        .HasColumnType("date")
+                        .HasColumnName("period_end");
+
+                    b.Property<DateOnly>("PeriodStart")
+                        .HasColumnType("date")
+                        .HasColumnName("period_start");
+
+                    b.Property<string>("SourceFileName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("source_file_name");
+
+                    b.ComplexProperty<Dictionary<string, object>>("ClosingBalance", "EgyptTax.Domain.Banking.BankStatement.ClosingBalance#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("closing_balance");
+                        });
+
+                    b.ComplexProperty<Dictionary<string, object>>("OpeningBalance", "EgyptTax.Domain.Banking.BankStatement.OpeningBalance#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("opening_balance");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CashAccountId", "PeriodStart")
+                        .HasDatabaseName("ix_bank_statements_account_period");
+
+                    b.ToTable("bank_statements", "documents");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Banking.BankStatementLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("BankReference")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("bank_reference");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)")
+                        .HasColumnName("description");
+
+                    b.Property<int?>("MatchConfidenceScore")
+                        .HasColumnType("int")
+                        .HasColumnName("match_confidence_score");
+
+                    b.Property<DateTime?>("MatchedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("matched_at_utc");
+
+                    b.Property<Guid?>("MatchedByUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("matched_by_user_id");
+
+                    b.Property<Guid?>("MatchedCustomerReceiptVoucherId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("matched_customer_receipt_voucher_id");
+
+                    b.Property<Guid?>("MatchedSupplierPaymentVoucherId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("matched_supplier_payment_voucher_id");
+
+                    b.Property<Guid>("StatementId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("statement_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("SuggestedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("suggested_at_utc");
+
+                    b.Property<Guid?>("SuggestedCustomerReceiptVoucherId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("suggested_customer_receipt_voucher_id");
+
+                    b.Property<Guid?>("SuggestedSupplierPaymentVoucherId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("suggested_supplier_payment_voucher_id");
+
+                    b.Property<DateOnly>("TransactionDate")
+                        .HasColumnType("date")
+                        .HasColumnName("transaction_date");
+
+                    b.ComplexProperty<Dictionary<string, object>>("Credit", "EgyptTax.Domain.Banking.BankStatementLine.Credit#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("credit");
+                        });
+
+                    b.ComplexProperty<Dictionary<string, object>>("Debit", "EgyptTax.Domain.Banking.BankStatementLine.Debit#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("debit");
+                        });
+
+                    b.ComplexProperty<Dictionary<string, object>>("RunningBalance", "EgyptTax.Domain.Banking.BankStatementLine.RunningBalance#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("running_balance");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StatementId");
+
+                    b.HasIndex("Status", "TransactionDate")
+                        .HasDatabaseName("ix_bank_statement_lines_status_date");
+
+                    b.ToTable("bank_statement_lines", "documents");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Compliance.ComplianceObligation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("due_date");
+
+                    b.Property<DateTime?>("FiledAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("filed_at_utc");
+
+                    b.Property<string>("FilingReference")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasColumnName("filing_reference");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateOnly>("PeriodEnd")
+                        .HasColumnType("date")
+                        .HasColumnName("period_end");
+
+                    b.Property<int>("PeriodOrdinal")
+                        .HasColumnType("int")
+                        .HasColumnName("period_ordinal");
+
+                    b.Property<DateOnly>("PeriodStart")
+                        .HasColumnType("date")
+                        .HasColumnName("period_start");
+
+                    b.Property<int>("PeriodYear")
+                        .HasColumnType("int")
+                        .HasColumnName("period_year");
+
+                    b.Property<Guid?>("ProofAttachmentId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("proof_attachment_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "DueDate")
+                        .HasDatabaseName("ix_compliance_obligations_status_due");
+
+                    b.HasIndex("Kind", "PeriodYear", "PeriodOrdinal")
+                        .IsUnique()
+                        .HasDatabaseName("ux_compliance_obligations_natural_key");
+
+                    b.ToTable("compliance_obligations", "workflow");
+                });
+
             modelBuilder.Entity("EgyptTax.Domain.Documents.Attachment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -238,6 +449,10 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
+
+                    b.Property<Guid?>("CashAccountId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("cash_account_id");
 
                     b.Property<Guid>("CustomerId")
                         .HasColumnType("uniqueidentifier")
@@ -584,6 +799,10 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("CashAccountId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("cash_account_id");
+
                     b.Property<string>("DocumentNumber")
                         .HasMaxLength(32)
                         .IsUnicode(false)
@@ -669,6 +888,84 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.ToTable("supplier_payment_vouchers", "documents");
                 });
 
+            modelBuilder.Entity("EgyptTax.Domain.Eta.EtaReceivedDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateOnly>("DocumentDate")
+                        .HasColumnType("date")
+                        .HasColumnName("document_date");
+
+                    b.Property<string>("DocumentNumber")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("document_number");
+
+                    b.Property<DateTime>("FirstSeenAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("first_seen_at_utc");
+
+                    b.Property<decimal>("GrandTotalEgp")
+                        .HasColumnType("decimal(19,2)")
+                        .HasColumnName("grand_total_egp");
+
+                    b.Property<Guid?>("ImportedAsPurchaseInvoiceId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("imported_as_purchase_invoice_id");
+
+                    b.Property<decimal>("NetBeforeVatEgp")
+                        .HasColumnType("decimal(19,2)")
+                        .HasColumnName("net_before_vat_egp");
+
+                    b.Property<string>("RegulatorLongUuid")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("regulator_long_uuid");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("resolved_at_utc");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("SupplierLegalName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("supplier_legal_name");
+
+                    b.Property<string>("SupplierTin")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("supplier_tin");
+
+                    b.Property<decimal>("VatTotalEgp")
+                        .HasColumnType("decimal(19,2)")
+                        .HasColumnName("vat_total_egp");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RegulatorLongUuid")
+                        .IsUnique()
+                        .HasDatabaseName("ux_eta_received_documents_long_uuid");
+
+                    b.HasIndex("Status", "FirstSeenAtUtc")
+                        .HasDatabaseName("ix_eta_received_documents_inbox");
+
+                    b.ToTable("eta_received_documents", "eta");
+                });
+
             modelBuilder.Entity("EgyptTax.Domain.Eta.EtaSubmission", b =>
                 {
                     b.Property<Guid>("Id")
@@ -697,6 +994,20 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.Property<DateTime?>("LastAttemptAtUtc")
                         .HasColumnType("datetime2(3)")
                         .HasColumnName("last_attempt_at_utc");
+
+                    b.Property<DateTime?>("RegulatorAcknowledgedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("regulator_acknowledged_at_utc");
+
+                    b.Property<string>("RegulatorLongUuid")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("regulator_long_uuid");
+
+                    b.Property<DateTime?>("RegulatorRejectedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("regulator_rejected_at_utc");
 
                     b.Property<Guid>("SalesInvoiceId")
                         .HasColumnType("uniqueidentifier")
@@ -1361,6 +1672,95 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.ToTable("sales_invoice_lines", "documents");
                 });
 
+            modelBuilder.Entity("EgyptTax.Domain.MasterData.CashAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("account_code");
+
+                    b.Property<string>("AccountNumber")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("account_number");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("bank_name");
+
+                    b.Property<string>("BranchName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("branch_name");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("IbanOrSwift")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("iban_or_swift");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_default");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(8)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("status");
+
+                    b.ComplexProperty<Dictionary<string, object>>("Name", "EgyptTax.Domain.MasterData.CashAccount.Name#ArabicEnglishText", b1 =>
+                        {
+                            b1.Property<string>("Arabic")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("name_ar");
+
+                            b1.Property<string>("English")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)")
+                                .HasColumnName("name_en");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountCode")
+                        .IsUnique()
+                        .HasDatabaseName("ux_cash_accounts_code");
+
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasDatabaseName("ux_cash_accounts_default")
+                        .HasFilter("[is_default] = 1");
+
+                    b.ToTable("cash_accounts", "master");
+                });
+
             modelBuilder.Entity("EgyptTax.Domain.MasterData.Company", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1395,6 +1795,13 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)")
                         .HasColumnName("logo_path");
+
+                    b.Property<string>("TaxRegime")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(24)")
+                        .HasColumnName("tax_regime");
 
                     b.Property<string>("TaxRegistrationNumber")
                         .IsRequired()
@@ -1682,6 +2089,31 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("default_vat_category_id");
 
+                    b.Property<DateTime?>("EtaCodeActivatedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("eta_code_activated_at_utc");
+
+                    b.Property<string>("EtaCodeFailureReason")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("eta_code_failure_reason");
+
+                    b.Property<string>("EtaCodeKind")
+                        .HasMaxLength(8)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(8)")
+                        .HasColumnName("eta_code_kind");
+
+                    b.Property<DateTime?>("EtaCodeRequestedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("eta_code_requested_at_utc");
+
+                    b.Property<string>("EtaCodeStatus")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("eta_code_status");
+
                     b.Property<string>("EtaItemCode")
                         .HasMaxLength(32)
                         .IsUnicode(false)
@@ -1714,6 +2146,9 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.HasIndex("Code")
                         .IsUnique()
                         .HasDatabaseName("ux_items_code");
+
+                    b.HasIndex("EtaCodeStatus", "EtaCodeRequestedAtUtc")
+                        .HasDatabaseName("ix_items_eta_code_pending");
 
                     b.ToTable("items", "master");
                 });
@@ -2614,6 +3049,15 @@ namespace EgyptTax.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("EgyptTax.Domain.Banking.BankStatementLine", b =>
+                {
+                    b.HasOne("EgyptTax.Domain.Banking.BankStatement", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("StatementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("EgyptTax.Domain.Documents.JournalVoucherLine", b =>
                 {
                     b.HasOne("EgyptTax.Domain.Documents.JournalVoucher", null)
@@ -2703,6 +3147,11 @@ namespace EgyptTax.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("EgyptTax.Domain.Accounting.JournalEntry", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Banking.BankStatement", b =>
                 {
                     b.Navigation("Lines");
                 });

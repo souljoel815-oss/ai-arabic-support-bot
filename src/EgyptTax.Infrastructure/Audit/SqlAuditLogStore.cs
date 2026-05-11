@@ -26,16 +26,29 @@ public sealed class SqlAuditLogStore(AppDbContext db) : IAuditLogStore
     {
         ArgumentNullException.ThrowIfNull(payload);
 
-        // Read the current chain tail under a row-locking hint so concurrent
-        // inserts serialize on the highest existing index. The pattern uses
-        // an MS SQL Server-specific lock hint; this is the single piece of
-        // SqlServer-coupled behaviour in the audit store.
-        var tail = await _db.Set<AuditLogEntry>()
-            .FromSqlRaw(
-                "SELECT TOP (1) * FROM [audit].[audit_log] WITH (UPDLOCK, HOLDLOCK) ORDER BY [index] DESC"
-            )
-            .AsNoTracking()
-            .FirstOrDefaultAsync(cancellationToken);
+        // Read the current chain tail to compute prev_hash and the
+        // next monotonic index. On SQL Server we take a row-locking
+        // hint so concurrent inserts serialize on the highest existing
+        // index; on SQLite (single-file portable mode) writes are
+        // already serialised by the engine's database-level lock so
+        // a plain LINQ query is sufficient.
+        AuditLogEntry? tail;
+        if (_db.Database.ProviderName == "Microsoft.EntityFrameworkCore.SqlServer")
+        {
+            tail = await _db.Set<AuditLogEntry>()
+                .FromSqlRaw(
+                    "SELECT TOP (1) * FROM [audit].[audit_log] WITH (UPDLOCK, HOLDLOCK) ORDER BY [index] DESC"
+                )
+                .AsNoTracking()
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        else
+        {
+            tail = await _db.Set<AuditLogEntry>()
+                .AsNoTracking()
+                .OrderByDescending(e => e.Index)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
 
         var nextIndex = (tail?.Index ?? 0) + 1;
         var prevHash = tail?.ThisHash ?? AuditChainHasher.GenesisHash;

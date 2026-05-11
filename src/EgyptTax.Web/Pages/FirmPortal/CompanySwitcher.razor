@@ -9,49 +9,44 @@
 @inject IJSRuntime Js
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Switch installation / تبديل المنشأة</h1>
+<h1>@(IsArabic ? "تبديل المنشأة" : "Switch installation")</h1>
 
 <p>
     <em>
-        FR-049 — each Egyptian SME runs its own on-prem
-        installation; there is no central vendor hub. The list
-        below is your <strong>browser's local pool</strong> of
-        installations you've accepted invitations from. Switching
-        redirects you to that installation's login (or straight to
-        its home page if your session there is still valid). The
-        pool lives in localStorage on this device only — clearing
-        browser data clears it.
+        @(IsArabic
+            ? "FR-049 — كل شركة مصرية صغيرة تشغّل تثبيتها الخاص داخلياً، فلا يوجد مركز موحَّد لدى المورد. القائمة بالأسفل هي تجمّع المتصفح المحلي لديك للتثبيتات التي قبلت دعواتها. التبديل يعيد توجيهك إلى تسجيل دخول ذلك التثبيت (أو إلى صفحته الرئيسية مباشرة إن كانت جلستك هناك ما زالت صالحة). التجمّع يعيش في localStorage على هذا الجهاز فقط — مسح بيانات المتصفح يمسحه."
+            : "FR-049 — each Egyptian SME runs its own on-prem installation; there is no central vendor hub. The list below is your browser's local pool of installations you've accepted invitations from. Switching redirects you to that installation's login (or straight to its home page if your session there is still valid). The pool lives in localStorage on this device only — clearing browser data clears it.")
     </em>
 </p>
 
 <section>
-    <h2>This installation</h2>
+    <h2>@(IsArabic ? "هذا التثبيت" : "This installation")</h2>
     @if (_localFirmUser is not null)
     {
         <table class="data-grid">
             <tbody>
                 <tr>
-                    <th>Firm name</th>
+                    <th>@(IsArabic ? "اسم المكتب" : "Firm name")</th>
                     <td><strong>@_localFirmUser.FirmName</strong></td>
                 </tr>
                 <tr>
-                    <th>Firm contact</th>
+                    <th>@(IsArabic ? "جهة اتصال المكتب" : "Firm contact")</th>
                     <td><code>@_localFirmUser.FirmExternalIdentifier</code></td>
                 </tr>
                 <tr>
-                    <th>Status</th>
+                    <th>@(IsArabic ? "الحالة" : "Status")</th>
                     <td>
                         @if (_localFirmUser.IsActive)
                         {
-                            <span class="active-row">Active</span>
+                            <span class="active-row">@(IsArabic ? "نشط" : "Active")</span>
                         }
                         else if (_localFirmUser.RevokedAtUtc is not null)
                         {
-                            <span class="flash-error">Revoked at @_localFirmUser.RevokedAtUtc?.ToString("yyyy-MM-dd HH:mm") UTC</span>
+                            <span class="flash-error">@(IsArabic ? "مُلغى في" : "Revoked at") @_localFirmUser.RevokedAtUtc?.ToString("yyyy-MM-dd HH:mm") UTC</span>
                         }
                         else
                         {
-                            <span>Pending acceptance</span>
+                            <span>@(IsArabic ? "قيد القبول" : "Pending acceptance")</span>
                         }
                     </td>
                 </tr>
@@ -59,7 +54,7 @@
         </table>
         <p>
             <button type="button" class="btn-primary" @onclick="OnRememberThisInstallation">
-                Remember this installation in my pool
+                @(IsArabic ? "احفظ هذا التثبيت في تجمّعي" : "Remember this installation in my pool")
             </button>
         </p>
     }
@@ -67,28 +62,27 @@
     {
         <p>
             <em>
-                You're not registered as a firm-user on this
-                installation. The switcher is intended for
-                external accountants invited via FR-049.
+                @(IsArabic
+                    ? "أنت غير مسجَّل كمستخدم مكتب على هذا التثبيت. الصفحة مخصصة للمحاسبين الخارجيين المدعوّين عبر FR-049."
+                    : "You're not registered as a firm-user on this installation. The switcher is intended for external accountants invited via FR-049.")
             </em>
         </p>
     }
 </section>
 
 <section>
-    <h2>Other installations in your pool</h2>
+    <h2>@(IsArabic ? "تثبيتات أخرى في تجمّعك" : "Other installations in your pool")</h2>
     @if (_pool is null)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else if (_pool.Count == 0)
     {
         <p>
             <em>
-                No other installations remembered yet. The pool
-                fills up as you accept invitations from additional
-                Egyptian SMEs and click <strong>Remember this
-                installation</strong>.
+                @(IsArabic
+                    ? "لا توجد تثبيتات أخرى محفوظة. يمتلئ التجمّع كلما قبلت دعوات من شركات أخرى وضغطت «احفظ هذا التثبيت»."
+                    : "No other installations remembered yet. The pool fills up as you accept invitations from additional Egyptian SMEs and click \"Remember this installation\".")
             </em>
         </p>
     }
@@ -97,10 +91,10 @@
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Label</th>
-                    <th>Firm</th>
-                    <th>URL</th>
-                    <th>Last used (UTC)</th>
+                    <th>@(IsArabic ? "الاسم" : "Label")</th>
+                    <th>@(IsArabic ? "المكتب" : "Firm")</th>
+                    <th>@(IsArabic ? "الرابط" : "URL")</th>
+                    <th>@(IsArabic ? "آخر استخدام (UTC)" : "Last used (UTC)")</th>
                     <th></th>
                 </tr>
             </thead>
@@ -113,8 +107,8 @@
                         <td><code>@i.Url</code></td>
                         <td>@i.LastUsedAtIso</td>
                         <td>
-                            <button type="button" class="btn-primary" @onclick="() => OnSwitchTo(i.Url)">Switch</button>
-                            <button type="button" @onclick="() => OnForget(i.Url)">Forget</button>
+                            <button type="button" class="btn-primary" @onclick="() => OnSwitchTo(i.Url)">@(IsArabic ? "تبديل" : "Switch")</button>
+                            <button type="button" @onclick="() => OnForget(i.Url)">@(IsArabic ? "نسيان" : "Forget")</button>
                         </td>
                     </tr>
                 }
@@ -163,9 +157,10 @@
         }
         catch (Exception ex)
         {
-            // Pool isn't available pre-render or in tests; treat as empty.
             _pool = new();
-            _flash = $"Pool unavailable ({ex.Message}); listing is empty.";
+            _flash = IsArabic
+                ? $"التجمّع غير متاح ({ex.Message})؛ القائمة فارغة."
+                : $"Pool unavailable ({ex.Message}); listing is empty.";
             StateHasChanged();
         }
     }
@@ -176,7 +171,9 @@
         var label = new Uri(url).Host;
         var firmName = _localFirmUser?.FirmName ?? "";
         await Js.InvokeVoidAsync("egyptTaxFirmPortal.remember", url, label, firmName);
-        _flash = $"Remembered {url} in your installation pool.";
+        _flash = IsArabic
+            ? $"تم حفظ {url} في تجمّع التثبيتات."
+            : $"Remembered {url} in your installation pool.";
         await ReloadPoolAsync();
     }
 
@@ -188,7 +185,7 @@
     private async Task OnForget(string url)
     {
         await Js.InvokeVoidAsync("egyptTaxFirmPortal.forget", url);
-        _flash = $"Forgot {url}.";
+        _flash = IsArabic ? $"تم نسيان {url}." : $"Forgot {url}.";
         await ReloadPoolAsync();
     }
 

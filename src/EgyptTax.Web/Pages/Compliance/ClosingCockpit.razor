@@ -1,61 +1,69 @@
 @page "/cockpit"
+@using System.Globalization
+@using System.Security.Claims
 @using EgyptTax.Application.Compliance
+@using EgyptTax.Application.Periods
+@using EgyptTax.Domain.Periods
+@using EgyptTax.Infrastructure.Periods
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IMonthlyTaxClosingCockpitQuery CockpitQuery
+@inject LockTaxPeriodHandler PeriodHandler
+@inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Monthly tax closing cockpit (Differentiator 2)</h1>
+<h1>@(IsArabic ? "قمرة قيادة الإقفال الضريبي الشهري" : "Monthly tax closing cockpit (Differentiator 2)")</h1>
 
 <form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
     <label>
-        <span>Year</span>
+        <span>@(IsArabic ? "السنة" : "Year")</span>
         <input type="number" min="1900" max="9999" @bind="_year" />
     </label>
     <label>
-        <span>Month</span>
+        <span>@(IsArabic ? "الشهر" : "Month")</span>
         <select @bind="_month">
             @for (var m = 1; m <= 12; m++)
             {
-                <option value="@m">@System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m)</option>
+                <option value="@m">@MonthName(m)</option>
             }
         </select>
     </label>
     <button type="submit" class="btn-primary" disabled="@_loading">
-        @(_loading ? "Computing…" : "Refresh")
+        @(_loading ? (IsArabic ? "جارٍ الحساب…" : "Computing…") : (IsArabic ? "تحديث" : "Refresh"))
     </button>
 </form>
 
 @if (_data is null)
 {
-    @if (_loading) { <p>Loading…</p> }
-    else { <p><em>Pick a period above and click "Refresh".</em></p> }
+    @if (_loading) { <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p> }
+    else { <p><em>@(IsArabic ? "اختر الفترة بالأعلى ثم اضغط «تحديث»." : "Pick a period above and click \"Refresh\".")</em></p> }
     return;
 }
 
 <section class="invoice-totals">
-    <div><strong>Period:</strong> @_data.PeriodStart.ToString("yyyy-MM-dd") to @_data.PeriodEnd.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "الفترة:" : "Period:")</strong> @_data.PeriodStart.ToString("yyyy-MM-dd") @(IsArabic ? "إلى" : "to") @_data.PeriodEnd.ToString("yyyy-MM-dd")</div>
     <div>
-        <strong>Period status:</strong>
+        <strong>@(IsArabic ? "حالة الفترة:" : "Period status:")</strong>
         @if (_data.PeriodIsLocked)
         {
-            <span class="risk-badge risk-blocker">LOCKED (FR-037)</span>
+            <span class="risk-badge risk-blocker">@(IsArabic ? "مقفولة (FR-037)" : "LOCKED (FR-037)")</span>
         }
         else
         {
-            <span class="risk-badge risk-clean">Open</span>
+            <span class="risk-badge risk-clean">@(IsArabic ? "مفتوحة" : "Open")</span>
         }
     </div>
     <div class="grand">
-        <strong>VAT readiness:</strong>
+        <strong>@(IsArabic ? "جاهزية الضريبة:" : "VAT readiness:")</strong>
         <span class="num">@_data.VatReadinessPercent.ToString("0.0")%</span>
-        — @_data.CleanPostsCount of @_data.TotalPostsInPeriod posts in period have no blocking findings
+        — @(IsArabic ? $"{_data.CleanPostsCount} من {_data.TotalPostsInPeriod} ترحيل في الفترة بدون نتائج مانعة" : $"{_data.CleanPostsCount} of {_data.TotalPostsInPeriod} posts in period have no blocking findings")
     </div>
 </section>
 
 <section>
-    <h2>Period-lock checklist</h2>
+    <h2>@(IsArabic ? "قائمة فحص قفل الفترة" : "Period-lock checklist")</h2>
     <table class="data-grid">
-        <thead><tr><th></th><th>Check</th><th class="num">Outstanding</th></tr></thead>
+        <thead><tr><th></th><th>@(IsArabic ? "الفحص" : "Check")</th><th class="num">@(IsArabic ? "متبقي" : "Outstanding")</th></tr></thead>
         <tbody>
             @foreach (var item in _data.PeriodLockChecklist)
             {
@@ -70,68 +78,71 @@
 </section>
 
 <section>
-    <h2>Drafts in period</h2>
+    <h2>@(IsArabic ? "المسودات في الفترة" : "Drafts in period")</h2>
     @if (_data.DraftsInPeriodCount == 0)
     {
-        <p>No drafts to clear.</p>
+        <p>@(IsArabic ? "لا توجد مسودات للتصفية." : "No drafts to clear.")</p>
     }
     else
     {
         <p>
-            <strong class="num">@_data.DraftsInPeriodCount</strong> document(s) in Draft state are dated
-            inside this period. Post or void them before locking the period
-            (otherwise their dates would silently roll over into the next month
-            after lock + reopen).
+            <strong class="num">@_data.DraftsInPeriodCount</strong>
+            @(IsArabic
+                ? "مستند في حالة مسودة بتواريخ داخل هذه الفترة. قم بترحيلها أو إلغائها قبل قفل الفترة (وإلا فإن تواريخها ستنزلق إلى الشهر التالي بعد القفل وإعادة الفتح)."
+                : "document(s) in Draft state are dated inside this period. Post or void them before locking the period (otherwise their dates would silently roll over into the next month after lock + reopen).")
         </p>
     }
 </section>
 
 <section>
-    <h2>ETA submissions</h2>
+    <h2>@(IsArabic ? "إرسالات مصلحة الضرائب" : "ETA submissions")</h2>
     @if (_data.FailedEtaSubmissionCount == 0)
     {
-        <p>No failed ETA submissions outstanding.</p>
+        <p>@(IsArabic ? "لا توجد إرسالات فاشلة." : "No failed ETA submissions outstanding.")</p>
     }
     else
     {
         <p class="flash-error">
-            <strong class="num">@_data.FailedEtaSubmissionCount</strong> failed submission(s) totalling
-            <span class="num">@_data.FailedEtaSubmissionTotalGrand.Amount.ToString("F2") EGP</span>.
-            <a href="/eta-dashboard">Open the ETA dashboard →</a>
+            <strong class="num">@_data.FailedEtaSubmissionCount</strong>
+            @(IsArabic ? "إرسال فاشل بإجمالي" : "failed submission(s) totalling")
+            <span class="num">@_data.FailedEtaSubmissionTotalGrand.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span>.
+            <a href="/eta-dashboard">@(IsArabic ? "افتح لوحة الضرائب الإلكترونية ←" : "Open the ETA dashboard →")</a>
         </p>
     }
 </section>
 
 <section>
-    <h2>Missing documents</h2>
+    <h2>@(IsArabic ? "مستندات مفقودة" : "Missing documents")</h2>
     @if (_data.MissingDocuments.Count == 0)
     {
-        <p>No missing-document buckets — every deductible post has its supporting attachment + every posted sales invoice has an ETA submission row.</p>
+        <p>@(IsArabic
+            ? "لا توجد فجوات — كل ترحيل قابل للخصم له مرفق داعم، وكل فاتورة مبيعات مرحّلة لها صف إرسال للمصلحة."
+            : "No missing-document buckets — every deductible post has its supporting attachment + every posted sales invoice has an ETA submission row.")</p>
     }
     else
     {
         @foreach (var bucket in _data.MissingDocuments)
         {
             <details>
-                <summary><strong>@bucket.Name</strong> — <span class="num">@bucket.Count</span> document(s)</summary>
+                <summary><strong>@bucket.Name</strong> — <span class="num">@bucket.Count</span> @(IsArabic ? "مستند" : "document(s)")</summary>
                 <table class="data-grid">
-                    <thead><tr><th>Document #</th><th>Kind</th><th>Date</th><th>Description</th><th></th></tr></thead>
+                    <thead><tr><th>@(IsArabic ? "رقم المستند" : "Document #")</th><th>@(IsArabic ? "النوع" : "Kind")</th><th>@(IsArabic ? "التاريخ" : "Date")</th><th>@(IsArabic ? "الوصف" : "Description")</th><th></th></tr></thead>
                     <tbody>
                         @foreach (var ex in bucket.Examples)
                         {
                             <tr>
-                                <td>@(ex.DocumentNumber ?? "(draft)")</td>
+                                <td>@(ex.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)"))</td>
                                 <td>@ex.Kind</td>
                                 <td>@ex.DocumentDate.ToString("yyyy-MM-dd")</td>
                                 <td>@ex.Description</td>
-                                <td><a href="@DrillDownUrl(ex.Kind, ex.DocumentId)">Open</a></td>
+                                <td><a href="@DrillDownUrl(ex.Kind, ex.DocumentId)">@(IsArabic ? "فتح" : "Open")</a></td>
                             </tr>
                         }
                     </tbody>
                 </table>
                 @if (bucket.Count > bucket.Examples.Count)
                 {
-                    <p><em>Showing first @bucket.Examples.Count of @bucket.Count.</em></p>
+                    <p><em>@(IsArabic ? $"يتم عرض أول {bucket.Examples.Count} من {bucket.Count}." : $"Showing first {bucket.Examples.Count} of {bucket.Count}.")</em></p>
                 }
             </details>
         }
@@ -139,42 +150,169 @@
 </section>
 
 <section>
-    <h2>Non-recoverable input VAT (FR-020 information)</h2>
+    <h2>@(IsArabic ? "ضريبة المدخلات غير القابلة للاسترداد (معلومة FR-020)" : "Non-recoverable input VAT (FR-020 information)")</h2>
     <p>
-        <span class="num">@_data.NonRecoverableInputVat.Amount.ToString("F2") EGP</span>
-        of input VAT on posted purchase invoices is non-recoverable because the supplier's
-        snapshot is not <code>RegisteredTaxpayer</code>. This number doesn't block the lock
-        but should match what your VAT report shows under "input VAT not claimed".
+        <span class="num">@_data.NonRecoverableInputVat.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span>
+        @(IsArabic
+            ? "من ضريبة المدخلات على فواتير المشتريات المرحّلة غير قابلة للاسترداد لأن لقطة المورد ليست «ممول مسجل». هذا الرقم لا يمنع القفل، لكنه يجب أن يطابق ما يظهر في تقرير الضريبة تحت «ضريبة مدخلات غير مطالب بها»."
+            : "of input VAT on posted purchase invoices is non-recoverable because the supplier's snapshot is not RegisteredTaxpayer. This number doesn't block the lock but should match what your VAT report shows under \"input VAT not claimed\".")
     </p>
 </section>
 
 <section>
-    <h2>Reports for this period</h2>
+    <h2>@(IsArabic ? "تقارير هذه الفترة" : "Reports for this period")</h2>
     <ul>
-        <li><a href="/reports/vat-monthly">Run the VAT report →</a></li>
-        <li><a href="/reports/taxable-income">Run the taxable-income report →</a></li>
-        <li><a href="/reports/trial-balance">Run the trial balance →</a></li>
-        <li><a href="/settings/tax-periods">Lock / reopen this period →</a></li>
+        <li><a href="/reports/vat-monthly">@(IsArabic ? "تشغيل تقرير الضريبة ←" : "Run the VAT report →")</a></li>
+        <li><a href="/reports/taxable-income">@(IsArabic ? "تشغيل تقرير الدخل الخاضع للضريبة ←" : "Run the taxable-income report →")</a></li>
+        <li><a href="/reports/trial-balance">@(IsArabic ? "تشغيل ميزان المراجعة ←" : "Run the trial balance →")</a></li>
+        <li><a href="/settings/tax-periods">@(IsArabic ? "إدارة كل الفترات الضريبية ←" : "Manage all tax periods →")</a></li>
     </ul>
 </section>
+
+@if (!_data.PeriodIsLocked)
+{
+    <section class="master-data-create">
+        <h2>@(IsArabic ? "قفل هذه الفترة" : "Lock this period")</h2>
+
+        @if (_decision is null)
+        {
+            <p>@(IsArabic ? "جارٍ تقييم القائمة…" : "Evaluating the checklist…")</p>
+        }
+        else if (_decision.HardBlockers.Count > 0)
+        {
+            <div class="kpi-card kpi-error">
+                <strong>@(IsArabic ? "لا يمكن قفل الفترة — يجب حلّ المشاكل التالية أولاً:" : "Cannot lock — these must be resolved first:")</strong>
+                <ul>
+                    @foreach (var b in _decision.HardBlockers)
+                    {
+                        <li>@(IsArabic ? b.DescriptionAr : b.DescriptionEn)</li>
+                    }
+                </ul>
+            </div>
+        }
+        else if (_decision.SoftBlockers.Count > 0)
+        {
+            <div class="kpi-card kpi-warn">
+                <strong>@(IsArabic ? "تحذيرات (لا تمنع القفل لكن لازم تكتب سبب التجاوز):" : "Warnings — locking past these requires an Administrator's reason:")</strong>
+                <ul>
+                    @foreach (var b in _decision.SoftBlockers)
+                    {
+                        <li>@(IsArabic ? b.DescriptionAr : b.DescriptionEn)</li>
+                    }
+                </ul>
+            </div>
+            <label>
+                <span>@(IsArabic ? "سبب التجاوز (إجباري)" : "Force-lock reason (required)")</span>
+                <input type="text" @bind="_forceReason"
+                    placeholder="@(IsArabic ? "مثال: المرفق بالبريد، نقفل الإقرار في موعده" : "e.g. attachments are in the mail; filing on deadline")" />
+            </label>
+        }
+        else
+        {
+            <div class="kpi-card kpi-info">
+                @(IsArabic ? "كل الفحوصات اجتازت. اختياري: ضِف سبب القفل." : "All checks cleared. Optional: add a lock reason.")
+            </div>
+        }
+
+        <label>
+            <span>@(IsArabic ? "سبب القفل (اختياري لكن مستحسن)" : "Lock reason (optional but recommended)")</span>
+            <input type="text" @bind="_lockReason"
+                placeholder="@(IsArabic ? $"مثال: الإقرار قُدِّم لشهر {_year}-{_month:D2}" : $"e.g. VAT return filed for {_year}-{_month:D2}")" />
+        </label>
+
+        <button type="button" class="btn-primary"
+                disabled="@(!CanSubmitLock())"
+                @onclick="OnLockAsync">
+            @(IsArabic ? "قفل الفترة" : "Lock period")
+        </button>
+
+        @if (_lockFlash is not null)
+        {
+            <div class="@_lockFlashClass" style="margin-top:12px;">@_lockFlash</div>
+        }
+    </section>
+}
 
 @code {
     private int _year = DateTime.UtcNow.Year;
     private int _month = DateTime.UtcNow.Month;
     private bool _loading;
     private MonthlyTaxClosingCockpit? _data;
+    private PeriodLockReadinessDecision? _decision;
+    private string _lockReason = "";
+    private string _forceReason = "";
+    private string? _lockFlash;
+    private string _lockFlashClass = "kpi-card kpi-info";
 
     private async Task OnRefresh()
     {
         _loading = true;
+        _lockFlash = null;
         try
         {
             _data = await CockpitQuery.RunAsync(_year, _month);
+            // Pre-evaluate the gate so the lock button knows whether
+            // to ask for a force reason. forceRequested=false because
+            // we want to surface "you'd need to force-lock" warnings.
+            _decision = PeriodLockReadinessGate.Evaluate(_data, forceRequested: false);
         }
         finally
         {
             _loading = false;
         }
+    }
+
+    private bool CanSubmitLock()
+    {
+        if (_decision is null) return false;
+        if (_decision.HardBlockers.Count > 0) return false;
+        if (_decision.SoftBlockers.Count > 0 && string.IsNullOrWhiteSpace(_forceReason)) return false;
+        return true;
+    }
+
+    private async Task OnLockAsync()
+    {
+        if (_data is null || _decision is null) return;
+        try
+        {
+            var operatorUserId = await ResolveOperatorIdAsync();
+            await PeriodHandler.HandleAsync(new LockTaxPeriodCommand(
+                TaxPeriodKind.VatMonth,
+                _year, _month,
+                operatorUserId,
+                Reason: string.IsNullOrWhiteSpace(_lockReason) ? null : _lockReason.Trim(),
+                ForceLockReason: string.IsNullOrWhiteSpace(_forceReason) ? null : _forceReason.Trim()),
+                CancellationToken.None);
+
+            _lockFlash = IsArabic
+                ? $"تم قفل فترة الضريبة {_year}-{_month:D2}."
+                : $"Locked VAT period {_year}-{_month:D2}.";
+            _lockFlashClass = "kpi-card kpi-info";
+            _lockReason = "";
+            _forceReason = "";
+            await OnRefresh();
+        }
+        catch (PeriodLockBlockedException ex)
+        {
+            // Race with another tab that posted a doc — re-pull the
+            // cockpit so the operator sees the current blocker list.
+            _decision = ex.Decision;
+            _lockFlash = ex.Message;
+            _lockFlashClass = "kpi-card kpi-error";
+        }
+        catch (Exception ex)
+        {
+            _lockFlash = ex.Message;
+            _lockFlashClass = "kpi-card kpi-error";
+        }
+    }
+
+    private async Task<Guid> ResolveOperatorIdAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var claim = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? auth.User.FindFirst("sub")?.Value;
+        return Guid.TryParse(claim, out var u) ? u : Guid.Empty;
     }
 
     private static string DrillDownUrl(string kind, Guid id) => kind switch
@@ -185,4 +323,14 @@
         "Expense" => $"/expenses/{id}",
         _ => $"/document360/{kind.ToLowerInvariant()}/{id}",
     };
+
+    private string MonthName(int m) => IsArabic
+        ? m switch
+        {
+            1 => "يناير", 2 => "فبراير", 3 => "مارس", 4 => "أبريل",
+            5 => "مايو", 6 => "يونيو", 7 => "يوليو", 8 => "أغسطس",
+            9 => "سبتمبر", 10 => "أكتوبر", 11 => "نوفمبر", 12 => "ديسمبر",
+            _ => $"الشهر {m}",
+        }
+        : System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m);
 }

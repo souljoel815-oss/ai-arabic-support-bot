@@ -12,14 +12,14 @@
 @inject DocumentRiskScorer RiskScorer
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Sales invoices / فواتير المبيعات</h1>
+<h1>@(IsArabic ? "فواتير المبيعات" : "Sales invoices")</h1>
 
 <div class="invoice-toolbar">
-    <a class="btn-primary" href="/invoices/new">+ New invoice</a>
-    <input type="search" placeholder="Search by document number or customer name…"
+    <a class="btn-primary" href="/invoices/new">@(IsArabic ? "+ فاتورة جديدة" : "+ New invoice")</a>
+    <input type="search" placeholder="@(IsArabic ? "البحث برقم المستند أو اسم العميل…" : "Search by document number or customer name…")"
            @bind="_search" @bind:event="oninput" />
     <select @bind="_stateFilter">
-        <option value="">All states</option>
+        <option value="">@(IsArabic ? "كل الحالات" : "All states")</option>
         @foreach (var state in Enum.GetValues<DocumentState>())
         {
             <option value="@state">@state</option>
@@ -29,25 +29,25 @@
 
 @if (_invoices is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
 }
 else if (_invoices.Count == 0)
 {
-    <p><em>No invoices match the current filters.</em></p>
+    <p><em>@(IsArabic ? "لا توجد فواتير تطابق المرشحات الحالية." : "No invoices match the current filters.")</em></p>
 }
 else
 {
     <table class="data-grid">
         <thead>
             <tr>
-                <th>Document #</th>
-                <th>Date</th>
-                <th>Customer</th>
-                <th>State</th>
-                <th>Risk</th>
-                <th class="num">Subtotal</th>
-                <th class="num">VAT</th>
-                <th class="num">Grand total</th>
+                <th>@(IsArabic ? "رقم المستند" : "Document #")</th>
+                <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                <th>@(IsArabic ? "العميل" : "Customer")</th>
+                <th>@(IsArabic ? "الحالة" : "State")</th>
+                <th>@(IsArabic ? "المخاطر" : "Risk")</th>
+                <th class="num">@(IsArabic ? "الإجمالي قبل الضريبة" : "Subtotal")</th>
+                <th class="num">@(IsArabic ? "الضريبة" : "VAT")</th>
+                <th class="num">@(IsArabic ? "الإجمالي" : "Grand total")</th>
                 <th></th>
             </tr>
         </thead>
@@ -55,7 +55,7 @@ else
             @foreach (var row in Filtered)
             {
                 <tr>
-                    <td>@(row.Invoice.DocumentNumber ?? "(draft)")</td>
+                    <td>@(row.Invoice.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)"))</td>
                     <td>@row.Invoice.DocumentDate.ToString("yyyy-MM-dd")</td>
                     <td>@row.CustomerName</td>
                     <td><StateBadge State="row.Invoice.State" /></td>
@@ -66,11 +66,11 @@ else
                     <td>
                         @if (row.Invoice.State == DocumentState.Draft)
                         {
-                            <a href="/invoices/@row.Invoice.Id/edit">Edit</a>
+                            <a href="/invoices/@row.Invoice.Id/edit">@(IsArabic ? "تعديل" : "Edit")</a>
                         }
                         else
                         {
-                            <a href="/invoices/@row.Invoice.Id">View</a>
+                            <a href="/invoices/@row.Invoice.Id">@(IsArabic ? "عرض" : "View")</a>
                         }
                     </td>
                 </tr>

@@ -96,3 +96,19 @@ test-results/
 **/*.wixpdb
 **/*.msi
 **/*.wixproj.user
+
+# Licensing — vendor PRIVATE signing key. NEVER commit. Loss of
+# this file = inability to issue new licenses (recoverable via
+# keypair rotation). Compromise = pirates can issue valid
+# licenses (emergency keypair rotation required).
+vendor-keys.json
+**/vendor-keys.json
+
+# Per-customer licensing artefacts (machine-bound, never in source).
+**/license.token
+**/license.activated
+**/share*.bin
+**/share*.mask
+
+# Issue-License.ps1 output — per-customer signed tokens + README.
+licenses/

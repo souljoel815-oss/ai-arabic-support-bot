@@ -6,53 +6,53 @@
 @inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Fixed assets (FR-017 / FR-018) / الأصول الثابتة</h1>
+<h1>@(IsArabic ? "الأصول الثابتة" : "Fixed assets (FR-017 / FR-018)")</h1>
 
 <form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
     <label>
-        <span>Net book value as of</span>
+        <span>@(IsArabic ? "صافي القيمة الدفترية حتى" : "Net book value as of")</span>
         <input type="date" @bind="_asOf" />
     </label>
     <button type="submit" class="btn-primary" disabled="@_loading">
-        @(_loading ? "Loading…" : "Refresh")
+        @(_loading ? (IsArabic ? "جارٍ التحميل…" : "Loading…") : (IsArabic ? "تحديث" : "Refresh"))
     </button>
-    <a href="/fixed-assets/new" class="btn-primary">+ New asset</a>
+    <a href="/fixed-assets/new" class="btn-primary">+ @(IsArabic ? "أصل جديد" : "New asset")</a>
 </form>
 
 @if (_rows is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 <section class="invoice-totals">
-    <div><strong>Assets:</strong> @_rows.Count</div>
-    <div><strong>InService:</strong> @_rows.Count(r => r.Status == FixedAssetStatus.InService)</div>
-    <div><strong>Draft:</strong> @_rows.Count(r => r.Status == FixedAssetStatus.Draft)</div>
-    <div><strong>Disposed/Written off:</strong> @_rows.Count(r => r.Status is FixedAssetStatus.Disposed or FixedAssetStatus.WrittenOff)</div>
-    <div><strong>Total cost:</strong> @_rows.Sum(r => r.Cost.Amount).ToString("F2") EGP</div>
-    <div><strong>Total NBV (as-of):</strong> @_rows.Sum(r => r.NetBookValue.Amount).ToString("F2") EGP</div>
+    <div><strong>@(IsArabic ? "الأصول:" : "Assets:")</strong> @_rows.Count</div>
+    <div><strong>@(IsArabic ? "في الخدمة:" : "InService:")</strong> @_rows.Count(r => r.Status == FixedAssetStatus.InService)</div>
+    <div><strong>@(IsArabic ? "مسودة:" : "Draft:")</strong> @_rows.Count(r => r.Status == FixedAssetStatus.Draft)</div>
+    <div><strong>@(IsArabic ? "مستبعدة/مشطوبة:" : "Disposed/Written off:")</strong> @_rows.Count(r => r.Status is FixedAssetStatus.Disposed or FixedAssetStatus.WrittenOff)</div>
+    <div><strong>@(IsArabic ? "إجمالي التكلفة:" : "Total cost:")</strong> @_rows.Sum(r => r.Cost.Amount).ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+    <div><strong>@(IsArabic ? "إجمالي صافي القيمة الدفترية (حتى التاريخ):" : "Total NBV (as-of):")</strong> @_rows.Sum(r => r.NetBookValue.Amount).ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
 </section>
 
 @if (_rows.Count == 0)
 {
-    <p><em>No fixed assets yet. Click "+ New asset" to create one.</em></p>
+    <p><em>@(IsArabic ? "لا توجد أصول بعد. اضغط «+ أصل جديد» لإضافة أصل." : "No fixed assets yet. Click \"+ New asset\" to create one.")</em></p>
     return;
 }
 
 <table class="data-grid">
     <thead>
         <tr>
-            <th>Code</th>
-            <th>Description</th>
-            <th>Category</th>
-            <th>Status</th>
-            <th>In-service</th>
-            <th class="num">Useful life (mo)</th>
-            <th class="num">Cost (EGP)</th>
-            <th class="num">Depreciated</th>
-            <th class="num">NBV</th>
-            <th class="num">Attachments</th>
+            <th>@(IsArabic ? "الكود" : "Code")</th>
+            <th>@(IsArabic ? "الوصف" : "Description")</th>
+            <th>@(IsArabic ? "الفئة" : "Category")</th>
+            <th>@(IsArabic ? "الحالة" : "Status")</th>
+            <th>@(IsArabic ? "تاريخ التشغيل" : "In-service")</th>
+            <th class="num">@(IsArabic ? "العمر النافع (شهر)" : "Useful life (mo)")</th>
+            <th class="num">@(IsArabic ? "التكلفة (ج.م.)" : "Cost (EGP)")</th>
+            <th class="num">@(IsArabic ? "المُهلَك" : "Depreciated")</th>
+            <th class="num">@(IsArabic ? "القيمة الدفترية" : "NBV")</th>
+            <th class="num">@(IsArabic ? "المرفقات" : "Attachments")</th>
             <th></th>
         </tr>
     </thead>
@@ -62,8 +62,16 @@
             <tr>
                 <td><code>@r.Code</code></td>
                 <td>
-                    <div>@r.Description.English</div>
-                    <div style="font-size: 0.85em">@r.Description.Arabic</div>
+                    @if (IsArabic)
+                    {
+                        <div>@r.Description.Arabic</div>
+                        <div style="font-size: 0.85em">@r.Description.English</div>
+                    }
+                    else
+                    {
+                        <div>@r.Description.English</div>
+                        <div style="font-size: 0.85em">@r.Description.Arabic</div>
+                    }
                 </td>
                 <td>@r.AssetCategory</td>
                 <td><span class="kind-badge kind-@r.Status.ToString().ToLowerInvariant()">@r.Status</span></td>
@@ -74,7 +82,7 @@
                 <td class="num">@r.NetBookValue.Amount.ToString("F2")</td>
                 <td class="num">@r.AttachmentCount</td>
                 <td>
-                    <a href="@($"/fixed-assets/{r.Id:D}/schedule")" class="btn-secondary">Schedule</a>
+                    <a href="@($"/fixed-assets/{r.Id:D}/schedule")" class="btn-secondary">@(IsArabic ? "الجدول" : "Schedule")</a>
                 </td>
             </tr>
         }

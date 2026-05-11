@@ -29,39 +29,41 @@
     @if (CurrentState == DocumentState.Draft)
     {
         <button type="button" class="btn-primary" @onclick="OnSubmitAsync" disabled="@_busy">
-            @(_busy ? "Submitting…" : "Submit for approval")
+            @(_busy ? (IsArabic ? "جارٍ الإرسال…" : "Submitting…") : (IsArabic ? "إرسال للاعتماد" : "Submit for approval"))
         </button>
-        <button type="button" @onclick="OnVoidAsync" disabled="@_busy">Void draft</button>
+        <button type="button" @onclick="OnVoidAsync" disabled="@_busy">@(IsArabic ? "إلغاء المسودة" : "Void draft")</button>
     }
     else if (CurrentState == DocumentState.Submitted)
     {
         @if (CanApprove)
         {
             <button type="button" class="btn-primary" @onclick="OnApproveAsync" disabled="@_busy">
-                Approve
+                @(IsArabic ? "اعتماد" : "Approve")
             </button>
             <button type="button" @onclick="ToggleRejectInput" disabled="@_busy">
-                @(_showRejectInput ? "Cancel reject" : "Reject")
+                @(_showRejectInput ? (IsArabic ? "إلغاء الرفض" : "Cancel reject") : (IsArabic ? "رفض" : "Reject"))
             </button>
         }
         else
         {
-            <p><em>Awaiting another approver — FR-004 prevents you from approving your own submission.</em></p>
+            <p><em>@(IsArabic
+                ? "بانتظار معتمد آخر — FR-004 يمنعك من اعتماد ما قدمته بنفسك."
+                : "Awaiting another approver — FR-004 prevents you from approving your own submission.")</em></p>
         }
-        <button type="button" @onclick="OnVoidAsync" disabled="@_busy">Void</button>
+        <button type="button" @onclick="OnVoidAsync" disabled="@_busy">@(IsArabic ? "إلغاء" : "Void")</button>
     }
     else if (CurrentState == DocumentState.Approved)
     {
-        <button type="button" @onclick="OnVoidAsync" disabled="@_busy">Void</button>
+        <button type="button" @onclick="OnVoidAsync" disabled="@_busy">@(IsArabic ? "إلغاء" : "Void")</button>
     }
 
     @if (_showRejectInput)
     {
         <div class="reject-form">
-            <textarea rows="3" placeholder="Reason for rejection (required)…"
+            <textarea rows="3" placeholder="@(IsArabic ? "سبب الرفض (مطلوب)…" : "Reason for rejection (required)…")"
                       @bind="_rejectReason" @bind:event="oninput"></textarea>
             <button type="button" class="btn-primary" @onclick="OnRejectAsync" disabled="@_busy">
-                Confirm reject
+                @(IsArabic ? "تأكيد الرفض" : "Confirm reject")
             </button>
         </div>
     }
@@ -109,14 +111,14 @@
     {
         await RunAsync(() => ApprovalHandler.SubmitAsync(
             new SubmitDocumentCommand(DocumentId, DocumentType, _currentUserId),
-            CancellationToken.None), success: "Submitted for approval.");
+            CancellationToken.None), success: IsArabic ? "تم الإرسال للاعتماد." : "Submitted for approval.");
     }
 
     private async Task OnApproveAsync()
     {
         await RunAsync(() => ApprovalHandler.ApproveAsync(
             new ApproveDocumentCommand(DocumentId, DocumentType, _currentUserId),
-            CancellationToken.None), success: "Approved.");
+            CancellationToken.None), success: IsArabic ? "تم الاعتماد." : "Approved.");
     }
 
     private void ToggleRejectInput()
@@ -130,13 +132,13 @@
     {
         if (string.IsNullOrWhiteSpace(_rejectReason))
         {
-            _flash = "Reason is required to reject.";
+            _flash = IsArabic ? "السبب مطلوب للرفض." : "Reason is required to reject.";
             _flashClass = "flash-error";
             return;
         }
         await RunAsync(() => ApprovalHandler.RejectAsync(
             new RejectDocumentCommand(DocumentId, DocumentType, _currentUserId, _rejectReason),
-            CancellationToken.None), success: "Rejected; document returned to Draft.");
+            CancellationToken.None), success: IsArabic ? "تم الرفض؛ تم إرجاع المستند إلى مسودة." : "Rejected; document returned to Draft.");
         _showRejectInput = false;
         _rejectReason = "";
     }
@@ -145,7 +147,7 @@
     {
         await RunAsync(() => ApprovalHandler.VoidAsync(
             new VoidDocumentCommand(DocumentId, DocumentType, _currentUserId, Reason: null),
-            CancellationToken.None), success: "Voided.");
+            CancellationToken.None), success: IsArabic ? "تم الإلغاء." : "Voided.");
     }
 
     private async Task RunAsync(Func<Task> action, string success)

@@ -3,77 +3,90 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Payment methods (read-only) / طرق الدفع</h1>
+<h1>@(IsArabic ? "طرق الدفع (للقراءة فقط)" : "Payment methods (read-only)")</h1>
 
 <p>
     <em>
-        MVP scope — the two payment methods an Egyptian SME reaches
-        for first. Cheque + card land in a Near-term batch per the
-        Round 5 carve-out; the
-        <code>PaymentMethod</code> enum on
-        <code>SupplierPaymentVoucher</code> +
-        <code>CustomerReceiptVoucher</code> will gain those values
-        without breaking existing voucher rows because it's
-        EF-mapped as int.
+        @(IsArabic
+            ? "نطاق الـ MVP — أكثر طريقتي دفع بتستخدمهم الشركات الصغيرة في مصر. الشيكات والكروت هتنزل في تحديث قريب. النظام مصمم بحيث ضيف الطرق الجديدة لا يكسر السندات الموجودة."
+            : "MVP scope — the two payment methods an Egyptian SME reaches for first. Cheque + card land in a Near-term batch.")
     </em>
 </p>
 
 <table class="data-grid">
     <thead>
         <tr>
-            <th>Method</th>
-            <th>Cash account posted</th>
-            <th>Notes</th>
+            <th>@(IsArabic ? "الطريقة" : "Method")</th>
+            <th>@(IsArabic ? "حساب النقدية المُرحّل" : "Cash account posted")</th>
+            <th>@(IsArabic ? "ملاحظات" : "Notes")</th>
         </tr>
     </thead>
     <tbody>
         @foreach (var m in Enum.GetValues<PaymentMethod>())
         {
             <tr class="active-row">
-                <td><strong>@m</strong></td>
-                <td><code>1100</code> (Operating cash)</td>
+                <td><strong>@MethodLabel(m)</strong></td>
+                <td><code>1100</code> (@(IsArabic ? "النقدية التشغيلية" : "Operating cash"))</td>
                 <td>@Notes(m)</td>
             </tr>
         }
         <tr class="row-muted">
-            <td><em>Cheque</em></td>
+            <td><em>@(IsArabic ? "شيك" : "Cheque")</em></td>
             <td>—</td>
-            <td>Deferred — Round 5 carve-out (Near-term batch)</td>
+            <td>@(IsArabic ? "مؤجل — تحديث قريب" : "Deferred — Near-term batch")</td>
         </tr>
         <tr class="row-muted">
-            <td><em>Card</em></td>
+            <td><em>@(IsArabic ? "كارت ائتمان" : "Card")</em></td>
             <td>—</td>
-            <td>Deferred — Round 5 carve-out (Near-term batch)</td>
+            <td>@(IsArabic ? "مؤجل — تحديث قريب" : "Deferred — Near-term batch")</td>
         </tr>
     </tbody>
 </table>
 
-<h2>How payments post</h2>
+<h2>@(IsArabic ? "كيف تُرحَّل المدفوعات" : "How payments post")</h2>
 <ul>
-    <li>
-        <strong>SupplierPaymentVoucher</strong> — credits cash
-        (<code>1100</code>), debits accounts payable
-        (<code>2100</code>), credits WHT payable
-        (<code>2120</code>) when the line carries a withholding
-        deduction (FR-051 / US7).
-    </li>
-    <li>
-        <strong>CustomerReceiptVoucher</strong> — debits cash
-        (<code>1100</code>), credits accounts receivable
-        (<code>1200</code>), debits WHT receivable
-        (<code>1120</code>) when the customer attached a withholding
-        certificate (FR-052 / US7).
-    </li>
+    @if (IsArabic)
+    {
+        <li>
+            <strong>سند سداد مورد</strong> — دائن نقدية (<code>1100</code>)، مدين موردون (<code>2100</code>)،
+            دائن خصم تحت حساب الضريبة (<code>2120</code>) عندما يحمل البند خصماً (FR-051 / US7).
+        </li>
+        <li>
+            <strong>سند تحصيل عميل</strong> — مدين نقدية (<code>1100</code>)، دائن عملاء (<code>1200</code>)،
+            مدين خصم تحت حساب الضريبة من العملاء (<code>1120</code>) عندما يرفق العميل شهادة خصم (FR-052 / US7).
+        </li>
+    }
+    else
+    {
+        <li>
+            <strong>SupplierPaymentVoucher</strong> — credits cash (<code>1100</code>), debits accounts payable
+            (<code>2100</code>), credits WHT payable (<code>2120</code>) when the line carries a withholding
+            deduction (FR-051 / US7).
+        </li>
+        <li>
+            <strong>CustomerReceiptVoucher</strong> — debits cash (<code>1100</code>), credits accounts receivable
+            (<code>1200</code>), debits WHT receivable (<code>1120</code>) when the customer attached a withholding
+            certificate (FR-052 / US7).
+        </li>
+    }
 </ul>
 
 @code {
-    private static string Notes(PaymentMethod m) => m switch
+    private string MethodLabel(PaymentMethod m) => m switch
     {
-        PaymentMethod.Cash =>
-            "Direct cash leg — voucher posts immediately on Approve.",
-        PaymentMethod.BankTransfer =>
-            "Treated identically to Cash for journal posting in MVP scope; "
-            + "bank-statement reconciliation lands as a separate near-term feature.",
+        PaymentMethod.Cash => IsArabic ? "نقدية" : "Cash",
+        PaymentMethod.BankTransfer => IsArabic ? "تحويل بنكي" : "Bank transfer",
+        _ => m.ToString(),
+    };
+
+    private string Notes(PaymentMethod m) => m switch
+    {
+        PaymentMethod.Cash => IsArabic
+            ? "دفع نقدي مباشر — السند يُرحَّل فوراً عند الاعتماد."
+            : "Direct cash leg — voucher posts immediately on Approve.",
+        PaymentMethod.BankTransfer => IsArabic
+            ? "يُعامَل مثل النقدية في ترحيل القيد بنطاق الـ MVP؛ مطابقة كشف الحساب البنكي ميزة قريبة منفصلة."
+            : "Treated identically to Cash for journal posting in MVP scope; bank-statement reconciliation lands as a separate near-term feature.",
         _ => "—",
     };
 }

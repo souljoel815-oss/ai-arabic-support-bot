@@ -3,27 +3,23 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Chart of accounts (read-only) / دليل الحسابات</h1>
+<h1>@(IsArabic ? "دليل الحسابات (للقراءة فقط)" : "Chart of accounts (read-only)")</h1>
 
 <p>
     <em>
-        MVP-scope chart of accounts. The post-time journal emitter and
-        the monthly-depreciation Hangfire job touch a fixed set of
-        accounts (the constants below); operator-configurable storage
-        with full hierarchy + GL-balance reporting lands in a
-        follow-up. For now this page is a read-only hierarchy view so
-        an accountant can confirm the codes the system uses match
-        their conventional Egyptian SME chart.
+        @(IsArabic
+            ? "دليل الحسابات بنطاق الـ MVP. مُصدر القيد عند الترحيل ووظيفة الإهلاك الشهرية بيستخدموا مجموعة ثابتة من الحسابات (الثوابت بالأسفل). التخزين القابل للتعديل بواسطة المشغّل مع شجرة كاملة وتقارير الأرصدة هيتم في تحديث لاحق. الصفحة دلوقتي عرض هرمي للقراءة فقط عشان المحاسب يتأكد إن الأكواد اللي النظام بيستخدمها مطابقة لدليله المعتاد للشركات الصغيرة في مصر."
+            : "MVP-scope chart of accounts. The post-time journal emitter and the monthly-depreciation Hangfire job touch a fixed set of accounts (the constants below). Operator-configurable storage with full hierarchy + GL-balance reporting lands in a follow-up. For now this page is a read-only hierarchy view so an accountant can confirm the codes the system uses match their conventional Egyptian SME chart.")
     </em>
 </p>
 
 <table class="data-grid">
     <thead>
         <tr>
-            <th>Code</th>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Used by</th>
+            <th>@(IsArabic ? "الكود" : "Code")</th>
+            <th>@(IsArabic ? "الاسم" : "Name")</th>
+            <th>@(IsArabic ? "النوع" : "Type")</th>
+            <th>@(IsArabic ? "يستخدم في" : "Used by")</th>
         </tr>
     </thead>
     <tbody>
@@ -36,73 +32,92 @@
             {
                 <tr class="active-row">
                     <td><code>@a.Code</code></td>
-                    <td>@a.Name</td>
+                    <td>@(IsArabic ? a.NameAr : a.Name)</td>
                     <td>@a.Type</td>
-                    <td>@a.UsedBy</td>
+                    <td>@(IsArabic ? a.UsedByAr : a.UsedBy)</td>
                 </tr>
             }
         }
     </tbody>
 </table>
 
-<h2>Account-block convention</h2>
+<h2>@(IsArabic ? "اصطلاح كتل الحسابات" : "Account-block convention")</h2>
 <ul>
-    <li><strong>1xxx</strong> — Assets (cash, receivables, recoverable input VAT, accumulated depreciation contra-asset)</li>
-    <li><strong>2xxx</strong> — Liabilities (payables, output VAT payable, WHT payable)</li>
-    <li><strong>4xxx</strong> — Revenue (sales)</li>
-    <li><strong>5xxx</strong> — Expenses (generic, depreciation)</li>
+    @if (IsArabic)
+    {
+        <li><strong>1xxx</strong> — أصول (نقدية، مدينون، ضريبة مدخلات قابلة للاسترداد، مجمع الإهلاك)</li>
+        <li><strong>2xxx</strong> — خصوم (دائنون، ضريبة مخرجات مستحقة الدفع، خصم تحت حساب الضريبة)</li>
+        <li><strong>4xxx</strong> — إيرادات (المبيعات)</li>
+        <li><strong>5xxx</strong> — مصروفات (عامة، إهلاك)</li>
+    }
+    else
+    {
+        <li><strong>1xxx</strong> — Assets (cash, receivables, recoverable input VAT, accumulated depreciation contra-asset)</li>
+        <li><strong>2xxx</strong> — Liabilities (payables, output VAT payable, WHT payable)</li>
+        <li><strong>4xxx</strong> — Revenue (sales)</li>
+        <li><strong>5xxx</strong> — Expenses (generic, depreciation)</li>
+    }
 </ul>
 
 <p>
     <em>
-        Operators who need additional sub-accounts can record them in
-        a manual adjusting voucher (FR-031) until the full
-        operator-configurable CoA ships. The auto-emitter's job is to
-        keep the books balanced from minute one against the seeded
-        codes above.
+        @(IsArabic
+            ? "المشغلون اللي محتاجين حسابات فرعية إضافية يقدروا يسجلوها في سند قيد يدوي (FR-031) لحد ما دليل الحسابات الكامل القابل للتعديل يتم إصداره. شغل المُصدر الأوتوماتيكي إنه يحافظ على توازن الدفاتر من الدقيقة الأولى مقابل الأكواد المُعدّة بالأعلى."
+            : "Operators who need additional sub-accounts can record them in a manual adjusting voucher (FR-031) until the full operator-configurable CoA ships. The auto-emitter's job is to keep the books balanced from minute one against the seeded codes above.")
     </em>
 </p>
 
 @code {
-    private sealed record AccountRow(string Code, string Name, AccountType Type, string UsedBy);
+    private sealed record AccountRow(string Code, string Name, string NameAr, AccountType Type, string UsedBy, string UsedByAr);
     private enum AccountType { Asset, Liability, Equity, Revenue, Expense }
 
     private static readonly AccountRow[] _accounts =
     [
-        new(ChartOfAccountCodes.Cash, "Operating cash", AccountType.Asset,
-            "Phase 9 — debited on customer-receipt, credited on supplier-payment"),
-        new(ChartOfAccountCodes.InputVatRecoverable, "Input VAT recoverable", AccountType.Asset,
-            "FR-016 / FR-020 — debited on deductible portion of purchase invoices"),
-        new(ChartOfAccountCodes.WhtReceivable, "WHT receivable (customer-withheld)", AccountType.Asset,
-            "FR-052 / US7 — debited on customer-receipt with WHT certificate"),
-        new(ChartOfAccountCodes.AccountsReceivable, "Accounts receivable", AccountType.Asset,
-            "FR-009 — debited on sales invoice grand total"),
-        new(ChartOfAccountCodes.AccumulatedDepreciation, "Accumulated depreciation (contra-asset)", AccountType.Asset,
-            "FR-017 / US6 — credited monthly by depreciation Hangfire job"),
+        new(ChartOfAccountCodes.Cash, "Operating cash", "النقدية التشغيلية", AccountType.Asset,
+            "Phase 9 — debited on customer-receipt, credited on supplier-payment",
+            "Phase 9 — مدين عند تحصيل العملاء، دائن عند سداد الموردين"),
+        new(ChartOfAccountCodes.InputVatRecoverable, "Input VAT recoverable", "ضريبة المدخلات القابلة للاسترداد", AccountType.Asset,
+            "FR-016 / FR-020 — debited on deductible portion of purchase invoices",
+            "FR-016 / FR-020 — مدين على الجزء القابل للخصم من فواتير المشتريات"),
+        new(ChartOfAccountCodes.WhtReceivable, "WHT receivable (customer-withheld)", "خصم تحت حساب الضريبة من العملاء", AccountType.Asset,
+            "FR-052 / US7 — debited on customer-receipt with WHT certificate",
+            "FR-052 / US7 — مدين على تحصيلات العملاء بشهادة خصم"),
+        new(ChartOfAccountCodes.AccountsReceivable, "Accounts receivable", "العملاء (مدينون)", AccountType.Asset,
+            "FR-009 — debited on sales invoice grand total",
+            "FR-009 — مدين على إجمالي فاتورة المبيعات"),
+        new(ChartOfAccountCodes.AccumulatedDepreciation, "Accumulated depreciation (contra-asset)", "مجمع الإهلاك (حساب مقابل)", AccountType.Asset,
+            "FR-017 / US6 — credited monthly by depreciation Hangfire job",
+            "FR-017 / US6 — دائن شهرياً بواسطة وظيفة الإهلاك"),
 
-        new(ChartOfAccountCodes.AccountsPayable, "Accounts payable", AccountType.Liability,
-            "FR-009 / FR-016 — credited on purchase invoices + expenses"),
-        new(ChartOfAccountCodes.OutputVatPayable, "Output VAT payable", AccountType.Liability,
-            "FR-009 — credited on sales invoice VAT total (liability owed to ETA)"),
-        new(ChartOfAccountCodes.WhtPayable, "WHT payable (supplier-withheld)", AccountType.Liability,
-            "FR-051 / US7 — credited on supplier-payment carrying WHT"),
+        new(ChartOfAccountCodes.AccountsPayable, "Accounts payable", "الموردون (دائنون)", AccountType.Liability,
+            "FR-009 / FR-016 — credited on purchase invoices + expenses",
+            "FR-009 / FR-016 — دائن على فواتير المشتريات والمصروفات"),
+        new(ChartOfAccountCodes.OutputVatPayable, "Output VAT payable", "ضريبة المخرجات المستحقة", AccountType.Liability,
+            "FR-009 — credited on sales invoice VAT total (liability owed to ETA)",
+            "FR-009 — دائن على إجمالي ضريبة فاتورة المبيعات (التزام لمصلحة الضرائب)"),
+        new(ChartOfAccountCodes.WhtPayable, "WHT payable (supplier-withheld)", "خصم تحت حساب الضريبة المستحق للموردين", AccountType.Liability,
+            "FR-051 / US7 — credited on supplier-payment carrying WHT",
+            "FR-051 / US7 — دائن على سداد المورد بخصم"),
 
-        new(ChartOfAccountCodes.SalesRevenue, "Sales revenue", AccountType.Revenue,
-            "FR-009 — credited on sales-invoice net-of-discount subtotal"),
+        new(ChartOfAccountCodes.SalesRevenue, "Sales revenue", "إيرادات المبيعات", AccountType.Revenue,
+            "FR-009 — credited on sales-invoice net-of-discount subtotal",
+            "FR-009 — دائن على صافي فاتورة المبيعات قبل الضريبة"),
 
-        new(ChartOfAccountCodes.GenericExpense, "Generic expense", AccountType.Expense,
-            "FR-009 / FR-014 — auto-emitter fallback when no specific account routes"),
-        new(ChartOfAccountCodes.DepreciationExpense, "Depreciation expense", AccountType.Expense,
-            "FR-017 / US6 — debited monthly by depreciation job (separate from generic so trial balance shows it)"),
+        new(ChartOfAccountCodes.GenericExpense, "Generic expense", "مصروف عام", AccountType.Expense,
+            "FR-009 / FR-014 — auto-emitter fallback when no specific account routes",
+            "FR-009 / FR-014 — البديل الأوتوماتيكي عند عدم وجود حساب محدد"),
+        new(ChartOfAccountCodes.DepreciationExpense, "Depreciation expense", "مصروف الإهلاك", AccountType.Expense,
+            "FR-017 / US6 — debited monthly by depreciation job (separate from generic so trial balance shows it)",
+            "FR-017 / US6 — مدين شهرياً بواسطة وظيفة الإهلاك (منفصل عن المصروف العام)"),
     ];
 
-    private static string TypeLabel(AccountType t) => t switch
+    private string TypeLabel(AccountType t) => t switch
     {
-        AccountType.Asset => "1xxx — Assets",
-        AccountType.Liability => "2xxx — Liabilities",
-        AccountType.Equity => "3xxx — Equity",
-        AccountType.Revenue => "4xxx — Revenue",
-        AccountType.Expense => "5xxx — Expenses",
+        AccountType.Asset => IsArabic ? "1xxx — أصول" : "1xxx — Assets",
+        AccountType.Liability => IsArabic ? "2xxx — خصوم" : "2xxx — Liabilities",
+        AccountType.Equity => IsArabic ? "3xxx — حقوق ملكية" : "3xxx — Equity",
+        AccountType.Revenue => IsArabic ? "4xxx — إيرادات" : "4xxx — Revenue",
+        AccountType.Expense => IsArabic ? "5xxx — مصروفات" : "5xxx — Expenses",
         _ => t.ToString(),
     };
 }

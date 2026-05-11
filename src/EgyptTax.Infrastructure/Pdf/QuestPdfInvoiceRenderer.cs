@@ -3,6 +3,7 @@ using EgyptTax.Application.Pdf;
 using EgyptTax.Domain.Invoices;
 using EgyptTax.Domain.MasterData;
 using EgyptTax.Domain.Workflow;
+using EgyptTax.SharedKernel;
 using EgyptTax.SharedKernel.Localization;
 using QRCoder;
 using QuestPDF.Fluent;
@@ -32,6 +33,8 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
 
     public byte[] Render(InvoicePdfRequest request)
     {
+        // Scattered honeypot — block PDF generation on unlicensed installs.
+        LicenseSentry.EnsureLicensed("QuestPdfInvoiceRenderer.Render");
         ArgumentNullException.ThrowIfNull(request);
         var invoice = request.Invoice;
         if (invoice.State != DocumentState.Posted)

@@ -1,0 +1,235 @@
+@page "/settings/cash-accounts"
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "الخزائن والحسابات البنكية | DaftarX" : "Cashboxes & Bank Accounts | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<CashAccount> _accounts = new();
+    private FormModel _form = new();
+    private string? _flash;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _accounts = await db.Set<CashAccount>().AsNoTracking()
+            .OrderByDescending(a => a.IsDefault)
+            .ThenBy(a => a.AccountCode)
+            .ToListAsync();
+    }
+
+    private async Task OnCreateAsync()
+    {
+        _flash = null;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            if (await db.Set<CashAccount>().AnyAsync(a => a.AccountCode == _form.AccountCode))
+            {
+                _flash = Tr($"الكود {_form.AccountCode} مستخدم بالفعل.", $"Account code {_form.AccountCode} already exists.");
+                return;
+            }
+            var entity = new CashAccount(
+                accountCode: _form.AccountCode.Trim(),
+                name: new ArabicEnglishText(_form.NameArabic, _form.NameEnglish),
+                kind: _form.Kind,
+                currency: string.IsNullOrWhiteSpace(_form.Currency) ? "EGP" : _form.Currency,
+                isDefault: false);
+            if (entity.Kind == CashAccountKind.Bank)
+            {
+                entity.UpdateBankMetadata(_form.BankName, _form.AccountNumber, _form.BranchName, _form.IbanOrSwift);
+            }
+            db.Add(entity);
+            await db.SaveChangesAsync();
+            _flash = Tr($"تم إضافة الحساب {entity.AccountCode}.", $"Added account {entity.AccountCode}.");
+            _form = new FormModel();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+        }
+    }
+
+    private async Task ToggleStatusAsync(Guid id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.Set<CashAccount>().FirstOrDefaultAsync(a => a.Id == id);
+        if (row is null) return;
+        if (row.Status == CashAccountStatus.Active) row.Deactivate();
+        else row.Reactivate();
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task MarkDefaultAsync(Guid id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var rows = await db.Set<CashAccount>().ToListAsync();
+        foreach (var r in rows)
+        {
+            if (r.Id == id) r.MarkDefault();
+            else if (r.IsDefault) r.UnmarkDefault();
+        }
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private sealed class FormModel
+    {
+        [Required, StringLength(32)] public string AccountCode { get; set; } = "";
+        [Required, StringLength(200)] public string NameArabic { get; set; } = "";
+        [Required, StringLength(200)] public string NameEnglish { get; set; } = "";
+        public CashAccountKind Kind { get; set; } = CashAccountKind.Cash;
+        [StringLength(3)] public string Currency { get; set; } = "EGP";
+        [StringLength(200)] public string? BankName { get; set; }
+        [StringLength(64)] public string? AccountNumber { get; set; }
+        [StringLength(200)] public string? BranchName { get; set; }
+        [StringLength(64)] public string? IbanOrSwift { get; set; }
+    }
+}
+
+<h1>@(IsArabic ? "🏦 الخزائن والحسابات البنكية" : "🏦 Cashboxes & Bank Accounts")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "كل خزينة فرع وكل حساب بنكي عنده كود مستقل في دليل الحسابات. الكاشير وسندات القبض/الصرف بتختار الحساب الصحيح وميزان المراجعة بيوضّح كل واحد على حدة."
+        : "Every branch cashbox and bank account gets its own COA code. Cashier + payment vouchers pick the right account, and trial balance shows balances per cashbox/bank.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="kpi-card kpi-info" style="margin-top:16px;">@_flash</div>
+}
+
+<section class="master-data-list" style="margin-top:24px;">
+    <h2>@Tr("الحسابات الحالية", "Existing accounts")</h2>
+    @if (_accounts.Count == 0)
+    {
+        <p><em>@Tr("لا توجد حسابات بعد — أضف واحداً أدناه.", "No accounts yet — add one below.")</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@Tr("الكود", "Code")</th>
+                    <th>@Tr("الاسم", "Name")</th>
+                    <th>@Tr("النوع", "Kind")</th>
+                    <th>@Tr("العملة", "Ccy")</th>
+                    <th>@Tr("بيانات إضافية", "Bank details")</th>
+                    <th>@Tr("الحالة", "Status")</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in _accounts)
+                {
+                    <tr class="@(a.Status == CashAccountStatus.Inactive ? "row-muted" : "")">
+                        <td><code>@a.AccountCode</code></td>
+                        <td>
+                            @(IsArabic ? a.Name.Arabic : a.Name.English)
+                            @if (a.IsDefault)
+                            {
+                                <span class="state-badge state-approved" style="margin-inline-start:6px;">@Tr("افتراضي", "Default")</span>
+                            }
+                        </td>
+                        <td>@(a.Kind == CashAccountKind.Cash ? Tr("نقدي", "Cash") : Tr("بنك", "Bank"))</td>
+                        <td>@a.Currency</td>
+                        <td>
+                            @if (a.Kind == CashAccountKind.Bank)
+                            {
+                                <text>@a.BankName · @a.AccountNumber</text>
+                                @if (!string.IsNullOrEmpty(a.BranchName)) { <text> · @a.BranchName</text> }
+                            }
+                            else
+                            {
+                                <text>—</text>
+                            }
+                        </td>
+                        <td><span class="state-badge @(a.Status == CashAccountStatus.Active ? "state-approved" : "state-rejected")">@a.Status</span></td>
+                        <td>
+                            @if (!a.IsDefault && a.Status == CashAccountStatus.Active)
+                            {
+                                <button type="button" class="btn-secondary" @onclick="@(() => MarkDefaultAsync(a.Id))">
+                                    @Tr("اجعله افتراضي", "Make default")
+                                </button>
+                            }
+                            <button type="button" @onclick="@(() => ToggleStatusAsync(a.Id))">
+                                @(a.Status == CashAccountStatus.Active ? Tr("تعطيل", "Deactivate") : Tr("إعادة تفعيل", "Reactivate"))
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section class="master-data-create" style="margin-top:32px;">
+    <h2>@Tr("إضافة حساب", "Add an account")</h2>
+    <EditForm Model="_form" OnValidSubmit="OnCreateAsync" FormName="cash-account-create" class="form-grid" style="max-width:680px;">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <label>
+            <span>@Tr("الكود في دليل الحسابات", "COA code")</span>
+            <InputText @bind-Value="_form.AccountCode" placeholder="1100.01" />
+        </label>
+        <label>
+            <span>@Tr("الاسم (عربي)", "Name (Arabic)")</span>
+            <InputText @bind-Value="_form.NameArabic" placeholder="حساب CIB جنيه" />
+        </label>
+        <label>
+            <span>@Tr("الاسم (إنجليزي)", "Name (English)")</span>
+            <InputText @bind-Value="_form.NameEnglish" placeholder="CIB EGP Account" />
+        </label>
+        <label>
+            <span>@Tr("النوع", "Kind")</span>
+            <InputSelect @bind-Value="_form.Kind">
+                <option value="@CashAccountKind.Cash">@Tr("خزينة نقدية", "Cashbox")</option>
+                <option value="@CashAccountKind.Bank">@Tr("حساب بنكي", "Bank account")</option>
+            </InputSelect>
+        </label>
+        <label>
+            <span>@Tr("العملة (3 أحرف)", "Currency (3 letters)")</span>
+            <InputText @bind-Value="_form.Currency" placeholder="EGP" />
+        </label>
+
+        @if (_form.Kind == CashAccountKind.Bank)
+        {
+            <fieldset>
+                <legend>@Tr("بيانات البنك", "Bank metadata")</legend>
+                <label>
+                    <span>@Tr("اسم البنك", "Bank name")</span>
+                    <InputText @bind-Value="_form.BankName" placeholder="Commercial International Bank" />
+                </label>
+                <label>
+                    <span>@Tr("رقم الحساب", "Account number")</span>
+                    <InputText @bind-Value="_form.AccountNumber" />
+                </label>
+                <label>
+                    <span>@Tr("الفرع", "Branch")</span>
+                    <InputText @bind-Value="_form.BranchName" />
+                </label>
+                <label>
+                    <span>@Tr("IBAN / SWIFT", "IBAN / SWIFT")</span>
+                    <InputText @bind-Value="_form.IbanOrSwift" />
+                </label>
+            </fieldset>
+        }
+
+        <button type="submit" class="btn-primary">@Tr("حفظ", "Save")</button>
+    </EditForm>
+</section>

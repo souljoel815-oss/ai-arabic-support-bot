@@ -25,6 +25,30 @@ public sealed class EtaSubmission
     public string? ErrorMessage { get; private set; }
 
     /// <summary>
+    /// P1.3 — long, citable document UUID issued by the regulator
+    /// after server-side validation completes (minutes-to-hours after
+    /// the initial submit returned the short <see cref="SubmissionUuid"/>).
+    /// Populated by the status-polling job when the regulator
+    /// acknowledges the document.
+    /// </summary>
+    public string? RegulatorLongUuid { get; private set; }
+
+    /// <summary>
+    /// P1.3 — when the regulator's acknowledgement was first observed.
+    /// Drives the "acknowledged" badge on the dashboard and stops
+    /// further polling for this row.
+    /// </summary>
+    public DateTime? RegulatorAcknowledgedAtUtc { get; private set; }
+
+    /// <summary>
+    /// P1.3 — when the regulator-side rejection was first observed.
+    /// Distinct from <see cref="LastAttemptAtUtc"/> (which records
+    /// transient transport failures); set only when the regulator
+    /// returns a definitive Rejected verdict via the status API.
+    /// </summary>
+    public DateTime? RegulatorRejectedAtUtc { get; private set; }
+
+    /// <summary>
     /// Wall-clock deadline by which the document MUST be submitted
     /// (default = posted_at + 7 days). The dashboard queries against
     /// this column with an index-friendly range filter.
@@ -77,6 +101,57 @@ public sealed class EtaSubmission
         ErrorMessage = errorMessage;
         LastAttemptAtUtc = nowUtc;
         AttemptCount++;
+    }
+
+    /// <summary>
+    /// P1.3 — record the regulator's positive acknowledgement
+    /// observed by the status-polling job. Idempotent: a second call
+    /// with the same <paramref name="regulatorLongUuid"/> is a no-op
+    /// so the polling job doesn't have to dedupe.
+    /// </summary>
+    public void RecordRegulatorAcknowledgement(string regulatorLongUuid, DateTime nowUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(regulatorLongUuid);
+
+        if (Status != EtaSubmissionStatus.Submitted)
+        {
+            throw new InvalidOperationException(
+                $"EtaSubmission {Id} is in status {Status}; only Submitted rows can be acknowledged.");
+        }
+
+        if (RegulatorAcknowledgedAtUtc is not null
+            && string.Equals(RegulatorLongUuid, regulatorLongUuid, StringComparison.Ordinal))
+        {
+            return; // idempotent
+        }
+
+        RegulatorLongUuid = regulatorLongUuid;
+        RegulatorAcknowledgedAtUtc = nowUtc;
+    }
+
+    /// <summary>
+    /// P1.3 — record a regulator-side rejection observed by the
+    /// status-polling job. Transitions the row from
+    /// <see cref="EtaSubmissionStatus.Submitted"/> to
+    /// <see cref="EtaSubmissionStatus.Failed"/> and marks the
+    /// rejection-by-regulator timestamp so the dashboard can
+    /// distinguish from a transport failure.
+    /// </summary>
+    public void RecordRegulatorRejection(string errorCode, string errorMessage, DateTime nowUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorCode);
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
+
+        if (Status != EtaSubmissionStatus.Submitted)
+        {
+            throw new InvalidOperationException(
+                $"EtaSubmission {Id} is in status {Status}; only Submitted rows can be regulator-rejected.");
+        }
+
+        Status = EtaSubmissionStatus.Failed;
+        ErrorCode = errorCode;
+        ErrorMessage = errorMessage;
+        RegulatorRejectedAtUtc = nowUtc;
     }
 }
 

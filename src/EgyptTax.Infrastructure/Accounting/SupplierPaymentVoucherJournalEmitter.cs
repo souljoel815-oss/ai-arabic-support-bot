@@ -1,9 +1,11 @@
 using EgyptTax.Application.Accounting;
 using EgyptTax.Domain.Accounting;
 using EgyptTax.Domain.Documents;
+using EgyptTax.Domain.MasterData;
 using EgyptTax.Domain.Workflow;
 using EgyptTax.Infrastructure.Persistence;
 using EgyptTax.SharedKernel;
+using Microsoft.EntityFrameworkCore;
 
 namespace EgyptTax.Infrastructure.Accounting;
 
@@ -30,7 +32,7 @@ public sealed class SupplierPaymentVoucherJournalEmitter : ISupplierPaymentVouch
         _db = db;
     }
 
-    public Task EmitForSupplierPaymentAsync(
+    public async Task EmitForSupplierPaymentAsync(
         SupplierPaymentVoucher voucher,
         DateTime postedAtUtc,
         CancellationToken cancellationToken = default
@@ -50,6 +52,22 @@ public sealed class SupplierPaymentVoucherJournalEmitter : ISupplierPaymentVouch
             );
         }
 
+        // P3.1 — multi-cashbox/bank: when the voucher has been pinned
+        // to a specific CashAccount, credit that account's code (e.g.
+        // "1100.02 — CIB EGP") instead of the legacy hard-coded
+        // "1100 Cash" so the trial balance and per-account drill-
+        // down show the right balance per cashbox.
+        var cashAccountCode = ChartOfAccountCodes.Cash;
+        if (voucher.CashAccountId is { } cashId)
+        {
+            cashAccountCode = await _db.Set<CashAccount>()
+                .AsNoTracking()
+                .Where(a => a.Id == cashId)
+                .Select(a => a.AccountCode)
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? ChartOfAccountCodes.Cash;
+        }
+
         var lines = new List<(
             string AccountCode,
             MoneyEgp Debit,
@@ -64,7 +82,7 @@ public sealed class SupplierPaymentVoucherJournalEmitter : ISupplierPaymentVouch
                 $"Payment {voucher.DocumentNumber} — settle supplier"
             ),
             (
-                ChartOfAccountCodes.Cash,
+                cashAccountCode,
                 MoneyEgp.Zero,
                 voucher.NetCashPaid,
                 $"Payment {voucher.DocumentNumber} — cash leg"
@@ -91,6 +109,5 @@ public sealed class SupplierPaymentVoucherJournalEmitter : ISupplierPaymentVouch
         );
 
         _db.Add(entry);
-        return Task.CompletedTask;
     }
 }

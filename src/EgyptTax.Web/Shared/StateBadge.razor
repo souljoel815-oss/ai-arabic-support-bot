@@ -1,7 +1,19 @@
 @using EgyptTax.Domain.Workflow
 
-<span class="state-badge state-@State.ToString().ToLowerInvariant()">@State</span>
+<span class="state-badge state-@State.ToString().ToLowerInvariant()">@StateLabel(State)</span>
 
 @code {
     [Parameter, EditorRequired] public DocumentState State { get; set; }
+
+    private string StateLabel(DocumentState state) => IsArabic
+        ? state switch
+        {
+            DocumentState.Draft => "مسودة",
+            DocumentState.Submitted => "مُرسَل",
+            DocumentState.Approved => "معتمد",
+            DocumentState.Posted => "مُرحَّل",
+            DocumentState.Voided => "مُلغى",
+            _ => state.ToString(),
+        }
+        : state.ToString();
 }

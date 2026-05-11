@@ -1,0 +1,49 @@
+# Keep the build context tight — exclude IDE/CI/local-only artefacts.
+**/bin
+**/obj
+**/.vs
+**/.vscode
+**/.idea
+**/*.user
+**/.DS_Store
+**/node_modules
+**/TestResults
+**/coverage
+**/*.log
+
+# Repos / IDE stuff
+.git
+.github
+.gitignore
+.editorconfig
+
+# Spec Kit + scratch dirs not needed for the runtime build
+.specify
+.claude
+specs/003-crypto-trading-bot
+specs/003-crypto-trading-bot.zip
+specs/005-freelancer-billing-platform
+specs/006-pro-trader-context
+specs/007-fpl-analyzer
+specs/007-fpl-analyzer.rar
+specs/fantasy
+src/003-crypto-trading-bot
+src/trading_bot
+src/trading_bot.egg-info
+src/src.zip
+publish
+installer-inno
+migrations
+tests
+alembic.ini
+pyproject.toml
+
+# Big binaries
+**/*.zip
+**/*.rar
+**/*.msi
+**/*.exe
+
+# Don't ship the local Windows installer projects either
+src/EgyptTax.Bootstrapper
+src/EgyptTax.Installer

@@ -5,12 +5,15 @@
     <component>) inherits the correct script direction. Cookie-based
     request culture (set in Program.cs via UseRequestLocalization)
     flips this between Arabic (rtl) and English (ltr).
+    BodyClass ViewData lets Razor Pages opt into specialized body
+    layouts (e.g. "auth-page" for login/MFA full-screen centered).
 *@
 @using System.Globalization
 @{
     var culture = CultureInfo.CurrentCulture;
     var dir = culture.TextInfo.IsRightToLeft ? "rtl" : "ltr";
     var lang = string.IsNullOrEmpty(culture.TwoLetterISOLanguageName) ? "en" : culture.TwoLetterISOLanguageName;
+    var bodyClass = ViewData["BodyClass"] as string ?? "";
 }
 <!DOCTYPE html>
 <html lang="@lang" dir="@dir">
@@ -18,10 +21,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="~/" />
-    <title>EgyptTax</title>
-    <link rel="stylesheet" href="~/site.css" />
+    <title>@(ViewData["Title"] ?? "EgyptTax") — EgyptTax</title>
+    <link rel="stylesheet" href="~/site.css" asp-append-version="true" />
 </head>
-<body>
+<body class="@bodyClass">
     @RenderBody()
 
     <div id="blazor-error-ui" hidden>

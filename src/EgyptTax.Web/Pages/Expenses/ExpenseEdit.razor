@@ -19,26 +19,28 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>@(_isNew ? "New expense" : "Edit expense")</h1>
+<h1>@(_isNew ? (IsArabic ? "مصروف جديد" : "New expense") : (IsArabic ? "تعديل مصروف" : "Edit expense"))</h1>
 
 @if (_loading)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 @if (!_isNew && _expense is null)
 {
-    <div class="flash-error">Expense not found.</div>
+    <div class="flash-error">@(IsArabic ? "المصروف غير موجود." : "Expense not found.")</div>
     return;
 }
 
 @if (!_isNew && _expense!.State != DocumentState.Draft)
 {
     <div class="flash-error">
-        Expense @_expense.DocumentNumber is in state @_expense.State; only drafts are editable (FR-027).
+        @(IsArabic
+            ? $"المصروف {_expense.DocumentNumber} في حالة {_expense.State}؛ المسودات فقط قابلة للتعديل (FR-027)."
+            : $"Expense {_expense.DocumentNumber} is in state {_expense.State}; only drafts are editable (FR-027).")
     </div>
-    <a href="/expenses/@_expense.Id">← View expense</a>
+    <a href="/expenses/@_expense.Id">← @(IsArabic ? "عرض المصروف" : "View expense")</a>
     return;
 }
 
@@ -52,57 +54,57 @@
     <ValidationSummary />
 
     <fieldset>
-        <legend>Expense</legend>
+        <legend>@(IsArabic ? "المصروف" : "Expense")</legend>
         <label>
-            <span>Date</span>
+            <span>@(IsArabic ? "التاريخ" : "Date")</span>
             <InputDate @bind-Value="_form.DocumentDate" />
         </label>
         <label>
-            <span>Category</span>
+            <span>@(IsArabic ? "الفئة" : "Category")</span>
             <InputSelect @bind-Value="_form.CategoryId" @bind-Value:after="OnCategoryChanged">
-                <option value="@Guid.Empty">— select —</option>
+                <option value="@Guid.Empty">— @(IsArabic ? "اختر" : "select") —</option>
                 @foreach (var c in _categories)
                 {
-                    <option value="@c.Id">@c.Code — @c.Name.English (@(c.DefaultDeductible ? "deductible by default" : "non-deductible by default"))</option>
+                    <option value="@c.Id">@c.Code — @(IsArabic ? c.Name.Arabic : c.Name.English) (@(c.DefaultDeductible ? (IsArabic ? "قابل للخصم افتراضياً" : "deductible by default") : (IsArabic ? "غير قابل للخصم افتراضياً" : "non-deductible by default")))</option>
                 }
             </InputSelect>
         </label>
         <label>
-            <span>Amount (EGP)</span>
+            <span>@(IsArabic ? "المبلغ (ج.م.)" : "Amount (EGP)")</span>
             <InputNumber @bind-Value="_form.Amount" step="0.01" />
         </label>
         <label>
-            <span>Deductible (input VAT recoverable per FR-015)</span>
+            <span>@(IsArabic ? "قابل للخصم (ضريبة المدخلات قابلة للاسترداد وفقاً لـ FR-015)" : "Deductible (input VAT recoverable per FR-015)")</span>
             <InputCheckbox @bind-Value="_form.DeductibleFlag" />
         </label>
         <label>
-            <span>Description (English)</span>
+            <span>@(IsArabic ? "الوصف (إنجليزي)" : "Description (English)")</span>
             <InputTextArea @bind-Value="_form.DescriptionEnglish" rows="3" />
         </label>
         <label>
-            <span>Description (Arabic)</span>
+            <span>@(IsArabic ? "الوصف (عربي)" : "Description (Arabic)")</span>
             <InputTextArea @bind-Value="_form.DescriptionArabic" rows="3" dir="rtl" />
         </label>
     </fieldset>
 
-    <button type="submit">@(_isNew ? "Save draft" : "Update draft")</button>
-    <a href="/expenses">Cancel</a>
+    <button type="submit">@(_isNew ? (IsArabic ? "حفظ المسودة" : "Save draft") : (IsArabic ? "تحديث المسودة" : "Update draft"))</button>
+    <a href="/expenses">@(IsArabic ? "إلغاء" : "Cancel")</a>
 </EditForm>
 
 @if (!_isNew && _expense is not null)
 {
     <section class="upload-section">
-        <h2>Attachments (FR-016 — required if deductible)</h2>
+        <h2>@(IsArabic ? "المرفقات (FR-016 — مطلوبة عند القابلية للخصم)" : "Attachments (FR-016 — required if deductible)")</h2>
         @if (_attachments.Count == 0)
         {
-            <p><em>No attachments yet.</em></p>
+            <p><em>@(IsArabic ? "لا توجد مرفقات بعد." : "No attachments yet.")</em></p>
         }
         else
         {
             <ul>
                 @foreach (var a in _attachments)
                 {
-                    <li>@a.FilenameOriginal — @a.MimeType — @a.SizeBytes.ToString("N0") bytes</li>
+                    <li>@a.FilenameOriginal — @a.MimeType — @a.SizeBytes.ToString("N0") @(IsArabic ? "بايت" : "bytes")</li>
                 }
             </ul>
         }
@@ -110,7 +112,7 @@
         <InputFile OnChange="OnUploadAsync" accept=".pdf,.jpg,.jpeg,.png" disabled="@_uploading" />
         @if (_uploading)
         {
-            <span> Uploading…</span>
+            <span> @(IsArabic ? "جارٍ الرفع…" : "Uploading…")</span>
         }
     </section>
 }
@@ -178,13 +180,13 @@
     {
         if (_form.CategoryId == Guid.Empty)
         {
-            _flash = "Select an expense category.";
+            _flash = IsArabic ? "اختر فئة مصروف." : "Select an expense category.";
             _flashClass = "flash-error";
             return;
         }
         if (_form.Amount <= 0m)
         {
-            _flash = "Amount must be positive.";
+            _flash = IsArabic ? "يجب أن يكون المبلغ موجباً." : "Amount must be positive.";
             _flashClass = "flash-error";
             return;
         }
@@ -210,7 +212,7 @@
         live.UpdateDescription(description);
         await Db.SaveChangesAsync();
 
-        _flash = "Draft saved.";
+        _flash = IsArabic ? "تم حفظ المسودة." : "Draft saved.";
         _flashClass = "flash-success";
     }
 
@@ -241,7 +243,7 @@
                 .Where(a => a.DocumentId == _expense.Id
                     && a.DocumentType == DocumentType.Expense)
                 .OrderBy(a => a.UploadedAtUtc).ToListAsync();
-            _flash = $"Uploaded {file.Name}.";
+            _flash = IsArabic ? $"تم رفع {file.Name}." : $"Uploaded {file.Name}.";
             _flashClass = "flash-success";
         }
         catch (Exception ex)

@@ -1,0 +1,349 @@
+@page "/penalty-shield"
+@using System.Globalization
+@using EgyptTax.Application.Compliance.PenaltyShield
+@using EgyptTax.Application.Compliance.PreFlight
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IPenaltyExposureQuery Query
+@inject IDbContextFactory<AppDbContext> DbFactory
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "درع الغرامات | DaftarX" : "Penalty Shield | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private PenaltyExposureReport? _report;
+
+    // P1.7 — Pre-flight stats. Pre-submission errors are upstream of
+    // the penalty clock: every blocked invoice that ages out becomes
+    // a Tier-2/3 fine. Surface them here so operators triage them
+    // alongside the late-submission queue.
+    private int _preflightInvoicesWithErrors;
+    private int _preflightTotalErrorCount;
+    private int _preflightInvoicesScanned;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _report = await Query.GetAsync(DateTime.UtcNow);
+        await ComputePreFlightStatsAsync();
+    }
+
+    private async Task ComputePreFlightStatsAsync()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var unposted = await db.Set<SalesInvoice>()
+                .Include(i => i.Lines)
+                .AsNoTracking()
+                .Where(i => i.State == DocumentState.Draft
+                         || i.State == DocumentState.Submitted
+                         || i.State == DocumentState.Approved)
+                .ToListAsync();
+            _preflightInvoicesScanned = unposted.Count;
+            foreach (var inv in unposted)
+            {
+                var findings = PreFlightValidator.Validate(inv);
+                var errCount = findings.Count(f => f.Severity == FindingSeverity.Error);
+                if (errCount > 0)
+                {
+                    _preflightInvoicesWithErrors++;
+                    _preflightTotalErrorCount += errCount;
+                }
+            }
+        }
+        catch
+        {
+            // Decorative KPI — never break the dashboard if scan fails.
+        }
+    }
+
+    private string TierLabel(PenaltyTier t) => IsArabic
+        ? t switch
+        {
+            PenaltyTier.Clear   => "آمن",
+            PenaltyTier.Warning => "تحذير",
+            PenaltyTier.Tier2   => "المستوى 2",
+            PenaltyTier.Tier3   => "المستوى 3",
+            _ => t.ToString(),
+        }
+        : t.ToString();
+
+    private string TierTone(PenaltyTier t) => t switch
+    {
+        PenaltyTier.Clear   => "kpi-success",
+        PenaltyTier.Warning => "kpi-warning",
+        PenaltyTier.Tier2   => "kpi-warning",
+        PenaltyTier.Tier3   => "kpi-danger",
+        _ => "",
+    };
+
+    private string TierIconName(PenaltyTier t) => t switch
+    {
+        PenaltyTier.Clear   => "shield-check",
+        PenaltyTier.Warning => "shield",
+        PenaltyTier.Tier2   => "shield-alert",
+        PenaltyTier.Tier3   => "alert-triangle",
+        _ => "shield",
+    };
+
+    private string TierExplanation(PenaltyTier t) => IsArabic
+        ? t switch
+        {
+            PenaltyTier.Clear   => "كل فواتيرك مُرسَلة في الميعاد. لا توجد غرامات متراكمة.",
+            PenaltyTier.Warning => "في فاتورة متأخرة واحدة. الإرسال المتأخر القادم بيدخّلك المستوى 2 (5,000 ج.م./فاتورة).",
+            PenaltyTier.Tier2   => "أنت في المستوى 2: 5,000 ج.م. لكل فاتورة متأخرة، بحد أقصى 50,000 ج.م./شهر. عشرة تأخيرات + بتدخل المستوى 3.",
+            PenaltyTier.Tier3   => "أنت في المستوى 3: 10,000 ج.م. لكل فاتورة متأخرة بدون سقف، مع تهديد بإيقاف B2B. اعمل أولوية للإرسال فوراً.",
+            _ => "",
+        }
+        : t switch
+        {
+            PenaltyTier.Clear   => "All invoices submitted on time. No fines accruing.",
+            PenaltyTier.Warning => "One late invoice. Next late submission moves you to Tier 2 (5,000 EGP per invoice).",
+            PenaltyTier.Tier2   => "You're in Tier 2: 5,000 EGP per late invoice, capped at 50,000 EGP/month. 10 late submissions escalates to Tier 3.",
+            PenaltyTier.Tier3   => "You're in Tier 3: 10,000 EGP per late invoice with NO cap, plus B2B suspension threat. Prioritize submissions now.",
+            _ => "",
+        };
+
+    private string UrgencyLabel(PenaltyActionUrgency u) => IsArabic
+        ? u switch
+        {
+            PenaltyActionUrgency.Overdue  => "متأخّر",
+            PenaltyActionUrgency.Critical => "حرج",
+            PenaltyActionUrgency.Soon     => "قريب",
+            _ => u.ToString(),
+        }
+        : u.ToString();
+
+    private string UrgencyClass(PenaltyActionUrgency u) => u switch
+    {
+        PenaltyActionUrgency.Overdue  => "row-overdue",
+        PenaltyActionUrgency.Critical => "row-critical",
+        PenaltyActionUrgency.Soon     => "row-warning",
+        _ => "",
+    };
+}
+
+<h1>@(IsArabic ? "🛡️ درع الغرامات" : "🛡️ Penalty Shield")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "تتبّع لحظي للغرامات المحتملة من مصلحة الضرائب على فواتير متأخرة. وفّر غرامة واحدة شهرياً = البرنامج دفع نفسه."
+        : "Real-time tracking of potential ETA fines on late invoices. Avoid one fine per month — the product pays for itself.")
+</p>
+
+@if (_report is null)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<!-- Tier banner -->
+<div class="period-banner @(_report.CurrentTier == PenaltyTier.Tier3 ? "is-locked" : "")"
+     style="@(_report.CurrentTier == PenaltyTier.Clear ? "" : (_report.CurrentTier == PenaltyTier.Tier3 ? "border-inline-start-color: var(--danger); background: var(--danger-soft);" : "border-inline-start-color: var(--warning); background: var(--warning-soft);"))">
+    <div class="pb-icon">
+        <Icon Name="@TierIconName(_report.CurrentTier)" Class="ic" />
+    </div>
+    <div>
+        <div class="pb-title">
+            @(IsArabic ? "الحالة الحالية:" : "Current status:") @TierLabel(_report.CurrentTier)
+        </div>
+        <div class="pb-meta">@TierExplanation(_report.CurrentTier)</div>
+    </div>
+    <div class="pb-actions">
+        <a href="eta-dashboard" class="btn-secondary"><Icon Name="shield" Class="ic" />@(IsArabic ? "افتح لوحة الفاتورة الإلكترونية" : "Open ETA dashboard")</a>
+    </div>
+</div>
+
+<!-- KPI grid -->
+<section class="kpi-grid">
+    <div class="kpi-card @TierTone(_report.CurrentTier)">
+        <div class="kpi-label"><Icon Name="alert-triangle" Class="ic" />@(IsArabic ? "غرامة الشهر المتوقعة" : "Projected this month")</div>
+        <div class="kpi-value">@_report.ProjectedThisMonthEgp.ToString("N0")<span class="kpi-unit">@(IsArabic ? "ج.م." : "EGP")</span></div>
+        <div class="kpi-meta">
+            @if (_report.LateThisMonth > 0)
+            {
+                @(IsArabic ? $"{_report.LateThisMonth} تأخير هذا الشهر" : $"{_report.LateThisMonth} late this month")
+            }
+            else
+            {
+                @(IsArabic ? "صفر تأخيرات الشهر — أحسن الأحوال" : "Zero late this month — best case")
+            }
+        </div>
+    </div>
+
+    <div class="kpi-card kpi-success">
+        <div class="kpi-label"><Icon Name="shield-check" Class="ic" />@(IsArabic ? "تقدر توفر النهارده" : "Avoidable today")</div>
+        <div class="kpi-value">@_report.AvoidableIfActedTodayEgp.ToString("N0")<span class="kpi-unit">@(IsArabic ? "ج.م." : "EGP")</span></div>
+        <div class="kpi-meta">
+            @(IsArabic ? "بإرسال الفواتير اللي لسه في وقتها" : "By submitting invoices still in window")
+        </div>
+    </div>
+
+    <div class="kpi-card @(_report.CriticalNext24h > 0 ? "kpi-danger" : "kpi-success")">
+        <div class="kpi-label"><Icon Name="zap" Class="ic" />@(IsArabic ? "حرج خلال 24 ساعة" : "Critical (< 24h)")</div>
+        <div class="kpi-value">@_report.CriticalNext24h<span class="kpi-unit">@(IsArabic ? "فاتورة" : "invoices")</span></div>
+        <div class="kpi-meta">
+            @if (_report.CriticalNext24h > 0)
+            {
+                <span class="kpi-trend-down">@(IsArabic ? "ابعت دلوقتي ←" : "Submit now →")</span>
+            }
+            else
+            {
+                @(IsArabic ? "لا يوجد ما هو حرج" : "Nothing critical")
+            }
+        </div>
+    </div>
+
+    <div class="kpi-card @(_report.CriticalNext7d > _report.CriticalNext24h ? "kpi-warning" : "kpi-success")">
+        <div class="kpi-label"><Icon Name="calendar" Class="ic" />@(IsArabic ? "خلال 7 أيام" : "Within 7 days")</div>
+        <div class="kpi-value">@_report.CriticalNext7d<span class="kpi-unit">@(IsArabic ? "فاتورة" : "invoices")</span></div>
+        <div class="kpi-meta">
+            @(IsArabic ? "تحتاج إرسال قبل نهاية الأسبوع" : "Need submission this week")
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-label"><Icon Name="activity" Class="ic" />@(IsArabic ? "تأخيرات آخر 12 شهر" : "Late in trailing 12mo")</div>
+        <div class="kpi-value">@_report.LateInRollingWindow<span class="kpi-unit">@(IsArabic ? "تأخير" : "late")</span></div>
+        <div class="kpi-meta">
+            @(IsArabic ? $"{PenaltyRegime.Tier3LateThreshold} تأخير + يدخّلك المستوى 3" : $"{PenaltyRegime.Tier3LateThreshold}+ late escalates to Tier 3")
+        </div>
+    </div>
+
+    @* P1.7 — Pre-flight blockers. Drafts/Submitted/Approved invoices
+       that fail local validation can't reach ETA, so they accumulate
+       toward the late-submission cliff. *@
+    <div class="kpi-card @(_preflightInvoicesWithErrors > 0 ? "kpi-warning" : "kpi-success")">
+        <div class="kpi-label"><Icon Name="x-octagon" Class="ic" />@(IsArabic ? "فواتير محجوزة بأخطاء فحص" : "Blocked by pre-flight")</div>
+        <div class="kpi-value">@_preflightInvoicesWithErrors<span class="kpi-unit">@(IsArabic ? "فاتورة" : "invoices")</span></div>
+        <div class="kpi-meta">
+            @if (_preflightInvoicesWithErrors > 0)
+            {
+                @(IsArabic
+                    ? $"{_preflightTotalErrorCount} خطأ يحتاج تصحيح قبل الإرسال إلى ETA"
+                    : $"{_preflightTotalErrorCount} error{(_preflightTotalErrorCount == 1 ? "" : "s")} to fix before ETA submission")
+            }
+            else if (_preflightInvoicesScanned > 0)
+            {
+                @(IsArabic
+                    ? $"كل {_preflightInvoicesScanned} فاتورة غير مرحّلة جاهزة للإرسال"
+                    : $"All {_preflightInvoicesScanned} unposted invoices are ETA-ready")
+            }
+            else
+            {
+                @(IsArabic ? "لا توجد فواتير غير مرحّلة" : "No unposted invoices")
+            }
+        </div>
+    </div>
+</section>
+
+<!-- Action queue -->
+<h2>@(IsArabic ? "قائمة العمل ذات الأولوية" : "Prioritised work queue")</h2>
+<p class="page-subtitle" style="margin-bottom:16px;">
+    @(IsArabic
+        ? "اضغط على أي فاتورة لفتحها وإعادة إرسالها. الترتيب يبدأ بالأكثر إلحاحاً."
+        : "Click any invoice to open and resubmit. Sorted by deadline urgency.")
+</p>
+
+@if (_report.WorkQueue.Count == 0)
+{
+    <div class="activity-feed">
+        <div class="activity-item" style="border-bottom:none;">
+            <div class="activity-icon tone-success"><Icon Name="check-circle" Class="ic" /></div>
+            <div class="activity-content">
+                @(IsArabic ? "كل الفواتير مُرسَلة في الميعاد. لا حاجة لأي إجراء." : "All invoices submitted on time. Nothing to action.")
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>@(IsArabic ? "الإلحاح" : "Urgency")</th>
+                <th>@(IsArabic ? "رقم الفاتورة" : "Invoice #")</th>
+                <th>@(IsArabic ? "الموعد النهائي" : "Deadline (UTC)")</th>
+                <th class="num">@(IsArabic ? "الساعات المتبقية" : "Hours left")</th>
+                <th class="num">@(IsArabic ? "إجمالي الفاتورة" : "Invoice total")</th>
+                <th class="num">@(IsArabic ? "الغرامة المتجنّبة" : "Avoidable fine")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in _report.WorkQueue)
+            {
+                <tr class="@UrgencyClass(item.Urgency)">
+                    <td>
+                        <span class="state-badge @(item.Urgency == PenaltyActionUrgency.Overdue ? "state-rejected" : item.Urgency == PenaltyActionUrgency.Critical ? "state-approved" : "state-submitted")">
+                            @UrgencyLabel(item.Urgency)
+                        </span>
+                    </td>
+                    <td><a href="invoices/@item.SalesInvoiceId">@(item.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)"))</a></td>
+                    <td>@item.DeadlineUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td class="num">@item.HoursUntilDeadline.ToString("0.#")</td>
+                    <td class="num">@item.GrandTotalEgp.ToString("N2") @(IsArabic ? "ج.م." : "EGP")</td>
+                    <td class="num" style="font-weight:700;color:@(item.AvoidableFineEgp > 0 ? "var(--success-text)" : "var(--text-muted)")">
+                        @if (item.AvoidableFineEgp > 0)
+                        {
+                            <text>@item.AvoidableFineEgp.ToString("N0") @(IsArabic ? "ج.م." : "EGP")</text>
+                        }
+                        else
+                        {
+                            <text>—</text>
+                        }
+                    </td>
+                    <td>
+                        <a href="invoices/@item.SalesInvoiceId" class="btn-secondary">
+                            <Icon Name="arrow-right" Class="ic" />@(IsArabic ? "افتح" : "Open")
+                        </a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<!-- Educational footer -->
+<section style="margin-top:48px; background: var(--surface); border:1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-xs);">
+    <h3 style="margin-top:0;"><Icon Name="book" Class="ic" /> @(IsArabic ? "نظام الغرامات المصري (Resolution 281/2025)" : "Egyptian Penalty Regime (Resolution 281/2025)")</h3>
+    <table class="data-grid" style="margin-top:12px;">
+        <thead>
+            <tr>
+                <th>@(IsArabic ? "المستوى" : "Tier")</th>
+                <th>@(IsArabic ? "الغرامة" : "Fine")</th>
+                <th>@(IsArabic ? "السقف" : "Cap")</th>
+                <th>@(IsArabic ? "العتبة" : "Threshold")</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong style="color:var(--success);">@(IsArabic ? "آمن" : "Clear")</strong></td>
+                <td>@(IsArabic ? "بدون غرامة" : "No fine")</td>
+                <td>—</td>
+                <td>@(IsArabic ? "صفر تأخير" : "Zero late")</td>
+            </tr>
+            <tr>
+                <td><strong style="color:var(--warning);">@(IsArabic ? "تحذير" : "Warning")</strong></td>
+                <td>@(IsArabic ? "بدون غرامة" : "No fine")</td>
+                <td>—</td>
+                <td>@(IsArabic ? "تأخير واحد" : "1 late")</td>
+            </tr>
+            <tr>
+                <td><strong style="color:var(--warning-text);">@(IsArabic ? "المستوى 2" : "Tier 2")</strong></td>
+                <td>@(IsArabic ? "5,000 ج.م./فاتورة" : "5,000 EGP / invoice")</td>
+                <td>@(IsArabic ? "50,000 ج.م./شهر" : "50,000 EGP/month")</td>
+                <td>@(IsArabic ? $"{PenaltyRegime.Tier2LateThreshold}+ تأخير في 12 شهر" : $"{PenaltyRegime.Tier2LateThreshold}+ late in 12mo")</td>
+            </tr>
+            <tr>
+                <td><strong style="color:var(--danger);">@(IsArabic ? "المستوى 3" : "Tier 3")</strong></td>
+                <td>@(IsArabic ? "10,000 ج.م./فاتورة" : "10,000 EGP / invoice")</td>
+                <td>@(IsArabic ? "بدون سقف + تهديد إيقاف B2B" : "NO cap + B2B suspension")</td>
+                <td>@(IsArabic ? $"{PenaltyRegime.Tier3LateThreshold}+ تأخير في 12 شهر" : $"{PenaltyRegime.Tier3LateThreshold}+ late in 12mo")</td>
+            </tr>
+        </tbody>
+    </table>
+</section>

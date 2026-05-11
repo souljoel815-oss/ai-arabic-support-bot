@@ -1,0 +1,180 @@
+@page "/reports/turnover-tax"
+@using System.Globalization
+@using EgyptTax.Application.Tax
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "ضريبة معدل الدوران (قانون 6/2025) | DaftarX" : "Turnover Tax (Law 6/2025) | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private Company? _company;
+    private int _year = DateTime.UtcNow.Year;
+    private decimal _annualRevenueEgp;
+    private TurnoverTaxResult? _result;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _company = await db.Set<Company>().AsNoTracking().FirstOrDefaultAsync();
+
+            var from = new DateOnly(_year, 1, 1);
+            var to = new DateOnly(_year, 12, 31);
+            _annualRevenueEgp = await db.Set<SalesInvoice>()
+                .AsNoTracking()
+                .Where(i => i.State == DocumentState.Posted
+                         && i.DocumentDate >= from && i.DocumentDate <= to
+                         && !i.IsCreditNote)
+                .SumAsync(i => (decimal?)i.GrandTotal.Amount) ?? 0m;
+
+            _result = TurnoverTaxBracketCalculator.Compute(_annualRevenueEgp);
+        }
+        catch
+        {
+            // Decorative report — never break the page if a query fails.
+        }
+    }
+
+    private async Task OnYearChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var y) && y is >= 2020 and <= 2100)
+        {
+            _year = y;
+            await LoadAsync();
+        }
+    }
+}
+
+<h1>@(IsArabic ? "📊 ضريبة معدل الدوران — قانون 6 لسنة 2025" : "📊 Turnover Tax — Law 6 of 2025")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "النظام المبسّط للمنشآت الصغيرة (تحت 15 مليون ج.م. سنوياً) — معدل ثابت على إجمالي الإيرادات بدلاً من حساب ضريبة الدخل التقليدي."
+        : "Simplified regime for small enterprises (annual revenue under EGP 15M) — flat-rate tax on gross revenue instead of full corporate income tax.")
+</p>
+
+@if (_company is null)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+@if (_company.TaxRegime != TaxRegime.Law6Simplified)
+{
+    <div class="reverse-charge-banner">
+        <Icon Name="info" Class="ic" />
+        <div>
+            <div><strong>@Tr("الشركة في النظام الضريبي القياسي حالياً", "Company is on the Standard regime")</strong></div>
+            <div class="reverse-charge-meta">
+                @Tr("التقدير أدناه يبيّن قيمة الضريبة لو تحوّلت للنظام المبسّط (قانون 6/2025). للتحويل، اذهب إلى إعدادات الشركة.",
+                    "The estimate below shows what your tax would be if you switched to the Law 6/2025 simplified regime. To switch, go to Company Settings.")
+            </div>
+        </div>
+    </div>
+}
+
+<div class="invoice-toolbar" style="margin-top:24px;">
+    <label>
+        <span>@Tr("السنة", "Year")</span>
+        <input type="number" min="2020" max="2100" value="@_year" @onchange="OnYearChange" style="width:120px;" />
+    </label>
+</div>
+
+<section class="kpi-grid" style="margin-top:24px;">
+    <div class="kpi-card">
+        <div class="kpi-label"><Icon Name="trending-up" Class="ic" />@Tr("إجمالي الإيرادات السنوية", "Annual revenue")</div>
+        <div class="kpi-value">@_annualRevenueEgp.ToString("N0")<span class="kpi-unit">@Tr("ج.م.", "EGP")</span></div>
+        <div class="kpi-meta">@Tr($"السنة المالية {_year} (الفواتير المرحّلة فقط)", $"FY {_year} (posted invoices only)")</div>
+    </div>
+
+    @if (_result is { } r)
+    {
+        <div class="kpi-card kpi-success">
+            <div class="kpi-label"><Icon Name="percent" Class="ic" />@Tr("النسبة المطبّقة", "Applied rate")</div>
+            <div class="kpi-value">@r.AppliedRatePercent.ToString("0.##")<span class="kpi-unit">%</span></div>
+            <div class="kpi-meta">@Tr($"الشريحة حتى {r.BracketCeilingEgp:N0} ج.م.", $"Bracket up to {r.BracketCeilingEgp:N0} EGP")</div>
+        </div>
+
+        <div class="kpi-card @(_company.TaxRegime == TaxRegime.Law6Simplified ? "kpi-warning" : "kpi-info")">
+            <div class="kpi-label"><Icon Name="receipt" Class="ic" />@Tr("الضريبة المستحقة (تقدير)", "Estimated tax owed")</div>
+            <div class="kpi-value">@r.TaxOwedEgp.ToString("N0")<span class="kpi-unit">@Tr("ج.م.", "EGP")</span></div>
+            <div class="kpi-meta">
+                @if (_company.TaxRegime == TaxRegime.Law6Simplified)
+                {
+                    <text>@Tr("تُقدَّم سنوياً مع الإقرار", "Filed annually with the tax return")</text>
+                }
+                else
+                {
+                    <text>@Tr("لو تحوّلت للنظام المبسّط", "If you switched to the simplified regime")</text>
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="kpi-card kpi-danger">
+            <div class="kpi-label"><Icon Name="alert-triangle" Class="ic" />@Tr("غير مؤهّل", "Not eligible")</div>
+            <div class="kpi-value">—</div>
+            <div class="kpi-meta">
+                @Tr($"الإيرادات تخطّت سقف {TurnoverTaxBracketCalculator.EligibilityCapEgp:N0} ج.م. — استخدم النظام القياسي.",
+                    $"Revenue exceeds the EGP {TurnoverTaxBracketCalculator.EligibilityCapEgp:N0} cap — use the Standard regime.")
+            </div>
+        </div>
+    }
+</section>
+
+<h2 style="margin-top:32px;">@Tr("شرائح ضريبة معدل الدوران", "Turnover tax brackets")</h2>
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th>@Tr("الشريحة", "Bracket")</th>
+            <th class="num">@Tr("سقف الإيرادات (ج.م.)", "Upper bound (EGP)")</th>
+            <th class="num">@Tr("النسبة", "Rate")</th>
+        </tr>
+    </thead>
+    <tbody>
+        @{ var prevCeiling = 0m; var idx = 1; }
+        @foreach (var b in TurnoverTaxBracketCalculator.Brackets)
+        {
+            var isCurrent = _result is { } rr && b.UpperBoundEgp == rr.BracketCeilingEgp;
+            <tr class="@(isCurrent ? "row-warning" : "")">
+                <td>@idx</td>
+                <td class="num">@prevCeiling.ToString("N0") — @b.UpperBoundEgp.ToString("N0")</td>
+                <td class="num"><strong>@b.RatePercent.ToString("0.##")%</strong></td>
+            </tr>
+            prevCeiling = b.UpperBoundEgp;
+            idx++;
+        }
+        <tr>
+            <td>@idx</td>
+            <td class="num">> @TurnoverTaxBracketCalculator.EligibilityCapEgp.ToString("N0")</td>
+            <td class="num"><strong>@Tr("غير مؤهّل (استخدم النظام القياسي)", "Ineligible (use Standard)")</strong></td>
+        </tr>
+    </tbody>
+</table>
+
+<section style="margin-top:48px; background: var(--surface); border:1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-xs);">
+    <h3 style="margin-top:0;"><Icon Name="book" Class="ic" /> @Tr("ليه قانون 6 لسنة 2025؟", "Why Law 6 of 2025?")</h3>
+    <ul style="margin:8px 0;padding-inline-start:20px;line-height:1.8;color:var(--text-muted);">
+        <li>@Tr("معدل ثابت على الإيرادات (0.4% - 1.5%) أبسط من حساب صافي الربح + ضريبة دخل 22.5%.",
+              "A flat rate on revenue (0.4%-1.5%) is much simpler than computing net profit + 22.5% income tax.")</li>
+        <li>@Tr("VAT شهري بدل ربع سنوي — شغل أقل ولكن السيولة أحسن.",
+              "Quarterly VAT (not monthly) reduces filing burden and improves cash flow.")</li>
+        <li>@Tr("للمنشآت تحت 15 مليون ج.م. فقط — التحويل اختياري لكن ينفع غالباً.",
+              "Available only to enterprises under EGP 15M — optional but usually beneficial for those who qualify.")</li>
+    </ul>
+</section>

@@ -1,0 +1,221 @@
+@page "/payments/bank-statements/import"
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using EgyptTax.Domain.Banking
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "استيراد كشف بنك | DaftarX" : "Import Bank Statement | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<CashAccount> _accounts = new();
+    private HeaderModel _header = new() { PeriodStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1), PeriodEnd = DateTime.UtcNow.Date };
+    private List<LineModel> _lines = new() { new LineModel { TransactionDate = DateTime.UtcNow.Date } };
+    private string? _flash;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _accounts = await db.Set<CashAccount>().AsNoTracking()
+            .Where(a => a.Status == CashAccountStatus.Active)
+            .OrderByDescending(a => a.IsDefault).ThenBy(a => a.AccountCode)
+            .ToListAsync();
+        _header.CashAccountId = _accounts.FirstOrDefault(a => a.IsDefault)?.Id ?? Guid.Empty;
+    }
+
+    private void AddLine() => _lines.Add(new LineModel { TransactionDate = _header.PeriodStart });
+
+    private void RemoveLine(LineModel line) => _lines.Remove(line);
+
+    private async Task SaveAsync()
+    {
+        _flash = null;
+        _saving = true;
+        try
+        {
+            if (_header.CashAccountId == Guid.Empty)
+            {
+                _flash = Tr("اختر حساب بنكي.", "Pick a cash/bank account.");
+                return;
+            }
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var statement = new BankStatement(
+                cashAccountId: _header.CashAccountId,
+                periodStart: DateOnly.FromDateTime(_header.PeriodStart),
+                periodEnd: DateOnly.FromDateTime(_header.PeriodEnd),
+                openingBalance: MoneyEgp.From(_header.OpeningBalance),
+                closingBalance: MoneyEgp.From(_header.ClosingBalance),
+                sourceFileName: _header.SourceFileName ?? "manual-entry",
+                importedAtUtc: DateTime.UtcNow);
+
+            foreach (var l in _lines.Where(l => l.Debit > 0m || l.Credit > 0m))
+            {
+                statement.AddLine(
+                    transactionDate: DateOnly.FromDateTime(l.TransactionDate),
+                    description: l.Description ?? "",
+                    debit: MoneyEgp.From(l.Debit),
+                    credit: MoneyEgp.From(l.Credit),
+                    runningBalance: MoneyEgp.From(l.RunningBalance),
+                    bankReference: string.IsNullOrWhiteSpace(l.BankReference) ? null : l.BankReference);
+            }
+
+            db.Add(statement);
+            await db.SaveChangesAsync();
+            Nav.NavigateTo("/payments/bank-statements");
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private decimal ImpliedClosing()
+    {
+        var creditSum = _lines.Sum(l => l.Credit);
+        var debitSum = _lines.Sum(l => l.Debit);
+        return _header.OpeningBalance + creditSum - debitSum;
+    }
+
+    private sealed class HeaderModel
+    {
+        public Guid CashAccountId { get; set; }
+        public DateTime PeriodStart { get; set; }
+        public DateTime PeriodEnd { get; set; }
+        public decimal OpeningBalance { get; set; }
+        public decimal ClosingBalance { get; set; }
+        public string? SourceFileName { get; set; }
+    }
+
+    private sealed class LineModel
+    {
+        public DateTime TransactionDate { get; set; }
+        public string? Description { get; set; }
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+        public decimal RunningBalance { get; set; }
+        public string? BankReference { get; set; }
+    }
+}
+
+<h1>@(IsArabic ? "📥 استيراد كشف بنك (إدخال يدوي)" : "📥 Import Bank Statement (manual entry)")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "أدخل بيانات الكشف يدوياً (parsing الـ PDFs ييجي في إصدار قادم)."
+        : "Enter the statement manually (PDF parsing ships in a later release).")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="flash-error" style="margin-top:16px;">@_flash</div>
+}
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("بيانات الكشف", "Statement header")</h2>
+    <div class="form-grid">
+        <label>
+            <span>@Tr("الحساب", "Account")</span>
+            <select @bind="_header.CashAccountId">
+                @foreach (var a in _accounts)
+                {
+                    <option value="@a.Id">@a.AccountCode — @(IsArabic ? a.Name.Arabic : a.Name.English)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@Tr("الفترة (من)", "Period start")</span>
+            <input type="date" @bind="_header.PeriodStart" />
+        </label>
+        <label>
+            <span>@Tr("الفترة (إلى)", "Period end")</span>
+            <input type="date" @bind="_header.PeriodEnd" />
+        </label>
+        <label>
+            <span>@Tr("الرصيد الافتتاحي", "Opening balance")</span>
+            <input type="number" step="0.01" @bind="_header.OpeningBalance" />
+        </label>
+        <label>
+            <span>@Tr("الرصيد الختامي", "Closing balance")</span>
+            <input type="number" step="0.01" @bind="_header.ClosingBalance" />
+        </label>
+        <label>
+            <span>@Tr("اسم الملف (اختياري)", "Source file name (optional)")</span>
+            <input type="text" @bind="_header.SourceFileName" placeholder="cib-202604.pdf" />
+        </label>
+    </div>
+    @if (_lines.Any(l => l.Debit > 0 || l.Credit > 0))
+    {
+        var implied = ImpliedClosing();
+        var diff = Math.Abs(implied - _header.ClosingBalance);
+        var balanced = diff < 0.01m;
+        <div class="@(balanced ? "kpi-card kpi-success" : "flash-error")" style="margin-top:16px;">
+            @Tr($"الرصيد المحسوب: {implied:N2}. المُدخل: {_header.ClosingBalance:N2}.",
+                $"Computed closing: {implied:N2}. Entered: {_header.ClosingBalance:N2}.")
+            @if (balanced)
+            {
+                <strong> @Tr(" ✓ مطابق.", " ✓ balanced.")</strong>
+            }
+            else
+            {
+                <strong> ⚠ @Tr($"الفرق {diff:N2}", $"diff {diff:N2}")</strong>
+            }
+        </div>
+    }
+</section>
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("بنود الكشف", "Statement lines")</h2>
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>@Tr("التاريخ", "Date")</th>
+                <th>@Tr("الوصف", "Description")</th>
+                <th class="num">@Tr("مدين", "Debit")</th>
+                <th class="num">@Tr("دائن", "Credit")</th>
+                <th class="num">@Tr("الرصيد", "Running balance")</th>
+                <th>@Tr("مرجع البنك", "Bank ref")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var line in _lines)
+            {
+                <tr>
+                    <td><input type="date" @bind="line.TransactionDate" /></td>
+                    <td><input type="text" @bind="line.Description" placeholder="@Tr("تحويل من X", "Transfer from X")" /></td>
+                    <td class="num"><input type="number" step="0.01" min="0" @bind="line.Debit" style="width:100px;text-align:end;" /></td>
+                    <td class="num"><input type="number" step="0.01" min="0" @bind="line.Credit" style="width:100px;text-align:end;" /></td>
+                    <td class="num"><input type="number" step="0.01" @bind="line.RunningBalance" style="width:120px;text-align:end;" /></td>
+                    <td><input type="text" @bind="line.BankReference" placeholder="REF" style="width:90px;" /></td>
+                    <td><button type="button" @onclick="@(() => RemoveLine(line))" title="@Tr("حذف", "Remove")">×</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <div class="invoice-actions" style="margin-top:12px;">
+        <button type="button" class="btn-secondary" @onclick="AddLine">
+            <Icon Name="plus" Class="ic" />@Tr("إضافة عملية", "Add line")
+        </button>
+    </div>
+</section>
+
+<div class="invoice-actions" style="margin-top:24px;">
+    <button type="button" class="btn-primary" @onclick="SaveAsync" disabled="@_saving">
+        <Icon Name="check-circle" Class="ic" />
+        @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ الكشف", "Save statement"))
+    </button>
+    <a href="/payments/bank-statements" class="btn-secondary">@Tr("إلغاء", "Cancel")</a>
+</div>

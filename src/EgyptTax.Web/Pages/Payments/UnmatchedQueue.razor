@@ -1,0 +1,415 @@
+@page "/payments/unmatched"
+@using System.Globalization
+@using System.Security.Claims
+@using EgyptTax.Domain.Banking
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "العمليات غير المطابقة | DaftarX" : "Unmatched Transactions | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<Row> _rows = new();
+    private Guid _userId;
+    private bool _loading;
+    private string? _flash;
+    private Tab _activeTab = Tab.Suggested;
+    private int _unmatchedCount;
+    private int _suggestedCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var sub = auth.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid.TryParse(sub, out _userId);
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Tab counts always reflect the full queue, not the
+            // filtered slice. Keeps the badges honest even when the
+            // operator is paging through a long suggestions list.
+            _suggestedCount = await db.Set<BankStatementLine>().AsNoTracking()
+                .CountAsync(l => l.Status == BankStatementLineStatus.SuggestedMatch);
+            _unmatchedCount = await db.Set<BankStatementLine>().AsNoTracking()
+                .CountAsync(l => l.Status == BankStatementLineStatus.Unmatched);
+
+            var targetStatus = _activeTab == Tab.Suggested
+                ? BankStatementLineStatus.SuggestedMatch
+                : BankStatementLineStatus.Unmatched;
+
+            var lines = await db.Set<BankStatementLine>().AsNoTracking()
+                .Where(l => l.Status == targetStatus)
+                .OrderByDescending(l => l.MatchConfidenceScore ?? 0)
+                .ThenBy(l => l.TransactionDate)
+                .Take(200)
+                .ToListAsync();
+
+            var statementIds = lines.Select(l => l.StatementId).Distinct().ToArray();
+            var statements = await db.Set<BankStatement>().AsNoTracking()
+                .Where(s => statementIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id);
+
+            var accountIds = statements.Values.Select(s => s.CashAccountId).Distinct().ToArray();
+            var accounts = await db.Set<CashAccount>().AsNoTracking()
+                .Where(a => accountIds.Contains(a.Id))
+                .ToDictionaryAsync(a => a.Id);
+
+            // Suggested rows already carry a voucher ref — load only those.
+            // Unmatched rows still use the manual ±2% candidate list (P3.5 behaviour).
+            var spvIds = lines
+                .Where(l => l.SuggestedSupplierPaymentVoucherId.HasValue)
+                .Select(l => l.SuggestedSupplierPaymentVoucherId!.Value)
+                .Distinct()
+                .ToArray();
+            var suggestedSpvs = spvIds.Length == 0
+                ? new Dictionary<Guid, SupplierPaymentVoucher>()
+                : await db.Set<SupplierPaymentVoucher>().AsNoTracking()
+                    .Where(v => spvIds.Contains(v.Id))
+                    .ToDictionaryAsync(v => v.Id);
+
+            var crvIds = lines
+                .Where(l => l.SuggestedCustomerReceiptVoucherId.HasValue)
+                .Select(l => l.SuggestedCustomerReceiptVoucherId!.Value)
+                .Distinct()
+                .ToArray();
+            var suggestedCrvs = crvIds.Length == 0
+                ? new Dictionary<Guid, CustomerReceiptVoucher>()
+                : await db.Set<CustomerReceiptVoucher>().AsNoTracking()
+                    .Where(v => crvIds.Contains(v.Id))
+                    .ToDictionaryAsync(v => v.Id);
+
+            // Manual-tab candidate vouchers within ±2% (existing P3.5 behaviour).
+            List<SupplierPaymentVoucher> manualSpvs = new();
+            List<CustomerReceiptVoucher> manualCrvs = new();
+            if (_activeTab == Tab.Unmatched)
+            {
+                manualSpvs = await db.Set<SupplierPaymentVoucher>().AsNoTracking()
+                    .Where(v => v.State == DocumentState.Posted)
+                    .OrderByDescending(v => v.PaymentDate)
+                    .Take(200)
+                    .ToListAsync();
+                manualCrvs = await db.Set<CustomerReceiptVoucher>().AsNoTracking()
+                    .Where(v => v.State == DocumentState.Posted)
+                    .OrderByDescending(v => v.ReceiptDate)
+                    .Take(200)
+                    .ToListAsync();
+            }
+
+            _rows = lines.Select(l =>
+            {
+                var stmt = statements.GetValueOrDefault(l.StatementId);
+                var acc = stmt is null ? null : accounts.GetValueOrDefault(stmt.CashAccountId);
+                var amount = l.Debit.Amount > 0 ? l.Debit.Amount : l.Credit.Amount;
+                var direction = l.Debit.Amount > 0 ? Direction.Outflow : Direction.Inflow;
+
+                SupplierPaymentVoucher? suggestedSpv = l.SuggestedSupplierPaymentVoucherId.HasValue
+                    ? suggestedSpvs.GetValueOrDefault(l.SuggestedSupplierPaymentVoucherId.Value)
+                    : null;
+                CustomerReceiptVoucher? suggestedCrv = l.SuggestedCustomerReceiptVoucherId.HasValue
+                    ? suggestedCrvs.GetValueOrDefault(l.SuggestedCustomerReceiptVoucherId.Value)
+                    : null;
+
+                var spvCandidates = direction == Direction.Outflow
+                    ? manualSpvs.Where(v => Math.Abs(v.NetCashPaid.Amount - amount) <= amount * 0.02m)
+                          .Take(5).ToList()
+                    : new List<SupplierPaymentVoucher>();
+                var crvCandidates = direction == Direction.Inflow
+                    ? manualCrvs.Where(v => Math.Abs(v.NetCashReceived.Amount - amount) <= amount * 0.02m)
+                          .Take(5).ToList()
+                    : new List<CustomerReceiptVoucher>();
+                return new Row(l, stmt, acc, direction, amount, spvCandidates, crvCandidates, suggestedSpv, suggestedCrv);
+            }).ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SwitchTabAsync(Tab tab)
+    {
+        if (_activeTab == tab) return;
+        _activeTab = tab;
+        _flash = null;
+        await ReloadAsync();
+    }
+
+    private async Task MatchSpvAsync(Guid lineId, Guid voucherId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var line = await db.Set<BankStatementLine>().FirstOrDefaultAsync(l => l.Id == lineId);
+        if (line is null) return;
+        line.MatchToSupplierPayment(voucherId, _userId, DateTime.UtcNow);
+        await db.SaveChangesAsync();
+        _flash = Tr("تمت المطابقة مع سند صرف.", "Matched to a supplier payment.");
+        await ReloadAsync();
+    }
+
+    private async Task MatchCrvAsync(Guid lineId, Guid voucherId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var line = await db.Set<BankStatementLine>().FirstOrDefaultAsync(l => l.Id == lineId);
+        if (line is null) return;
+        line.MatchToCustomerReceipt(voucherId, _userId, DateTime.UtcNow);
+        await db.SaveChangesAsync();
+        _flash = Tr("تمت المطابقة مع سند قبض.", "Matched to a customer receipt.");
+        await ReloadAsync();
+    }
+
+    private async Task ApproveSuggestionAsync(Guid lineId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var line = await db.Set<BankStatementLine>().FirstOrDefaultAsync(l => l.Id == lineId);
+        if (line is null) return;
+        line.AcceptSuggestion(_userId, DateTime.UtcNow);
+        await db.SaveChangesAsync();
+        _flash = Tr("تم اعتماد الاقتراح وتسجيل المطابقة.", "Suggestion approved and matched.");
+        await ReloadAsync();
+    }
+
+    private async Task RejectSuggestionAsync(Guid lineId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var line = await db.Set<BankStatementLine>().FirstOrDefaultAsync(l => l.Id == lineId);
+        if (line is null) return;
+        line.RejectSuggestion();
+        await db.SaveChangesAsync();
+        _flash = Tr("تم رفض الاقتراح وإعادة العملية إلى قائمة المطابقة اليدوية.",
+                    "Suggestion rejected — line is back in the manual queue.");
+        await ReloadAsync();
+    }
+
+    private async Task IgnoreAsync(Guid lineId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var line = await db.Set<BankStatementLine>().FirstOrDefaultAsync(l => l.Id == lineId);
+        if (line is null) return;
+        // Reject any pending suggestion before ignoring so the
+        // domain invariant (Ignore allowed from any non-Matched
+        // state) holds without surprising the operator.
+        if (line.Status == BankStatementLineStatus.SuggestedMatch)
+        {
+            line.RejectSuggestion();
+        }
+        line.Ignore(_userId, DateTime.UtcNow);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private static string ConfidenceBadgeClass(int score) => score switch
+    {
+        >= 95 => "state-approved",
+        >= 85 => "state-pending",
+        _ => "state-rejected",
+    };
+
+    private enum Tab { Suggested, Unmatched }
+
+    private enum Direction { Inflow, Outflow }
+
+    private sealed record Row(
+        BankStatementLine Line,
+        BankStatement? Statement,
+        CashAccount? Account,
+        Direction Direction,
+        decimal Amount,
+        List<SupplierPaymentVoucher> SpvCandidates,
+        List<CustomerReceiptVoucher> CrvCandidates,
+        SupplierPaymentVoucher? SuggestedSpv,
+        CustomerReceiptVoucher? SuggestedCrv);
+}
+
+<h1>@(IsArabic ? "🧮 العمليات غير المطابقة" : "🧮 Unmatched Transactions")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "المحرّك الآلي يقترح المطابقات (≥70%) ويسجّل المطابقات تلقائياً عند ثقة ≥95%. راجع المقترحات أو طابِق يدوياً."
+        : "The auto-match engine suggests matches (≥70%) and auto-confirms at ≥95%. Review suggestions or match manually.")
+</p>
+
+<div style="display:flex;gap:8px;margin-top:16px;">
+    <button type="button"
+            class="@(_activeTab == Tab.Suggested ? "btn-primary" : "btn-secondary")"
+            @onclick="@(() => SwitchTabAsync(Tab.Suggested))">
+        @Tr("اقتراحات المحرّك", "Engine suggestions") (@_suggestedCount)
+    </button>
+    <button type="button"
+            class="@(_activeTab == Tab.Unmatched ? "btn-primary" : "btn-secondary")"
+            @onclick="@(() => SwitchTabAsync(Tab.Unmatched))">
+        @Tr("مطابقة يدوية", "Manual queue") (@_unmatchedCount)
+    </button>
+</div>
+
+@if (_flash is not null)
+{
+    <div class="kpi-card kpi-info" style="margin-top:16px;">@_flash</div>
+}
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+}
+else if (_rows.Count == 0)
+{
+    <div class="activity-feed" style="margin-top:24px;">
+        <div class="activity-item" style="border-bottom:none;">
+            <div class="activity-icon tone-success"><Icon Name="check-circle" Class="ic" /></div>
+            <div class="activity-content">
+                @if (_activeTab == Tab.Suggested)
+                {
+                    @Tr("لا توجد مقترحات حالياً — المحرّك سيقترح تلقائياً عند ورود كشوف جديدة.",
+                        "No suggestions right now — the engine will pick up new statements on its next pass.")
+                }
+                else
+                {
+                    @Tr("الميزان مطابق — مفيش بنود في انتظار المطابقة. 🎉",
+                        "All clear — nothing waiting to be matched. 🎉")
+                }
+            </div>
+        </div>
+    </div>
+}
+else if (_activeTab == Tab.Suggested)
+{
+    <table class="data-grid" style="margin-top:24px;">
+        <thead>
+            <tr>
+                <th>@Tr("الحساب", "Account")</th>
+                <th>@Tr("التاريخ", "Date")</th>
+                <th>@Tr("الوصف", "Description")</th>
+                <th class="num">@Tr("المبلغ", "Amount")</th>
+                <th>@Tr("الثقة", "Confidence")</th>
+                <th>@Tr("المرشّح", "Suggested voucher")</th>
+                <th>@Tr("إجراء", "Action")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _rows)
+            {
+                var score = r.Line.MatchConfidenceScore ?? 0;
+                <tr>
+                    <td>@(r.Account is null ? "—" : $"{r.Account.AccountCode} — {(IsArabic ? r.Account.Name.Arabic : r.Account.Name.English)}")</td>
+                    <td>@r.Line.TransactionDate.ToString("yyyy-MM-dd")</td>
+                    <td>@r.Line.Description</td>
+                    <td class="num"><strong>@r.Amount.ToString("N2")</strong></td>
+                    <td>
+                        <span class="state-badge @ConfidenceBadgeClass(score)">
+                            @score%
+                        </span>
+                    </td>
+                    <td>
+                        @if (r.SuggestedSpv is not null)
+                        {
+                            <span>@r.SuggestedSpv.DocumentNumber · @r.SuggestedSpv.PaymentDate.ToString("yyyy-MM-dd") · @r.SuggestedSpv.NetCashPaid.Amount.ToString("N2")</span>
+                        }
+                        else if (r.SuggestedCrv is not null)
+                        {
+                            <span>@r.SuggestedCrv.DocumentNumber · @r.SuggestedCrv.ReceiptDate.ToString("yyyy-MM-dd") · @r.SuggestedCrv.NetCashReceived.Amount.ToString("N2")</span>
+                        }
+                        else
+                        {
+                            <span style="color:var(--text-muted);">—</span>
+                        }
+                    </td>
+                    <td>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                            <button type="button" class="btn-primary" @onclick="@(() => ApproveSuggestionAsync(r.Line.Id))">
+                                @Tr("اعتماد", "Approve")
+                            </button>
+                            <button type="button" class="btn-secondary" @onclick="@(() => RejectSuggestionAsync(r.Line.Id))">
+                                @Tr("رفض", "Reject")
+                            </button>
+                            <button type="button" @onclick="@(() => IgnoreAsync(r.Line.Id))">
+                                @Tr("تجاهل", "Ignore")
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <table class="data-grid" style="margin-top:24px;">
+        <thead>
+            <tr>
+                <th>@Tr("الحساب", "Account")</th>
+                <th>@Tr("التاريخ", "Date")</th>
+                <th>@Tr("الوصف", "Description")</th>
+                <th class="num">@Tr("المبلغ", "Amount")</th>
+                <th>@Tr("الاتجاه", "Direction")</th>
+                <th>@Tr("اقتراحات للمطابقة", "Candidate matches")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _rows)
+            {
+                <tr>
+                    <td>@(r.Account is null ? "—" : $"{r.Account.AccountCode} — {(IsArabic ? r.Account.Name.Arabic : r.Account.Name.English)}")</td>
+                    <td>@r.Line.TransactionDate.ToString("yyyy-MM-dd")</td>
+                    <td>@r.Line.Description</td>
+                    <td class="num"><strong>@r.Amount.ToString("N2")</strong></td>
+                    <td>
+                        @if (r.Direction == Direction.Outflow)
+                        {
+                            <span class="state-badge state-rejected">@Tr("صرف", "Outflow")</span>
+                        }
+                        else
+                        {
+                            <span class="state-badge state-approved">@Tr("قبض", "Inflow")</span>
+                        }
+                    </td>
+                    <td>
+                        @if (r.Direction == Direction.Outflow && r.SpvCandidates.Count > 0)
+                        {
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                @foreach (var v in r.SpvCandidates)
+                                {
+                                    <button type="button" class="btn-secondary" @onclick="@(() => MatchSpvAsync(r.Line.Id, v.Id))" style="text-align:start;">
+                                        @v.DocumentNumber · @v.PaymentDate.ToString("yyyy-MM-dd") · @v.NetCashPaid.Amount.ToString("N2")
+                                    </button>
+                                }
+                            </div>
+                        }
+                        else if (r.Direction == Direction.Inflow && r.CrvCandidates.Count > 0)
+                        {
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                @foreach (var v in r.CrvCandidates)
+                                {
+                                    <button type="button" class="btn-secondary" @onclick="@(() => MatchCrvAsync(r.Line.Id, v.Id))" style="text-align:start;">
+                                        @v.DocumentNumber · @v.ReceiptDate.ToString("yyyy-MM-dd") · @v.NetCashReceived.Amount.ToString("N2")
+                                    </button>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <span style="color:var(--text-muted);font-size:12px;">@Tr("لا توجد اقتراحات في حدود ±2%.", "No matches within ±2%.")</span>
+                        }
+                        <button type="button" @onclick="@(() => IgnoreAsync(r.Line.Id))" style="margin-top:6px;">
+                            @Tr("تجاهل", "Ignore")
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

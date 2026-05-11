@@ -28,6 +28,7 @@
   <ItemGroup Label="Persistence (EF Core 8 + Dapper)">
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="5.2.2" />
@@ -46,6 +47,11 @@
     <PackageVersion Include="Hangfire.Core" Version="1.8.14" />
     <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.14" />
     <PackageVersion Include="Hangfire.SqlServer" Version="1.8.14" />
+    <PackageVersion Include="Hangfire.MemoryStorage" Version="1.8.1.1" />
+    <PackageVersion Include="Microsoft.Extensions.FileProviders.Embedded" Version="8.0.10" />
+    <PackageVersion Include="BouncyCastle.Cryptography" Version="2.4.0" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.10" />
+    <PackageVersion Include="System.Management" Version="8.0.0" />
     <PackageVersion Include="Polly" Version="8.4.2" />
     <PackageVersion Include="CsvHelper" Version="33.0.1" />
   </ItemGroup>
@@ -53,6 +59,8 @@
   <ItemGroup Label="WiX 5 installer (T247)">
     <PackageVersion Include="WixToolset.Firewall.wixext" Version="5.0.2" />
     <PackageVersion Include="WixToolset.Util.wixext" Version="5.0.2" />
+    <PackageVersion Include="WixToolset.Bal.wixext" Version="5.0.2" />
+    <PackageVersion Include="WixToolset.NetFx.wixext" Version="5.0.2" />
   </ItemGroup>
 
   <ItemGroup Label="Logging (Serilog — operational, distinct from FR-028 audit log)">

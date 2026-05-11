@@ -5,52 +5,52 @@
 @inject IPaymentVoucherQuery Query
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<a href="/journals" class="btn-secondary">← Back</a>
+<a href="/journals" class="btn-secondary">← @(IsArabic ? "العودة" : "Back")</a>
 
-<h1>Invoice allocation history (FR-053) / سجل تخصيص الإيصالات</h1>
+<h1>@(IsArabic ? "سجل تخصيص الإيصالات" : "Invoice allocation history (FR-053)")</h1>
 
 @if (_loading)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 @if (_view is null)
 {
-    <p class="flash-error">No allocations view found for @InvoiceType @InvoiceId.</p>
+    <p class="flash-error">@(IsArabic ? $"لا يوجد سجل تخصيصات لـ {InvoiceType} {InvoiceId}." : $"No allocations view found for {InvoiceType} {InvoiceId}.")</p>
     return;
 }
 
 <section class="invoice-totals">
-    <div><strong>Invoice:</strong> <code>@_view.DocumentNumber</code> (@_view.InvoiceType)</div>
-    <div><strong>Date:</strong> @_view.DocumentDate.ToString("yyyy-MM-dd")</div>
-    <div><strong>Grand total:</strong> @_view.GrandTotal.Amount.ToString("F2") EGP</div>
-    <div><strong>Allocated to date:</strong> @_view.AllocatedToDate.Amount.ToString("F2") EGP</div>
+    <div><strong>@(IsArabic ? "الفاتورة:" : "Invoice:")</strong> <code>@_view.DocumentNumber</code> (@_view.InvoiceType)</div>
+    <div><strong>@(IsArabic ? "التاريخ:" : "Date:")</strong> @_view.DocumentDate.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "الإجمالي الكلي:" : "Grand total:")</strong> @_view.GrandTotal.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+    <div><strong>@(IsArabic ? "المُخصَّص حتى التاريخ:" : "Allocated to date:")</strong> @_view.AllocatedToDate.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
     <div>
-        <strong>Open balance:</strong>
+        <strong>@(IsArabic ? "الرصيد المفتوح:" : "Open balance:")</strong>
         @if (_view.OpenBalance.Amount == 0m)
         {
-            <span class="grand">@_view.OpenBalance.Amount.ToString("F2") EGP — fully settled ✓</span>
+            <span class="grand">@_view.OpenBalance.Amount.ToString("F2") @(IsArabic ? "ج.م. — مُسوَّاة بالكامل ✓" : "EGP — fully settled ✓")</span>
         }
         else
         {
-            <span class="num">@_view.OpenBalance.Amount.ToString("F2") EGP</span>
+            <span class="num">@_view.OpenBalance.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span>
         }
     </div>
 </section>
 
 @if (_view.Allocations.Count == 0)
 {
-    <p><em>No payment allocations against this invoice yet.</em></p>
+    <p><em>@(IsArabic ? "لا توجد تخصيصات سداد على هذه الفاتورة بعد." : "No payment allocations against this invoice yet.")</em></p>
     return;
 }
 
 <table class="data-grid">
     <thead>
         <tr>
-            <th>Voucher type</th>
-            <th>Voucher no.</th>
-            <th>Voucher date</th>
-            <th class="num">Allocated (EGP)</th>
+            <th>@(IsArabic ? "نوع السند" : "Voucher type")</th>
+            <th>@(IsArabic ? "رقم السند" : "Voucher no.")</th>
+            <th>@(IsArabic ? "تاريخ السند" : "Voucher date")</th>
+            <th class="num">@(IsArabic ? "المُخصَّص (ج.م.)" : "Allocated (EGP)")</th>
         </tr>
     </thead>
     <tbody>
@@ -60,9 +60,11 @@
             running += row.AllocatedAmount.Amount;
             <tr>
                 <td>
-                    @(row.SupplierPaymentVoucherId is not null ? "Supplier payment (SPV)" : "Customer receipt (CRV)")
+                    @(row.SupplierPaymentVoucherId is not null
+                        ? (IsArabic ? "سداد مورد (SPV)" : "Supplier payment (SPV)")
+                        : (IsArabic ? "تحصيل عميل (CRV)" : "Customer receipt (CRV)"))
                 </td>
-                <td><code>@(row.VoucherDocumentNumber ?? "(missing)")</code></td>
+                <td><code>@(row.VoucherDocumentNumber ?? (IsArabic ? "(مفقود)" : "(missing)"))</code></td>
                 <td>@row.VoucherDate.ToString("yyyy-MM-dd")</td>
                 <td class="num">@row.AllocatedAmount.Amount.ToString("F2")</td>
             </tr>

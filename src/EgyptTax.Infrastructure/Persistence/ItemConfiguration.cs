@@ -40,5 +40,31 @@ internal sealed class ItemConfiguration : IEntityTypeConfiguration<Item>
             .HasColumnName("eta_item_code")
             .HasMaxLength(32)
             .IsUnicode(false);
+
+        // P1.6 — code-registration lifecycle (None → PendingX → Active/Failed).
+        b.Property(i => i.EtaCodeKind)
+            .HasColumnName("eta_code_kind")
+            .HasConversion<string?>()
+            .HasMaxLength(8)
+            .IsUnicode(false);
+        b.Property(i => i.EtaCodeStatus)
+            .HasColumnName("eta_code_status")
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .IsRequired();
+        b.Property(i => i.EtaCodeRequestedAtUtc)
+            .HasColumnName("eta_code_requested_at_utc")
+            .HasColumnType("datetime2(3)");
+        b.Property(i => i.EtaCodeActivatedAtUtc)
+            .HasColumnName("eta_code_activated_at_utc")
+            .HasColumnType("datetime2(3)");
+        b.Property(i => i.EtaCodeFailureReason)
+            .HasColumnName("eta_code_failure_reason")
+            .HasMaxLength(256);
+
+        // The check job filters by EtaCodeStatus + EtaCodeRequestedAtUtc;
+        // index keeps the periodic scan cheap.
+        b.HasIndex(i => new { i.EtaCodeStatus, i.EtaCodeRequestedAtUtc })
+            .HasDatabaseName("ix_items_eta_code_pending");
     }
 }

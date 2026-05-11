@@ -1,0 +1,263 @@
+@page "/wht/inbound"
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using EgyptTax.Application.Wht
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Tax
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IInboundWhtMatcher Matcher
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "استيراد شهادة خصم واردة | DaftarX" : "Inbound WHT import | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<Customer> _customers = new();
+    private List<WhtCategory> _categories = new();
+    private FormModel _form = new();
+    private List<InboundWhtMatchCandidate> _candidates = new();
+    private Guid? _selectedInvoiceId;
+    private string? _flash;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _customers = await db.Set<Customer>().AsNoTracking().OrderBy(c => c.Name.English).ToListAsync();
+        _categories = await db.Set<WhtCategory>().AsNoTracking().OrderBy(c => c.RatePercent).ToListAsync();
+
+        _form.PeriodStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+        _form.PeriodEnd = _form.PeriodStart.AddMonths(1).AddDays(-1);
+    }
+
+    private async Task FindMatchesAsync()
+    {
+        _candidates = new();
+        _selectedInvoiceId = null;
+        _flash = null;
+
+        if (_form.CustomerId == Guid.Empty || _form.WhtCategoryId == Guid.Empty
+            || _form.AmountWithheldEgp <= 0m)
+        {
+            _flash = Tr("املأ كل البيانات قبل البحث.", "Fill all required fields before searching.");
+            return;
+        }
+
+        var rate = _categories.FirstOrDefault(c => c.Id == _form.WhtCategoryId)?.RatePercent ?? 0m;
+        if (rate <= 0m)
+        {
+            _flash = Tr("اختر فئة خصم بنسبة موجبة.", "Pick a WHT category with a positive rate.");
+            return;
+        }
+
+        var list = await Matcher.FindCandidatesAsync(
+            customerId: _form.CustomerId,
+            periodStart: DateOnly.FromDateTime(_form.PeriodStart),
+            periodEnd: DateOnly.FromDateTime(_form.PeriodEnd),
+            amountWithheldEgp: _form.AmountWithheldEgp,
+            rateAppliedPercent: rate);
+        _candidates = list.ToList();
+
+        if (_candidates.Count == 0)
+        {
+            _flash = Tr(
+                "ما لقتش فاتورة تطابق المبلغ ضمن ±2%. تأكد من العميل/الفترة/المبلغ.",
+                "No invoice matched within ±2%. Double-check customer/period/amount.");
+        }
+        else
+        {
+            _selectedInvoiceId = _candidates[0].SalesInvoiceId;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_selectedInvoiceId is null || _selectedInvoiceId == Guid.Empty)
+        {
+            _flash = Tr("اختار فاتورة لربط الشهادة بها.", "Pick an invoice to attach the certificate to.");
+            return;
+        }
+        var rate = _categories.FirstOrDefault(c => c.Id == _form.WhtCategoryId)?.RatePercent ?? 0m;
+        if (rate <= 0m) return;
+
+        _saving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var cert = new WhtCertificate(
+                direction: WhtCertificateDirection.InboundFromCustomer,
+                date: DateOnly.FromDateTime(_form.CertificateDate),
+                counterpartyId: _form.CustomerId,
+                sourceVoucherId: _selectedInvoiceId.Value, // SPV not applicable for inbound; reuse the invoice id slot
+                sourceInvoiceId: _selectedInvoiceId.Value,
+                whtCategoryId: _form.WhtCategoryId,
+                rateAppliedPercent: rate,
+                amountWithheld: MoneyEgp.From(_form.AmountWithheldEgp),
+                certificateNumber: _form.CertificateNumber.Trim(),
+                issuedAtUtc: DateTime.UtcNow);
+            db.Add(cert);
+            await db.SaveChangesAsync();
+
+            _flash = Tr(
+                $"تم حفظ شهادة الخصم رقم {cert.CertificateNumber} وربطها بالفاتورة.",
+                $"Saved inbound WHT certificate {cert.CertificateNumber} and linked it to the invoice.");
+
+            // Reset form for the next entry
+            _form = new FormModel
+            {
+                PeriodStart = _form.PeriodStart,
+                PeriodEnd = _form.PeriodEnd,
+            };
+            _candidates = new();
+            _selectedInvoiceId = null;
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private string CustomerName(Customer c) => IsArabic ? c.Name.Arabic : c.Name.English;
+
+    private sealed class FormModel
+    {
+        [Required] public Guid CustomerId { get; set; }
+        [Required] public Guid WhtCategoryId { get; set; }
+        public DateTime PeriodStart { get; set; }
+        public DateTime PeriodEnd { get; set; }
+        [Required, Range(0.01, 999_999_999.99)] public decimal AmountWithheldEgp { get; set; }
+        [Required, StringLength(64)] public string CertificateNumber { get; set; } = "";
+        public DateTime CertificateDate { get; set; } = DateTime.UtcNow.Date;
+    }
+}
+
+<h1>@(IsArabic ? "📥 شهادات خصم واردة من العملاء" : "📥 Inbound WHT certificates")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "العميل خصم منك ضريبة وقت السداد؟ سجّل الشهادة هنا، وهنطابقها مع فواتيرك تلقائياً (تفاوت ±2%) عشان تخصم القيمة من ضريبة الدخل آخر السنة."
+        : "Customer withheld tax when paying you? Log the certificate here — we'll auto-match it against your invoices (±2% tolerance) so it offsets your annual income tax.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="kpi-card kpi-info" style="margin-top:16px;">@_flash</div>
+}
+
+<section class="wizard-panel" style="max-width:760px;">
+    <h2>@Tr("بيانات الشهادة", "Certificate details")</h2>
+    <div class="form-grid">
+        <label>
+            <span>@Tr("العميل", "Customer")</span>
+            <select @bind="_form.CustomerId">
+                <option value="@Guid.Empty">@Tr("— اختر —", "— pick —")</option>
+                @foreach (var c in _customers)
+                {
+                    <option value="@c.Id">@CustomerName(c)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@Tr("فئة الخصم", "WHT category")</span>
+            <select @bind="_form.WhtCategoryId">
+                <option value="@Guid.Empty">@Tr("— اختر —", "— pick —")</option>
+                @foreach (var c in _categories)
+                {
+                    <option value="@c.Id">@c.Code (@c.RatePercent.ToString("0.##")%)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@Tr("الفترة (من)", "Period start")</span>
+            <input type="date" @bind="_form.PeriodStart" />
+        </label>
+        <label>
+            <span>@Tr("الفترة (إلى)", "Period end")</span>
+            <input type="date" @bind="_form.PeriodEnd" />
+        </label>
+        <label>
+            <span>@Tr("المبلغ المخصوم (ج.م.)", "Amount withheld (EGP)")</span>
+            <input type="number" step="0.01" min="0" @bind="_form.AmountWithheldEgp" />
+        </label>
+        <label>
+            <span>@Tr("رقم الشهادة", "Certificate number")</span>
+            <input type="text" @bind="_form.CertificateNumber" placeholder="WHT-2026-001" />
+        </label>
+        <label>
+            <span>@Tr("تاريخ الشهادة", "Certificate date")</span>
+            <input type="date" @bind="_form.CertificateDate" />
+        </label>
+    </div>
+    <div class="invoice-actions" style="margin-top:16px;">
+        <button type="button" class="btn-primary" @onclick="FindMatchesAsync">
+            <Icon Name="search" Class="ic" />@Tr("ابحث عن مطابقات", "Find matches")
+        </button>
+    </div>
+</section>
+
+@if (_candidates.Count > 0)
+{
+    <section class="wizard-panel" style="max-width:1080px; margin-top:24px;">
+        <h2>@Tr("مطابقات محتملة (مرتبة بالأقرب)", "Candidate matches (closest first)")</h2>
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>@Tr("رقم الفاتورة", "Invoice #")</th>
+                    <th>@Tr("التاريخ", "Date")</th>
+                    <th class="num">@Tr("الإجمالي", "Grand total")</th>
+                    <th class="num">@Tr("الخصم المتوقّع", "Implied withholding")</th>
+                    <th class="num">@Tr("التطابق", "Match score")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in _candidates)
+                {
+                    <tr class="@(_selectedInvoiceId == c.SalesInvoiceId ? "row-warning" : "")">
+                        <td>
+                            <input type="radio" name="invoice"
+                                   checked="@(_selectedInvoiceId == c.SalesInvoiceId)"
+                                   @onchange="@(() => _selectedInvoiceId = c.SalesInvoiceId)" />
+                        </td>
+                        <td>@c.DocumentNumber</td>
+                        <td>@c.DocumentDate.ToString("yyyy-MM-dd")</td>
+                        <td class="num">@c.GrandTotal.Amount.ToString("N2")</td>
+                        <td class="num">@c.ImpliedWithholding.Amount.ToString("N2")</td>
+                        <td class="num">
+                            <strong style="color:@(c.ScorePercent >= 99m ? "var(--success)" : "var(--warning)");">
+                                @c.ScorePercent.ToString("0.0")%
+                            </strong>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="invoice-actions" style="margin-top:16px;">
+            <button type="button" class="btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                <Icon Name="check-circle" Class="ic" />
+                @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("اربط الشهادة بالفاتورة المختارة", "Save certificate against selected invoice"))
+            </button>
+        </div>
+    </section>
+}
+
+<section style="margin-top:48px; background: var(--surface); border:1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-xs);">
+    <h3 style="margin-top:0;"><Icon Name="book" Class="ic" /> @Tr("ليه ده مهم؟", "Why this matters")</h3>
+    <ul style="margin:8px 0;padding-inline-start:20px;line-height:1.8;color:var(--text-muted);">
+        <li>@Tr("العميل بيخصم 1%/3%/5% (حسب طبيعة النشاط) ويبعتلك صافي + شهادة تثبت الخصم.",
+              "Customer withholds 1%/3%/5% (per activity) and pays you net + a certificate proving the deduction.")</li>
+        <li>@Tr("الشهادات اللي بتتسجّل هنا بتتجمّع آخر السنة وتُخصم من إجمالي ضريبة الدخل المستحقة عليك.",
+              "Certificates logged here aggregate at year-end and offset your total income tax due.")</li>
+        <li>@Tr("اللي مش متسجّل = ضريبة دفعتها ولا تقدر تستردّها. اللوحة دي بتمنع التسريب ده.",
+              "Anything unlogged is tax you paid and can't reclaim. This page stops that leak.")</li>
+    </ul>
+</section>

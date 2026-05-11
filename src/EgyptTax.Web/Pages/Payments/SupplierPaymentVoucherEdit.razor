@@ -15,48 +15,57 @@
 @inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>New supplier payment voucher (FR-051) / إيصال دفع لمورد</h1>
+<h1>@(IsArabic ? "إيصال دفع لمورد" : "New supplier payment voucher (FR-051)")</h1>
 
 @if (_voucher is null)
 {
-    <h2>Step 1 — Voucher header</h2>
+    <h2>@(IsArabic ? "الخطوة 1 — بيانات السند" : "Step 1 — Voucher header")</h2>
     <form @onsubmit="OnCreateDraft" @onsubmit:preventDefault>
         <div class="invoice-toolbar">
             <label>
-                <span>Supplier</span>
+                <span>@(IsArabic ? "المورد" : "Supplier")</span>
                 <select @bind="_supplierId" required>
-                    <option value="">— pick supplier —</option>
+                    <option value="">— @(IsArabic ? "اختر المورد" : "pick supplier") —</option>
                     @foreach (var s in _suppliers)
                     {
-                        <option value="@s.Id">@s.Code — @s.Name.English</option>
+                        <option value="@s.Id">@s.Code — @(IsArabic ? s.Name.Arabic : s.Name.English)</option>
                     }
                 </select>
             </label>
             <label>
-                <span>Payment date</span>
+                <span>@(IsArabic ? "تاريخ الدفع" : "Payment date")</span>
                 <input type="date" @bind="_paymentDate" required />
             </label>
             <label>
-                <span>Payment method</span>
+                <span>@(IsArabic ? "طريقة الدفع" : "Payment method")</span>
                 <select @bind="_paymentMethod">
-                    <option value="@PaymentMethod.BankTransfer">Bank transfer</option>
-                    <option value="@PaymentMethod.Cash">Cash</option>
+                    <option value="@PaymentMethod.BankTransfer">@(IsArabic ? "تحويل بنكي" : "Bank transfer")</option>
+                    <option value="@PaymentMethod.Cash">@(IsArabic ? "نقدية" : "Cash")</option>
+                </select>
+            </label>
+            <label>
+                <span>@(IsArabic ? "الحساب (خزينة / بنك)" : "Account (cashbox / bank)")</span>
+                <select @bind="_cashAccountId" required>
+                    @foreach (var a in _cashAccounts)
+                    {
+                        <option value="@a.Id">@a.AccountCode — @(IsArabic ? a.Name.Arabic : a.Name.English)</option>
+                    }
                 </select>
             </label>
         </div>
         <div class="invoice-toolbar">
             <label>
-                <span>Reference (cheque #, transfer ref, etc.)</span>
+                <span>@(IsArabic ? "المرجع (رقم الشيك، رقم التحويل، إلخ.)" : "Reference (cheque #, transfer ref, etc.)")</span>
                 <input type="text" @bind="_paymentReference" required />
             </label>
             <label>
-                <span>Gross payment (EGP)</span>
+                <span>@(IsArabic ? "إجمالي الدفع (ج.م.)" : "Gross payment (EGP)")</span>
                 <input type="number" step="0.01" min="0.01" @bind="_grossAmount" required />
             </label>
         </div>
         <p>
             <button type="submit" class="btn-primary" disabled="@_busy">
-                @(_busy ? "Saving…" : "Create draft → continue to allocations")
+                @(_busy ? (IsArabic ? "جارٍ الحفظ…" : "Saving…") : (IsArabic ? "إنشاء مسودة ← المتابعة للتخصيصات" : "Create draft → continue to allocations"))
             </button>
         </p>
     </form>
@@ -64,30 +73,30 @@
 else
 {
     <section class="invoice-totals">
-        <div><strong>Voucher (Draft):</strong> @_voucher.Id</div>
-        <div><strong>Gross:</strong> @_voucher.GrossPaymentAmount.Amount.ToString("F2") EGP</div>
-        <div><strong>Allocated:</strong> @_voucher.Allocations.Sum(a => a.AllocatedAmount.Amount).ToString("F2") EGP</div>
-        <div><strong>Remaining to allocate:</strong>
-            <span class="num">@(_voucher.GrossPaymentAmount.Amount - _voucher.Allocations.Sum(a => a.AllocatedAmount.Amount)).ToString("F2") EGP</span>
+        <div><strong>@(IsArabic ? "السند (مسودة):" : "Voucher (Draft):")</strong> @_voucher.Id</div>
+        <div><strong>@(IsArabic ? "الإجمالي:" : "Gross:")</strong> @_voucher.GrossPaymentAmount.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div><strong>@(IsArabic ? "المُخصَّص:" : "Allocated:")</strong> @_voucher.Allocations.Sum(a => a.AllocatedAmount.Amount).ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div><strong>@(IsArabic ? "متبقٍّ للتخصيص:" : "Remaining to allocate:")</strong>
+            <span class="num">@(_voucher.GrossPaymentAmount.Amount - _voucher.Allocations.Sum(a => a.AllocatedAmount.Amount)).ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span>
         </div>
     </section>
 
-    <h2>Step 2 — Allocate to outstanding purchase invoices (FR-053)</h2>
+    <h2>@(IsArabic ? "الخطوة 2 — تخصيص على فواتير المشتريات المفتوحة (FR-053)" : "Step 2 — Allocate to outstanding purchase invoices (FR-053)")</h2>
     @if (_outstanding is null || _outstanding.Count == 0)
     {
-        <p><em>No outstanding purchase invoices for this supplier.</em></p>
+        <p><em>@(IsArabic ? "لا توجد فواتير مشتريات مفتوحة لهذا المورد." : "No outstanding purchase invoices for this supplier.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Doc no.</th>
-                    <th>Date received</th>
-                    <th class="num">Grand total</th>
-                    <th class="num">Allocated</th>
-                    <th class="num">Open balance</th>
-                    <th class="num">Allocate</th>
+                    <th>@(IsArabic ? "رقم المستند" : "Doc no.")</th>
+                    <th>@(IsArabic ? "تاريخ الاستلام" : "Date received")</th>
+                    <th class="num">@(IsArabic ? "الإجمالي الكلي" : "Grand total")</th>
+                    <th class="num">@(IsArabic ? "المُخصَّص" : "Allocated")</th>
+                    <th class="num">@(IsArabic ? "الرصيد المفتوح" : "Open balance")</th>
+                    <th class="num">@(IsArabic ? "تخصيص" : "Allocate")</th>
                     <th></th>
                 </tr>
             </thead>
@@ -106,7 +115,7 @@ else
                         </td>
                         <td>
                             <button type="button" class="btn-secondary" disabled="@_busy"
-                                    @onclick="() => OnAllocate(inv.InvoiceId)">Add</button>
+                                    @onclick="() => OnAllocate(inv.InvoiceId)">@(IsArabic ? "إضافة" : "Add")</button>
                         </td>
                     </tr>
                 }
@@ -116,9 +125,9 @@ else
 
     @if (_voucher.Allocations.Count > 0)
     {
-        <h3>Current allocations</h3>
+        <h3>@(IsArabic ? "التخصيصات الحالية" : "Current allocations")</h3>
         <table class="data-grid">
-            <thead><tr><th>Target invoice id</th><th class="num">Amount</th></tr></thead>
+            <thead><tr><th>@(IsArabic ? "رقم الفاتورة المستهدفة" : "Target invoice id")</th><th class="num">@(IsArabic ? "المبلغ" : "Amount")</th></tr></thead>
             <tbody>
                 @foreach (var a in _voucher.Allocations)
                 {
@@ -132,7 +141,7 @@ else
 
         <p>
             <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnPost">
-                @(_busy ? "Posting…" : "Post voucher")
+                @(_busy ? (IsArabic ? "جارٍ الترحيل…" : "Posting…") : (IsArabic ? "ترحيل السند" : "Post voucher"))
             </button>
         </p>
     }
@@ -140,12 +149,14 @@ else
 
 @if (_error is not null)
 {
-    <div class="flash-error"><strong>Error:</strong> @_error</div>
+    <div class="flash-error"><strong>@(IsArabic ? "خطأ:" : "Error:")</strong> @_error</div>
 }
 
 @code {
     private List<Supplier> _suppliers = new();
+    private List<CashAccount> _cashAccounts = new();
     private Guid _supplierId;
+    private Guid _cashAccountId;
     private DateTime _paymentDate = DateTime.UtcNow.Date;
     private PaymentMethod _paymentMethod = PaymentMethod.BankTransfer;
     private string _paymentReference = "";
@@ -160,6 +171,13 @@ else
     {
         _suppliers = await Db.Set<Supplier>().AsNoTracking()
             .OrderBy(s => s.Code).ToListAsync();
+        _cashAccounts = await Db.Set<CashAccount>().AsNoTracking()
+            .Where(a => a.Status == CashAccountStatus.Active)
+            .OrderByDescending(a => a.IsDefault).ThenBy(a => a.AccountCode)
+            .ToListAsync();
+        _cashAccountId = _cashAccounts.FirstOrDefault(a => a.IsDefault)?.Id
+                       ?? _cashAccounts.FirstOrDefault()?.Id
+                       ?? Guid.Empty;
     }
 
     private async Task OnCreateDraft()
@@ -167,13 +185,17 @@ else
         _error = null; _busy = true;
         try
         {
-            if (_supplierId == Guid.Empty) { _error = "Pick a supplier."; return; }
+            if (_supplierId == Guid.Empty) { _error = IsArabic ? "اختر مورداً." : "Pick a supplier."; return; }
             _voucher = SupplierPaymentVoucher.CreateDraft(
                 supplierId: _supplierId,
                 paymentDate: DateOnly.FromDateTime(_paymentDate),
                 paymentMethod: _paymentMethod,
                 paymentReference: _paymentReference,
                 grossPaymentAmount: MoneyEgp.From(_grossAmount));
+            if (_cashAccountId != Guid.Empty)
+            {
+                _voucher.SetCashAccount(_cashAccountId);
+            }
             Db.Add(_voucher);
             await Db.SaveChangesAsync();
             _outstanding = await Query.ListOutstandingPurchaseInvoicesAsync(_supplierId);
@@ -190,7 +212,7 @@ else
         {
             if (!_allocateInputs.TryGetValue(invoiceId, out var amount) || amount <= 0m)
             {
-                _error = "Enter a positive amount to allocate.";
+                _error = IsArabic ? "أدخل مبلغاً موجباً للتخصيص." : "Enter a positive amount to allocate.";
                 return;
             }
             await AllocateHandler.HandleAsync(

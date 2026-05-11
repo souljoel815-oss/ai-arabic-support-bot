@@ -6,6 +6,7 @@ using EgyptTax.Domain.Audit;
 using EgyptTax.Domain.Eta;
 using EgyptTax.Domain.Invoices;
 using EgyptTax.Infrastructure.Persistence;
+using EgyptTax.SharedKernel;
 using EgyptTax.SharedKernel.Time;
 using Microsoft.EntityFrameworkCore;
 
@@ -60,6 +61,8 @@ public sealed class PostSalesInvoiceWithEtaSubmissionHandler
         CancellationToken cancellationToken = default
     )
     {
+        // Scattered honeypot — block invoice posting on unlicensed installs.
+        LicenseSentry.EnsureLicensed("PostSalesInvoiceWithEtaSubmissionHandler.HandleAsync");
         var invoice = await _innerHandler.HandleAsync(command, cancellationToken);
 
         var bundle = await InvoiceRenderingPipeline.LoadAsync(_db, invoice.Id, cancellationToken);

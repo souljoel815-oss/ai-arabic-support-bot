@@ -19,7 +19,7 @@
 @inject AuthenticationStateProvider Auth
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>@(_invoice is null ? "New" : "Edit") sales invoice</h1>
+<h1>@(IsArabic ? (_invoice is null ? "فاتورة مبيعات جديدة" : "تعديل فاتورة مبيعات") : (_invoice is null ? "New sales invoice" : "Edit sales invoice"))</h1>
 
 @if (_flash is not null)
 {
@@ -28,24 +28,24 @@
 
 @if (_loading)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 @if (_invoice is not null && _invoice.State != DocumentState.Draft)
 {
-    <div class="flash-error">This invoice is @(_invoice.State); only Draft invoices can be edited.</div>
-    <a href="/invoices/@_invoice.Id">View posted detail →</a>
+    <div class="flash-error">@(IsArabic ? $"الفاتورة في حالة {_invoice.State}؛ المسودات فقط هي اللي يمكن تعديلها." : $"This invoice is {_invoice.State}; only Draft invoices can be edited.")</div>
+    <a href="/invoices/@_invoice.Id">@(IsArabic ? "عرض الفاتورة المرحّلة ←" : "View posted detail →")</a>
     return;
 }
 
 <section class="form-grid">
     <fieldset>
-        <legend>Header</legend>
+        <legend>@(IsArabic ? "بيانات الفاتورة" : "Header")</legend>
         <label>
-            <span>Customer</span>
+            <span>@(IsArabic ? "العميل" : "Customer")</span>
             <select @bind="_customerId">
-                <option value="@Guid.Empty">— choose —</option>
+                <option value="@Guid.Empty">@(IsArabic ? "— اختر —" : "— choose —")</option>
                 @foreach (var c in _customers)
                 {
                     <option value="@c.Id">@c.Code — @c.Name.English</option>
@@ -53,29 +53,29 @@
             </select>
         </label>
         <label>
-            <span>Document date</span>
+            <span>@(IsArabic ? "تاريخ المستند" : "Document date")</span>
             <input type="date" @bind="_documentDate" />
         </label>
     </fieldset>
 
     <fieldset>
-        <legend>Lines</legend>
+        <legend>@(IsArabic ? "البنود" : "Lines")</legend>
         @if (_lines.Count == 0)
         {
-            <p><em>No lines yet — add at least one before posting.</em></p>
+            <p><em>@(IsArabic ? "لا توجد بنود بعد — أضف بنداً واحداً على الأقل قبل الترحيل." : "No lines yet — add at least one before posting.")</em></p>
         }
         else
         {
             <table class="data-grid">
                 <thead>
                     <tr>
-                        <th>Item</th>
-                        <th class="num">Qty</th>
-                        <th class="num">Unit price</th>
-                        <th>VAT</th>
-                        <th class="num">Subtotal</th>
-                        <th class="num">VAT</th>
-                        <th class="num">Total</th>
+                        <th>@(IsArabic ? "الصنف" : "Item")</th>
+                        <th class="num">@(IsArabic ? "الكمية" : "Qty")</th>
+                        <th class="num">@(IsArabic ? "سعر الوحدة" : "Unit price")</th>
+                        <th>@(IsArabic ? "الضريبة" : "VAT")</th>
+                        <th class="num">@(IsArabic ? "الإجمالي قبل الضريبة" : "Subtotal")</th>
+                        <th class="num">@(IsArabic ? "الضريبة" : "VAT")</th>
+                        <th class="num">@(IsArabic ? "الإجمالي" : "Total")</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -92,7 +92,7 @@
                             <td class="num">@line.LineSubtotal.ToString("F2")</td>
                             <td class="num">@line.LineVat.ToString("F2")</td>
                             <td class="num">@line.LineTotal.ToString("F2")</td>
-                            <td><button type="button" @onclick="() => RemoveLine(idx)">Remove</button></td>
+                            <td><button type="button" @onclick="() => RemoveLine(idx)">@(IsArabic ? "إزالة" : "Remove")</button></td>
                         </tr>
                     }
                 </tbody>
@@ -101,11 +101,11 @@
     </fieldset>
 
     <fieldset>
-        <legend>Add line</legend>
+        <legend>@(IsArabic ? "إضافة بند" : "Add line")</legend>
         <label>
-            <span>Item</span>
+            <span>@(IsArabic ? "الصنف" : "Item")</span>
             <select @bind="_newLineItemId">
-                <option value="@Guid.Empty">— choose —</option>
+                <option value="@Guid.Empty">@(IsArabic ? "— اختر —" : "— choose —")</option>
                 @foreach (var i in _items.Where(x => x.Status == ItemStatus.Active))
                 {
                     <option value="@i.Id">@i.Code — @i.Name.English</option>
@@ -113,47 +113,47 @@
             </select>
         </label>
         <label>
-            <span>Quantity</span>
+            <span>@(IsArabic ? "الكمية" : "Quantity")</span>
             <input type="number" step="0.01" min="0.01" @bind="_newLineQty" />
         </label>
         <label>
-            <span>Unit price (EGP)</span>
+            <span>@(IsArabic ? "سعر الوحدة (ج.م.)" : "Unit price (EGP)")</span>
             <input type="number" step="0.01" min="0" @bind="_newLineUnitPrice" />
         </label>
         <label>
-            <span>VAT category</span>
+            <span>@(IsArabic ? "فئة الضريبة" : "VAT category")</span>
             <select @bind="_newLineVatId">
-                <option value="@Guid.Empty">— default from item —</option>
+                <option value="@Guid.Empty">@(IsArabic ? "— الافتراضية من الصنف —" : "— default from item —")</option>
                 @foreach (var v in _vatCategories)
                 {
                     <option value="@v.Id">@v.Code (@v.RatePercent.ToString("0.##")%)</option>
                 }
             </select>
         </label>
-        <button type="button" @onclick="AddLine">Add line</button>
+        <button type="button" @onclick="AddLine">@(IsArabic ? "إضافة بند" : "Add line")</button>
     </fieldset>
 
     <fieldset>
-        <legend>Invoice-level discount (FR-008 expansion)</legend>
+        <legend>@(IsArabic ? "خصم على مستوى الفاتورة" : "Invoice-level discount")</legend>
         <label>
-            <span>Mode</span>
+            <span>@(IsArabic ? "النوع" : "Mode")</span>
             <select @bind="_discountMode">
-                <option value="none">No discount</option>
-                <option value="percent">Percent of subtotal</option>
-                <option value="amount">Fixed amount</option>
+                <option value="none">@(IsArabic ? "لا يوجد خصم" : "No discount")</option>
+                <option value="percent">@(IsArabic ? "نسبة من الإجمالي" : "Percent of subtotal")</option>
+                <option value="amount">@(IsArabic ? "مبلغ ثابت" : "Fixed amount")</option>
             </select>
         </label>
         @if (_discountMode == "percent")
         {
             <label>
-                <span>Percent (0–100)</span>
+                <span>@(IsArabic ? "النسبة (0–100)" : "Percent (0–100)")</span>
                 <input type="number" step="0.01" min="0" max="100" @bind="_discountPercent" />
             </label>
         }
         else if (_discountMode == "amount")
         {
             <label>
-                <span>Amount (EGP)</span>
+                <span>@(IsArabic ? "المبلغ (ج.م.)" : "Amount (EGP)")</span>
                 <input type="number" step="0.01" min="0" @bind="_discountAmount" />
             </label>
         }
@@ -161,17 +161,17 @@
 </section>
 
 <section class="invoice-totals">
-    <div><strong>Subtotal:</strong> <span class="num">@TotalSubtotal.ToString("F2") EGP</span></div>
-    <div><strong>Discount:</strong> <span class="num">@TotalDiscount.ToString("F2") EGP</span></div>
-    <div><strong>Net before VAT:</strong> <span class="num">@TotalNet.ToString("F2") EGP</span></div>
-    <div><strong>VAT total:</strong> <span class="num">@TotalVat.ToString("F2") EGP</span></div>
-    <div class="grand"><strong>Grand total:</strong> <span class="num">@TotalGrand.ToString("F2") EGP</span></div>
+    <div><strong>@(IsArabic ? "الإجمالي قبل الضريبة:" : "Subtotal:")</strong> <span class="num">@TotalSubtotal.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "الخصم:" : "Discount:")</strong> <span class="num">@TotalDiscount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "الصافي قبل الضريبة:" : "Net before VAT:")</strong> <span class="num">@TotalNet.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "إجمالي الضريبة:" : "VAT total:")</strong> <span class="num">@TotalVat.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div class="grand"><strong>@(IsArabic ? "الإجمالي الكلي:" : "Grand total:")</strong> <span class="num">@TotalGrand.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
 </section>
 
 <div class="form-actions">
-    <button type="button" @onclick="SaveDraftAsync">Save draft</button>
-    <button type="button" @onclick="PostAsync" disabled="@(!CanPost)">Post</button>
-    <a href="/invoices">Cancel</a>
+    <button type="button" @onclick="SaveDraftAsync">@(IsArabic ? "حفظ المسودة" : "Save draft")</button>
+    <button type="button" @onclick="PostAsync" disabled="@(!CanPost)">@(IsArabic ? "ترحيل" : "Post")</button>
+    <a href="/invoices">@(IsArabic ? "إلغاء" : "Cancel")</a>
 </div>
 
 @code {
@@ -238,7 +238,7 @@
     {
         if (_newLineItemId == Guid.Empty || _newLineQty <= 0)
         {
-            ShowFlash("Pick an item and a positive quantity before adding the line.", error: true);
+            ShowFlash(IsArabic ? "اختر صنفاً وكمية موجبة قبل إضافة البند." : "Pick an item and a positive quantity before adding the line.", error: true);
             return;
         }
 
@@ -247,7 +247,7 @@
         var vat = _vatCategories.FirstOrDefault(v => v.Id == vatId);
         if (vat is null)
         {
-            ShowFlash("Item has no default VAT category — pick one explicitly.", error: true);
+            ShowFlash(IsArabic ? "الصنف ليس له فئة ضريبة افتراضية — اختر واحدة صراحة." : "Item has no default VAT category — pick one explicitly.", error: true);
             return;
         }
 
@@ -312,7 +312,9 @@
         }
 
         await Db.SaveChangesAsync();
-        ShowFlash($"Saved draft (subtotal {_invoice.Subtotal.Amount:F2} → grand total {_invoice.GrandTotal.Amount:F2}).");
+        ShowFlash(IsArabic
+            ? $"تم حفظ المسودة (الإجمالي قبل الضريبة {_invoice.Subtotal.Amount:F2} ← الإجمالي الكلي {_invoice.GrandTotal.Amount:F2})."
+            : $"Saved draft (subtotal {_invoice.Subtotal.Amount:F2} → grand total {_invoice.GrandTotal.Amount:F2}).");
         Nav.NavigateTo($"/invoices/{_invoice.Id}/edit", forceLoad: false);
     }
 
@@ -320,7 +322,7 @@
     {
         if (!CanPost)
         {
-            ShowFlash("Nothing to post.", error: true);
+            ShowFlash(IsArabic ? "لا يوجد شيء للترحيل." : "Nothing to post.", error: true);
             return;
         }
         await SaveDraftAsync();
@@ -346,12 +348,12 @@
     {
         if (_customerId == Guid.Empty)
         {
-            ShowFlash("Pick a customer first.", error: true);
+            ShowFlash(IsArabic ? "اختر العميل أولاً." : "Pick a customer first.", error: true);
             return false;
         }
         if (_lines.Count == 0)
         {
-            ShowFlash("Add at least one line before saving.", error: true);
+            ShowFlash(IsArabic ? "أضف بنداً واحداً على الأقل قبل الحفظ." : "Add at least one line before saving.", error: true);
             return false;
         }
         await Task.CompletedTask;

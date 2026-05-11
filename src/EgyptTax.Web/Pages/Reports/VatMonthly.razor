@@ -5,24 +5,24 @@
 @inject IVatMonthlyReportQuery ReportQuery
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Monthly VAT report (FR-021) / تقرير ضريبة القيمة المضافة الشهري</h1>
+<h1>@(IsArabic ? "تقرير ضريبة القيمة المضافة الشهري" : "Monthly VAT report (FR-021)")</h1>
 
 <form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
     <label>
-        <span>Year</span>
+        <span>@(IsArabic ? "السنة" : "Year")</span>
         <input type="number" min="1900" max="9999" @bind="_year" />
     </label>
     <label>
-        <span>Month</span>
+        <span>@(IsArabic ? "الشهر" : "Month")</span>
         <select @bind="_month">
             @for (var m = 1; m <= 12; m++)
             {
-                <option value="@m">@System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m)</option>
+                <option value="@m">@MonthName(m)</option>
             }
         </select>
     </label>
     <button type="submit" class="btn-primary" disabled="@_loading">
-        @(_loading ? "Computing…" : "Run report")
+        @(_loading ? (IsArabic ? "جارٍ الحساب…" : "Computing…") : (IsArabic ? "تشغيل التقرير" : "Run report"))
     </button>
 </form>
 
@@ -30,43 +30,43 @@
 {
     @if (_loading)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else
     {
-        <p><em>Pick a period above and click "Run report".</em></p>
+        <p><em>@(IsArabic ? "اختر الفترة بالأعلى ثم اضغط «تشغيل التقرير»." : "Pick a period above and click \"Run report\".")</em></p>
     }
     return;
 }
 
 <section class="invoice-totals">
-    <div><strong>Period:</strong> @_report.PeriodStart.ToString("yyyy-MM-dd") to @_report.PeriodEnd.ToString("yyyy-MM-dd")</div>
-    <div><strong>Output VAT:</strong> <span class="num">@_report.OutputVat.Amount.ToString("F2") EGP</span></div>
-    <div><strong>Input VAT (recoverable):</strong> <span class="num">@_report.InputVatRecoverable.Amount.ToString("F2") EGP</span></div>
+    <div><strong>@(IsArabic ? "الفترة:" : "Period:")</strong> @_report.PeriodStart.ToString("yyyy-MM-dd") @(IsArabic ? "إلى" : "to") @_report.PeriodEnd.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "ضريبة المخرجات:" : "Output VAT:")</strong> <span class="num">@_report.OutputVat.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "ضريبة المدخلات (القابلة للاسترداد):" : "Input VAT (recoverable):")</strong> <span class="num">@_report.InputVatRecoverable.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
     <div class="grand">
-        <strong>Net VAT @(_report.NetPayable.Amount >= 0 ? "payable to ETA" : "credit balance"):</strong>
-        <span class="num">@Math.Abs(_report.NetPayable.Amount).ToString("F2") EGP</span>
+        <strong>@(IsArabic ? "صافي الضريبة" : "Net VAT") @(_report.NetPayable.Amount >= 0 ? (IsArabic ? "مستحقة لمصلحة الضرائب:" : "payable to ETA:") : (IsArabic ? "رصيد دائن:" : "credit balance:"))</strong>
+        <span class="num">@Math.Abs(_report.NetPayable.Amount).ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span>
     </div>
 </section>
 
 <section>
-    <h2>Contributing documents (@_report.Rows.Count)</h2>
+    <h2>@(IsArabic ? $"المستندات المساهمة ({_report.Rows.Count})" : $"Contributing documents ({_report.Rows.Count})")</h2>
     @if (_report.Rows.Count == 0)
     {
-        <p><em>No posted documents in this period contributed to the VAT computation.</em></p>
+        <p><em>@(IsArabic ? "لا توجد مستندات مرحّلة في هذه الفترة ساهمت في حساب الضريبة." : "No posted documents in this period contributed to the VAT computation.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>Document #</th>
-                    <th>Counterparty</th>
-                    <th class="num">Net</th>
-                    <th class="num">VAT</th>
-                    <th>Direction</th>
+                    <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                    <th>@(IsArabic ? "النوع" : "Type")</th>
+                    <th>@(IsArabic ? "رقم المستند" : "Document #")</th>
+                    <th>@(IsArabic ? "الطرف الآخر" : "Counterparty")</th>
+                    <th class="num">@(IsArabic ? "الصافي" : "Net")</th>
+                    <th class="num">@(IsArabic ? "الضريبة" : "VAT")</th>
+                    <th>@(IsArabic ? "الاتجاه" : "Direction")</th>
                     <th></th>
                 </tr>
             </thead>
@@ -76,13 +76,13 @@
                     <tr>
                         <td>@row.DocumentDate.ToString("yyyy-MM-dd")</td>
                         <td>@row.DocumentType</td>
-                        <td>@(row.DocumentNumber ?? "(draft)")</td>
+                        <td>@(row.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)"))</td>
                         <td>@row.CounterpartyName</td>
                         <td class="num">@row.NetAmount.Amount.ToString("F2")</td>
                         <td class="num">@row.VatAmount.Amount.ToString("F2")</td>
-                        <td>@(row.ContributesToOutput ? "output" : "input")</td>
+                        <td>@(row.ContributesToOutput ? (IsArabic ? "مخرجات" : "output") : (IsArabic ? "مدخلات" : "input"))</td>
                         <td>
-                            <a href="@DrillDownUrl(row)">Open</a>
+                            <a href="@DrillDownUrl(row)">@(IsArabic ? "فتح" : "Open")</a>
                         </td>
                     </tr>
                 }
@@ -117,4 +117,14 @@
         DocumentType.PurchaseInvoice => $"/purchase-invoices/{row.DocumentId}",
         _ => $"/document360/{row.DocumentType.ToString().ToLowerInvariant()}/{row.DocumentId}",
     };
+
+    private string MonthName(int m) => IsArabic
+        ? m switch
+        {
+            1 => "يناير", 2 => "فبراير", 3 => "مارس", 4 => "أبريل",
+            5 => "مايو", 6 => "يونيو", 7 => "يوليو", 8 => "أغسطس",
+            9 => "سبتمبر", 10 => "أكتوبر", 11 => "نوفمبر", 12 => "ديسمبر",
+            _ => $"الشهر {m}",
+        }
+        : System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m);
 }

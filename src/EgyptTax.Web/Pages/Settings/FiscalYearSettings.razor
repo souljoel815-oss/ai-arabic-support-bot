@@ -7,67 +7,61 @@
 @inject AppDbContext Db
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Fiscal year settings (read-only) / إعدادات السنة المالية</h1>
+<h1>@(IsArabic ? "إعدادات السنة المالية (للقراءة فقط)" : "Fiscal year settings (read-only)")</h1>
 
 <p>
     <em>
-        Fiscal-year configuration drives the <strong>income-tax
-        return</strong> period boundaries, the <strong>monthly
-        depreciation</strong> job's first/last-month logic, and the
-        period-locking enforcement (FR-037). The MVP exposes the
-        start-month on the Company profile page (single-tenant
-        installation = single fiscal calendar); this page surfaces
-        the resolved settings + the open/locked status of recent
-        income-fiscal-year periods so an operator can see at a glance
-        whether prior years have been closed.
+        @(IsArabic
+            ? "إعدادات السنة المالية بتتحكم في حدود فترة الإقرار الضريبي السنوي، ومنطق أول/آخر شهر في وظيفة الإهلاك الشهرية، وتطبيق قفل الفترات (FR-037). الـ MVP بيعرض شهر البداية في صفحة بيانات الشركة. الصفحة دي بتعرض الإعدادات المُحَلّة + حالة (مفتوح/مقفول) للسنوات المالية السابقة."
+            : "Fiscal-year configuration drives the income-tax return period boundaries, the monthly depreciation job's first/last-month logic, and the period-locking enforcement (FR-037). The MVP exposes the start-month on the Company profile page; this page surfaces the resolved settings + the open/locked status of recent income-fiscal-year periods.")
     </em>
 </p>
 
 @if (_company is null)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 <section class="master-data-list">
-    <h2>Active fiscal calendar</h2>
+    <h2>@(IsArabic ? "التقويم المالي النشط" : "Active fiscal calendar")</h2>
     <table class="data-grid">
         <tbody>
             <tr>
-                <th>Fiscal-year start month</th>
+                <th>@(IsArabic ? "شهر بداية السنة المالية" : "Fiscal-year start month")</th>
                 <td>@_company.FiscalYearStartMonth (@MonthName(_company.FiscalYearStartMonth))</td>
             </tr>
             <tr>
-                <th>Default currency</th>
+                <th>@(IsArabic ? "العملة الافتراضية" : "Default currency")</th>
                 <td>@_company.DefaultCurrency</td>
             </tr>
             <tr>
-                <th>Default language</th>
+                <th>@(IsArabic ? "اللغة الافتراضية" : "Default language")</th>
                 <td>@_company.DefaultLanguage</td>
             </tr>
         </tbody>
     </table>
     <p>
-        <a href="/settings/company" class="btn-secondary">Edit on company profile →</a>
+        <a href="/settings/company" class="btn-secondary">@(IsArabic ? "تعديل من بيانات الشركة ←" : "Edit on company profile →")</a>
     </p>
 </section>
 
 <section class="master-data-list">
-    <h2>Income-fiscal-year periods (FR-037)</h2>
+    <h2>@(IsArabic ? "فترات السنوات المالية (FR-037)" : "Income-fiscal-year periods (FR-037)")</h2>
     @if (_periods.Count == 0)
     {
-        <p><em>No income-fiscal-year periods recorded yet.</em></p>
+        <p><em>@(IsArabic ? "لا توجد فترات سنوات مالية مسجلة بعد." : "No income-fiscal-year periods recorded yet.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Year</th>
-                    <th>Status</th>
-                    <th>Locked at (UTC)</th>
-                    <th>Locked by</th>
-                    <th>Locked reason</th>
+                    <th>@(IsArabic ? "السنة" : "Year")</th>
+                    <th>@(IsArabic ? "الحالة" : "Status")</th>
+                    <th>@(IsArabic ? "وقت القفل (UTC)" : "Locked at (UTC)")</th>
+                    <th>@(IsArabic ? "بواسطة" : "Locked by")</th>
+                    <th>@(IsArabic ? "السبب" : "Locked reason")</th>
                 </tr>
             </thead>
             <tbody>
@@ -84,7 +78,7 @@
             </tbody>
         </table>
         <p>
-            <a href="/settings/tax-periods" class="btn-secondary">Lock / reopen periods →</a>
+            <a href="/settings/tax-periods" class="btn-secondary">@(IsArabic ? "قفل / إعادة فتح فترات ←" : "Lock / reopen periods →")</a>
         </p>
     }
 </section>
@@ -102,11 +96,19 @@
             .ToListAsync();
     }
 
-    private static string MonthName(int m) => m switch
-    {
-        1 => "January", 2 => "February", 3 => "March", 4 => "April",
-        5 => "May", 6 => "June", 7 => "July", 8 => "August",
-        9 => "September", 10 => "October", 11 => "November", 12 => "December",
-        _ => $"Month {m}",
-    };
+    private string MonthName(int m) => IsArabic
+        ? m switch
+        {
+            1 => "يناير", 2 => "فبراير", 3 => "مارس", 4 => "أبريل",
+            5 => "مايو", 6 => "يونيو", 7 => "يوليو", 8 => "أغسطس",
+            9 => "سبتمبر", 10 => "أكتوبر", 11 => "نوفمبر", 12 => "ديسمبر",
+            _ => $"الشهر {m}",
+        }
+        : m switch
+        {
+            1 => "January", 2 => "February", 3 => "March", 4 => "April",
+            5 => "May", 6 => "June", 7 => "July", 8 => "August",
+            9 => "September", 10 => "October", 11 => "November", 12 => "December",
+            _ => $"Month {m}",
+        };
 }

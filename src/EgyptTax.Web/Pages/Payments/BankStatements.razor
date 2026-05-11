@@ -1,0 +1,121 @@
+@page "/payments/bank-statements"
+@using System.Globalization
+@using EgyptTax.Domain.Banking
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@(IsArabic ? "كشوف الحساب البنكي | DaftarX" : "Bank Statements | DaftarX")</PageTitle>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<BankStatement> _statements = new();
+    private Dictionary<Guid, string> _accountNames = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _statements = await db.Set<BankStatement>().AsNoTracking()
+            .Include(s => s.Lines)
+            .OrderByDescending(s => s.PeriodEnd)
+            .ToListAsync();
+        var accountIds = _statements.Select(s => s.CashAccountId).Distinct().ToArray();
+        _accountNames = await db.Set<CashAccount>().AsNoTracking()
+            .Where(a => accountIds.Contains(a.Id))
+            .ToDictionaryAsync(
+                a => a.Id,
+                a => $"{a.AccountCode} — {(IsArabic ? a.Name.Arabic : a.Name.English)}");
+    }
+}
+
+<h1>@(IsArabic ? "📒 كشوف الحساب البنكي" : "📒 Bank Statements")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "كل كشف حساب من البنك بيتسجّل هنا. كل بند فيه يبدأ \"غير مطابق\" → بتربطه بسند الدفع/القبض المقابل، وميزان البنك بيتم مع دفاتر الشركة."
+        : "Every imported bank statement lives here. Each line starts as Unmatched → tie it to the matching payment/receipt voucher to reconcile bank with books.")
+</p>
+
+<div class="invoice-toolbar">
+    <a href="/payments/bank-statements/import" class="btn-primary">
+        <Icon Name="plus" Class="ic" />@Tr("استيراد كشف جديد", "Import a statement")
+    </a>
+    <a href="/payments/unmatched" class="btn-secondary">
+        <Icon Name="search" Class="ic" />@Tr("صفحة العمليات غير المطابقة", "Unmatched queue")
+    </a>
+</div>
+
+@if (_statements.Count == 0)
+{
+    <div class="activity-feed" style="margin-top:24px;">
+        <div class="activity-item" style="border-bottom:none;">
+            <div class="activity-icon tone-info"><Icon Name="package" Class="ic" /></div>
+            <div class="activity-content">
+                @Tr("ما فيش كشوف بعد. اضغط \"استيراد كشف جديد\" للبداية.",
+                    "No statements yet. Click 'Import a statement' to begin.")
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <table class="data-grid" style="margin-top:24px;">
+        <thead>
+            <tr>
+                <th>@Tr("الحساب", "Account")</th>
+                <th>@Tr("الفترة", "Period")</th>
+                <th class="num">@Tr("الرصيد الافتتاحي", "Opening")</th>
+                <th class="num">@Tr("الرصيد الختامي", "Closing")</th>
+                <th class="num">@Tr("عدد العمليات", "Lines")</th>
+                <th class="num">@Tr("غير مطابق", "Unmatched")</th>
+                <th>@Tr("الاستيراد", "Imported")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var s in _statements)
+            {
+                var unmatched = s.Lines.Count(l => l.Status == BankStatementLineStatus.Unmatched);
+                var matched = s.Lines.Count(l => l.Status == BankStatementLineStatus.Matched);
+                var totalLines = s.Lines.Count;
+                var balanceCheck = s.BalanceMatchesLines();
+                <tr class="@(unmatched > 0 ? "row-warning" : "")">
+                    <td>@(_accountNames.GetValueOrDefault(s.CashAccountId) ?? "—")</td>
+                    <td>@s.PeriodStart.ToString("yyyy-MM-dd") → @s.PeriodEnd.ToString("yyyy-MM-dd")</td>
+                    <td class="num">@s.OpeningBalance.Amount.ToString("N2")</td>
+                    <td class="num">
+                        @s.ClosingBalance.Amount.ToString("N2")
+                        @if (!balanceCheck && totalLines > 0)
+                        {
+                            <span style="color:var(--danger);font-size:11px;display:block;">
+                                @Tr("⚠ الإجمالي مش مطابق", "⚠ totals don't reconcile")
+                            </span>
+                        }
+                    </td>
+                    <td class="num">@totalLines</td>
+                    <td class="num">
+                        <strong style="color:@(unmatched > 0 ? "var(--warning)" : "var(--success)");">
+                            @unmatched / @totalLines
+                        </strong>
+                    </td>
+                    <td>@s.ImportedAtUtc.ToString("yyyy-MM-dd")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<section style="margin-top:48px; background: var(--surface); border:1px solid var(--border); border-radius: var(--r-lg); padding: var(--sp-5); box-shadow: var(--shadow-xs);">
+    <h3 style="margin-top:0;"><Icon Name="book" Class="ic" /> @Tr("ليه ده مهم؟", "Why this matters")</h3>
+    <ul style="margin:8px 0;padding-inline-start:20px;line-height:1.8;color:var(--text-muted);">
+        <li>@Tr("بنوك مصر مفيش CSV export موثوق — معظم المحاسبين بيتفرّجوا على PDF ويعيدوا الإدخال يدوي → أسبوع شغل شهرياً.",
+              "Egyptian banks don't offer reliable CSV export — most bookkeepers re-key from PDF → a week of work per month.")</li>
+        <li>@Tr("بنخزّن نسخة بنك واحدة وكل line حالته (مطابق/غير مطابق/متجاهل) — بنك متطابق = الشركة في أمان.",
+              "We store one bank-side copy; each line carries its status. Bank reconciled = company in the clear.")</li>
+        <li>@Tr("مفيش parser لـ PDF حالياً (جاي في Wave 4) — بس البنية المحاسبية + شاشة المطابقة جاهزة.",
+              "No PDF parser yet (Wave 4) — but the data model + matching UX are ready.")</li>
+    </ul>
+</section>

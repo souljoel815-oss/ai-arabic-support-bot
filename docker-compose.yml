@@ -1,0 +1,111 @@
+# DaftarX dev stack — SQL Server + EgyptTax.Web on a private bridge.
+# All persistent state (SQL data, attachments, logs, audit checkpoints,
+# inspection bundles) lives under D:\daftarx-data so it survives
+# `docker compose down` and stays off the system drive.
+#
+# Bring up:    docker compose up -d --build
+# Tear down:   docker compose down              (data preserved)
+# Wipe data:   docker compose down -v && rmdir /s /q D:\daftarx-data
+
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: daftarx-sql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "DaftarX#Dev2026!"
+      MSSQL_PID: "Express"
+    ports:
+      - "11433:1433"
+    # SQL data lives in a Docker-managed named volume rather than a
+    # D:\ bind mount. SQL Server's SQLPAL crashes on NTFS-backed
+    # bind mounts (LSA load fails 0xc0070102) because Linux file
+    # permissions don't translate cleanly. The named volume sits on
+    # the WSL2 ext4 disk Docker Desktop manages — fast and stable.
+    # User-facing data (attachments, logs, inspection bundles) still
+    # lives on D:\ via the web service mounts below.
+    volumes:
+      - "daftarx-sql-data:/var/opt/mssql"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "DaftarX#Dev2026!" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # One-shot DB bootstrap: creates EgyptTax + EgyptTax_Hangfire if they
+  # don't exist yet. Hangfire's SqlServerStorage creates its own schema
+  # but NOT the database itself, so we have to make both up front.
+  db-init:
+    image: mcr.microsoft.com/mssql-tools:latest
+    container_name: daftarx-db-init
+    depends_on:
+      sql:
+        condition: service_healthy
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        /opt/mssql-tools/bin/sqlcmd -S sql,1433 -U sa -P "DaftarX#Dev2026!" -C -Q \
+          "IF DB_ID('EgyptTax') IS NULL CREATE DATABASE [EgyptTax]; IF DB_ID('EgyptTax_Hangfire') IS NULL CREATE DATABASE [EgyptTax_Hangfire];"
+    restart: "no"
+
+  # One-shot migrate + seed. Runs the same `seed` CLI verb the MSI
+  # invokes on Windows. Exits 0 when done; the web container only
+  # starts after this completes successfully.
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: daftarx-web:dev
+    container_name: daftarx-seed
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      ConnectionStrings__EgyptTax: "Server=sql,1433;Database=EgyptTax;User Id=sa;Password=DaftarX#Dev2026!;TrustServerCertificate=True;Encrypt=False"
+      ASPNETCORE_ENVIRONMENT: "Production"
+    entrypoint:
+      - dotnet
+      - EgyptTax.Web.dll
+      - seed
+      - --apply-migrations
+      - --admin-email
+      - admin@daftarx.local
+      - --bootstrap-password
+      - DaftarX#Dev2026!
+    restart: "no"
+
+  web:
+    image: daftarx-web:dev
+    container_name: daftarx-web
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    environment:
+      ConnectionStrings__EgyptTax: "Server=sql,1433;Database=EgyptTax;User Id=sa;Password=DaftarX#Dev2026!;TrustServerCertificate=True;Encrypt=False"
+      ConnectionStrings__EgyptTax_Hangfire: "Server=sql,1433;Database=EgyptTax_Hangfire;User Id=sa;Password=DaftarX#Dev2026!;TrustServerCertificate=True;Encrypt=False"
+      Attachments__Root: "/var/daftarx/attachments"
+      InspectionBundles__RootDirectory: "/var/daftarx/inspection-bundles"
+      AuditCheckpoint__Mode: "Sql"
+      ASPNETCORE_URLS: "http://+:8080"
+      ASPNETCORE_ENVIRONMENT: "Production"
+      Features__RequireMfa: "false"
+    ports:
+      - "8088:8080"
+    volumes:
+      - "D:/daftarx-data/attachments:/var/daftarx/attachments"
+      - "D:/daftarx-data/inspection-bundles:/var/daftarx/inspection-bundles"
+      - "D:/daftarx-data/logs:/app/logs"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v1/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  daftarx-sql-data:

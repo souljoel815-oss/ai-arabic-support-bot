@@ -14,35 +14,50 @@
 @inject IssueCreditNoteHandler Handler
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Issue credit note / إصدار إشعار خصم</h1>
+<h1>@(IsArabic ? "إصدار إشعار خصم" : "Issue credit note")</h1>
 
 @if (_loading)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 @if (_original is null)
 {
-    <div class="flash-error">Source invoice not found.</div>
+    <div class="flash-error">@(IsArabic ? "الفاتورة الأصلية غير موجودة." : "Source invoice not found.")</div>
     return;
 }
 
 @if (_original.State != DocumentState.Posted)
 {
     <div class="flash-error">
-        Source invoice @_original.DocumentNumber is in state @_original.State, not Posted.
-        Per FR-013 + FR-027, only Posted invoices can be credited.
+        @(IsArabic
+            ? $"الفاتورة الأصلية {_original.DocumentNumber} في حالة {_original.State}، وليست مرحّلة. وفقاً لـ FR-013 + FR-027، لا يمكن إصدار إشعار خصم إلا للفواتير المرحّلة."
+            : $"Source invoice {_original.DocumentNumber} is in state {_original.State}, not Posted. Per FR-013 + FR-027, only Posted invoices can be credited.")
     </div>
-    <a href="/invoices/@_original.Id">← Back to invoice</a>
+    <a href="/invoices/@_original.Id">← @(IsArabic ? "العودة إلى الفاتورة" : "Back to invoice")</a>
     return;
 }
 
 <p>
-    Drafting a credit note against
-    <strong><a href="/invoices/@_original.Id">@_original.DocumentNumber</a></strong>
-    issued @_original.DocumentDate.ToString("yyyy-MM-dd").
-    Each line below carries the original quantity; reduce a quantity (or set to 0) for partial credit.
+    @if (IsArabic)
+    {
+        <text>
+            بصدد إعداد إشعار خصم على الفاتورة
+            <strong><a href="/invoices/@_original.Id">@_original.DocumentNumber</a></strong>
+            الصادرة بتاريخ @_original.DocumentDate.ToString("yyyy-MM-dd").
+            كل بند بالأسفل يحمل الكمية الأصلية؛ قلل الكمية (أو اجعلها 0) للخصم الجزئي.
+        </text>
+    }
+    else
+    {
+        <text>
+            Drafting a credit note against
+            <strong><a href="/invoices/@_original.Id">@_original.DocumentNumber</a></strong>
+            issued @_original.DocumentDate.ToString("yyyy-MM-dd").
+            Each line below carries the original quantity; reduce a quantity (or set to 0) for partial credit.
+        </text>
+    }
 </p>
 
 @if (_flash is not null)
@@ -55,23 +70,23 @@
     <ValidationSummary />
 
     <fieldset>
-        <legend>Reason (FR-013 — legally required)</legend>
+        <legend>@(IsArabic ? "السبب (FR-013 — مطلوب قانوناً)" : "Reason (FR-013 — legally required)")</legend>
         <label>
-            <span>Why is this credit note being issued?</span>
+            <span>@(IsArabic ? "ما سبب إصدار إشعار الخصم؟" : "Why is this credit note being issued?")</span>
             <InputTextArea @bind-Value="_form.Reason" rows="3" />
         </label>
     </fieldset>
 
     <fieldset>
-        <legend>Lines to credit</legend>
+        <legend>@(IsArabic ? "البنود المراد خصمها" : "Lines to credit")</legend>
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Item</th>
-                    <th class="num">Original qty</th>
-                    <th class="num">Credit qty</th>
-                    <th class="num">Unit price</th>
-                    <th class="num">Line credit</th>
+                    <th>@(IsArabic ? "الصنف" : "Item")</th>
+                    <th class="num">@(IsArabic ? "الكمية الأصلية" : "Original qty")</th>
+                    <th class="num">@(IsArabic ? "كمية الخصم" : "Credit qty")</th>
+                    <th class="num">@(IsArabic ? "سعر الوحدة" : "Unit price")</th>
+                    <th class="num">@(IsArabic ? "خصم البند" : "Line credit")</th>
                 </tr>
             </thead>
             <tbody>
@@ -82,7 +97,7 @@
                     var item = _items.GetValueOrDefault(line.ItemId);
                     var lineCredit = line.QuantityToCredit * line.UnitPrice;
                     <tr>
-                        <td>@(item?.Code ?? "?") — @(item?.Name.English ?? "")</td>
+                        <td>@(item?.Code ?? "?") — @(IsArabic ? (item?.Name.Arabic ?? "") : (item?.Name.English ?? ""))</td>
                         <td class="num">@line.OriginalQuantity.ToString("0.##")</td>
                         <td class="num">
                             <input type="number" step="0.01" min="0" max="@line.OriginalQuantity"
@@ -96,8 +111,8 @@
         </table>
     </fieldset>
 
-    <button type="submit" disabled="@(!CanSubmit)">Issue credit note (Draft)</button>
-    <a href="/invoices/@_original?.Id">Cancel</a>
+    <button type="submit" disabled="@(!CanSubmit)">@(IsArabic ? "إصدار إشعار خصم (مسودة)" : "Issue credit note (Draft)")</button>
+    <a href="/invoices/@_original?.Id">@(IsArabic ? "إلغاء" : "Cancel")</a>
 </EditForm>
 
 @code {
@@ -152,14 +167,16 @@
             .Where(l => l.QuantityToCredit > 0)
             .Select(l => new IssueCreditNoteLine(
                 ItemId: l.ItemId,
-                Quantity: -l.QuantityToCredit,   // FR-013: negate.
+                Quantity: -l.QuantityToCredit,
                 UnitPrice: MoneyEgp.From(l.UnitPrice),
                 VatCategoryId: l.VatCategoryId,
                 VatRatePercent: l.VatRatePercent))
             .ToList();
         if (lines.Count == 0)
         {
-            _flash = "Select at least one line with a positive credit quantity.";
+            _flash = IsArabic
+                ? "اختر بنداً واحداً على الأقل بكمية خصم موجبة."
+                : "Select at least one line with a positive credit quantity.";
             _flashClass = "flash-error";
             return;
         }
@@ -173,9 +190,6 @@
                 DocumentDate: DateOnly.FromDateTime(DateTime.UtcNow)),
                 CancellationToken.None);
 
-            // Land on the credit note draft's edit page so the operator
-            // can review + post it through the regular flow (PostHandler
-            // will allocate the CN-{year}-{n} number on post).
             Nav.NavigateTo($"/invoices/{draft.Id}/edit", forceLoad: true);
         }
         catch (InvalidOperationException ex)

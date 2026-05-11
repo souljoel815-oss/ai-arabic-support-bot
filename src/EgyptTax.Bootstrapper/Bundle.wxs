@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Offline Setup.exe for EgyptTax — bundles .NET 8 Hosting Bundle +
+  SQL Server 2019 Express + the EgyptTax MSI in a single executable.
+
+  Customer experience:
+    1. Double-click DaftarX-Setup.exe (or via Install-DaftarX.cmd wizard)
+    2. UAC prompt
+    3. License agreement
+    4. Install button
+    5. Wait ~5-10 minutes (database engine is the slow one)
+    6. Done — service running, browser-ready at http://localhost:5000
+       and accessible across the LAN at http://server-ip:5000
+
+  Architecture:
+    - .NET runtime is now bundled INSIDE the app (self-contained publish),
+      so no separate "Microsoft .NET Hosting Bundle" prereq.
+    - SQL Server Express runs as SQLEXPRESS instance with TCP enabled
+      so multi-workstation network access works out of the box.
+    - DaftarX MSI is the only thing branded with our name in the
+      Add/Remove Programs list.
+
+  Detection logic:
+    - SQL Express: HKLM\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL\SQLEXPRESS
+    Skipping the database engine when already present means a customer
+    with an existing SQL Express install is not re-installed over.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Bundle Name="EgyptTax"
+          Version="1.0.0.0"
+          Manufacturer="EgyptTax"
+          UpgradeCode="6F8E2A1C-9D3B-4E5F-8A7B-1C2D3E4F5A6B"
+          AboutUrl="https://localhost"
+          DisableModify="yes"
+          DisableRemove="no">
+
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication
+        Theme="rtfLicense"
+        LicenseFile="license.rtf"
+        SuppressOptionsUI="yes"
+        ShowVersion="yes" />
+    </BootstrapperApplication>
+
+    <!-- Bundle variables — overridable from command line.
+         The setup-wizard.ps1 launcher invokes Setup.exe like:
+           EgyptTax-Setup.exe AdminEmail=foo@bar.com AdminPassword=Xxx
+         These flow into MsiProperty entries on the EgyptTax MSI below.
+         Defaults match the MSI's own defaults so direct double-click
+         install (no wizard) still works as before. -->
+    <Variable Name="AdminEmail"     Type="string" Value="admin@daftarx.local" bal:Overridable="yes" Persisted="yes" />
+    <Variable Name="AdminPassword"  Type="string" Value="TempP@ssw0rd!2026"  bal:Overridable="yes" Persisted="yes" />
+    <Variable Name="InternalDomain" Type="string" Value=""                    bal:Overridable="yes" Persisted="yes" />
+
+    <!-- Detect SQL Server Express installed instance. -->
+    <util:RegistrySearch
+      Id="SqlServerExpressInstance"
+      Variable="SqlExpressInstanceName"
+      Root="HKLM"
+      Key="SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL"
+      Value="SQLEXPRESS"
+      Result="value" />
+
+    <Chain>
+
+      <!-- 1. Database engine (SQL Server Express, ~266 MB) — required for
+           multi-user network access. Single-machine alternatives like
+           SQLite or LocalDB cannot serve other workstations on the LAN.
+           Installed silently as SQLEXPRESS instance with TCP enabled
+           so additional office workstations can browse to the server.
+           DisplayName intentionally generic — customers see "Database
+           engine", not the underlying SQL Server brand. -->
+      <ExePackage Id="DatabaseEngine"
+                  DisplayName="Database engine"
+                  Cache="remove"
+                  Compressed="yes"
+                  PerMachine="yes"
+                  Permanent="yes"
+                  Vital="yes"
+                  SourceFile="..\..\publish\bootstrapper-prereqs\SQLEXPR_x64_ENU.exe"
+                  InstallArguments='/Q /IACCEPTSQLSERVERLICENSETERMS /ACTION=Install /FEATURES=SQL /INSTANCENAME=SQLEXPRESS /SQLSVCACCOUNT="NT AUTHORITY\NETWORK SERVICE" /SQLSYSADMINACCOUNTS="BUILTIN\Administrators" /TCPENABLED=1 /SECURITYMODE=SQL /SAPWD="DaftarXAdmin#2026"'
+                  DetectCondition="SqlExpressInstanceName" />
+
+      <!-- 3. EgyptTax MSI (~17 MB). Always runs. The MSI's own SQL
+           connection default targets Server=. (default instance), so
+           after SQL Express installs as SQLEXPRESS named instance,
+           we need to override the connection at install time. -->
+      <MsiPackage Id="EgyptTaxApp"
+                  DisplayName="DaftarX"
+                  Cache="keep"
+                  Compressed="yes"
+                  Vital="yes"
+                  SourceFile="..\EgyptTax.Installer\bin\Release\EgyptTax.Installer.msi">
+        <MsiProperty Name="SQL_CONNECTION"
+                     Value="Server=.\SQLEXPRESS;Database=EgyptTax;Trusted_Connection=True;TrustServerCertificate=True" />
+        <MsiProperty Name="ADMIN_EMAIL"     Value="[AdminEmail]" />
+        <MsiProperty Name="ADMIN_PASSWORD"  Value="[AdminPassword]" />
+        <MsiProperty Name="INTERNAL_DOMAIN" Value="[InternalDomain]" />
+      </MsiPackage>
+
+    </Chain>
+  </Bundle>
+</Wix>

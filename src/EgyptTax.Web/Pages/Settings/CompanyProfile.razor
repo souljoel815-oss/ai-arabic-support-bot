@@ -8,12 +8,12 @@
 @inject AppDbContext Db
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Company profile / بيانات الشركة</h1>
-<p>Per FR-005, the single-tenant Company row drives the issuer block on every legal invoice and ETA submission.</p>
+<h1>@(IsArabic ? "بيانات الشركة" : "Company profile")</h1>
+<p>@(IsArabic ? "وفقاً لـ FR-005، صف الشركة الوحيد يتحكم في بلوك المُصدر على كل فاتورة قانونية وكل إرسال للفاتورة الإلكترونية." : "Per FR-005, the single-tenant Company row drives the issuer block on every legal invoice and ETA submission.")</p>
 
 @if (_savedFlash)
 {
-    <div class="flash-success" role="status">Saved.</div>
+    <div class="flash-success" role="status">@(IsArabic ? "تم الحفظ." : "Saved.")</div>
 }
 
 <EditForm Model="_form" OnValidSubmit="OnSaveAsync" FormName="company-profile" class="form-grid">
@@ -21,73 +21,88 @@
     <ValidationSummary />
 
     <fieldset>
-        <legend>Identity</legend>
+        <legend>@(IsArabic ? "الهوية" : "Identity")</legend>
         <label>
-            <span>Legal name (English)</span>
+            <span>@(IsArabic ? "الاسم القانوني (إنجليزي)" : "Legal name (English)")</span>
             <InputText @bind-Value="_form.LegalNameEnglish" />
         </label>
         <label>
-            <span>Legal name (Arabic) / الاسم القانوني</span>
+            <span>@(IsArabic ? "الاسم القانوني (عربي)" : "Legal name (Arabic)")</span>
             <InputText @bind-Value="_form.LegalNameArabic" />
         </label>
         <label>
-            <span>Tax registration number (TIN, 9 digits)</span>
+            <span>@(IsArabic ? "الرقم الضريبي (9 أرقام)" : "Tax registration number (TIN, 9 digits)")</span>
             <InputText @bind-Value="_form.TaxRegistrationNumber" />
         </label>
         <label>
-            <span>Commercial registration number</span>
+            <span>@(IsArabic ? "رقم السجل التجاري" : "Commercial registration number")</span>
             <InputText @bind-Value="_form.CommercialRegistrationNumber" />
         </label>
         <label>
-            <span>Taxpayer activity code (ETA)</span>
+            <span>@(IsArabic ? "كود نشاط الممول (الفاتورة الإلكترونية)" : "Taxpayer activity code (ETA)")</span>
             <InputText @bind-Value="_form.TaxpayerActivityCode" />
         </label>
         <label>
-            <span>Default language</span>
+            <span>@(IsArabic ? "اللغة الافتراضية" : "Default language")</span>
             <InputSelect @bind-Value="_form.DefaultLanguage">
-                <option value="@Language.Ar">العربية / Arabic</option>
+                <option value="@Language.Ar">العربية</option>
                 <option value="@Language.En">English</option>
             </InputSelect>
         </label>
         <label>
-            <span>Fiscal-year start month (1–12)</span>
+            <span>@(IsArabic ? "شهر بداية السنة المالية (1–12)" : "Fiscal-year start month (1–12)")</span>
             <InputNumber @bind-Value="_form.FiscalYearStartMonth" min="1" max="12" />
         </label>
+        <label>
+            <span>@(IsArabic ? "النظام الضريبي" : "Tax regime")</span>
+            <InputSelect @bind-Value="_form.TaxRegime">
+                <option value="@TaxRegime.Standard">@(IsArabic ? "النظام القياسي (VAT شهري + ضريبة دخل كاملة)" : "Standard (monthly VAT + full income tax)")</option>
+                <option value="@TaxRegime.Law6Simplified">@(IsArabic ? "النظام المبسّط — قانون 6/2025 (VAT ربع سنوي + ضريبة معدل دوران)" : "Simplified — Law 6/2025 (quarterly VAT + turnover tax)")</option>
+            </InputSelect>
+        </label>
+        @if (_form.TaxRegime == TaxRegime.Law6Simplified)
+        {
+            <p style="font-size:13px;color:var(--text-muted);margin:0;">
+                @(IsArabic
+                    ? "تذكير: النظام المبسّط متاح فقط للمنشآت تحت 15 مليون ج.م. سنوياً. شوف /reports/turnover-tax للتقدير."
+                    : "Reminder: simplified regime is only for enterprises under EGP 15M annual revenue. See /reports/turnover-tax for an estimate.")
+            </p>
+        }
     </fieldset>
 
     <fieldset>
-        <legend>Address</legend>
+        <legend>@(IsArabic ? "العنوان" : "Address")</legend>
         <label>
-            <span>Display (English)</span>
+            <span>@(IsArabic ? "العرض (إنجليزي)" : "Display (English)")</span>
             <InputText @bind-Value="_form.AddressDisplayEnglish" />
         </label>
         <label>
-            <span>Display (Arabic) / العنوان</span>
+            <span>@(IsArabic ? "العرض (عربي)" : "Display (Arabic)")</span>
             <InputText @bind-Value="_form.AddressDisplayArabic" />
         </label>
         <label>
-            <span>Governorate</span>
+            <span>@(IsArabic ? "المحافظة" : "Governorate")</span>
             <InputText @bind-Value="_form.AddressGovernorate" />
         </label>
         <label>
-            <span>Region / city</span>
+            <span>@(IsArabic ? "المنطقة / المدينة" : "Region / city")</span>
             <InputText @bind-Value="_form.AddressRegionCity" />
         </label>
         <label>
-            <span>Street</span>
+            <span>@(IsArabic ? "الشارع" : "Street")</span>
             <InputText @bind-Value="_form.AddressStreet" />
         </label>
         <label>
-            <span>Building number</span>
+            <span>@(IsArabic ? "رقم العقار" : "Building number")</span>
             <InputText @bind-Value="_form.AddressBuildingNumber" />
         </label>
         <label>
-            <span>Postal code (optional)</span>
+            <span>@(IsArabic ? "الرقم البريدي (اختياري)" : "Postal code (optional)")</span>
             <InputText @bind-Value="_form.AddressPostalCode" />
         </label>
     </fieldset>
 
-    <button type="submit">Save</button>
+    <button type="submit">@(IsArabic ? "حفظ" : "Save")</button>
 </EditForm>
 
 @code {
@@ -131,10 +146,7 @@
         {
             _existing.UpdateAddress(address);
             _existing.UpdateTaxpayerActivityCode(_form.TaxpayerActivityCode);
-            // Other fields (legal name, TIN, CR, fiscal year, language)
-            // are intentionally init-only on the entity for the MVP —
-            // changing them would invalidate posted documents that snapshotted them. A future "rebrand" flow lands as
-            // a dedicated audit-logged operation, not a silent edit.
+            _existing.UpdateTaxRegime(_form.TaxRegime);
         }
 
         await Db.SaveChangesAsync();
@@ -151,6 +163,7 @@
         [Required, StringLength(16)] public string TaxpayerActivityCode { get; set; } = "0001";
         [Range(1, 12)] public int FiscalYearStartMonth { get; set; } = 1;
         public Language DefaultLanguage { get; set; } = Language.Ar;
+        public TaxRegime TaxRegime { get; set; } = TaxRegime.Standard;
 
         [Required, StringLength(500)] public string AddressDisplayEnglish { get; set; } = "";
         [Required, StringLength(500)] public string AddressDisplayArabic  { get; set; } = "";
@@ -169,6 +182,7 @@
             TaxpayerActivityCode = c.TaxpayerActivityCode,
             FiscalYearStartMonth = c.FiscalYearStartMonth,
             DefaultLanguage = c.DefaultLanguage,
+            TaxRegime = c.TaxRegime,
             AddressDisplayEnglish = c.Address.DisplayEnglish,
             AddressDisplayArabic  = c.Address.DisplayArabic,
             AddressGovernorate    = c.Address.Governorate,

@@ -22,8 +22,11 @@ internal static class VerifyAuditHost
 {
     public static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
+        // AppContext.BaseDirectory (NOT cwd) so the CLI works when
+        // invoked from the install folder by an operator running it
+        // from any other directory. See SeederHost.cs for the same fix.
         var configuration = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
+            .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: true)
             .AddJsonFile(
                 $"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json",

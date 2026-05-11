@@ -8,7 +8,7 @@
 @inject AppDbContext Db
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>Suppliers / الموردون</h1>
+<h1>@(IsArabic ? "الموردون" : "Suppliers")</h1>
 
 @if (_savedFlash is not null)
 {
@@ -16,28 +16,28 @@
 }
 
 <section class="master-data-list">
-    <h2>Existing suppliers</h2>
+    <h2>@(IsArabic ? "الموردون الحاليون" : "Existing suppliers")</h2>
     @if (_suppliers is null)
     {
-        <p>Loading…</p>
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     }
     else if (_suppliers.Count == 0)
     {
-        <p><em>No suppliers yet — add one below.</em></p>
+        <p><em>@(IsArabic ? "لا يوجد موردون بعد — أضف مورداً بالأسفل." : "No suppliers yet — add one below.")</em></p>
     }
     else
     {
         <table class="data-grid">
             <thead>
                 <tr>
-                    <th>Code</th>
-                    <th>Name (English)</th>
-                    <th>Name (Arabic)</th>
-                    <th>Profile</th>
-                    <th>TIN</th>
-                    <th>Reverse charge</th>
-                    <th>Last TIN check (UTC)</th>
-                    <th>Status</th>
+                    <th>@(IsArabic ? "الكود" : "Code")</th>
+                    <th>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</th>
+                    <th>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</th>
+                    <th>@(IsArabic ? "نوع الملف" : "Profile")</th>
+                    <th>@(IsArabic ? "الرقم الضريبي" : "TIN")</th>
+                    <th>@(IsArabic ? "ضريبة عكسية" : "Reverse charge")</th>
+                    <th>@(IsArabic ? "آخر تحقق من الرقم الضريبي" : "Last TIN check (UTC)")</th>
+                    <th>@(IsArabic ? "الحالة" : "Status")</th>
                     <th></th>
                 </tr>
             </thead>
@@ -50,17 +50,17 @@
                         <td>@s.Name.Arabic</td>
                         <td>@s.TaxProfile.ProfileType</td>
                         <td>@(s.TaxProfile.TinValue ?? "—")</td>
-                        <td>@(s.TaxProfile.ReverseChargeFlag ? "yes" : "—")</td>
-                        <td>@(s.LastTinRevalidatedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "(never)")</td>
+                        <td>@(s.TaxProfile.ReverseChargeFlag ? (IsArabic ? "نعم" : "yes") : "—")</td>
+                        <td>@(s.LastTinRevalidatedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? (IsArabic ? "(لا يوجد)" : "(never)"))</td>
                         <td>@s.Status</td>
                         <td>
                             @if (s.Status == SupplierStatus.Active)
                             {
-                                <button type="button" @onclick="() => DeactivateAsync(s.Id)">Deactivate</button>
+                                <button type="button" @onclick="() => DeactivateAsync(s.Id)">@(IsArabic ? "تعطيل" : "Deactivate")</button>
                             }
                             else
                             {
-                                <button type="button" @onclick="() => ReactivateAsync(s.Id)">Reactivate</button>
+                                <button type="button" @onclick="() => ReactivateAsync(s.Id)">@(IsArabic ? "إعادة تفعيل" : "Reactivate")</button>
                             }
                         </td>
                     </tr>
@@ -71,64 +71,64 @@
 </section>
 
 <section class="master-data-create">
-    <h2>Add a supplier</h2>
+    <h2>@(IsArabic ? "إضافة مورد" : "Add a supplier")</h2>
     <EditForm Model="_form" OnValidSubmit="OnCreateAsync" FormName="supplier-create" class="form-grid">
         <DataAnnotationsValidator />
         <ValidationSummary />
 
         <fieldset>
-            <legend>Identity</legend>
+            <legend>@(IsArabic ? "الهوية" : "Identity")</legend>
             <label>
-                <span>Code</span>
+                <span>@(IsArabic ? "الكود" : "Code")</span>
                 <InputText @bind-Value="_form.Code" />
             </label>
             <label>
-                <span>Name (English)</span>
+                <span>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</span>
                 <InputText @bind-Value="_form.NameEnglish" />
             </label>
             <label>
-                <span>Name (Arabic)</span>
+                <span>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</span>
                 <InputText @bind-Value="_form.NameArabic" />
             </label>
             <label>
-                <span>Address (English)</span>
+                <span>@(IsArabic ? "العنوان (إنجليزي)" : "Address (English)")</span>
                 <InputText @bind-Value="_form.AddressEnglish" />
             </label>
             <label>
-                <span>Address (Arabic)</span>
+                <span>@(IsArabic ? "العنوان (عربي)" : "Address (Arabic)")</span>
                 <InputText @bind-Value="_form.AddressArabic" />
             </label>
             <label>
-                <span>Phone (optional)</span>
+                <span>@(IsArabic ? "الهاتف (اختياري)" : "Phone (optional)")</span>
                 <InputText @bind-Value="_form.Phone" />
             </label>
             <label>
-                <span>Email (optional)</span>
+                <span>@(IsArabic ? "البريد الإلكتروني (اختياري)" : "Email (optional)")</span>
                 <InputText @bind-Value="_form.Email" />
             </label>
         </fieldset>
 
         <fieldset>
-            <legend>Tax profile (FR-041)</legend>
+            <legend>@(IsArabic ? "الملف الضريبي (FR-041)" : "Tax profile (FR-041)")</legend>
             <label>
-                <span>Profile type</span>
+                <span>@(IsArabic ? "نوع الملف" : "Profile type")</span>
                 <InputSelect @bind-Value="_form.ProfileType">
-                    <option value="@SupplierTaxProfileType.RegisteredTaxpayer">Registered taxpayer</option>
-                    <option value="@SupplierTaxProfileType.Unregistered">Unregistered</option>
-                    <option value="@SupplierTaxProfileType.ForeignSupplier">Foreign supplier (reverse charge)</option>
+                    <option value="@SupplierTaxProfileType.RegisteredTaxpayer">@(IsArabic ? "ممول مسجل" : "Registered taxpayer")</option>
+                    <option value="@SupplierTaxProfileType.Unregistered">@(IsArabic ? "غير مسجل" : "Unregistered")</option>
+                    <option value="@SupplierTaxProfileType.ForeignSupplier">@(IsArabic ? "مورد أجنبي (ضريبة عكسية)" : "Foreign supplier (reverse charge)")</option>
                 </InputSelect>
             </label>
             @if (_form.ProfileType == SupplierTaxProfileType.RegisteredTaxpayer)
             {
                 <label>
-                    <span>TIN (9 digits) — required for Registered Taxpayer</span>
+                    <span>@(IsArabic ? "الرقم الضريبي (9 أرقام) — مطلوب للممول المسجل" : "TIN (9 digits) — required for Registered Taxpayer")</span>
                     <InputText @bind-Value="_form.Tin" />
                 </label>
             }
             <label>
-                <span>Default purchase VAT category</span>
+                <span>@(IsArabic ? "فئة الضريبة الافتراضية للمشتريات" : "Default purchase VAT category")</span>
                 <InputSelect @bind-Value="_form.DefaultVatCategoryId">
-                    <option value="@Guid.Empty">— none —</option>
+                    <option value="@Guid.Empty">@(IsArabic ? "— لا شيء —" : "— none —")</option>
                     @if (_vatCategories is not null)
                     {
                         @foreach (var v in _vatCategories)
@@ -140,7 +140,7 @@
             </label>
         </fieldset>
 
-        <button type="submit">Add supplier</button>
+        <button type="submit">@(IsArabic ? "إضافة مورد" : "Add supplier")</button>
     </EditForm>
 </section>
 
@@ -164,7 +164,7 @@
         if (_form.ProfileType == SupplierTaxProfileType.RegisteredTaxpayer
             && string.IsNullOrWhiteSpace(_form.Tin))
         {
-            _savedFlash = "TIN is required for Registered Taxpayer suppliers.";
+            _savedFlash = IsArabic ? "الرقم الضريبي مطلوب للممولين المسجلين." : "TIN is required for Registered Taxpayer suppliers.";
             return;
         }
 
@@ -193,7 +193,7 @@
         await Db.SaveChangesAsync();
 
         _form = new FormModel();
-        _savedFlash = $"Supplier {supplier.Code} added.";
+        _savedFlash = IsArabic ? $"تمت إضافة المورد {supplier.Code}." : $"Supplier {supplier.Code} added.";
         await ReloadAsync();
     }
 
@@ -202,7 +202,7 @@
         var s = await Db.Set<Supplier>().FirstAsync(x => x.Id == id);
         s.Deactivate();
         await Db.SaveChangesAsync();
-        _savedFlash = $"Supplier {s.Code} deactivated.";
+        _savedFlash = IsArabic ? $"تم تعطيل المورد {s.Code}." : $"Supplier {s.Code} deactivated.";
         await ReloadAsync();
     }
 
@@ -211,7 +211,7 @@
         var s = await Db.Set<Supplier>().FirstAsync(x => x.Id == id);
         s.Reactivate();
         await Db.SaveChangesAsync();
-        _savedFlash = $"Supplier {s.Code} reactivated.";
+        _savedFlash = IsArabic ? $"تم إعادة تفعيل المورد {s.Code}." : $"Supplier {s.Code} reactivated.";
         await ReloadAsync();
     }
 

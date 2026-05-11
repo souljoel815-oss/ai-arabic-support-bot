@@ -14,50 +14,52 @@
 @implements IDisposable
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>ETA Compliance Dashboard / لوحة الامتثال للضرائب الإلكترونية</h1>
-<p>Per FR-043, surface every posted invoice approaching or past its ETA submission deadline so the operator can intervene before the regulator-imposed cutoff.</p>
+<h1>@(IsArabic ? "لوحة الامتثال للضرائب الإلكترونية" : "ETA Compliance Dashboard")</h1>
+<p>@(IsArabic
+    ? "وفقاً لـ FR-043، عرض كل فاتورة مُرحَّلة قاربت أو تجاوزت موعد الإرسال إلى مصلحة الضرائب حتى يتدخل المشغّل قبل الموعد النهائي المفروض من الجهة التنظيمية."
+    : "Per FR-043, surface every posted invoice approaching or past its ETA submission deadline so the operator can intervene before the regulator-imposed cutoff.")</p>
 
 @if (_loading)
 {
-    <p>Loading…</p>
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
     return;
 }
 
 <section class="eta-tiles">
     <div class="eta-tile eta-tile-critical">
-        <div class="tile-label">Critical (&lt; 24h)</div>
+        <div class="tile-label">@(IsArabic ? "حرج (< 24 ساعة)" : "Critical (< 24h)")</div>
         <div class="tile-value">@_criticalCount</div>
     </div>
     <div class="eta-tile eta-tile-warning">
-        <div class="tile-label">Within 7 days</div>
+        <div class="tile-label">@(IsArabic ? "خلال 7 أيام" : "Within 7 days")</div>
         <div class="tile-value">@_within7DaysCount</div>
     </div>
     <div class="eta-tile">
-        <div class="tile-label">Pending total</div>
+        <div class="tile-label">@(IsArabic ? "إجمالي قيد الانتظار" : "Pending total")</div>
         <div class="tile-value">@_pendingTotal</div>
     </div>
     <div class="eta-tile eta-tile-failed">
-        <div class="tile-label">Failed</div>
+        <div class="tile-label">@(IsArabic ? "فاشل" : "Failed")</div>
         <div class="tile-value">@_failedTotal</div>
     </div>
-    <div class="eta-tile eta-tile-expired" title="Failed AND past the regulator's submission window — manual operator intervention required.">
-        <div class="tile-label">Expired (post-deadline)</div>
+    <div class="eta-tile eta-tile-expired" title="@(IsArabic ? "فاشل وتجاوز نافذة الإرسال للجهة التنظيمية — يتطلب تدخلاً يدوياً." : "Failed AND past the regulator's submission window — manual operator intervention required.")">
+        <div class="tile-label">@(IsArabic ? "منتهي (بعد الموعد)" : "Expired (post-deadline)")</div>
         <div class="tile-value">@_expiredFailedTotal</div>
     </div>
     <div class="eta-tile eta-tile-submitted">
-        <div class="tile-label">Submitted</div>
+        <div class="tile-label">@(IsArabic ? "مُرسَل" : "Submitted")</div>
         <div class="tile-value">@_submittedTotal</div>
     </div>
 </section>
 
 <section class="eta-controls">
     <label>
-        <span>Lookahead window</span>
+        <span>@(IsArabic ? "نافذة الاستطلاع" : "Lookahead window")</span>
         <select @bind="_lookaheadHours" @bind:after="ReloadAsync">
-            <option value="24">Next 24 hours</option>
-            <option value="72">Next 72 hours</option>
-            <option value="168">Next 7 days</option>
-            <option value="336">Next 14 days</option>
+            <option value="24">@(IsArabic ? "الـ 24 ساعة القادمة" : "Next 24 hours")</option>
+            <option value="72">@(IsArabic ? "الـ 72 ساعة القادمة" : "Next 72 hours")</option>
+            <option value="168">@(IsArabic ? "الـ 7 أيام القادمة" : "Next 7 days")</option>
+            <option value="336">@(IsArabic ? "الـ 14 يوم القادمة" : "Next 14 days")</option>
         </select>
     </label>
 </section>
@@ -65,7 +67,9 @@
 @if (_rows.Count == 0)
 {
     <p class="flash-success" role="status">
-        Nothing to do — no Pending or Failed submissions within the @_lookaheadHours-hour window.
+        @(IsArabic
+            ? $"لا يوجد ما يُعمَل — لا توجد إرسالات قيد الانتظار أو فاشلة خلال نافذة الـ {_lookaheadHours} ساعة."
+            : $"Nothing to do — no Pending or Failed submissions within the {_lookaheadHours}-hour window.")
     </p>
 }
 else
@@ -73,13 +77,13 @@ else
     <table class="data-grid">
         <thead>
             <tr>
-                <th>Document #</th>
-                <th>Customer</th>
-                <th>Status</th>
-                <th>Deadline (UTC)</th>
-                <th class="num">Hours left</th>
-                <th class="num">Attempts</th>
-                <th>Last error</th>
+                <th>@(IsArabic ? "رقم المستند" : "Document #")</th>
+                <th>@(IsArabic ? "العميل" : "Customer")</th>
+                <th>@(IsArabic ? "الحالة" : "Status")</th>
+                <th>@(IsArabic ? "الموعد النهائي (UTC)" : "Deadline (UTC)")</th>
+                <th class="num">@(IsArabic ? "ساعات متبقية" : "Hours left")</th>
+                <th class="num">@(IsArabic ? "المحاولات" : "Attempts")</th>
+                <th>@(IsArabic ? "آخر خطأ" : "Last error")</th>
                 <th></th>
             </tr>
         </thead>
@@ -97,7 +101,7 @@ else
                     <td class="num">@hoursLeft.ToString("0.#")</td>
                     <td class="num">@row.AttemptCount</td>
                     <td>@(row.LastErrorCode ?? "—")</td>
-                    <td><a href="/invoices/@row.SalesInvoiceId">View</a></td>
+                    <td><a href="/invoices/@row.SalesInvoiceId">@(IsArabic ? "عرض" : "View")</a></td>
                 </tr>
             }
         </tbody>
@@ -178,19 +182,29 @@ else
             .Select(i => new { i.Id, i.DocumentNumber, i.CustomerId })
             .ToListAsync();
         var customerIds = invoices.Select(i => i.CustomerId).Distinct().ToArray();
-        var customerNames = await Db.Set<Customer>().AsNoTracking()
+        var customers = await Db.Set<Customer>().AsNoTracking()
             .Where(c => customerIds.Contains(c.Id))
-            .ToDictionaryAsync(c => c.Id, c => c.Name.English);
+            .ToDictionaryAsync(c => c.Id, c => c.Name);
 
         _rows = dashboardRows.Select(d =>
         {
             var inv = invoices.FirstOrDefault(i => i.Id == d.SalesInvoiceId);
-            var customerName = inv is null
-                ? "?"
-                : customerNames.GetValueOrDefault(inv.CustomerId, inv.CustomerId.ToString("D"));
+            string customerName;
+            if (inv is null)
+            {
+                customerName = "?";
+            }
+            else if (customers.TryGetValue(inv.CustomerId, out var name))
+            {
+                customerName = IsArabic ? name.Arabic : name.English;
+            }
+            else
+            {
+                customerName = inv.CustomerId.ToString("D");
+            }
             return new Row(
                 d.SalesInvoiceId,
-                inv?.DocumentNumber ?? "(unknown)",
+                inv?.DocumentNumber ?? (IsArabic ? "(غير معروف)" : "(unknown)"),
                 customerName,
                 d.Status,
                 d.SubmissionWindowExpiresAtUtc,

@@ -1,9 +1,11 @@
 using EgyptTax.Application.Accounting;
 using EgyptTax.Domain.Accounting;
 using EgyptTax.Domain.Documents;
+using EgyptTax.Domain.MasterData;
 using EgyptTax.Domain.Workflow;
 using EgyptTax.Infrastructure.Persistence;
 using EgyptTax.SharedKernel;
+using Microsoft.EntityFrameworkCore;
 
 namespace EgyptTax.Infrastructure.Accounting;
 
@@ -28,7 +30,7 @@ public sealed class CustomerReceiptVoucherJournalEmitter : ICustomerReceiptVouch
         _db = db;
     }
 
-    public Task EmitForCustomerReceiptAsync(
+    public async Task EmitForCustomerReceiptAsync(
         CustomerReceiptVoucher voucher,
         DateTime postedAtUtc,
         CancellationToken cancellationToken = default
@@ -48,6 +50,21 @@ public sealed class CustomerReceiptVoucherJournalEmitter : ICustomerReceiptVouch
             );
         }
 
+        // P3.1 — multi-cashbox/bank: when the voucher has been
+        // pinned to a specific CashAccount, debit that account's
+        // code instead of the legacy hard-coded "1100 Cash" so the
+        // trial balance shows the right balance per cashbox.
+        var cashAccountCode = ChartOfAccountCodes.Cash;
+        if (voucher.CashAccountId is { } cashId)
+        {
+            cashAccountCode = await _db.Set<CashAccount>()
+                .AsNoTracking()
+                .Where(a => a.Id == cashId)
+                .Select(a => a.AccountCode)
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? ChartOfAccountCodes.Cash;
+        }
+
         var lines = new List<(
             string AccountCode,
             MoneyEgp Debit,
@@ -56,7 +73,7 @@ public sealed class CustomerReceiptVoucherJournalEmitter : ICustomerReceiptVouch
         )>(3)
         {
             (
-                ChartOfAccountCodes.Cash,
+                cashAccountCode,
                 voucher.NetCashReceived,
                 MoneyEgp.Zero,
                 $"Receipt {voucher.DocumentNumber} — cash leg"
@@ -91,6 +108,5 @@ public sealed class CustomerReceiptVoucherJournalEmitter : ICustomerReceiptVouch
         );
 
         _db.Add(entry);
-        return Task.CompletedTask;
     }
 }
