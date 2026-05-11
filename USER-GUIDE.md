@@ -1358,6 +1358,50 @@ entry links to the URL where it's exposed in the UI.
   default text, more line-height).
 - **Gux.12** — Mobile bottom-nav bar (one-tap to common destinations
   on phones).
+- **Gux.13** — Company Admin Panel at `/settings` consolidating 10
+  tabs of configuration. See dedicated section below.
+
+### Gux.13 Company Admin Panel
+
+The single most consequential UX change since the MVP. Replaces 9+
+scattered settings pages with a unified `/settings` admin panel
+containing 10 horizontal tabs (vertical accordion on mobile). Each
+tab is role-filtered server-side — Cashier and View-only users
+see only the Notifications + About tabs; Accountant sees everything
+view-only except ETA + Email + Backup; Admin sees everything.
+
+**Tabs:**
+
+| # | Tab | What it does |
+|---|---|---|
+| 1 | بيانات الشركة (Company Profile) | Legal name, TIN, fiscal year, tax regime. Same data as the legacy `/settings/company` page — both routes mount the shared `<CompanyProfilePanel />`. |
+| 2 | الإعدادات الضريبية (Tax Configuration) | Directory cards linking to fiscal-year, tax-periods (FR-037 lock/reopen), VAT categories, WHT categories. |
+| 3 | ربط منظومة ETA (ETA Integration) | 4-state status banner (○ grey not configured, ✓ green connected, ⚠ orange last submission failed) + cards linking to the ETA wizard, certificates, dashboard, inbox. |
+| 4 | إعدادات الفواتير (Invoice Settings) | Template (Classic/Modern/Compact), language (Arabic only or bilingual), prefix, payment terms, footer notes, QR + logo toggles. **Plus**: the Next-Number override with the FR-037 period-lock guard — refuses changes when the active tax period is Locked, refuses values ≤ the highest used number, audit-logs every change. |
+| 5 | البريد الإلكتروني (Email Settings) | Two modes: MailClient (default — opens Outlook/Thunderbird via MAPI; zero config) or DirectSmtp (DaftarX sends emails itself; SMB+ feature). SMTP form has Gmail / Outlook 365 / Yahoo presets. Password is encrypted via `IDataProtector` (DPAPI on Windows). "Test Send" actually attempts a real send. |
+| 6 | إدارة المستخدمين (User Management) | List/add/disable/reset-password/delete users with role assignment (Admin / Accountant / Cashier / View-only). One-click temp-password generator. Edition-gated: Solo edition shows an upgrade prompt instead. User cap respected — when reaching the plan's max, the add form is replaced with a "disable a user or upgrade" warning. |
+| 7 | الترخيص (License) | Status / edition / customer / HWID / expiry / max-users / max-companies. **Plus**: in-app activate/renew via paste — paste your `license.token` JSON and DaftarX validates + activates immediately, no service restart. Trial countdown banner with day count. |
+| 8 | النسخ الاحتياطي (Backup) | Provider-aware backup engine — generates `.dxbak` files (zip containing `manifest.json` + the DB backup + attachments folder). On SQL Server: T-SQL `BACKUP DATABASE`. On SQLite: SQLite Online Backup API. Restore validates the manifest and **refuses cross-provider files** (a SQL Server `.dxbak` won't restore on a SQLite install). Auto-backup with Daily / Weekly / OnClosing schedules. |
+| 9 | الإشعارات (Notifications) | Six toggle groups: tax deadlines (7/3/1 days before), license expiry (30/7/1), ETA submission failures, pending approvals, backup reminder (7-day default), ETA certificate expiry (30/7). Email delivery requires SMTP from Tab 5. |
+| 10 | حول ومساعدة (About & Support) | Visible to all users. App version, OS, .NET version, **runtime-detected DB provider** (SQLite or SQL Server Express, with the actual version string), diagnostic-report button, check-for-updates, re-run setup wizard, support links (WhatsApp + email), legal. |
+
+**First-run Setup Wizard:** `/setup-wizard` walks new operators
+through 4 steps (Company → Tax regime → ETA wiring → Done) so a
+fresh install lands on a usable dashboard rather than an empty one.
+Pre-fills from any existing `Company` row — re-running is safe.
+
+**Edition system:** the four editions (Solo / SMB / Enterprise /
+Firm) each unlock different feature subsets — see `pricing.md` for
+the full ladder. `EditionGate.Require(Feature.X)` guards the
+sensitive entry points server-side: Receipt OCR (`POST /api/v1/expenses/ocr`),
+Bulk Invoice template (`GET /api/v1/invoices/bulk/template`), and
+Income-Tax Return generator. Solo customers hitting these get a
+403 with an Arabic-localised upgrade prompt rather than a crash.
+
+License tokens v2 (`Issue-License.ps1 -Edition SMB -MaxUsers 5
+-Features ai_assistant,cloud_backup`) encode edition + caps +
+explicit feature list. Pre-Gux.13 tokens (`Edition: Standard|Pro|
+Basic`) keep working — they map to Solo for safety until re-issued.
 
 ---
 
@@ -1443,6 +1487,18 @@ entry links to the URL where it's exposed in the UI.
 | `/tax/income-tax-return/{id}` | G3.4 — income-tax return detail |
 | `/firm-portal/commissions` | G1.4 — accountant referral / commission ledger |
 | `/compliance/health` | G2.3 — unified compliance roll-up |
+| `/settings` | Gux.13 — admin panel (defaults to first allowed tab) |
+| `/settings?tab=company-profile` | Gux.13 Tab 1 — Company Profile |
+| `/settings?tab=tax-config` | Gux.13 Tab 2 — Tax Configuration directory |
+| `/settings?tab=eta-integration` | Gux.13 Tab 3 — ETA Integration + status banner |
+| `/settings?tab=invoice-settings` | Gux.13 Tab 4 — Invoice Settings (FR-037 period-lock guard) |
+| `/settings?tab=email-settings` | Gux.13 Tab 5 — Email Settings (MAPI / SMTP) |
+| `/settings?tab=user-management` | Gux.13 Tab 6 — User Management (Solo-gated) |
+| `/settings?tab=license` | Gux.13 Tab 7 — License (in-app activate/renew) |
+| `/settings?tab=backup` | Gux.13 Tab 8 — Backup (provider-aware engine) |
+| `/settings?tab=notifications` | Gux.13 Tab 9 — Notifications |
+| `/settings?tab=about` | Gux.13 Tab 10 — About & Support |
+| `/setup-wizard` | Gux.13 — first-run 4-step onboarding |
 
 ---
 
