@@ -331,12 +331,33 @@
             return;
         }
 
-        var state = await Auth.GetAuthenticationStateAsync();
-        var userId = state.User.UserId() ?? Guid.Empty;
-        var posted = await PostHandler.HandleAsync(
-            new PostSalesInvoiceCommand(_invoice.Id, userId), CancellationToken.None);
+        // Wrap the post in a try/catch so domain/infrastructure
+        // exceptions surface as inline flash messages — not as
+        // Blazor's "An unhandled error has occurred. Reload."
+        // circuit-error overlay. Common throwers from the post
+        // pipeline (PostSalesInvoiceWithEtaSubmissionHandler):
+        //   • InvalidOperationException — period locked (FR-037),
+        //     approval required (FR-026), missing issuer Company,
+        //     allocator failure
+        //   • Any infrastructure exception from the journal emitter
+        //     when Chart of Accounts isn't configured
+        try
+        {
+            var state = await Auth.GetAuthenticationStateAsync();
+            var userId = state.User.UserId() ?? Guid.Empty;
+            var posted = await PostHandler.HandleAsync(
+                new PostSalesInvoiceCommand(_invoice.Id, userId), CancellationToken.None);
 
-        Nav.NavigateTo($"/invoices/{posted.Id}", forceLoad: true);
+            Nav.NavigateTo($"/invoices/{posted.Id}", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            ShowFlash(
+                IsArabic
+                    ? $"فشل ترحيل الفاتورة: {ex.Message}"
+                    : $"Could not post the invoice: {ex.Message}",
+                error: true);
+        }
     }
 
     private bool CanPost =>

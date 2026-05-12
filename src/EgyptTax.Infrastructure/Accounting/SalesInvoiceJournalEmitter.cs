@@ -59,49 +59,58 @@ public sealed class SalesInvoiceJournalEmitter : IJournalEntryEmitter
         var revenueAmount = MoneyEgp.From(Math.Abs(invoice.NetBeforeVat.Amount));
         var vatAmount = MoneyEgp.From(Math.Abs(invoice.VatTotal.Amount));
 
-        var lines = invoice.IsCreditNote
-            ? new[]
+        // EXEMPT (0%) and zero-rated invoices have no VAT — emit only
+        // the AR + Revenue legs, otherwise the JournalEntryLine ctor
+        // refuses the all-zeros VAT row ("a journal line MUST be
+        // either a debit or a credit"). Pre-Gux.13 this branch threw
+        // and surfaced as Blazor's "An unhandled error has occurred"
+        // overlay — see BUG-004 in the May 2026 testing report.
+        var hasVat = vatAmount.Amount > 0m;
+        var lineList = new List<(string, MoneyEgp, MoneyEgp, string)>(3);
+
+        if (invoice.IsCreditNote)
+        {
+            lineList.Add((
+                ChartOfAccountCodes.AccountsReceivable,
+                MoneyEgp.Zero,
+                arAmount,
+                $"Credit note {invoice.DocumentNumber} — release receivable"));
+            lineList.Add((
+                ChartOfAccountCodes.SalesRevenue,
+                revenueAmount,
+                MoneyEgp.Zero,
+                $"Credit note {invoice.DocumentNumber} — reverse revenue"));
+            if (hasVat)
             {
-                (
-                    ChartOfAccountCodes.AccountsReceivable,
-                    MoneyEgp.Zero,
-                    arAmount,
-                    $"Credit note {invoice.DocumentNumber} — release receivable"
-                ),
-                (
-                    ChartOfAccountCodes.SalesRevenue,
-                    revenueAmount,
-                    MoneyEgp.Zero,
-                    $"Credit note {invoice.DocumentNumber} — reverse revenue"
-                ),
-                (
+                lineList.Add((
                     ChartOfAccountCodes.OutputVatPayable,
                     vatAmount,
                     MoneyEgp.Zero,
-                    $"Credit note {invoice.DocumentNumber} — claw back output VAT"
-                ),
+                    $"Credit note {invoice.DocumentNumber} — claw back output VAT"));
             }
-            : new[]
+        }
+        else
+        {
+            lineList.Add((
+                ChartOfAccountCodes.AccountsReceivable,
+                arAmount,
+                MoneyEgp.Zero,
+                $"Invoice {invoice.DocumentNumber} — book receivable"));
+            lineList.Add((
+                ChartOfAccountCodes.SalesRevenue,
+                MoneyEgp.Zero,
+                revenueAmount,
+                $"Invoice {invoice.DocumentNumber} — recognise revenue"));
+            if (hasVat)
             {
-                (
-                    ChartOfAccountCodes.AccountsReceivable,
-                    arAmount,
-                    MoneyEgp.Zero,
-                    $"Invoice {invoice.DocumentNumber} — book receivable"
-                ),
-                (
-                    ChartOfAccountCodes.SalesRevenue,
-                    MoneyEgp.Zero,
-                    revenueAmount,
-                    $"Invoice {invoice.DocumentNumber} — recognise revenue"
-                ),
-                (
+                lineList.Add((
                     ChartOfAccountCodes.OutputVatPayable,
                     MoneyEgp.Zero,
                     vatAmount,
-                    $"Invoice {invoice.DocumentNumber} — accrue output VAT"
-                ),
-            };
+                    $"Invoice {invoice.DocumentNumber} — accrue output VAT"));
+            }
+        }
+        var lines = lineList;
 
         var documentType = invoice.IsCreditNote
             ? DocumentType.CreditNote

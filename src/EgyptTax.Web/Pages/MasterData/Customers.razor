@@ -75,15 +75,15 @@
         <fieldset>
             <legend>@(IsArabic ? "الهوية" : "Identity")</legend>
             <label>
-                <span>@(IsArabic ? "الكود" : "Code")</span>
+                <span>@(IsArabic ? "الكود *" : "Code *")</span>
                 <InputText @bind-Value="_form.Code" />
             </label>
             <label>
-                <span>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</span>
+                <span>@(IsArabic ? "الاسم (إنجليزي) *" : "Name (English) *")</span>
                 <InputText @bind-Value="_form.NameEnglish" />
             </label>
             <label>
-                <span>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</span>
+                <span>@(IsArabic ? "الاسم (عربي) *" : "Name (Arabic) *")</span>
                 <InputText @bind-Value="_form.NameArabic" />
             </label>
             <label>
@@ -135,27 +135,27 @@
         <fieldset>
             <legend>@(IsArabic ? "العنوان" : "Address")</legend>
             <label>
-                <span>@(IsArabic ? "العرض (إنجليزي)" : "Display (English)")</span>
+                <span>@(IsArabic ? "العرض (إنجليزي) *" : "Display (English) *")</span>
                 <InputText @bind-Value="_form.AddressDisplayEnglish" />
             </label>
             <label>
-                <span>@(IsArabic ? "العرض (عربي)" : "Display (Arabic)")</span>
+                <span>@(IsArabic ? "العرض (عربي) *" : "Display (Arabic) *")</span>
                 <InputText @bind-Value="_form.AddressDisplayArabic" />
             </label>
             <label>
-                <span>@(IsArabic ? "المحافظة" : "Governorate")</span>
+                <span>@(IsArabic ? "المحافظة *" : "Governorate *")</span>
                 <InputText @bind-Value="_form.AddressGovernorate" />
             </label>
             <label>
-                <span>@(IsArabic ? "المنطقة / المدينة" : "Region / city")</span>
+                <span>@(IsArabic ? "المنطقة / المدينة *" : "Region / city *")</span>
                 <InputText @bind-Value="_form.AddressRegionCity" />
             </label>
             <label>
-                <span>@(IsArabic ? "الشارع" : "Street")</span>
+                <span>@(IsArabic ? "الشارع *" : "Street *")</span>
                 <InputText @bind-Value="_form.AddressStreet" />
             </label>
             <label>
-                <span>@(IsArabic ? "رقم العقار" : "Building number")</span>
+                <span>@(IsArabic ? "رقم العقار *" : "Building number *")</span>
                 <InputText @bind-Value="_form.AddressBuildingNumber" />
             </label>
         </fieldset>
@@ -259,7 +259,7 @@
         [Required, StringLength(200)] public string NameEnglish { get; set; } = "";
         [Required, StringLength(200)] public string NameArabic { get; set; } = "";
         [StringLength(32)] public string Phone { get; set; } = "";
-        [EmailAddress, StringLength(254)] public string Email { get; set; } = "";
+        [EgyptTax.Web.Validation.OptionalEmailAddress, StringLength(254)] public string Email { get; set; } = "";
 
         public CustomerTaxProfileType ProfileType { get; set; } = CustomerTaxProfileType.B2BRegistered;
         public string? Tin { get; set; }

@@ -79,23 +79,23 @@
         <fieldset>
             <legend>@(IsArabic ? "الهوية" : "Identity")</legend>
             <label>
-                <span>@(IsArabic ? "الكود" : "Code")</span>
+                <span>@(IsArabic ? "الكود *" : "Code *")</span>
                 <InputText @bind-Value="_form.Code" />
             </label>
             <label>
-                <span>@(IsArabic ? "الاسم (إنجليزي)" : "Name (English)")</span>
+                <span>@(IsArabic ? "الاسم (إنجليزي) *" : "Name (English) *")</span>
                 <InputText @bind-Value="_form.NameEnglish" />
             </label>
             <label>
-                <span>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</span>
+                <span>@(IsArabic ? "الاسم (عربي) *" : "Name (Arabic) *")</span>
                 <InputText @bind-Value="_form.NameArabic" />
             </label>
             <label>
-                <span>@(IsArabic ? "العنوان (إنجليزي)" : "Address (English)")</span>
+                <span>@(IsArabic ? "العنوان (إنجليزي) *" : "Address (English) *")</span>
                 <InputText @bind-Value="_form.AddressEnglish" />
             </label>
             <label>
-                <span>@(IsArabic ? "العنوان (عربي)" : "Address (Arabic)")</span>
+                <span>@(IsArabic ? "العنوان (عربي) *" : "Address (Arabic) *")</span>
                 <InputText @bind-Value="_form.AddressArabic" />
             </label>
             <label>
@@ -223,7 +223,7 @@
         [Required, StringLength(500)] public string AddressEnglish { get; set; } = "";
         [Required, StringLength(500)] public string AddressArabic { get; set; } = "";
         [StringLength(32)] public string Phone { get; set; } = "";
-        [EmailAddress, StringLength(254)] public string Email { get; set; } = "";
+        [EgyptTax.Web.Validation.OptionalEmailAddress, StringLength(254)] public string Email { get; set; } = "";
 
         public SupplierTaxProfileType ProfileType { get; set; } = SupplierTaxProfileType.RegisteredTaxpayer;
         public string? Tin { get; set; }
