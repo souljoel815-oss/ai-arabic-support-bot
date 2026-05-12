@@ -16,6 +16,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject IPenaltyExposureQuery PenaltyQuery
+@inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <PageTitle>DaftarX</PageTitle>
@@ -78,6 +79,18 @@
         _periodLabel = $"{MonthName(now.Month)} {now.Year}";
 
         await using var Db = await DbFactory.CreateDbContextAsync();
+
+        // Gux.13 Phase 3a — fresh-install empty-state redirect.
+        // No Company row → operator never finished onboarding;
+        // bounce them to the wizard so the dashboard isn't a wall
+        // of "—" placeholders. The wizard saves Company + Tax
+        // regime; redo logic detects the existing row on re-entry.
+        var hasCompany = await Db.Set<Company>().AsNoTracking().AnyAsync();
+        if (!hasCompany)
+        {
+            Nav.NavigateTo("/setup-wizard", forceLoad: false);
+            return;
+        }
 
         // Period lock state
         var period = await Db.Set<TaxPeriod>().AsNoTracking()

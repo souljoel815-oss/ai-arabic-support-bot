@@ -1,0 +1,100 @@
+@using EgyptTax.Infrastructure.Settings
+@using EgyptTax.Web.Licensing
+@inject SettingsRepository Settings
+
+@*
+    Gux.13 follow-on — license-expiry alert. Only fires for Active
+    (paid) installs whose expiry is within one of the operator's
+    configured day-thresholds (Tab 9 → License expiry alert,
+    default 30/7/1). Trial state is handled by TrialCountdownBanner;
+    Expired state is handled by the existing license-banner
+    middleware. This banner covers the gap: paid customer whose
+    license is about to expire and who needs a heads-up.
+
+    Renders into MainLayout above @Body so it's visible on every
+    authenticated page. Severity colour escalates as the threshold
+    closes in (info / warn / urgent).
+*@
+
+@code {
+    private bool _ready;
+    private bool _show;
+    private int _daysRemaining;
+    private string _severityClass = "trial-banner-info";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Only paid installs use this banner. Trial → TrialCountdownBanner.
+        // Expired / NotActivated → LicenseBannerMiddleware.
+        if (LicenseStatus.State != LicenseState.Active)
+        {
+            _ready = true;
+            return;
+        }
+
+        var prefs = await Settings.GetNotificationPrefsAsync();
+        if (!prefs.LicenseExpiryEnabled)
+        {
+            _ready = true;
+            return;
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        if (LicenseStatus.ExpiresAtUtc <= nowUtc)
+        {
+            // Already expired — middleware handles it; no banner needed here.
+            _ready = true;
+            return;
+        }
+
+        _daysRemaining = (int)Math.Ceiling((LicenseStatus.ExpiresAtUtc - nowUtc).TotalDays);
+
+        // Show only when within ANY of the configured thresholds.
+        // Day-arrays sort descending, so the largest threshold (e.g.,
+        // 30) is _daysBefore[0]. We fire as soon as the days-
+        // remaining drops below the largest threshold.
+        var largest = prefs.LicenseExpiryDaysBefore.Length > 0
+            ? prefs.LicenseExpiryDaysBefore.Max()
+            : 0;
+        _show = _daysRemaining <= largest;
+
+        // Severity escalates as the smallest configured threshold
+        // crosses the days-remaining line.
+        _severityClass = _daysRemaining switch
+        {
+            <= 1 => "trial-banner-urgent",
+            <= 7 => "trial-banner-warn",
+            _    => "trial-banner-info",
+        };
+        _ready = true;
+    }
+}
+
+@if (_ready && _show)
+{
+    <div class="trial-banner @_severityClass" role="status">
+        <div class="trial-banner-text">
+            @if (IsArabic)
+            {
+                <strong>⏰ ترخيص:</strong>
+                <span>سينتهي ترخيصك خلال <strong>@_daysRemaining</strong> @(_daysRemaining == 1 ? "يوم" : "يوماً") (@LicenseStatus.ExpiresAtUtc.ToLocalTime().ToString("yyyy-MM-dd")).</span>
+                <span class="trial-banner-cta">
+                    جدّد قبل الانتهاء حتى لا يدخل النظام في وضع القراءة فقط.
+                </span>
+            }
+            else
+            {
+                <strong>⏰ License:</strong>
+                <span>Your license expires in <strong>@_daysRemaining</strong> day@(_daysRemaining == 1 ? "" : "s") (@LicenseStatus.ExpiresAtUtc.ToLocalTime().ToString("yyyy-MM-dd")).</span>
+                <span class="trial-banner-cta">
+                    Renew before expiry to avoid read-only mode.
+                </span>
+            }
+        </div>
+        <div class="trial-banner-hwid">
+            <a href="/settings?tab=license" class="trial-banner-link">
+                @(IsArabic ? "تجديد الترخيص" : "Renew now")
+            </a>
+        </div>
+    </div>
+}

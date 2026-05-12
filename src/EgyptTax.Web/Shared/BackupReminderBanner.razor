@@ -1,0 +1,94 @@
+@using EgyptTax.Infrastructure.Settings
+@inject SettingsRepository Settings
+
+@*
+    Gux.13 follow-on — backup-reminder alert. Fires when:
+      - NotificationPrefs.BackupReminderEnabled is on, AND
+      - the operator has NOT configured AutoBackup (so no Hangfire
+        job is going to silently take care of it), AND
+      - either no backup has ever been taken, OR
+      - the last backup is older than BackupReminderDays.
+
+    Operators who configure AutoBackup are intentionally not
+    nagged — the job does the work; the banner would just be
+    noise. Manual-only operators are the persona this banner
+    protects.
+*@
+
+@code {
+    private bool _ready;
+    private bool _show;
+    private string _bodyKey = "never";
+    private int _daysSinceLast;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var prefs = await Settings.GetNotificationPrefsAsync();
+        if (!prefs.BackupReminderEnabled)
+        {
+            _ready = true;
+            return;
+        }
+
+        var config = await Settings.GetBackupConfigAsync();
+        if (config.AutoBackupEnabled)
+        {
+            // The auto-fire job has it covered; don't nag.
+            _ready = true;
+            return;
+        }
+
+        if (config.LastBackupAtUtc is null)
+        {
+            _show = true;
+            _bodyKey = "never";
+            _ready = true;
+            return;
+        }
+
+        _daysSinceLast = (int)Math.Floor((DateTime.UtcNow - config.LastBackupAtUtc.Value).TotalDays);
+        if (_daysSinceLast >= prefs.BackupReminderDays)
+        {
+            _show = true;
+            _bodyKey = "stale";
+        }
+        _ready = true;
+    }
+}
+
+@if (_ready && _show)
+{
+    <div class="trial-banner trial-banner-warn" role="status">
+        <div class="trial-banner-text">
+            @if (IsArabic)
+            {
+                <strong>💾 نسخة احتياطية:</strong>
+                @if (_bodyKey == "never")
+                {
+                    <span>لم يتم إنشاء أي نسخة احتياطية بعد. أنت في خطر فقدان كل بياناتك إذا تعطّل الجهاز.</span>
+                }
+                else
+                {
+                    <span>آخر نسخة احتياطية كانت من <strong>@_daysSinceLast</strong> يوم. خد نسخة جديدة دلوقتي.</span>
+                }
+            }
+            else
+            {
+                <strong>💾 Backup:</strong>
+                @if (_bodyKey == "never")
+                {
+                    <span>No backup taken yet. You'd lose all data if this machine fails.</span>
+                }
+                else
+                {
+                    <span>Last backup was <strong>@_daysSinceLast</strong> day@(_daysSinceLast == 1 ? "" : "s") ago. Take one now.</span>
+                }
+            }
+        </div>
+        <div class="trial-banner-hwid">
+            <a href="/settings?tab=backup" class="trial-banner-link">
+                @(IsArabic ? "نسخ احتياطي الآن" : "Backup now")
+            </a>
+        </div>
+    </div>
+}
