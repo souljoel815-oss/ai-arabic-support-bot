@@ -1,0 +1,142 @@
+@using EgyptTax.Domain.Compliance
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Settings
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject SettingsRepository Settings
+
+@*
+    Gux.13 follow-on — tax-deadline alert. Reads ComplianceObligation
+    rows (already populated by ComplianceCalendarRefreshJob — runs
+    every 5 min) and surfaces the nearest unfiled deadline if it
+    falls within one of the operator's configured day-thresholds
+    (Tab 9 → Tax deadline alerts, default 7/3/1).
+
+    Only shows the SOONEST unfiled obligation — banner real estate
+    is precious; the calendar page (/compliance/calendar) is the
+    full list. Severity escalates as the deadline closes in.
+*@
+
+@code {
+    private bool _ready;
+    private bool _show;
+    private ComplianceObligation? _next;
+    private int _daysUntilDue;
+    private string _severityClass = "trial-banner-info";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var prefs = await Settings.GetNotificationPrefsAsync();
+        if (!prefs.TaxDeadlineEnabled)
+        {
+            _ready = true;
+            return;
+        }
+        var thresholds = prefs.TaxDeadlineDaysBefore;
+        if (thresholds.Length == 0)
+        {
+            _ready = true;
+            return;
+        }
+        var largest = thresholds.Max();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // Soonest unfiled obligation that's still in the future or
+        // overdue. We treat "within the largest threshold" as the
+        // trigger — sub-thresholds just escalate severity.
+        _next = await db.Set<ComplianceObligation>().AsNoTracking()
+            .Where(o => o.Status == ComplianceObligationStatus.Upcoming)
+            .OrderBy(o => o.DueDate)
+            .FirstOrDefaultAsync();
+
+        if (_next is null)
+        {
+            _ready = true;
+            return;
+        }
+
+        _daysUntilDue = _next.DueDate.DayNumber - today.DayNumber;
+
+        // Show if it's already overdue OR within the largest configured threshold.
+        _show = _daysUntilDue <= largest;
+
+        // Razor parser gets confused by raw `<` in switch patterns
+        // inside @code blocks (sees them as opening HTML tags), so
+        // use an if-chain instead.
+        _severityClass = ResolveSeverity(_daysUntilDue);
+        _ready = true;
+    }
+
+    private static string ResolveSeverity(int daysUntilDue)
+    {
+        if (daysUntilDue <= 1) return "trial-banner-urgent";
+        if (daysUntilDue <= 3) return "trial-banner-warn";
+        return "trial-banner-info";
+    }
+
+    private string KindLabel(ComplianceObligationKind kind) => kind switch
+    {
+        ComplianceObligationKind.VatMonthly        => IsArabic ? "الإقرار الشهري للضريبة" : "Monthly VAT return",
+        ComplianceObligationKind.VatQuarterly      => IsArabic ? "الإقرار الربع سنوي للضريبة" : "Quarterly VAT return",
+        ComplianceObligationKind.Form41Quarterly   => IsArabic ? "نموذج 41 (خصم من المنبع)" : "Form 41 (withholding)",
+        ComplianceObligationKind.IncomeTaxAnnual   => IsArabic ? "الإقرار السنوي لضريبة الدخل" : "Annual income-tax return",
+        ComplianceObligationKind.TurnoverTaxAnnual => IsArabic ? "الإقرار السنوي لضريبة معدل الدوران" : "Annual turnover-tax return",
+        _ => kind.ToString(),
+    };
+}
+
+@if (_ready && _show && _next is not null)
+{
+    <div class="trial-banner @_severityClass" role="status">
+        <div class="trial-banner-text">
+            @if (_daysUntilDue < 0)
+            {
+                @if (IsArabic)
+                {
+                    <strong>📅 موعد ضريبي:</strong>
+                    <span><strong>@KindLabel(_next.Kind)</strong> متأخر بـ <strong>@(-_daysUntilDue)</strong> يوم (كان مستحقاً @_next.DueDate.ToString("yyyy-MM-dd")).</span>
+                    <span class="trial-banner-cta">قدّم الإقرار في أقرب وقت لتجنّب الغرامات.</span>
+                }
+                else
+                {
+                    <strong>📅 Tax deadline:</strong>
+                    <span><strong>@KindLabel(_next.Kind)</strong> is <strong>@(-_daysUntilDue)</strong> day@(_daysUntilDue == -1 ? "" : "s") OVERDUE (was due @_next.DueDate.ToString("yyyy-MM-dd")).</span>
+                    <span class="trial-banner-cta">File ASAP to avoid penalties.</span>
+                }
+            }
+            else if (_daysUntilDue == 0)
+            {
+                @if (IsArabic)
+                {
+                    <strong>📅 موعد ضريبي:</strong>
+                    <span><strong>@KindLabel(_next.Kind)</strong> مستحق <strong>اليوم</strong>.</span>
+                }
+                else
+                {
+                    <strong>📅 Tax deadline:</strong>
+                    <span><strong>@KindLabel(_next.Kind)</strong> is due <strong>today</strong>.</span>
+                }
+            }
+            else
+            {
+                @if (IsArabic)
+                {
+                    <strong>📅 موعد ضريبي:</strong>
+                    <span><strong>@KindLabel(_next.Kind)</strong> مستحق خلال <strong>@_daysUntilDue</strong> @(_daysUntilDue == 1 ? "يوم" : "يوماً") (@_next.DueDate.ToString("yyyy-MM-dd")).</span>
+                }
+                else
+                {
+                    <strong>📅 Tax deadline:</strong>
+                    <span><strong>@KindLabel(_next.Kind)</strong> due in <strong>@_daysUntilDue</strong> day@(_daysUntilDue == 1 ? "" : "s") (@_next.DueDate.ToString("yyyy-MM-dd")).</span>
+                }
+            }
+        </div>
+        <div class="trial-banner-hwid">
+            <a href="/compliance/calendar" class="trial-banner-link">
+                @(IsArabic ? "افتح التقويم" : "Open calendar")
+            </a>
+        </div>
+    </div>
+}

@@ -89,6 +89,39 @@
                         <input type="number" min="1" max="12" @bind="_fiscalStartMonth" />
                     </label>
                 </div>
+
+                <h3 style="margin-top:20px;">@(IsArabic ? "العنوان" : "Address")</h3>
+                <p class="page-subtitle" style="font-size:13px;">
+                    @(IsArabic
+                        ? "العنوان يظهر على كل فاتورة قانونية. تقدر تعدّله لاحقاً من تبويب «بيانات الشركة»."
+                        : "The address shows on every legal invoice. Editable later from the Company Profile tab.")
+                </p>
+                <div class="form-grid">
+                    <label>
+                        <span>@(IsArabic ? "العنوان (عربي)" : "Display address (Arabic)")</span>
+                        <input type="text" @bind="_addressAr" placeholder="@(IsArabic ? "مثال: ١ شارع ٩ المعادي، القاهرة" : "")" />
+                    </label>
+                    <label>
+                        <span>@(IsArabic ? "العنوان (إنجليزي)" : "Display address (English)")</span>
+                        <input type="text" @bind="_addressEn" placeholder="e.g. 1 Street 9, Maadi, Cairo" />
+                    </label>
+                    <label>
+                        <span>@(IsArabic ? "المحافظة" : "Governorate")</span>
+                        <input type="text" @bind="_governorate" placeholder="@(IsArabic ? "القاهرة" : "Cairo")" />
+                    </label>
+                    <label>
+                        <span>@(IsArabic ? "المنطقة / المدينة" : "Region / city")</span>
+                        <input type="text" @bind="_regionCity" placeholder="@(IsArabic ? "المعادي" : "Maadi")" />
+                    </label>
+                    <label>
+                        <span>@(IsArabic ? "الشارع" : "Street")</span>
+                        <input type="text" @bind="_street" />
+                    </label>
+                    <label>
+                        <span>@(IsArabic ? "رقم العقار" : "Building number")</span>
+                        <input type="text" @bind="_buildingNumber" />
+                    </label>
+                </div>
             </section>
             break;
         case 2:
@@ -188,6 +221,14 @@
     private int _fiscalStartMonth = 1;
     private TaxRegime _taxRegime = TaxRegime.Standard;
 
+    // Address fields (added in v2 — were stubbed with "(set later)" originally)
+    private string _addressAr = "";
+    private string _addressEn = "";
+    private string _governorate = "";
+    private string _regionCity = "";
+    private string _street = "";
+    private string _buildingNumber = "";
+
     protected override async Task OnInitializedAsync()
     {
         // If a Company row already exists, pre-fill so re-running
@@ -202,6 +243,15 @@
             _activityCode = c.TaxpayerActivityCode;
             _fiscalStartMonth = c.FiscalYearStartMonth;
             _taxRegime = c.TaxRegime;
+            // Pre-fill address; skip the "(set later)" stub from v1
+            // wizards so re-runs don't show garbage in the form.
+            var stub = "(set later)";
+            _addressAr = c.Address.DisplayArabic == "(لم يحدد بعد)" ? "" : c.Address.DisplayArabic;
+            _addressEn = c.Address.DisplayEnglish == stub ? "" : c.Address.DisplayEnglish;
+            _governorate = c.Address.Governorate == stub ? "" : c.Address.Governorate;
+            _regionCity = c.Address.RegionCity == stub ? "" : c.Address.RegionCity;
+            _street = c.Address.Street == stub ? "" : c.Address.Street;
+            _buildingNumber = c.Address.BuildingNumber == stub ? "" : c.Address.BuildingNumber;
         }
         _loading = false;
     }
@@ -260,20 +310,28 @@
 
     private async Task SaveCompanyAsync()
     {
+        // Build a real address from the form fields. Falls back to
+        // single-character placeholders for any blank required field
+        // (PostalAddress.Create rejects empties); operator can refine
+        // later in the Company Profile tab. Most operators will fill
+        // these in correctly the first time — the placeholders just
+        // keep PostalAddress.Create from throwing if they're rushing.
+        string Required(string value, string fallback) =>
+            string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+
+        var address = PostalAddress.Create(
+            display: new ArabicEnglishText(
+                Required(_addressAr, "—"),
+                Required(_addressEn, "—")),
+            governorate: Required(_governorate, "—"),
+            regionCity: Required(_regionCity, "—"),
+            street: Required(_street, "—"),
+            buildingNumber: Required(_buildingNumber, "—"),
+            postalCode: null);
+
         var existing = await Db.Set<Company>().FirstOrDefaultAsync();
         if (existing is null)
         {
-            // The wizard is the FIRST install path — there's no
-            // existing address yet. Create a minimal one; the
-            // operator can refine in Tab 1 later.
-            var address = PostalAddress.Create(
-                display: new ArabicEnglishText("(لم يحدد بعد)", "(not set yet)"),
-                governorate: "(set later)",
-                regionCity: "(set later)",
-                street: "(set later)",
-                buildingNumber: "(set later)",
-                postalCode: null);
-
             var company = new Company(
                 legalName: new ArabicEnglishText(_legalNameAr, _legalNameEn),
                 taxRegistrationNumber: EgyptianTin.Parse(_tin),
@@ -286,6 +344,7 @@
         }
         else
         {
+            existing.UpdateAddress(address);
             existing.UpdateTaxpayerActivityCode(_activityCode);
             existing.UpdateTaxRegime(_taxRegime);
             // Legal name / TIN / commercial reg / fiscal year are
