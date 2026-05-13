@@ -1,0 +1,302 @@
+@page "/routes"
+@page "/routes/{Date:datetime}"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Sales
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    Phase H — sales-rep Route Plan. Three views: Today / Upcoming /
+    Past. Reps can plan visits (pick customer + kind + optional note),
+    re-order them, and tick each off as Visited or Skipped from the
+    field. Admins see all visits across all reps; reps see only
+    their own (mirrors the SalesInvoice rep-scoping rule).
+*@
+
+<h1>@(IsArabic ? "خط سير الزيارات" : "Route plan")</h1>
+
+@if (_flash is not null) { <div class="@_flashClass" role="status">@_flash</div> }
+@if (_loading) { <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p> return; }
+
+<div class="invoice-toolbar" style="gap:16px;">
+    <button type="button" class="@(_view=="today"?"btn-primary":"btn-secondary")" @onclick='() => _view="today"'>
+        @(IsArabic ? "اليوم" : "Today") (@_today.Count)
+    </button>
+    <button type="button" class="@(_view=="upcoming"?"btn-primary":"btn-secondary")" @onclick='() => _view="upcoming"'>
+        @(IsArabic ? "قادم" : "Upcoming") (@_upcoming.Count)
+    </button>
+    <button type="button" class="@(_view=="past"?"btn-primary":"btn-secondary")" @onclick='() => _view="past"'>
+        @(IsArabic ? "سابق" : "Past") (@_past.Count)
+    </button>
+</div>
+
+<section style="margin-top:16px;">
+    @{
+        var visible = _view switch { "upcoming" => _upcoming, "past" => _past, _ => _today };
+    }
+    @if (visible.Count == 0)
+    {
+        <p><em>@(_view switch
+        {
+            "upcoming" => (IsArabic ? "لا توجد زيارات مخططة في الأيام القادمة." : "No visits planned for the coming days."),
+            "past"     => (IsArabic ? "لا توجد زيارات سابقة." : "No past visits."),
+            _          => (IsArabic ? "لا توجد زيارات اليوم. أضف واحدة بالأسفل." : "No visits today. Add one below."),
+        })</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead><tr>
+                <th>#</th>
+                <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                <th>@(IsArabic ? "العميل" : "Customer")</th>
+                <th>@(IsArabic ? "النوع" : "Kind")</th>
+                <th>@(IsArabic ? "الحالة" : "Status")</th>
+                <th>@(IsArabic ? "ملاحظة" : "Note")</th>
+                <th></th>
+            </tr></thead>
+            <tbody>
+                @foreach (var v in visible)
+                {
+                    <tr>
+                        <td>@v.Visit.Sequence</td>
+                        <td>@v.Visit.VisitDate.ToString("yyyy-MM-dd")</td>
+                        <td>
+                            <a href="/customers/@v.Visit.CustomerId/statement">@v.CustomerName</a>
+                        </td>
+                        <td>@KindLabel(v.Visit.Kind)</td>
+                        <td><span class="state-badge">@v.Visit.Status</span></td>
+                        <td style="max-width:240px;font-size:12px;color:var(--text-muted);">
+                            @(v.Visit.VisitNote ?? v.Visit.PlannedNote ?? "—")
+                        </td>
+                        <td>
+                            @if (v.Visit.Status == RouteVisitStatus.Planned)
+                            {
+                                <input type="text" placeholder="@(IsArabic ? "ملاحظة الزيارة" : "Visit note")"
+                                       style="width:140px;font-size:12px;"
+                                       @bind="_visitNoteInput[v.Visit.Id]" />
+                                <button type="button" class="btn-secondary" style="font-size:12px;padding:4px 8px;"
+                                        @onclick="() => OnMarkVisitedAsync(v.Visit.Id)">
+                                    @(IsArabic ? "تمت" : "Visited")
+                                </button>
+                                <button type="button" class="btn-secondary" style="font-size:12px;padding:4px 8px;"
+                                        @onclick="() => OnSkipAsync(v.Visit.Id)">
+                                    @(IsArabic ? "تخطى" : "Skip")
+                                </button>
+                            }
+                            else if (v.Visit.CompletedAtUtc is { } at)
+                            {
+                                <span class="page-subtitle" style="font-size:11px;">
+                                    @at.ToString("yyyy-MM-dd HH:mm")
+                                </span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;">
+    <h2>@(IsArabic ? "إضافة زيارة" : "Add a visit")</h2>
+    <div class="form-grid" style="max-width:780px;">
+        <label>
+            <span>@(IsArabic ? "العميل" : "Customer")</span>
+            <select @bind="_addCustomerId">
+                <option value="@Guid.Empty">@(IsArabic ? "— اختر —" : "— choose —")</option>
+                @foreach (var c in _customers)
+                {
+                    <option value="@c.Id">@c.Code — @(IsArabic ? c.Name.Arabic : c.Name.English)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@(IsArabic ? "تاريخ الزيارة" : "Visit date")</span>
+            <input type="date" @bind="_addDate" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "النوع" : "Kind")</span>
+            <select @bind="_addKind">
+                @foreach (var k in Enum.GetValues<RouteVisitKind>())
+                {
+                    <option value="@k">@KindLabel(k)</option>
+                }
+            </select>
+        </label>
+        <label style="grid-column:1/-1;">
+            <span>@(IsArabic ? "ملاحظة (اختياري)" : "Note (optional)")</span>
+            <input type="text" @bind="_addNote" placeholder="@(IsArabic ? "مثال: تحصيل + عرض جديد" : "e.g. collect + new offer")" />
+        </label>
+    </div>
+    <div class="invoice-actions" style="margin-top:8px;">
+        <button type="button" class="btn-primary" @onclick="OnAddAsync" disabled="@_busy">
+            @(IsArabic ? "أضف للخطة" : "Add to plan")
+        </button>
+    </div>
+</section>
+
+@code {
+    [Parameter] public DateTime? Date { get; set; }
+
+    private bool _loading = true;
+    private bool _busy;
+    private string _view = "today";
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private bool _isAdmin;
+    private Guid _currentUserId;
+
+    private List<Customer> _customers = new();
+    private List<VisitRow> _today = new();
+    private List<VisitRow> _upcoming = new();
+    private List<VisitRow> _past = new();
+    private readonly Dictionary<Guid, string?> _visitNoteInput = new();
+
+    private Guid _addCustomerId;
+    private DateTime _addDate = DateTime.UtcNow.Date;
+    private RouteVisitKind _addKind = RouteVisitKind.Sales;
+    private string? _addNote;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await Auth.GetAuthenticationStateAsync();
+        _currentUserId = auth.User.UserId() ?? Guid.Empty;
+        _isAdmin = auth.User.IsInRole("ADMIN") || auth.User.IsInRole("MANAGER");
+        if (Date is { } d) { _addDate = d.Date; _view = "today"; }
+
+        _customers = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => c.Status == CustomerStatus.Active)
+            .OrderBy(c => c.Code)
+            .ToListAsync();
+
+        await ReloadAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        var todayDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        var query = Db.Set<RouteVisit>().AsNoTracking().AsQueryable();
+        if (!_isAdmin && _currentUserId != Guid.Empty)
+        {
+            query = query.Where(v => v.RepUserId == _currentUserId);
+        }
+        var visits = await query
+            .OrderBy(v => v.VisitDate)
+            .ThenBy(v => v.Sequence)
+            .Take(500)
+            .ToListAsync();
+
+        var customerIds = visits.Select(v => v.CustomerId).Distinct().ToArray();
+        var customerNames = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => customerIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => IsArabic ? c.Name.Arabic : c.Name.English);
+
+        var rows = visits.Select(v => new VisitRow(v,
+            customerNames.GetValueOrDefault(v.CustomerId, v.CustomerId.ToString("D")))).ToList();
+        _today = rows.Where(r => r.Visit.VisitDate == todayDate).ToList();
+        _upcoming = rows.Where(r => r.Visit.VisitDate > todayDate).ToList();
+        _past = rows.Where(r => r.Visit.VisitDate < todayDate).OrderByDescending(r => r.Visit.VisitDate).ToList();
+
+        // Pre-seed _visitNoteInput so the per-row @bind doesn't throw
+        // KeyNotFoundException on first render.
+        foreach (var v in visits)
+        {
+            _visitNoteInput.TryAdd(v.Id, null);
+        }
+    }
+
+    private async Task OnAddAsync()
+    {
+        _flash = null;
+        if (_addCustomerId == Guid.Empty)
+        {
+            _flash = IsArabic ? "اختر العميل." : "Pick a customer.";
+            _flashClass = "flash-error";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var visitDate = DateOnly.FromDateTime(_addDate);
+            // Sequence = next number for that day for this rep.
+            var existingForDay = await Db.Set<RouteVisit>().AsNoTracking()
+                .Where(v => v.RepUserId == _currentUserId && v.VisitDate == visitDate)
+                .Select(v => v.Sequence)
+                .ToListAsync();
+            var nextSeq = (existingForDay.Count == 0 ? 0 : existingForDay.Max()) + 1;
+            var visit = new RouteVisit(_currentUserId, visitDate, _addCustomerId, nextSeq, _addKind, _addNote);
+            Db.Add(visit);
+            await Db.SaveChangesAsync();
+            _flash = IsArabic ? $"تمت إضافة الزيارة (#{nextSeq})." : $"Visit added (#{nextSeq}).";
+            _flashClass = "flash-success";
+            _addCustomerId = Guid.Empty;
+            _addNote = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OnMarkVisitedAsync(Guid visitId)
+    {
+        _busy = true;
+        try
+        {
+            var visit = await Db.Set<RouteVisit>().FirstAsync(v => v.Id == visitId);
+            _visitNoteInput.TryGetValue(visitId, out var note);
+            visit.MarkVisited(note, DateTime.UtcNow);
+            await Db.SaveChangesAsync();
+            _flash = IsArabic ? "تم تسجيل الزيارة." : "Visit logged.";
+            _flashClass = "flash-success";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "flash-error"; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnSkipAsync(Guid visitId)
+    {
+        _busy = true;
+        try
+        {
+            var visit = await Db.Set<RouteVisit>().FirstAsync(v => v.Id == visitId);
+            _visitNoteInput.TryGetValue(visitId, out var reason);
+            visit.MarkSkipped(reason, DateTime.UtcNow);
+            await Db.SaveChangesAsync();
+            _flash = IsArabic ? "تم تخطي الزيارة." : "Visit skipped.";
+            _flashClass = "flash-success";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "flash-error"; }
+        finally { _busy = false; }
+    }
+
+    private string KindLabel(RouteVisitKind k) => (IsArabic, k) switch
+    {
+        (true,  RouteVisitKind.Sales)      => "بيع",
+        (true,  RouteVisitKind.Collection) => "تحصيل",
+        (true,  RouteVisitKind.Delivery)   => "توصيل",
+        (true,  RouteVisitKind.FollowUp)   => "متابعة",
+        (true,  RouteVisitKind.Other)      => "أخرى",
+        (false, RouteVisitKind.Sales)      => "Sales",
+        (false, RouteVisitKind.Collection) => "Collection",
+        (false, RouteVisitKind.Delivery)   => "Delivery",
+        (false, RouteVisitKind.FollowUp)   => "Follow-up",
+        _                                   => "Other",
+    };
+
+    private sealed record VisitRow(RouteVisit Visit, string CustomerName);
+}
