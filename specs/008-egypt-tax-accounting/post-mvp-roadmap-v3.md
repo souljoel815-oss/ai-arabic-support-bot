@@ -673,10 +673,112 @@ ask — they just leave silently. **Edit:** L4 in §10 is
 - 15 trials → 5 active users by week 4 → **3 paying customers by week 12**
 
 **Hard gate at week 6:** if the funnel is below 50% of these
-numbers, **stop building features** and run customer-development
-interviews with the 3-5 trial users. Building L4/L5/L6 against
-zero customer signal is the failure mode the v3 plan was supposed
-to prevent.
+numbers, **stop building features** and execute the Plan B
+decision tree in §9.4. "Stop and think" is avoidance — Plan B is
+pre-committed so the response doesn't depend on willpower in the
+moment.
+
+### 9.4 Plan B — pre-committed pivots if week-6 gate trips
+
+The week-6 gate is meaningless without a pre-committed response.
+Diagnose first (which funnel step is failing), then pivot
+cheapest-first. Each pivot is a 2-week experiment with one
+measurable success signal — if it doesn't move the broken step,
+escalate to the next.
+
+**Step 1 — Diagnose. Where is the funnel breaking?**
+
+Look at the 200 → 60 → 15 → 5 → 3 funnel and find the worst
+conversion ratio relative to target. The leak tells you which
+pivot to try.
+
+| Symptom (vs target) | Diagnosis | Try first |
+|---|---|---|
+| <100 group touches in 3 weeks | Channel reach failing — algo isn't surfacing posts, or you're posting in low-activity hours | **Pivot A — Channel** |
+| Group touches OK, <30 landing visits | Hook isn't earning the click | **Pivot D — Message** |
+| Visits OK, <8 trial downloads | Landing page sells, pricing or trial friction kills | **Pivot C — Pricing/Trial** |
+| Downloads OK, <3 active by week 4 | Onboarding broken (D0.5 didn't land the aha moment) | **Onboarding fix** — not a real pivot, fix the wizard |
+| Active OK, 0 paying conversations | Real value gap — they like the trial but won't pay | **Pivot B — ICP** (current segment doesn't have budget) |
+
+If you can't diagnose because data is too thin (e.g. 5 group
+touches and 0 visits), the diagnosis itself is the work — extend
+Week 6 gate by 1 week and double outreach volume to gather signal.
+
+**Step 2 — Pivot, cheapest first.**
+
+#### Pivot A — Channel (cheapest, ~3 days)
+
+- **When:** group reach is the leak
+- **Action:** add 2 paid channels alongside (don't replace) the
+  free ones:
+  - Facebook boosted post: 500 EGP on the best-performing organic
+    post, narrowly targeted (Egypt + Accountant interest +
+    age 25-50)
+  - LinkedIn Sales Navigator trial (free 30 days): 50 personalised
+    DMs to Tier-1 ICP
+- **Success signal at 2 weeks:** ≥30 landing visits attributable
+  to paid channels
+- **Cost:** ~3 days build/setup + 1,500 EGP cash
+- **Escalate to** Pivot D if visits still <30
+
+#### Pivot C — Pricing / trial friction (cheap, ~3 days)
+
+- **When:** visits are OK but trials are not
+- **Action:** ship two changes simultaneously:
+  - Add a **Free tier** (50 invoices/month, no ETA submission, no
+    PWA, no Penalty Shield). Pure acquisition channel — drives
+    them to upgrade once they get value.
+  - Extend trial from 14 → 30 days
+- **Success signal at 2 weeks:** trial-download rate doubles
+- **Cost:** ~3 days build + landing-page rev
+- **Escalate to** Pivot D if rate still doesn't move (means the
+  page itself isn't selling, not the price)
+
+#### Pivot D — Message (medium, ~1 week)
+
+- **When:** A and C didn't move the leak, OR the leak was
+  visits-from-touches from the start
+- **Action:** A/B test 4 hooks on the landing page, one per week
+  for 4 weeks. Already-built D2.6 infrastructure handles this:
+  1. **Penalty Shield** (current) — fear/compliance
+  2. **"وفّر 5.4 ساعة في الأسبوع بالذكاء الاصطناعي العربي"** —
+     productivity (leans on M-phase if shipped)
+  3. **"نفس Edara بنص السعر، ومن غير اشتراك شهري"** — direct
+     price comparison
+  4. **"كل حاجة في برنامج واحد، يشتغل أوفلاين"** — simplicity
+     + offline (PWA + portable mode)
+- **Success signal at 4 weeks:** one variant >2x baseline visit→
+  trial rate
+- **Cost:** ~1 week (rewrite landing copy + record alt 60-sec
+  videos for top 2 candidates)
+- **Escalate to** Pivot B if no variant beats baseline by 1.5x
+
+#### Pivot B — ICP (most expensive, ~3 weeks — last resort)
+
+- **When:** A, C, and D failed AND active trials don't convert to
+  paying. This means the segment doesn't have the budget /
+  authority / pain — change segments, not tactics.
+- **Action:** drop Tier 1 (solo freelancers) and pivot up to
+  **Tier 2 (small accounting firms, 3-10 staff)**:
+  - Higher ARR per deal (10-20K EGP/year vs 3.5K)
+  - Longer sales cycle (call + demo + procurement) but real
+    budget
+  - Different message: not "save you 5.4 hrs/week", instead
+    **"manage 50 SMB clients' ETA from one dashboard, no
+    per-client license"** — collapses Edara's per-tenant pricing
+  - Requires building Firm Portal MVP earlier (was post-v3) +
+    new demo recorded for the firm-owner persona
+- **Success signal at 3 weeks:** 3 first-call demos booked with
+  firm owners
+- **Cost:** ~3 weeks (Firm Portal MVP + new demo + new outreach
+  copy)
+- **Escalate to** v4 emergency replanning if zero demos booked —
+  product/market fit is the real problem, not distribution.
+
+**What's deliberately NOT a Pivot:** building more features.
+"Maybe they need L5/L6 first" is the failure mode v3 was built
+to prevent. The pivot tree exhausts distribution levers before
+admitting the build queue is wrong.
 
 ---
 
