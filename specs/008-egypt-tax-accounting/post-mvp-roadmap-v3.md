@@ -753,12 +753,41 @@ Week 6 gate by 1 week and double outreach volume to gather signal.
   videos for top 2 candidates)
 - **Escalate to** Pivot B if no variant beats baseline by 1.5x
 
-#### Pivot B — ICP (most expensive, ~3 weeks — last resort)
+#### Pivot B-lite — ICP validation (1 week, mandatory gate before B-full)
 
-- **When:** A, C, and D failed AND active trials don't convert to
-  paying. This means the segment doesn't have the budget /
-  authority / pain — change segments, not tactics.
-- **Action:** drop Tier 1 (solo freelancers) and pivot up to
+Apply the same MVP discipline to the pivot itself: don't spend 3
+weeks rebuilding for a new ICP before confirming that ICP cares.
+
+- **When:** D didn't move the dial AND active trials don't convert
+  to paying
+- **Action:** 5 direct **phone calls** (not email, not Facebook DM
+  — actual voice) to accounting-firm owners. The 10-minute
+  discovery call:
+  - "بتديروا كام عميل دلوقتي؟" — tier-2 fit check
+  - "إيه أكبر pain في إدارة ETA لكل العملاء؟" — validates whether
+    our moat (ETA depth + Penalty Shield) maps to their pain
+  - "بتدفعوا كام للأداة الحالية بتاعتكم؟" — price ceiling
+    discovery
+  - "لو حليتلكم المشكلة دي بـ X جنيه/سنة، تجربوا؟" — commitment
+    test, not a hypothetical
+- **Contact-list source — prepare DURING Pivot D's 4-week signal
+  window so it's ready the moment B-lite triggers:**
+  warm network → دليل مصلحة الضرائب public accountant registry →
+  LinkedIn ("Accounting" + "Egypt" + 3-50 employees)
+- **Success signal:** ≥3 of 5 say "yes, this is real for me,
+  send me a trial". Anything less = signal isn't strong enough
+  to justify the 3-week rebuild.
+- **Cost:** ~1 week (assumes contact list pre-built; otherwise
+  +1 week for outreach)
+- **Escalate to** Pivot B-full if 3+ of 5 validate; **escalate
+  to v4 emergency** if 0-1 of 5 are interested — means
+  accounting firms aren't the answer either, and the product/
+  market-fit problem is real.
+
+#### Pivot B-full — ICP rebuild (3 weeks, only after B-lite validates)
+
+- **When:** B-lite gave 3+ qualified "yes" signals
+- **Action:** drop Tier 1 (solo freelancers) and rebuild for
   **Tier 2 (small accounting firms, 3-10 staff)**:
   - Higher ARR per deal (10-20K EGP/year vs 3.5K)
   - Longer sales cycle (call + demo + procurement) but real
@@ -769,11 +798,19 @@ Week 6 gate by 1 week and double outreach volume to gather signal.
   - Requires building Firm Portal MVP earlier (was post-v3) +
     new demo recorded for the firm-owner persona
 - **Success signal at 3 weeks:** 3 first-call demos booked with
-  firm owners
+  the same firm owners B-lite validated
 - **Cost:** ~3 weeks (Firm Portal MVP + new demo + new outreach
   copy)
-- **Escalate to** v4 emergency replanning if zero demos booked —
-  product/market fit is the real problem, not distribution.
+- **Escalate to** v4 emergency if 0 demos booked despite B-lite
+  validation — means promised interest didn't convert to
+  scheduled time, which is itself a strong signal.
+
+**Total worst-case pivot cycle if everything fails:**
+A (2.5w) → C (2.5w) → D (5w with overlapping prep for B-lite
+during the 4-week signal window) → B-lite (1w) → B-full (3w) or
+v4 emergency. Building the next pivot's prep work during the
+previous pivot's signal window — not after it ends — keeps the
+total cycle ≤ 12 weeks instead of 16.
 
 **What's deliberately NOT a Pivot:** building more features.
 "Maybe they need L5/L6 first" is the failure mode v3 was built
