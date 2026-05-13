@@ -1,0 +1,236 @@
+@page "/quotations/new"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Quotations
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@Tr("عرض سعر جديد | DaftarX", "New Quotation | DaftarX")</PageTitle>
+
+<h1>@Tr("عرض سعر جديد", "New Quotation")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "اختر العميل، وضّح صلاحية العرض، وضيف الأصناف. لما تخلّص اضغط «حفظ» لتحفظ كمسودة، أو «حفظ وإرسال» لتُرسل العرض للعميل فوراً.",
+        "Pick the customer, set the validity window, and add the line items. Save as a draft or save-and-send to the customer in one action.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+}
+
+<EditForm Model="_form" OnValidSubmit="OnSubmitAsync" FormName="quotation-create">
+    <section class="form-section">
+        <h2>@Tr("بيانات العرض", "Quotation header")</h2>
+        <div class="form-grid">
+            <label>
+                <span>@Tr("العميل *", "Customer *")</span>
+                <select @bind="_form.CustomerId">
+                    <option value="@Guid.Empty">@Tr("— اختر عميل —", "— pick a customer —")</option>
+                    @foreach (var c in _customers)
+                    {
+                        <option value="@c.Id">@c.Code · @c.Name.Display(IsArabic ? Language.Ar : Language.En)</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>@Tr("التاريخ *", "Document date *")</span>
+                <input type="date" @bind="_form.DocumentDate" />
+            </label>
+            <label>
+                <span>@Tr("صالح حتى *", "Valid until *")</span>
+                <input type="date" @bind="_form.ValidUntilDate" />
+            </label>
+        </div>
+        <label>
+            <span>@Tr("ملاحظات للعميل (اختياري)", "Notes for the customer (optional)")</span>
+            <textarea @bind="_form.Notes" rows="3"
+                      placeholder="@Tr("مثال: العرض ساري لمدة 7 أيام، خصم 5% للسداد المعجّل.", "e.g. Offer valid for 7 days, 5% early-payment discount.")"></textarea>
+        </label>
+    </section>
+
+    <section class="form-section">
+        <h2>@Tr("الأصناف", "Line items")</h2>
+        @if (_lines.Count == 0)
+        {
+            <p class="page-subtitle" style="font-size:13px;">
+                @Tr("ابدأ بإضافة صنف واحد على الأقل.", "Add at least one line item.")
+            </p>
+        }
+        @for (var idx = 0; idx < _lines.Count; idx++)
+        {
+            var i = idx;
+            var line = _lines[i];
+            <div class="form-grid" style="border:1px solid var(--border);padding:10px;margin-bottom:8px;border-radius:8px;">
+                <label>
+                    <span>@Tr("الصنف", "Item")</span>
+                    <select @bind="line.ItemId" @bind:after="() => OnItemChanged(i)">
+                        <option value="@Guid.Empty">@Tr("— اختر —", "— pick —")</option>
+                        @foreach (var it in _items)
+                        {
+                            <option value="@it.Id">@it.Code · @it.Name.Display(IsArabic ? Language.Ar : Language.En)</option>
+                        }
+                    </select>
+                </label>
+                <label>
+                    <span>@Tr("الكمية", "Quantity")</span>
+                    <input type="number" step="0.01" min="0.01" @bind="line.Quantity" />
+                </label>
+                <label>
+                    <span>@Tr("السعر", "Unit price (EGP)")</span>
+                    <input type="number" step="0.01" min="0" @bind="line.UnitPrice" />
+                </label>
+                <label>
+                    <span>@Tr("نسبة الضريبة %", "VAT rate %")</span>
+                    <input type="number" step="0.01" min="0" @bind="line.VatRatePercent" readonly />
+                </label>
+                <button type="button" class="btn-secondary" @onclick="() => _lines.RemoveAt(i)">
+                    @Tr("حذف", "Remove")
+                </button>
+            </div>
+        }
+        <button type="button" class="btn-secondary" @onclick="AddLine">
+            + @Tr("إضافة صنف", "Add line")
+        </button>
+    </section>
+
+    <div class="invoice-actions" style="margin-top:16px;">
+        <button type="submit" class="btn-secondary" disabled="@_busy" name="action" value="draft"
+                @onclick='() => _action = "draft"'>
+            @(_busy ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ كمسودة", "Save as draft"))
+        </button>
+        <button type="submit" class="btn-primary" disabled="@_busy" name="action" value="send"
+                @onclick='() => _action = "send"'>
+            @(_busy ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ وإرسال", "Save and send"))
+        </button>
+        <a href="/quotations" class="btn-secondary">@Tr("إلغاء", "Cancel")</a>
+    </div>
+</EditForm>
+
+@code {
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+    private string _action = "draft";
+
+    private List<Customer> _customers = new();
+    private List<Item> _items = new();
+    private List<VatCategory> _vats = new();
+    private FormModel _form = new();
+    private List<LineRow> _lines = new();
+    private Guid _userId;
+
+    private sealed class FormModel
+    {
+        public Guid CustomerId { get; set; } = Guid.Empty;
+        public DateOnly DocumentDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
+        public DateOnly ValidUntilDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(7));
+        public string? Notes { get; set; }
+    }
+
+    private sealed class LineRow
+    {
+        public Guid ItemId { get; set; } = Guid.Empty;
+        public decimal Quantity { get; set; } = 1m;
+        public decimal UnitPrice { get; set; }
+        public decimal VatRatePercent { get; set; } = 14m;
+        public Guid VatCategoryId { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => c.Status == CustomerStatus.Active)
+            .OrderBy(c => c.Code).ToListAsync();
+        _items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => i.Status == ItemStatus.Active)
+            .OrderBy(i => i.Code).ToListAsync();
+        _vats = await Db.Set<VatCategory>().AsNoTracking().ToListAsync();
+
+        var authState = await Auth.GetAuthenticationStateAsync();
+        var idClaim = authState.User.FindFirst("user_id")?.Value
+            ?? authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (Guid.TryParse(idClaim, out var uid)) _userId = uid;
+    }
+
+    private void AddLine() => _lines.Add(new LineRow());
+
+    private void OnItemChanged(int idx)
+    {
+        if (idx >= _lines.Count) return;
+        var line = _lines[idx];
+        var item = _items.FirstOrDefault(i => i.Id == line.ItemId);
+        if (item is null) return;
+        line.VatCategoryId = item.DefaultVatCategoryId;
+        var vat = _vats.FirstOrDefault(v => v.Id == item.DefaultVatCategoryId);
+        if (vat is not null) line.VatRatePercent = vat.RatePercent;
+    }
+
+    private async Task OnSubmitAsync()
+    {
+        _flash = null;
+
+        if (_form.CustomerId == Guid.Empty)
+        {
+            _flash = Tr("اختر العميل أولاً.", "Pick a customer first.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        if (_lines.Count == 0)
+        {
+            _flash = Tr("ضيف صنف واحد على الأقل.", "Add at least one line item.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        if (_lines.Any(l => l.ItemId == Guid.Empty || l.Quantity <= 0 || l.UnitPrice < 0))
+        {
+            _flash = Tr("راجع الأصناف: كل صنف لازم يكون له ItemId + كمية موجبة.", "Each line needs an Item + a positive quantity.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var customer = await Db.Set<Customer>().FirstAsync(c => c.Id == _form.CustomerId);
+            var quote = Quotation.CreateDraft(
+                customerId: _form.CustomerId,
+                customerTaxProfileSnapshot: customer.TaxProfile,
+                documentDate: _form.DocumentDate,
+                validUntilDate: _form.ValidUntilDate,
+                createdByUserId: _userId == Guid.Empty ? null : _userId,
+                notes: string.IsNullOrWhiteSpace(_form.Notes) ? null : _form.Notes);
+
+            foreach (var line in _lines)
+            {
+                quote.AddLine(
+                    itemId: line.ItemId,
+                    quantity: line.Quantity,
+                    unitPrice: SharedKernel.MoneyEgp.From(line.UnitPrice),
+                    vatCategoryId: line.VatCategoryId,
+                    vatRatePercent: line.VatRatePercent);
+            }
+
+            Db.Add(quote);
+            await Db.SaveChangesAsync();
+
+            // "Send" action sends after save by transitioning state via
+            // the QuotationService — the page redirects to detail
+            // either way and lets the operator re-trigger Send if it
+            // failed (the QuotationService is invoked from detail too).
+            Nav.NavigateTo($"/quotations/{quote.Id}{(_action == "send" ? "?send=1" : "")}", forceLoad: false);
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+}

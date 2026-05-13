@@ -441,6 +441,11 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.SampleDataSeeder>(
 builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.CustomerImportHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.ItemImportHandler>();
 
+// L1.5 (v3 roadmap) — quotation orchestration: send (allocate
+// per-year sequence), convert (create SalesInvoice draft), expire
+// sweep (daily Hangfire job).
+builder.Services.AddScoped<EgyptTax.Infrastructure.Quotations.QuotationService>();
+
 // Gux.13 Tab 5 — SMTP password protector + test sender. Singleton
 // because IDataProtectionProvider keys are bound to the host's
 // keyring (no per-request state).
@@ -653,6 +658,7 @@ builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.UpdateCheck
 // gates on AutoBackupEnabled + the configured Daily/Weekly interval
 // since the last successful backup.
 builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.BackupAutoFireJob>();
+builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.PaymentReminderJob>();
 
 // T110 / R-13 — supplier-TIN revalidation cron. The revalidator is
 // still the always-valid stub (the live registry feed is a Near-term
@@ -970,6 +976,17 @@ app.UseSerilogRequestLogging();
         recurringJobId: "auto-backup",
         methodCall: j => j.RunOnceAsync(CancellationToken.None),
         cronExpression: "0 * * * *"
+    );
+
+    // L8 (v3 roadmap) — daily payment-reminder sweep at 03:00 UTC
+    // (~06:00 Cairo). The job itself gates on
+    // NotificationPrefs.PaymentReminderEnabled (off by default)
+    // and on SMTP being configured for DirectSmtp; safe to schedule
+    // unconditionally because it short-circuits silently on either.
+    recurring.AddOrUpdate<EgyptTax.Infrastructure.BackgroundJobs.PaymentReminderJob>(
+        recurringJobId: "payment-reminders",
+        methodCall: j => j.RunOnceAsync(CancellationToken.None),
+        cronExpression: "0 3 * * *"
     );
 }
 

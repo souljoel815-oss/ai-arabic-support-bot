@@ -1,0 +1,122 @@
+@page "/quotations"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Quotations
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@Tr("عروض الأسعار | DaftarX", "Quotations | DaftarX")</PageTitle>
+
+<h1>@Tr("عروض الأسعار", "Quotations")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "العملاء بيطلبوا عرض سعر قبل الفاتورة. هنا تنشئ، ترسل، وتحوّل العروض المقبولة لفواتير بضغطة واحدة.",
+        "Customers ask for a quote before they accept an invoice. Create, send, and convert accepted quotes to invoices in one click.")
+</p>
+
+<div class="invoice-toolbar">
+    <a class="btn-primary" href="/quotations/new">@Tr("+ عرض سعر جديد", "+ New quotation")</a>
+    <select @bind="_stateFilter">
+        <option value="">@Tr("كل الحالات", "All states")</option>
+        @foreach (var s in Enum.GetValues<QuotationState>())
+        {
+            <option value="@s">@StateLabel(s)</option>
+        }
+    </select>
+</div>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+}
+else if (_quotations.Count == 0)
+{
+    <div class="kpi-card kpi-info" style="padding:14px;">
+        @Tr(
+            "مفيش عروض أسعار. اضغط «+ عرض سعر جديد» لتنشئ أول عرض.",
+            "No quotations yet. Click \"+ New quotation\" to create the first one.")
+    </div>
+}
+else
+{
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>@Tr("رقم العرض", "Quote #")</th>
+                <th>@Tr("التاريخ", "Date")</th>
+                <th>@Tr("صالح حتى", "Valid until")</th>
+                <th>@Tr("العميل", "Customer")</th>
+                <th>@Tr("الإجمالي", "Total")</th>
+                <th>@Tr("الحالة", "State")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var q in FilteredQuotations)
+            {
+                var customerName = _customerNames.TryGetValue(q.CustomerId, out var cn) ? cn.Display(IsArabic ? Language.Ar : Language.En) : "—";
+                <tr>
+                    <td>@(q.QuotationNumber ?? Tr("(مسودة)", "(draft)"))</td>
+                    <td>@q.DocumentDate.ToString("yyyy-MM-dd")</td>
+                    <td>@q.ValidUntilDate.ToString("yyyy-MM-dd")</td>
+                    <td>@customerName</td>
+                    <td>@q.GrandTotal.Amount.ToString("N2") @(IsArabic ? "ج.م" : "EGP")</td>
+                    <td><span class="badge badge-@StateBadgeClass(q.State)">@StateLabel(q.State)</span></td>
+                    <td><a href="/quotations/@q.Id">@Tr("فتح", "Open")</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private List<Quotation> _quotations = new();
+    private Dictionary<Guid, ArabicEnglishText> _customerNames = new();
+    private string _stateFilter = "";
+
+    private IEnumerable<Quotation> FilteredQuotations =>
+        string.IsNullOrEmpty(_stateFilter)
+            ? _quotations
+            : _quotations.Where(q => q.State.ToString() == _stateFilter);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _quotations = await Db.Set<Quotation>()
+            .AsNoTracking()
+            .OrderByDescending(q => q.DocumentDate)
+            .ThenByDescending(q => q.QuotationNumber)
+            .ToListAsync();
+
+        var ids = _quotations.Select(q => q.CustomerId).Distinct().ToList();
+        _customerNames = await Db.Set<Customer>()
+            .AsNoTracking()
+            .Where(c => ids.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Name);
+
+        _loading = false;
+    }
+
+    private string StateLabel(QuotationState s) => s switch
+    {
+        QuotationState.Draft => Tr("مسودة", "Draft"),
+        QuotationState.Sent => Tr("مرسل", "Sent"),
+        QuotationState.Accepted => Tr("مقبول", "Accepted"),
+        QuotationState.Rejected => Tr("مرفوض", "Rejected"),
+        QuotationState.Expired => Tr("منتهي", "Expired"),
+        _ => s.ToString(),
+    };
+
+    private static string StateBadgeClass(QuotationState s) => s switch
+    {
+        QuotationState.Draft => "muted",
+        QuotationState.Sent => "info",
+        QuotationState.Accepted => "success",
+        QuotationState.Rejected => "danger",
+        QuotationState.Expired => "warn",
+        _ => "muted",
+    };
+}

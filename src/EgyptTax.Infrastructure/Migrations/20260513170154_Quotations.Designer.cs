@@ -5,6 +5,7 @@ using EgyptTax.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -12,9 +13,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EgyptTax.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260513170154_Quotations")]
+    partial class Quotations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3551,14 +3554,6 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasColumnName("license_expiry_enabled");
 
-                    b.Property<int>("PaymentReminderDaysOverdue")
-                        .HasColumnType("int")
-                        .HasColumnName("payment_reminder_days_overdue");
-
-                    b.Property<bool>("PaymentReminderEnabled")
-                        .HasColumnType("bit")
-                        .HasColumnName("payment_reminder_enabled");
-
                     b.Property<bool>("PendingApprovalsEnabled")
                         .HasColumnType("bit")
                         .HasColumnName("pending_approvals_enabled");
@@ -3576,43 +3571,6 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("notification_prefs", "settings");
-                });
-
-            modelBuilder.Entity("EgyptTax.Domain.Settings.PaymentReminderDispatch", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("CustomerId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("customer_id");
-
-                    b.Property<DateOnly>("OldestUnpaidInvoiceDate")
-                        .HasColumnType("date")
-                        .HasColumnName("oldest_unpaid_invoice_date");
-
-                    b.Property<decimal>("OutstandingAtSendEgp")
-                        .HasColumnType("decimal(19,2)")
-                        .HasColumnName("outstanding_at_send_egp");
-
-                    b.Property<DateTime>("SentAtUtc")
-                        .HasColumnType("datetime2(3)")
-                        .HasColumnName("sent_at_utc");
-
-                    b.Property<string>("SentToEmail")
-                        .IsRequired()
-                        .HasMaxLength(254)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(254)")
-                        .HasColumnName("sent_to_email");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CustomerId", "SentAtUtc")
-                        .HasDatabaseName("ix_payment_reminder_dispatches_customer_sent");
-
-                    b.ToTable("payment_reminder_dispatches", "settings");
                 });
 
             modelBuilder.Entity("EgyptTax.Domain.Settings.SalesRepSettings", b =>

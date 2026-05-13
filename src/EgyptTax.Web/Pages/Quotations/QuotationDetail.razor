@@ -1,0 +1,281 @@
+@page "/quotations/{Id:guid}"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Quotations
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Quotations
+@using EgyptTax.SharedKernel
+@using EgyptTax.SharedKernel.Time
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+@inject QuotationService QuotationSvc
+@inject IClock Clock
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@Tr("عرض سعر | DaftarX", "Quotation | DaftarX")</PageTitle>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+@if (_quotation is null)
+{
+    <p>@Tr("عرض السعر مش موجود.", "Quotation not found.")</p>
+    return;
+}
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+        <h1 style="margin-bottom:4px;">
+            @(_quotation.QuotationNumber ?? Tr("(مسودة عرض سعر)", "(Draft quotation)"))
+        </h1>
+        <p class="page-subtitle" style="margin:0;">
+            <span class="badge badge-@StateBadgeClass(_quotation.State)">@StateLabel(_quotation.State)</span>
+            · @_quotation.DocumentDate.ToString("yyyy-MM-dd")
+            · @Tr("صالح حتى", "valid until") @_quotation.ValidUntilDate.ToString("yyyy-MM-dd")
+        </p>
+    </div>
+    <div class="invoice-actions" style="margin:0;">
+        @if (_quotation.State == QuotationState.Draft)
+        {
+            <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnSendAsync">
+                @(_busy ? Tr("جارٍ الإرسال…", "Sending…") : Tr("📤 إرسال للعميل", "📤 Send to customer"))
+            </button>
+        }
+        @if (_quotation.State == QuotationState.Sent)
+        {
+            <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnAcceptAsync">
+                @Tr("✅ تم القبول", "✅ Mark accepted")
+            </button>
+            <button type="button" class="btn-secondary" disabled="@_busy" @onclick="OnRejectAsync">
+                @Tr("❌ مرفوض", "❌ Mark rejected")
+            </button>
+        }
+        @if (_quotation.State == QuotationState.Accepted && _quotation.ConvertedToInvoiceId is null)
+        {
+            <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnConvertAsync">
+                @(_busy ? Tr("جارٍ التحويل…", "Converting…") : Tr("🧾 حوّل إلى فاتورة", "🧾 Convert to invoice"))
+            </button>
+        }
+        @if (_quotation.ConvertedToInvoiceId is { } invId)
+        {
+            <a href="/invoices/@invId" class="btn-secondary">@Tr("افتح الفاتورة المرتبطة", "Open linked invoice")</a>
+        }
+        <a href="/quotations" class="btn-secondary">@Tr("الرجوع للقائمة", "Back to list")</a>
+    </div>
+</div>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:12px 0;">@_flash</div>
+}
+
+<section class="form-section" style="margin-top:16px;">
+    <h2>@Tr("بيانات العميل", "Customer")</h2>
+    <p>@(_customer is null ? "—" : _customer.Name.Display(IsArabic ? Language.Ar : Language.En))
+       @if (_customer?.TaxProfile.TinValue is { } tin)
+       {
+           <span> · @Tr("الرقم الضريبي:", "TIN:") @tin</span>
+       }
+    </p>
+</section>
+
+<section class="form-section">
+    <h2>@Tr("الأصناف", "Line items")</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>@Tr("الصنف", "Item")</th>
+                <th>@Tr("الكمية", "Qty")</th>
+                <th>@Tr("السعر", "Unit price")</th>
+                <th>@Tr("الإجمالي", "Subtotal")</th>
+                <th>@Tr("ضريبة %", "VAT %")</th>
+                <th>@Tr("ضريبة", "VAT")</th>
+                <th>@Tr("الإجمالي مع الضريبة", "Total")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var line in _quotation.Lines)
+            {
+                var itemName = _itemNames.TryGetValue(line.ItemId, out var inm) ? inm.Display(IsArabic ? Language.Ar : Language.En) : "—";
+                <tr>
+                    <td>@itemName</td>
+                    <td>@line.Quantity.ToString("0.##")</td>
+                    <td>@line.UnitPrice.Amount.ToString("N2")</td>
+                    <td>@line.LineSubtotal.Amount.ToString("N2")</td>
+                    <td>@line.VatRatePercent.ToString("0.##")%</td>
+                    <td>@line.LineVat.Amount.ToString("N2")</td>
+                    <td>@((line.LineNetBeforeVat.Amount + line.LineVat.Amount).ToString("N2"))</td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr>
+                <th colspan="6" style="text-align:end;">@Tr("الإجمالي بعد الضريبة:", "Grand total:")</th>
+                <th>@_quotation.GrandTotal.Amount.ToString("N2") @(IsArabic ? "ج.م" : "EGP")</th>
+            </tr>
+        </tfoot>
+    </table>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(_quotation.Notes))
+{
+    <section class="form-section">
+        <h2>@Tr("ملاحظات", "Notes")</h2>
+        <p>@_quotation.Notes</p>
+    </section>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private Quotation? _quotation;
+    private Customer? _customer;
+    private Dictionary<Guid, ArabicEnglishText> _itemNames = new();
+    private Guid _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+
+        var authState = await Auth.GetAuthenticationStateAsync();
+        var idClaim = authState.User.FindFirst("user_id")?.Value
+            ?? authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (Guid.TryParse(idClaim, out var uid)) _userId = uid;
+
+        // QuotationNew can pass ?send=1 to auto-trigger send after save.
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("send", out var sendVal)
+            && sendVal == "1"
+            && _quotation?.State == QuotationState.Draft)
+        {
+            await OnSendAsync();
+            // Strip query so refreshes don't re-send.
+            Nav.NavigateTo($"/quotations/{Id}", forceLoad: false, replace: true);
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _quotation = await Db.Set<Quotation>()
+            .Include(q => q.Lines)
+            .FirstOrDefaultAsync(q => q.Id == Id);
+
+        if (_quotation is not null)
+        {
+            _customer = await Db.Set<Customer>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == _quotation.CustomerId);
+            var itemIds = _quotation.Lines.Select(l => l.ItemId).Distinct().ToList();
+            _itemNames = await Db.Set<Item>()
+                .AsNoTracking()
+                .Where(i => itemIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, i => i.Name);
+        }
+
+        _loading = false;
+    }
+
+    private async Task OnSendAsync()
+    {
+        _busy = true;
+        _flash = null;
+        try
+        {
+            await QuotationSvc.SendAsync(Id);
+            await LoadAsync();
+            _flash = Tr("✓ تم تخصيص رقم العرض. ابعت الرابط للعميل أو اطبع الصفحة (Ctrl+P).",
+                       "✓ Quote number assigned. Send the URL to the customer or print this page (Ctrl+P).");
+            _flashClass = "kpi-card kpi-success";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OnAcceptAsync()
+    {
+        _busy = true;
+        try
+        {
+            _quotation!.MarkAccepted(Clock.UtcNow);
+            await Db.SaveChangesAsync();
+            _flash = Tr("✓ تم تسجيل القبول. يمكنك تحويل العرض لفاتورة الآن.",
+                       "✓ Acceptance recorded. You can convert to an invoice now.");
+            _flashClass = "kpi-card kpi-success";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OnRejectAsync()
+    {
+        _busy = true;
+        try
+        {
+            _quotation!.MarkRejected(Clock.UtcNow);
+            await Db.SaveChangesAsync();
+            _flash = Tr("تم تسجيل الرفض.", "Rejection recorded.");
+            _flashClass = "kpi-card kpi-info";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OnConvertAsync()
+    {
+        _busy = true;
+        try
+        {
+            var invoiceId = await QuotationSvc.ConvertToInvoiceAsync(Id, _userId == Guid.Empty ? null : _userId);
+            Nav.NavigateTo($"/invoices/{invoiceId}", forceLoad: false);
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+            _busy = false;
+        }
+    }
+
+    private string StateLabel(QuotationState s) => s switch
+    {
+        QuotationState.Draft => Tr("مسودة", "Draft"),
+        QuotationState.Sent => Tr("مرسل", "Sent"),
+        QuotationState.Accepted => Tr("مقبول", "Accepted"),
+        QuotationState.Rejected => Tr("مرفوض", "Rejected"),
+        QuotationState.Expired => Tr("منتهي", "Expired"),
+        _ => s.ToString(),
+    };
+
+    private static string StateBadgeClass(QuotationState s) => s switch
+    {
+        QuotationState.Draft => "muted",
+        QuotationState.Sent => "info",
+        QuotationState.Accepted => "success",
+        QuotationState.Rejected => "danger",
+        QuotationState.Expired => "warn",
+        _ => "muted",
+    };
+}
