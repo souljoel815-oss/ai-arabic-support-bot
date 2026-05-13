@@ -439,7 +439,7 @@ sequencing without bumping any L-phase item.
 
 ---
 
-## M — Arabic-native AI (Weeks 5-6, slots between L3 and L4)
+## M — Arabic-native AI (Weeks 7-8, slots between L3 and L4)
 
 **Goal:** introduce the only feature class no Arabic competitor has.
 Two modules, both leaning on Claude (already in our toolbelt, no
@@ -564,3 +564,145 @@ Write v4 when ANY of these is true:
 
 If none of those is true after 12 weeks, the right move is still to
 **extend v3** with more sales + onboarding work.
+
+---
+
+## 9. Late-May Critical Review (response to user feedback, 2026-05-13)
+
+User raised 6 weaknesses + 4 missing items against §1-§8. Each is
+addressed below with **agreed / partial / pushback**, then the
+resulting edit is captured. Section 10 gives the final superseding
+sequencing table.
+
+### 9.1 Six concerns
+
+**1 — Quotations under-prioritised as L7 tail item.** Agreed. In
+Egyptian B2B no deal starts without عرض سعر; without quotations
+there is no top-of-funnel. Promoting from L7 (Week 5 ride-along) to
+**L1.5 (Week 4)**, paired with L1 send because once you can send an
+invoice you should be able to send a quote.
+
+**2 — Outreach detail (Week 3) too vague.** Agreed. "30 prospect
+emails" with no ICP / channels / message ladder / funnel is a plan
+that fails silently. Expanded into a real distribution sub-roadmap
+in §9.3.
+
+**3 — Perpetual-license-only revenue is fragile.** Agreed with
+refinement. The "بدون اشتراك شهري" message is a real wedge against
+Wafeq/Daftra/Edara and should stay. But pure perpetual = one-time
+revenue, no funding for the continuous ETA-spec work the regulator
+forces on us yearly (Resolution 281/2025, Law 6/2025 already this
+year). **Edit:** add **"صيانة سنوية اختيارية"** at 30% of license
+price (e.g. Solo = 1,050 EGP/year). Includes ETA spec updates +
+security patches + support + the metered M-phase Anthropic API
+costs. Pitched as optional; in practice the ETA-update component
+makes it functionally mandatory the first time the regulator
+changes the format. Update D2 landing-page pricing accordingly.
+
+**4 — 3-min demo video too long.** Partial pushback. The 3-min
+version is the conversion asset for the landing page and the
+sales-call asset where 3 min is short, not long. Don't shorten it.
+**But** add **D1.b — 60-sec social cut** for Facebook /
+TikTok / Instagram outreach: only the Penalty Shield hook + "جرّب
+مجاناً" CTA (Act 1 of the 3-min version, recut). ~30 min extra
+editing on top of D1.
+
+**5 — Onboarding experience missing entirely.** Agreed — biggest
+miss. The plan covers acquisition but not what happens in the
+first 5 minutes after install, which is when 60% of trial users
+decide whether to keep the app open. **Edit:** new module
+**D0.5 — First-Run Onboarding Wizard** (slots before D1 so the
+demo video can show the wizard in Act 1). MVP slice:
+- 4-step wizard on first launch: company name + TIN, activity
+  type, fiscal year start, accountant or owner persona
+- "Sample data?" toggle — pre-loads 5 customers, 20 items, 8
+  posted invoices, one Penalty Shield trigger so the new user
+  sees the moat in the first 2 minutes
+- Guided tour: first invoice → ETA submission → Penalty Shield
+  resolution
+
+**6 — L4 "only if a customer asks" is dangerous.** Agreed. SMBs
+with a shop + a back-storage room are a majority segment, not a
+niche. Customers who hit single-location stock on day one don't
+ask — they just leave silently. **Edit:** L4 in §10 is
+**unconditional Week 9**, not conditional.
+
+### 9.2 Four missing items
+
+| Missing | Severity | New module / action |
+|---|---|---|
+| Data migration tool (Excel / QuickBooks / Edara import) | High — switching cost is the #1 blocker | **D2.5 — CSV import wizard** for customers + items + opening balances. ~2 days. |
+| Backup & restore for portable SQLite | High — hard-drive failure = total data loss | **D2.5b — Backup module:** one-click backup to USB + scheduled daily auto-backup with 7-day retention. ~1 day. |
+| Arabic localization audit | Medium — every English string seen by an Egyptian buyer dents trust | **D0.5b — Localization sweep:** review pass before D1 demo recording for stray English in error messages, validation, date/number formatting. ~½ day. |
+| Pricing tier validation | Medium — tiers + perpetual-vs-maintenance split are assumptions | **D2.6 — Pricing A/B test:** ship two landing-page variants (perpetual-only vs perpetual+maintenance) + measure 14-day-trial signup rate over 4 weeks before locking pricing. |
+
+### 9.3 Week 3 Outreach — concrete sub-roadmap (replaces "30 emails")
+
+**ICP, in order of accessibility:**
+- **Tier 1:** Solo accountant freelancer billing 5-15 SMB clients.
+  Pain: ETA compliance for clients without paying Edara per client.
+- **Tier 2:** Small accounting firm (3-10 staff, 20-100 SMB
+  clients). Pain: per-seat cost of Edara/Wafeq, no Egyptian-tax
+  depth in QuickBooks Egypt.
+- **Tier 3:** Single SMB (5-50 employees) doing accounting in-house
+  with Excel. Pain: ETA enforcement deadline + no internal
+  accountant hire budget.
+
+**Channels (priority order, week 3 starts at #1):**
+1. **Facebook groups** — "محاسبين مصر" (~80K members), "محاسبين شغل
+   حر" (~15K), "محاسبين القاهرة" (~12K). Helpful Penalty Shield
+   content first, not sales pitch. Answer ETA compliance questions
+   organically.
+2. **LinkedIn** — direct outreach with "Accountant" + "Egypt"
+   filter. Personalized message referencing prospect's company.
+3. **WhatsApp peer groups** — needs warm intro from a Tier 1
+   customer (chicken-and-egg, unlocks at week 6+).
+4. **ETA developer / accountant forums** — answer technical
+   questions; signature links to landing page.
+
+**Message ladder (no AI/pricing in opener):**
+1. **Hook:** Penalty Shield framing — "هل تعلم إنك ممكن تخسر
+   5,000 جنيه لو غلطت في توقيت تقديم 10 الإقرار الضريبي؟"
+2. **Second touch:** link to D1.b 60-sec demo.
+3. **Third touch:** free 14-day trial with onboarding hand-hold
+   (call or WhatsApp video).
+
+**Conversion-funnel target (week 3-12 cumulative):**
+- 200 Facebook group touches → 60 landing-page visits
+- 60 visits → 15 trial downloads
+- 15 trials → 5 active users by week 4 → **3 paying customers by week 12**
+
+**Hard gate at week 6:** if the funnel is below 50% of these
+numbers, **stop building features** and run customer-development
+interviews with the 3-5 trial users. Building L4/L5/L6 against
+zero customer signal is the failure mode the v3 plan was supposed
+to prevent.
+
+---
+
+## 10. Final 12-week sequencing (replaces §4 and §7)
+
+| Week | Focus | Deliverable |
+|---|---|---|
+| 1 | D0, D0.5, D0.5b, D2 | Git push. Onboarding wizard + localization sweep. Landing-page draft. |
+| 2 | D1, D1.b, D2.5, D2.5b, D2.6, D3 | 3-min + 60-sec videos. CSV import + backup module. Pricing A/B live. Sandbox label. |
+| 3 | Outreach (per §9.3) | First 200 Facebook touches. Tier-1 ICP outreach starts. |
+| 4 | L1, **L1.5 (Quotations)**, L8 | Email/WhatsApp send + Quotations + auto reminders |
+| 5 | L2 | CSV / Excel export (L7 absorbed into L1.5) |
+| 6 | L3 + **week-6 hard gate** | Recurring invoices + funnel checkpoint. If <50% target → pivot to interviews. |
+| 7 | M.1 | Arabic OCR for receipts |
+| 8 | M.2 | Arabic NL queries via Claude chat |
+| 9 | **L4 (unconditional)** | Multi-location inventory |
+| 10 | L5 | Customer portal (read-only) |
+| 11-12 | L6 | Paymob real integration (Fawry → v4) |
+
+Two things changed structurally vs §7:
+
+- **Quotations promoted to Week 4** (was L7 ride-along in Week 5)
+- **L4 multi-location is unconditional Week 9** (was conditional)
+- **Onboarding + migration + backup added to Weeks 1-2** (were
+  silently absent)
+- **Week-6 funnel checkpoint** as a hard gate, not commentary
+
+§4 and §7 are kept above as the audit trail for what changed and
+why; §10 is the operational plan.
