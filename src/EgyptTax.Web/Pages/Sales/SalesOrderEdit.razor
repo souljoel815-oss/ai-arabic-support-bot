@@ -1,0 +1,309 @@
+@page "/sales-orders/new"
+@page "/sales-orders/{Id:guid}/edit"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Sales
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    Phase F — Sales Order edit page. Mirror of SalesInvoiceEdit but
+    simpler: no posting, no ETA, no credit-limit check (those run
+    when the order is converted to an invoice). Reps create + confirm
+    orders here; the office converts from the list view.
+*@
+
+<h1>@(IsArabic ? (_order is null ? "أمر بيع جديد" : $"تعديل أمر بيع {_order.OrderNumber}") : (_order is null ? "New sales order" : $"Edit sales order {_order.OrderNumber}"))</h1>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status">@_flash</div>
+}
+
+@if (_loading) { <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p> return; }
+
+@if (_order is not null && _order.State != SalesOrderState.Draft)
+{
+    <div class="flash-error">
+        @(IsArabic
+            ? $"الأمر في حالة {_order.State}؛ المسودات فقط هي اللي يمكن تعديلها."
+            : $"This order is {_order.State}; only Draft orders can be edited.")
+    </div>
+    <a href="/sales-orders">@(IsArabic ? "← قائمة الأوامر" : "← Order list")</a>
+    return;
+}
+
+<section class="form-grid">
+    <fieldset>
+        <legend>@(IsArabic ? "بيانات الأمر" : "Header")</legend>
+        <label>
+            <span>@(IsArabic ? "العميل" : "Customer")</span>
+            <select @bind="_customerId">
+                <option value="@Guid.Empty">@(IsArabic ? "— اختر —" : "— choose —")</option>
+                @foreach (var c in _customers)
+                {
+                    <option value="@c.Id">@c.Code — @(IsArabic ? c.Name.Arabic : c.Name.English)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@(IsArabic ? "تاريخ الأمر" : "Order date")</span>
+            <input type="date" @bind="_orderDate" />
+        </label>
+        <label style="grid-column:1/-1;">
+            <span>@(IsArabic ? "ملاحظة (اختياري)" : "Note (optional)")</span>
+            <textarea rows="2" @bind="_note" placeholder="@(IsArabic ? "مثال: التوصيل صباح الثلاثاء" : "e.g. deliver Tuesday morning")"></textarea>
+        </label>
+    </fieldset>
+
+    <fieldset>
+        <legend>@(IsArabic ? "البنود" : "Lines")</legend>
+        @if (_lines.Count == 0)
+        {
+            <p><em>@(IsArabic ? "لا توجد بنود بعد." : "No lines yet.")</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead><tr>
+                    <th>@(IsArabic ? "الصنف" : "Item")</th>
+                    <th class="num">@(IsArabic ? "الكمية" : "Qty")</th>
+                    <th class="num">@(IsArabic ? "سعر الوحدة" : "Unit price")</th>
+                    <th>@(IsArabic ? "الضريبة" : "VAT")</th>
+                    <th class="num">@(IsArabic ? "الإجمالي" : "Total")</th>
+                    <th></th>
+                </tr></thead>
+                <tbody>
+                    @foreach (var (line, idx) in _lines.Select((l, i) => (l, i)))
+                    {
+                        var item = _items.FirstOrDefault(x => x.Id == line.ItemId);
+                        var vat = _vatCategories.FirstOrDefault(v => v.Id == line.VatCategoryId);
+                        var sub = decimal.Round(line.Quantity * line.UnitPrice, 2, MidpointRounding.ToEven);
+                        var lineVat = decimal.Round(sub * (line.VatRatePercent / 100m), 2, MidpointRounding.ToEven);
+                        <tr>
+                            <td>@(item?.Code ?? "?") — @(item?.Name.English ?? "")</td>
+                            <td class="num">@line.Quantity.ToString("0.##")</td>
+                            <td class="num">@line.UnitPrice.ToString("F2")</td>
+                            <td>@(vat?.Code ?? "?") (@(vat?.RatePercent.ToString("0.##") ?? "?")%)</td>
+                            <td class="num">@((sub + lineVat).ToString("F2"))</td>
+                            <td><button type="button" @onclick="() => _lines.RemoveAt(idx)">@(IsArabic ? "إزالة" : "Remove")</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </fieldset>
+
+    <fieldset>
+        <legend>@(IsArabic ? "إضافة بند" : "Add line")</legend>
+        <label>
+            <span>@(IsArabic ? "الصنف" : "Item")</span>
+            <select @bind="_newLineItemId">
+                <option value="@Guid.Empty">@(IsArabic ? "— اختر —" : "— choose —")</option>
+                @foreach (var i in _items.Where(x => x.Status == ItemStatus.Active))
+                {
+                    <option value="@i.Id">@i.Code — @i.Name.English (@(IsArabic ? "متاح" : "stock") @i.QuantityOnHand)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@(IsArabic ? "الكمية" : "Quantity")</span>
+            <input type="number" step="0.01" min="0.01" @bind="_newLineQty" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "سعر الوحدة (ج.م.)" : "Unit price (EGP)")</span>
+            <input type="number" step="0.01" min="0" @bind="_newLineUnitPrice" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "فئة الضريبة" : "VAT category")</span>
+            <select @bind="_newLineVatId">
+                <option value="@Guid.Empty">@(IsArabic ? "— الافتراضية —" : "— default from item —")</option>
+                @foreach (var v in _vatCategories)
+                {
+                    <option value="@v.Id">@v.Code (@v.RatePercent.ToString("0.##")%)</option>
+                }
+            </select>
+        </label>
+        <button type="button" @onclick="AddLine">@(IsArabic ? "إضافة بند" : "Add line")</button>
+    </fieldset>
+</section>
+
+<section class="invoice-totals">
+    <div><strong>@(IsArabic ? "الإجمالي قبل الضريبة:" : "Subtotal:")</strong> <span class="num">@TotalSubtotal.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "الضريبة:" : "VAT:")</strong> <span class="num">@TotalVat.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div class="grand"><strong>@(IsArabic ? "الإجمالي الكلي:" : "Grand total:")</strong> <span class="num">@TotalGrand.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+</section>
+
+<div class="form-actions">
+    <button type="button" @onclick="SaveDraftAsync">@(IsArabic ? "حفظ المسودة" : "Save draft")</button>
+    <button type="button" @onclick="ConfirmAsync" disabled="@(!CanConfirm)">@(IsArabic ? "تأكيد الأمر" : "Confirm order")</button>
+    <a href="/sales-orders">@(IsArabic ? "إلغاء" : "Cancel")</a>
+</div>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool _loading = true;
+    private SalesOrder? _order;
+    private List<Customer> _customers = new();
+    private List<Item> _items = new();
+    private List<VatCategory> _vatCategories = new();
+    private readonly List<DraftLine> _lines = new();
+
+    private Guid _customerId;
+    private DateOnly _orderDate = DateOnly.FromDateTime(DateTime.UtcNow);
+    private string? _note;
+    private Guid _currentUserId;
+
+    private Guid _newLineItemId;
+    private decimal _newLineQty = 1m;
+    private decimal _newLineUnitPrice;
+    private Guid _newLineVatId;
+
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => c.Status == CustomerStatus.Active).OrderBy(c => c.Code).ToListAsync();
+        _items = await Db.Set<Item>().AsNoTracking().OrderBy(i => i.Code).ToListAsync();
+        _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
+
+        var auth = await Auth.GetAuthenticationStateAsync();
+        _currentUserId = auth.User.UserId() ?? Guid.Empty;
+
+        if (Id is { } id)
+        {
+            _order = await Db.Set<SalesOrder>().Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == id);
+            if (_order is not null)
+            {
+                _customerId = _order.CustomerId;
+                _orderDate = _order.OrderDate;
+                _note = _order.Note;
+                foreach (var l in _order.Lines)
+                {
+                    _lines.Add(new DraftLine(l.ItemId, l.Quantity, l.UnitPrice.Amount, l.VatCategoryId, l.VatRatePercent));
+                }
+            }
+        }
+        _loading = false;
+    }
+
+    private void AddLine()
+    {
+        if (_newLineItemId == Guid.Empty || _newLineQty <= 0)
+        {
+            ShowFlash(IsArabic ? "اختر صنفاً وكمية موجبة." : "Pick an item and a positive quantity.", error: true);
+            return;
+        }
+        var item = _items.First(i => i.Id == _newLineItemId);
+        var vatId = _newLineVatId == Guid.Empty ? item.DefaultVatCategoryId : _newLineVatId;
+        var vat = _vatCategories.FirstOrDefault(v => v.Id == vatId);
+        if (vat is null)
+        {
+            ShowFlash(IsArabic ? "الصنف ليس له ضريبة افتراضية — اختر واحدة." : "Item has no default VAT — pick one.", error: true);
+            return;
+        }
+        _lines.Add(new DraftLine(_newLineItemId, _newLineQty, _newLineUnitPrice, vatId, vat.RatePercent));
+        _newLineItemId = Guid.Empty;
+        _newLineQty = 1m;
+        _newLineUnitPrice = 0m;
+        _newLineVatId = Guid.Empty;
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        if (_customerId == Guid.Empty)
+        {
+            ShowFlash(IsArabic ? "اختر العميل أولاً." : "Pick a customer first.", error: true);
+            return;
+        }
+        if (_lines.Count == 0)
+        {
+            ShowFlash(IsArabic ? "أضف بنداً واحداً على الأقل." : "Add at least one line.", error: true);
+            return;
+        }
+        if (_order is null)
+        {
+            var creator = _currentUserId == Guid.Empty ? (Guid?)null : _currentUserId;
+            _order = SalesOrder.CreateDraft(_customerId, _orderDate, creator);
+            foreach (var l in _lines)
+            {
+                _order.AddLine(l.ItemId, l.Quantity, MoneyEgp.From(l.UnitPrice), l.VatCategoryId, l.VatRatePercent);
+            }
+            _order.UpdateNote(_note);
+            Db.Add(_order);
+        }
+        else
+        {
+            // Replace all lines (simpler than diff for orders).
+            foreach (var existing in _order.Lines.Select(l => l.Id).ToList())
+            {
+                _order.RemoveLine(existing);
+            }
+            foreach (var l in _lines)
+            {
+                _order.AddLine(l.ItemId, l.Quantity, MoneyEgp.From(l.UnitPrice), l.VatCategoryId, l.VatRatePercent);
+            }
+            _order.UpdateNote(_note);
+        }
+        await Db.SaveChangesAsync();
+        ShowFlash(IsArabic ? "تم حفظ المسودة." : "Draft saved.");
+        Nav.NavigateTo($"/sales-orders/{_order.Id}/edit", forceLoad: false);
+    }
+
+    private async Task ConfirmAsync()
+    {
+        await SaveDraftAsync();
+        if (_order is null) return;
+        try
+        {
+            // Simple per-year sequential number — no FR-011 allocator
+            // since orders aren't tax-impacting documents.
+            var year = DateTime.UtcNow.Year;
+            var existing = await Db.Set<SalesOrder>().AsNoTracking()
+                .Where(o => o.OrderNumber.StartsWith($"SO-{year}-"))
+                .Select(o => o.OrderNumber)
+                .ToListAsync();
+            var next = existing
+                .Select(n => int.TryParse(n[(n.LastIndexOf('-') + 1)..], out var i) ? i : 0)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+            var orderNumber = $"SO-{year}-{next:D6}";
+            _order.Confirm(orderNumber, DateTime.UtcNow);
+            await Db.SaveChangesAsync();
+            ShowFlash(IsArabic ? $"تم تأكيد الأمر {orderNumber}." : $"Confirmed order {orderNumber}.");
+            Nav.NavigateTo("/sales-orders", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            ShowFlash(ex.Message, error: true);
+        }
+    }
+
+    private bool CanConfirm => _customerId != Guid.Empty && _lines.Count > 0;
+
+    private decimal TotalSubtotal => _lines.Sum(l => decimal.Round(l.Quantity * l.UnitPrice, 2, MidpointRounding.ToEven));
+    private decimal TotalVat => _lines.Sum(l =>
+    {
+        var sub = decimal.Round(l.Quantity * l.UnitPrice, 2, MidpointRounding.ToEven);
+        return decimal.Round(sub * (l.VatRatePercent / 100m), 2, MidpointRounding.ToEven);
+    });
+    private decimal TotalGrand => TotalSubtotal + TotalVat;
+
+    private void ShowFlash(string message, bool error = false)
+    {
+        _flash = message;
+        _flashClass = error ? "flash-error" : "flash-success";
+    }
+
+    private sealed record DraftLine(Guid ItemId, decimal Quantity, decimal UnitPrice, Guid VatCategoryId, decimal VatRatePercent);
+}

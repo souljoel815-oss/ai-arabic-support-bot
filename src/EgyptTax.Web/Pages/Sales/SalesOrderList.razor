@@ -1,0 +1,153 @@
+@page "/sales-orders"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Sales
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Sales
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+@inject ConvertSalesOrderToInvoiceHandler Converter
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    Phase F — Sales Orders list. Reps see only orders they created
+    (mirrors the SalesInvoice rep-scoping rule); admins see all.
+    The "Convert" button is hidden for reps and visible for non-rep
+    users — converting requires office authority since the resulting
+    invoice will be Posted with credit-limit + stock guards.
+*@
+
+<h1>@(IsArabic ? "أوامر البيع" : "Sales orders")</h1>
+
+<div class="invoice-toolbar">
+    <a class="btn-primary" href="/sales-orders/new">@(IsArabic ? "+ أمر جديد" : "+ New order")</a>
+    <select @bind="_stateFilter">
+        <option value="">@(IsArabic ? "كل الحالات" : "All states")</option>
+        @foreach (var s in Enum.GetValues<SalesOrderState>())
+        {
+            <option value="@s">@s</option>
+        }
+    </select>
+</div>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status">@_flash</div>
+}
+
+@if (_loading) { <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p> return; }
+
+@if (Filtered.Count == 0)
+{
+    <p><em>@(IsArabic ? "لا توجد أوامر تطابق المرشح الحالي." : "No orders match the current filter.")</em></p>
+    return;
+}
+
+<table class="data-grid">
+    <thead><tr>
+        <th>@(IsArabic ? "رقم الأمر" : "Order #")</th>
+        <th>@(IsArabic ? "التاريخ" : "Date")</th>
+        <th>@(IsArabic ? "العميل" : "Customer")</th>
+        <th>@(IsArabic ? "الحالة" : "State")</th>
+        <th class="num">@(IsArabic ? "الإجمالي" : "Grand total")</th>
+        <th>@(IsArabic ? "إجراءات" : "Actions")</th>
+    </tr></thead>
+    <tbody>
+        @foreach (var row in Filtered)
+        {
+            <tr>
+                <td>@(string.IsNullOrEmpty(row.Order.OrderNumber) ? (IsArabic ? "(مسودة)" : "(draft)") : row.Order.OrderNumber)</td>
+                <td>@row.Order.OrderDate.ToString("yyyy-MM-dd")</td>
+                <td>@row.CustomerName</td>
+                <td><span class="state-badge">@row.Order.State</span></td>
+                <td class="num">@row.Order.GrandTotal.Amount.ToString("F2")</td>
+                <td>
+                    @if (row.Order.State == SalesOrderState.Draft)
+                    {
+                        <a href="/sales-orders/@row.Order.Id/edit">@(IsArabic ? "تعديل" : "Edit")</a>
+                    }
+                    @if (row.Order.State == SalesOrderState.Confirmed && !_isRepOnly)
+                    {
+                        <button type="button" class="btn-secondary" @onclick="() => OnConvertAsync(row.Order.Id)" disabled="@_busy">
+                            @(IsArabic ? "← فاتورة" : "→ Invoice")
+                        </button>
+                    }
+                    @if (row.Order.State == SalesOrderState.Converted && row.Order.ConvertedToInvoiceId is { } invId)
+                    {
+                        <a href="/invoices/@invId">@(IsArabic ? "عرض الفاتورة" : "View invoice")</a>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private bool _isRepOnly;
+    private Guid _currentUserId;
+    private string _stateFilter = "";
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private List<Row> _orders = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await Auth.GetAuthenticationStateAsync();
+        _currentUserId = auth.User.UserId() ?? Guid.Empty;
+        _isRepOnly = auth.User.IsInRole("SALES_REP") && !auth.User.IsInRole("ADMIN");
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        var query = Db.Set<SalesOrder>().AsNoTracking().AsQueryable();
+        if (_isRepOnly && _currentUserId != Guid.Empty)
+        {
+            query = query.Where(o => o.CreatedByUserId == _currentUserId);
+        }
+        var orders = await query
+            .OrderByDescending(o => o.OrderDate)
+            .ThenByDescending(o => o.CreatedAtUtc)
+            .Take(500)
+            .ToListAsync();
+        var customerIds = orders.Select(o => o.CustomerId).Distinct().ToArray();
+        var customerNames = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => customerIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => IsArabic ? c.Name.Arabic : c.Name.English);
+        _orders = orders.Select(o => new Row(o,
+            customerNames.GetValueOrDefault(o.CustomerId, o.CustomerId.ToString("D")))).ToList();
+        _loading = false;
+    }
+
+    private List<Row> Filtered => _orders
+        .Where(r => string.IsNullOrEmpty(_stateFilter) || r.Order.State.ToString() == _stateFilter)
+        .ToList();
+
+    private async Task OnConvertAsync(Guid orderId)
+    {
+        _busy = true;
+        try
+        {
+            var invoice = await Converter.HandleAsync(orderId, _currentUserId);
+            _flash = IsArabic
+                ? $"تم تحويل الأمر إلى فاتورة مسودة (مفتوحة للترحيل من الفاتورة)."
+                : $"Order converted to a draft invoice — open it to post.";
+            _flashClass = "flash-success";
+            Nav.NavigateTo($"/invoices/{invoice.Id}/edit", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            _flash = IsArabic ? $"فشل التحويل: {ex.Message}" : $"Convert failed: {ex.Message}";
+            _flashClass = "flash-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private sealed record Row(SalesOrder Order, string CustomerName);
+}
