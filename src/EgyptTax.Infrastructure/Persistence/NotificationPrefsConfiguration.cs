@@ -42,6 +42,10 @@ internal sealed class NotificationPrefsConfiguration : IEntityTypeConfiguration<
             .Metadata.SetValueComparer(IntArrayComparer);
 
         b.Property(x => x.EmailNotificationsEnabled).HasColumnName("email_notifications_enabled").IsRequired();
+
+        // L8 (v3 roadmap) — auto payment reminders.
+        b.Property(x => x.PaymentReminderEnabled).HasColumnName("payment_reminder_enabled").IsRequired();
+        b.Property(x => x.PaymentReminderDaysOverdue).HasColumnName("payment_reminder_days_overdue").IsRequired();
     }
 
     /// <summary>Stores int[] as comma-separated string. Avoids JSON

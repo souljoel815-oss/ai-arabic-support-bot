@@ -32,6 +32,15 @@ public sealed class NotificationPrefs
 
     public bool EmailNotificationsEnabled { get; private set; }
 
+    /// <summary>L8 (v3 roadmap) — when enabled, the daily
+    /// payment-reminder Hangfire job sends an email to customers
+    /// whose oldest unpaid invoice is older than
+    /// <see cref="PaymentReminderDaysOverdue"/>. Off by default
+    /// because new installs don't have customer email addresses
+    /// yet — flip on once email + customer contact data is solid.</summary>
+    public bool PaymentReminderEnabled { get; private set; }
+    public int PaymentReminderDaysOverdue { get; private set; } = 14;
+
     private NotificationPrefs() { }
 
     public static NotificationPrefs CreateDefault() => new();
@@ -66,6 +75,14 @@ public sealed class NotificationPrefs
     }
 
     public void SetEmailNotifications(bool enabled) => EmailNotificationsEnabled = enabled;
+
+    public void SetPaymentReminder(bool enabled, int daysOverdue)
+    {
+        if (daysOverdue is < 1 or > 365)
+            throw new ArgumentOutOfRangeException(nameof(daysOverdue));
+        PaymentReminderEnabled = enabled;
+        PaymentReminderDaysOverdue = daysOverdue;
+    }
 
     private static int[] ValidateDayArray(int[] days)
     {

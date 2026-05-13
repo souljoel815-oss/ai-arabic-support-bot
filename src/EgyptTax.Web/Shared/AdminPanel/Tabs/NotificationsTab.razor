@@ -97,6 +97,22 @@
                 </td>
             </tr>
             <tr>
+                <td><strong>@(IsArabic ? "تذكير العملاء بالسداد (تلقائي)" : "Auto payment reminders to customers")</strong></td>
+                <td><input type="checkbox" @bind="_paymentReminderEnabled" @bind:after="OnPaymentReminderChangedAsync" /></td>
+                <td>
+                    <label>@(IsArabic ? "بعد تأخير:" : "After overdue:")</label>
+                    <input type="number" min="1" max="365" style="width:80px;"
+                           @bind="_paymentReminderDaysOverdue" @bind:after="OnPaymentReminderChangedAsync"
+                           disabled="@(!_paymentReminderEnabled)" />
+                    <span>@(IsArabic ? "يوم" : "days")</span>
+                    <em style="display:block;color:var(--text-muted);font-size:12px;margin-top:4px;">
+                        @(IsArabic
+                            ? "يحتاج SMTP وعنوان بريد للعميل. لا يرسل أكتر من مرة كل 7 أيام لنفس العميل."
+                            : "Requires SMTP + a customer email address. Won't re-send within 7 days to the same customer.")
+                    </em>
+                </td>
+            </tr>
+            <tr>
                 <td><strong>@(IsArabic ? "انتهاء شهادة ETA (USB)" : "ETA certificate expiry (USB token)")</strong></td>
                 <td><input type="checkbox" @bind="_etaCertExpiryEnabled" @bind:after="OnEtaCertExpiryChangedAsync" /></td>
                 <td>
@@ -143,6 +159,10 @@
 
     private bool _emailNotificationsEnabled;
 
+    // L8 — auto payment reminders to customers.
+    private bool _paymentReminderEnabled;
+    private int _paymentReminderDaysOverdue;
+
     protected override async Task OnInitializedAsync()
     {
         var p = await Settings.GetNotificationPrefsAsync();
@@ -157,7 +177,15 @@
         _etaCertExpiryEnabled = p.EtaCertExpiryEnabled;
         _etaCertExpiryDays = string.Join(",", p.EtaCertExpiryDaysBefore);
         _emailNotificationsEnabled = p.EmailNotificationsEnabled;
+        _paymentReminderEnabled = p.PaymentReminderEnabled;
+        _paymentReminderDaysOverdue = p.PaymentReminderDaysOverdue;
         _loading = false;
+    }
+
+    private Task OnPaymentReminderChangedAsync()
+    {
+        var days = _paymentReminderDaysOverdue is < 1 or > 365 ? 14 : _paymentReminderDaysOverdue;
+        return ApplyAsync(p => p.SetPaymentReminder(_paymentReminderEnabled, days));
     }
 
     private static int[] ParseDayList(string raw) =>
