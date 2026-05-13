@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using EgyptTax.Application.Identity;
 using EgyptTax.Domain.Identity;
 using EgyptTax.Infrastructure.Persistence;
@@ -33,6 +34,9 @@ public sealed class ChangePasswordModel : PageModel
     [BindProperty]
     public InputModel Input { get; set; } = new();
     public string? ErrorMessage { get; private set; }
+
+    private static bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
 
     public sealed class InputModel
     {
@@ -73,7 +77,9 @@ public sealed class ChangePasswordModel : PageModel
         // (catches the user who just typed the bootstrap value back in).
         if (_hasher.Verify(Input.NewPassword, user.PasswordHash))
         {
-            ErrorMessage = "New password must differ from the current one.";
+            ErrorMessage = IsArabic
+                ? "كلمة المرور الجديدة يجب أن تختلف عن الحالية."
+                : "New password must differ from the current one.";
             return Page();
         }
 

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using EgyptTax.Application.Identity;
 using EgyptTax.Domain.Identity;
 using EgyptTax.Infrastructure.Persistence;
@@ -45,6 +46,9 @@ public sealed class EnrollMfaModel : PageModel
     public string? Secret { get; private set; }
     public string? StagedSecretCipher { get; private set; }
     public string? ErrorMessage { get; private set; }
+
+    private static bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
 
     public sealed class InputModel
     {
@@ -100,7 +104,9 @@ public sealed class EnrollMfaModel : PageModel
         }
         catch
         {
-            ErrorMessage = "Enrollment session expired. Please reload the page.";
+            ErrorMessage = IsArabic
+                ? "انتهت جلسة تسجيل MFA. أعد تحميل الصفحة من فضلك."
+                : "Enrollment session expired. Please reload the page.";
             return Page();
         }
 
@@ -108,7 +114,9 @@ public sealed class EnrollMfaModel : PageModel
         {
             // Re-show the page with the same staged secret so the user
             // can retry without losing their authenticator's anchor.
-            ErrorMessage = "The verification code is incorrect or expired.";
+            ErrorMessage = IsArabic
+                ? "رمز التحقق غير صحيح أو انتهت صلاحيته."
+                : "The verification code is incorrect or expired.";
             ProvisioningUri = _totp.BuildProvisioningUri(user.Email, secret, issuer: "EgyptTax");
             Secret = secret;
             StagedSecretCipher = Input.StagedSecretCipher;

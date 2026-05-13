@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Security.Claims;
 using EgyptTax.Application.Identity;
 using EgyptTax.Domain.Identity;
@@ -80,6 +81,9 @@ public sealed class LoginModel : PageModel
     [BindProperty]
     public InputModel Input { get; set; } = new();
     public string? ErrorMessage { get; private set; }
+
+    private static bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
     public bool ShowMfaPrompt { get; private set; }
     public string? ReturnUrl { get; private set; }
 
@@ -130,7 +134,9 @@ public sealed class LoginModel : PageModel
             // distinguish "wrong password" from "no such email".
             user?.RecordLogin(succeeded: false, _clock.UtcNow);
             await _db.SaveChangesAsync(cancellationToken);
-            ErrorMessage = "The email or password is incorrect.";
+            ErrorMessage = IsArabic
+                ? "البريد الإلكتروني أو كلمة المرور غير صحيحة."
+                : "The email or password is incorrect.";
             return Page();
         }
 
@@ -169,7 +175,9 @@ public sealed class LoginModel : PageModel
             if (!_totp.VerifyCode(secret, Input.TotpCode))
             {
                 ShowMfaPrompt = true;
-                ErrorMessage = "The verification code is incorrect or expired.";
+                ErrorMessage = IsArabic
+                    ? "رمز التحقق غير صحيح أو انتهت صلاحيته."
+                    : "The verification code is incorrect or expired.";
                 return Page();
             }
         }
