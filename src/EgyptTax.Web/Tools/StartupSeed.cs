@@ -154,6 +154,22 @@ internal static class StartupSeed
             added++;
         }
 
+        // L4 (v3 roadmap, phase 1) — ensure a default stock location
+        // exists. Without one, items have no place to record per-
+        // location stock when the operator starts using multi-warehouse
+        // features. Auto-creates "MAIN" → "المخزن الرئيسي" / "Main
+        // Warehouse" if no locations exist at all. Operator can rename
+        // it from /stock-locations.
+        if (!await db.Set<StockLocation>().AnyAsync(ct))
+        {
+            db.Add(new StockLocation(
+                code: "MAIN",
+                name: new ArabicEnglishText("المخزن الرئيسي", "Main Warehouse"),
+                isDefault: true));
+            await db.SaveChangesAsync(ct);
+            added++;
+        }
+
         return added;
     }
 }

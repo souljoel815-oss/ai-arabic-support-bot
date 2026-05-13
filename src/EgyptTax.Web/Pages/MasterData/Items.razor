@@ -82,8 +82,18 @@
                         </td>
                         <td>
                             <input type="number" step="0.01" min="0.01"
-                                   style="width:80px;"
+                                   style="width:70px;"
                                    @bind="_receiveQty[item.Id]" />
+                            @if (_locations.Count > 1 && _receiveLoc.ContainsKey(item.Id))
+                            {
+                                <select style="width:90px;font-size:12px;margin-inline-start:4px;"
+                                        @bind="_receiveLoc[item.Id]">
+                                    @foreach (var loc in _locations)
+                                    {
+                                        <option value="@loc.Id">@loc.Code</option>
+                                    }
+                                </select>
+                            }
                             <button type="button" class="btn-secondary" style="font-size:12px;padding:4px 8px;"
                                     @onclick="() => OnReceiveStockAsync(item.Id)">@(IsArabic ? "أضف" : "Add")</button>
                         </td>
@@ -200,6 +210,13 @@
     private readonly Dictionary<Guid, decimal> _receiveQty = new();
     private readonly Dictionary<Guid, decimal?> _thresholdInput = new();
 
+    // L4 phase 1 — when >1 locations exist, the receive-stock row
+    // gains a location dropdown. _locations is reloaded with the
+    // rest of the master data; _receiveLoc tracks the current
+    // dropdown selection per row (defaults to the default location).
+    private List<StockLocation> _locations = new();
+    private readonly Dictionary<Guid, Guid> _receiveLoc = new();
+
     // G2.1 — live ETA-code suggestions for the create form.
     // Recomputed whenever the operator types in either name field
     // (debounce isn't needed — the suggester is in-memory and
@@ -267,10 +284,39 @@
             quantityOnHandAfter: item.QuantityOnHand,
             kind: StockMovementKind.Receipt,
             createdByUserId: auth.User.UserId()));
+
+        // L4 phase 1 — also update the per-location stock row.
+        // Side-write only; the canonical total stays on Item.
+        // QuantityOnHand for backwards compat with PostSalesInvoice-
+        // Handler + low-stock alerts (which haven't been migrated).
+        // Falls back to the default location if the dropdown wasn't
+        // populated (single-location install).
+        var locId = _receiveLoc.GetValueOrDefault(itemId, Guid.Empty);
+        if (locId == Guid.Empty)
+        {
+            locId = _locations.FirstOrDefault(l => l.IsDefault)?.Id
+                ?? _locations.FirstOrDefault()?.Id
+                ?? Guid.Empty;
+        }
+        if (locId != Guid.Empty)
+        {
+            var stockRow = await Db.Set<ItemStockByLocation>()
+                .FirstOrDefaultAsync(s => s.ItemId == itemId && s.LocationId == locId);
+            if (stockRow is null)
+            {
+                Db.Add(new ItemStockByLocation(itemId, locId, qty));
+            }
+            else
+            {
+                stockRow.IncreaseStock(qty);
+            }
+        }
+
         await Db.SaveChangesAsync();
+        var locLabel = _locations.FirstOrDefault(l => l.Id == locId)?.Code ?? "—";
         _savedFlash = IsArabic
-            ? $"تم استلام {qty} وحدة من {item.Code}. الرصيد الجديد: {item.QuantityOnHand}."
-            : $"Received {qty} of {item.Code}. New stock: {item.QuantityOnHand}.";
+            ? $"تم استلام {qty} وحدة من {item.Code} في {locLabel}. الرصيد الجديد: {item.QuantityOnHand}."
+            : $"Received {qty} of {item.Code} at {locLabel}. New stock: {item.QuantityOnHand}.";
         _receiveQty[itemId] = 0m;
         await ReloadAsync();
     }
@@ -296,6 +342,18 @@
     private async Task ReloadAsync()
     {
         _items = await Db.Set<Item>().AsNoTracking().OrderBy(i => i.Code).ToListAsync();
+
+        // L4 phase 1 — load stock locations + pre-seed each row's
+        // location selector with the default location.
+        _locations = await Db.Set<StockLocation>().AsNoTracking()
+            .Where(l => l.IsActive)
+            .OrderByDescending(l => l.IsDefault)
+            .ThenBy(l => l.Code)
+            .ToListAsync();
+        var defaultLocationId = _locations.FirstOrDefault(l => l.IsDefault)?.Id
+            ?? _locations.FirstOrDefault()?.Id
+            ?? Guid.Empty;
+
         // Pre-seed _receiveQty + _thresholdInput so the per-row @bind
         // doesn't throw KeyNotFoundException on first render (same
         // pattern as the receipt voucher page). Threshold input
@@ -306,6 +364,8 @@
             {
                 _receiveQty.TryAdd(i.Id, 0m);
                 _thresholdInput[i.Id] = i.LowStockThreshold;
+                if (defaultLocationId != Guid.Empty)
+                    _receiveLoc.TryAdd(i.Id, defaultLocationId);
             }
         }
         _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
