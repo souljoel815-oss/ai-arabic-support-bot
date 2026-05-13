@@ -453,6 +453,7 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Quotations.QuotationService>(
 builder.Services.AddSingleton<EgyptTax.Infrastructure.Ai.AnthropicApiKeyProtector>();
 builder.Services.AddHttpClient<EgyptTax.Infrastructure.Ai.AnthropicVisionClient>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.OcrReceiptHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.NlQueryHandler>();
 
 // Gux.13 Tab 5 — SMTP password protector + test sender. Singleton
 // because IDataProtectionProvider keys are bound to the host's

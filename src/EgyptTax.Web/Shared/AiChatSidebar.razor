@@ -1,0 +1,163 @@
+@using EgyptTax.Infrastructure.Ai
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NlQueryHandler Chat
+@inject NavigationManager Nav
+
+@*
+    M.2 (v3 roadmap) — floating "اسأل دفترك" chat sidebar.
+    Rendered once at the layout level so it appears on every page.
+
+    UX:
+      - FAB button bottom-end on every page
+      - Click opens a slide-in drawer with input + suggestion chips
+      - Session-local conversation history (cleared on page reload)
+      - "Open" button in each reply when Claude suggested a URL
+*@
+
+<div class="ai-chat-wrap">
+    @if (!_open)
+    {
+        <button type="button" class="ai-chat-fab" @onclick="Open" title="@Tr("اسأل دفترك", "Ask DaftarX")">
+            <Icon Name="zap" />
+            <span>@Tr("اسأل دفترك", "Ask DaftarX")</span>
+        </button>
+    }
+    else
+    {
+        <div class="ai-chat-backdrop" @onclick="Close"></div>
+        <aside class="ai-chat-drawer" role="dialog" aria-modal="true">
+            <header class="ai-chat-head">
+                <strong>
+                    <Icon Name="zap" />
+                    @Tr("اسأل دفترك (Claude)", "Ask DaftarX (Claude)")
+                </strong>
+                <button type="button" class="ai-chat-close" @onclick="Close" aria-label="@Tr("إغلاق", "Close")">×</button>
+            </header>
+
+            <div class="ai-chat-body">
+                @if (_messages.Count == 0)
+                {
+                    <p class="ai-chat-hint">
+                        @Tr(
+                            "اسأل بالعربي أو الإنجليزي. الذكاء الاصطناعي هيرشدك للصفحة الصح — مش بيحسب أرقام لأن ده مش دقيق. جرّب:",
+                            "Ask in Arabic or English. The AI routes you to the right page — it won't calculate numbers (risk of hallucination). Try:")
+                    </p>
+                    <div class="ai-chat-chips">
+                        @foreach (var sug in _suggestions)
+                        {
+                            var local = sug;
+                            <button type="button" class="ai-chat-chip" @onclick="() => SendAsync(local)">@local</button>
+                        }
+                    </div>
+                }
+
+                @foreach (var msg in _messages)
+                {
+                    <div class="ai-chat-msg ai-chat-msg-@msg.Role">
+                        <div class="ai-chat-msg-bubble">@msg.Text</div>
+                        @if (!string.IsNullOrEmpty(msg.OpenUrl))
+                        {
+                            <a href="@msg.OpenUrl" class="ai-chat-open-link" @onclick="Close">
+                                @(string.IsNullOrEmpty(msg.OpenLabel) ? Tr("افتح الصفحة", "Open page") : msg.OpenLabel)
+                            </a>
+                        }
+                    </div>
+                }
+
+                @if (_busy)
+                {
+                    <div class="ai-chat-msg ai-chat-msg-assistant">
+                        <div class="ai-chat-msg-bubble"><em>@Tr("⋯ بفكر", "⋯ thinking")</em></div>
+                    </div>
+                }
+            </div>
+
+            <form class="ai-chat-input" @onsubmit="OnSubmitAsync" @onsubmit:preventDefault>
+                <input type="text" @bind="_input" @bind:event="oninput"
+                       placeholder="@Tr("اكتب سؤالك…", "Type your question…")"
+                       disabled="@_busy" maxlength="1000" />
+                <button type="submit" disabled="@(_busy || string.IsNullOrWhiteSpace(_input))">
+                    @Tr("اسأل", "Ask")
+                </button>
+            </form>
+        </aside>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _open;
+    private bool _busy;
+    private string _input = "";
+    private Guid? _userId;
+
+    private readonly List<ChatMessage> _messages = new();
+
+    private string[] _suggestions = Array.Empty<string>();
+
+    protected override void OnInitialized()
+    {
+        _suggestions = new[]
+        {
+            Tr("فين إقرار الضريبة الشهري؟", "Where is the monthly VAT return?"),
+            Tr("افتح Penalty Shield", "Open Penalty Shield"),
+            Tr("عايز كشف حساب عميل", "I need a customer statement"),
+            Tr("إيه الفواتير المسودات؟", "What invoices are still drafts?"),
+            Tr("فين تقرير مبيعات المناديب؟", "Where is the sales-by-rep report?"),
+            Tr("ازاي أنشئ عرض سعر؟", "How do I create a quotation?"),
+            Tr("فين النسخ الاحتياطي؟", "Where is backup?"),
+            Tr("ازاي أربط ETA؟", "How do I wire up ETA?"),
+        };
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AuthState is not null)
+        {
+            var state = await AuthState;
+            var idClaim = state.User.FindFirst("user_id")?.Value
+                ?? state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (Guid.TryParse(idClaim, out var uid)) _userId = uid;
+        }
+    }
+
+    private void Open() => _open = true;
+    private void Close() => _open = false;
+
+    private async Task OnSubmitAsync()
+    {
+        var q = _input.Trim();
+        _input = "";
+        if (string.IsNullOrEmpty(q)) return;
+        await SendAsync(q);
+    }
+
+    private async Task SendAsync(string question)
+    {
+        _messages.Add(new ChatMessage("user", question, null, null));
+        _busy = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Chat.AskAsync(question, _userId);
+            if (result.Ok)
+            {
+                _messages.Add(new ChatMessage("assistant", result.Reply ?? "", result.OpenUrl, result.OpenLabel));
+            }
+            else
+            {
+                _messages.Add(new ChatMessage("assistant",
+                    Tr($"⚠ {result.ErrorMessage}", $"⚠ {result.ErrorMessage}"), null, null));
+            }
+        }
+        catch (Exception ex)
+        {
+            _messages.Add(new ChatMessage("assistant", $"⚠ {ex.Message}", null, null));
+        }
+        finally { _busy = false; }
+    }
+
+    private sealed record ChatMessage(string Role, string Text, string? OpenUrl, string? OpenLabel);
+}

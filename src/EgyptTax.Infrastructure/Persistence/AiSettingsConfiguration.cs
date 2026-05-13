@@ -59,3 +59,28 @@ internal sealed class ReceiptScanConfiguration : IEntityTypeConfiguration<Receip
         b.HasIndex(x => x.ScannedAtUtc).HasDatabaseName("ix_receipt_scans_scanned_at_utc");
     }
 }
+
+internal sealed class AiChatLogConfiguration : IEntityTypeConfiguration<AiChatLog>
+{
+    public void Configure(EntityTypeBuilder<AiChatLog> b)
+    {
+        b.ToTable("ai_chat_logs", schema: "settings");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+
+        b.Property(x => x.AskedAtUtc).HasColumnName("asked_at_utc")
+            .HasColumnType("datetime2(3)").IsRequired();
+        b.Property(x => x.AskedByUserId).HasColumnName("asked_by_user_id");
+        b.Property(x => x.Question).HasColumnName("question").HasMaxLength(1000).IsRequired();
+        b.Property(x => x.RawResponseJson).HasColumnName("raw_response_json")
+            .HasMaxLength(4000).IsRequired();
+        b.Property(x => x.Reply).HasColumnName("reply").HasMaxLength(2000);
+        b.Property(x => x.OpenUrl).HasColumnName("open_url").HasMaxLength(500).IsUnicode(false);
+        b.Property(x => x.OpenLabel).HasColumnName("open_label").HasMaxLength(200);
+        b.Property(x => x.InputTokens).HasColumnName("input_tokens").IsRequired();
+        b.Property(x => x.OutputTokens).HasColumnName("output_tokens").IsRequired();
+        b.Property(x => x.ErrorMessage).HasColumnName("error_message").HasMaxLength(2000);
+
+        b.HasIndex(x => x.AskedAtUtc).HasDatabaseName("ix_ai_chat_logs_asked_at_utc");
+    }
+}

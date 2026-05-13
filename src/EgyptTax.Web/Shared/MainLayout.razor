@@ -404,6 +404,16 @@
         @Body
     </main>
 
+    @* M.2 (v3 roadmap) — Arabic NL chat sidebar. Rendered once at
+       the layout level so the FAB + drawer are available from every
+       authenticated page. The component itself short-circuits with
+       a friendly message when AiSettings is disabled. *@
+    <AuthorizeView>
+        <Authorized>
+            <AiChatSidebar />
+        </Authorized>
+    </AuthorizeView>
+
     @* Gux.12 — Mobile bottom-nav bar. Hidden on >768px via CSS.
        Four most-common destinations one tap away (vs. two taps
        through the hamburger drawer). *@

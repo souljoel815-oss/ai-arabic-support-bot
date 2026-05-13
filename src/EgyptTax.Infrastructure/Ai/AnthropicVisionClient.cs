@@ -29,6 +29,44 @@ public sealed class AnthropicVisionClient
         _http.Timeout = TimeSpan.FromSeconds(60);
     }
 
+    /// <summary>
+    /// M.2 — text-only chat call. Same /v1/messages endpoint but the
+    /// content block carries only text (no image). System prompt is
+    /// passed at the top level per the Anthropic API contract.
+    /// </summary>
+    public async Task<VisionResult> SendChatMessageAsync(
+        string apiKey,
+        string modelName,
+        string systemPrompt,
+        string userMessage,
+        int maxTokens = 800,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userMessage);
+
+        var payload = new MessagesRequest
+        {
+            Model = modelName,
+            MaxTokens = maxTokens,
+            System = systemPrompt,
+            Messages = new[]
+            {
+                new MessageRequest
+                {
+                    Role = "user",
+                    Content = new ContentBlock[]
+                    {
+                        new() { Type = "text", Text = userMessage },
+                    },
+                },
+            },
+        };
+
+        return await SendAsync(apiKey, payload, ct);
+    }
+
     public async Task<VisionResult> SendVisionMessageAsync(
         string apiKey,
         string modelName,
@@ -76,9 +114,14 @@ public sealed class AnthropicVisionClient
             },
         };
 
+        return await SendAsync(apiKey, payload, ct);
+    }
+
+    private async Task<VisionResult> SendAsync(string apiKey, MessagesRequest payload, CancellationToken ct)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Post, ApiBaseUrl)
         {
-            Content = JsonContent.Create(payload),
+            Content = JsonContent.Create(payload, options: JsonOpts),
         };
         request.Headers.Add("x-api-key", apiKey);
         request.Headers.Add("anthropic-version", AnthropicVersion);
@@ -104,6 +147,11 @@ public sealed class AnthropicVisionClient
             OutputTokens: parsed.Usage?.OutputTokens ?? 0);
     }
 
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     public sealed record VisionResult(
         string AssistantText,
         string RawResponseJson,
@@ -114,6 +162,7 @@ public sealed class AnthropicVisionClient
     {
         [JsonPropertyName("model")] public string Model { get; set; } = "";
         [JsonPropertyName("max_tokens")] public int MaxTokens { get; set; }
+        [JsonPropertyName("system")] public string? System { get; set; }
         [JsonPropertyName("messages")] public MessageRequest[] Messages { get; set; } = Array.Empty<MessageRequest>();
     }
 
