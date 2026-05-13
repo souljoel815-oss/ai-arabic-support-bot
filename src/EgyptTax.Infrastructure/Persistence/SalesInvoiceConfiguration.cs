@@ -29,6 +29,8 @@ internal sealed class SalesInvoiceConfiguration : IEntityTypeConfiguration<Sales
             .IsUnicode(false);
         b.Property(s => s.PostedAtUtc).HasColumnName("posted_at_utc").HasColumnType("datetime2(3)");
         b.Property(s => s.PostedByUserId).HasColumnName("posted_by_user_id");
+        b.Property(s => s.CreatedByUserId).HasColumnName("created_by_user_id");
+        b.HasIndex(s => s.CreatedByUserId).HasDatabaseName("ix_sales_invoices_created_by_user_id");
         b.Property(s => s.PostingMode)
             .HasColumnName("posting_mode")
             .HasConversion<string>()

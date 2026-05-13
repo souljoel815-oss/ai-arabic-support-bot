@@ -1,10 +1,12 @@
 @page "/approvals"
+@using EgyptTax.Application.Invoices
 @using EgyptTax.Application.Workflow
 @using EgyptTax.Domain.Documents
 @using EgyptTax.Domain.Expenses
 @using EgyptTax.Domain.Invoices
 @using EgyptTax.Domain.Purchases
 @using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Invoices
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.Infrastructure.Workflow
 @using Microsoft.AspNetCore.Authorization
@@ -12,8 +14,9 @@
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject DocumentApprovalHandler ApprovalHandler
+@inject PostSalesInvoiceWithEtaSubmissionHandler PostSalesInvoice
 @inject AuthenticationStateProvider AuthState
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "قائمة الاعتمادات الخاصة بي" : "My approval queue (Differentiator 3)")</h1>
 
@@ -212,9 +215,28 @@
             await ApprovalHandler.ApproveAsync(new ApproveDocumentCommand(
                 request.DocumentId, request.DocumentType, _currentUserId),
                 CancellationToken.None);
+
+            // Q-001 fix — for sales invoices and credit notes, the
+            // manager's approval IS the green light. Auto-post (which
+            // allocates the document number, triggers the journal
+            // emission, and opens the ETA submission row) so the
+            // approver doesn't need a second click on a separate
+            // page. Other document types stay on the original FR-026
+            // two-step Approved → Posted flow.
+            string posted = "";
+            if (request.DocumentType is DocumentType.SalesInvoice or DocumentType.CreditNote)
+            {
+                var postedInvoice = await PostSalesInvoice.HandleAsync(
+                    new PostSalesInvoiceCommand(request.DocumentId, _currentUserId),
+                    CancellationToken.None);
+                posted = IsArabic
+                    ? $" + ترحيل ({postedInvoice.DocumentNumber}) + إرسال لـ ETA"
+                    : $" + posted ({postedInvoice.DocumentNumber}) + sent to ETA";
+            }
+
             _flash = IsArabic
-                ? $"تم اعتماد {request.DocumentType} {request.DocumentId:D}."
-                : $"Approved {request.DocumentType} {request.DocumentId:D}.";
+                ? $"تم اعتماد {request.DocumentType}{posted}."
+                : $"Approved {request.DocumentType}{posted}.";
             _flashClass = "flash-success";
             _rejectingFor = null;
             await ReloadAsync();

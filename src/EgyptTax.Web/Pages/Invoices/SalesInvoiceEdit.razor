@@ -6,8 +6,11 @@
 @using EgyptTax.Domain.Invoices
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Domain.Workflow
+@using EgyptTax.Application.Workflow
 @using EgyptTax.Infrastructure.Invoices
 @using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Settings
+@using EgyptTax.Infrastructure.Workflow
 @using EgyptTax.SharedKernel
 @using EgyptTax.Web.Auth
 @using Microsoft.AspNetCore.Authorization
@@ -16,6 +19,8 @@
 @inject AppDbContext Db
 @inject NavigationManager Nav
 @inject PostSalesInvoiceWithEtaSubmissionHandler PostHandler
+@inject DocumentApprovalHandler ApprovalHandler
+@inject SettingsRepository Settings
 @inject AuthenticationStateProvider Auth
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
@@ -170,15 +175,36 @@
 
 <div class="form-actions">
     <button type="button" @onclick="SaveDraftAsync">@(IsArabic ? "حفظ المسودة" : "Save draft")</button>
-    <button type="button" @onclick="PostAsync" disabled="@(!CanPost)">@(IsArabic ? "ترحيل" : "Post")</button>
+    @if (_requiresApproval)
+    {
+        <button type="button" @onclick="SubmitForApprovalAsync" disabled="@(!CanPost)">@(IsArabic ? "إرسال للاعتماد" : "Submit for approval")</button>
+    }
+    else
+    {
+        <button type="button" @onclick="PostAsync" disabled="@(!CanPost)">@(IsArabic ? "ترحيل" : "Post")</button>
+    }
     <a href="/invoices">@(IsArabic ? "إلغاء" : "Cancel")</a>
 </div>
+@if (_requiresApproval)
+{
+    <p class="page-subtitle" style="font-size:12px;color:var(--text-muted);">
+        @(IsArabic
+            ? "لأنك مندوب مبيعات والإعداد يفرض الاعتماد، الفاتورة هتدخل قائمة الانتظار حتى يعتمدها مديرك."
+            : "Because you are a sales rep and the approval setting is on, this invoice will go into the approval queue until your manager approves it.")
+    </p>
+}
 
 @code {
     [Parameter] public Guid? Id { get; set; }
 
     private bool _loading = true;
     private SalesInvoice? _invoice;
+    /// <summary>Phase B — true when the current user is SALES_REP
+    /// (and not ADMIN) AND the operator has flipped on the
+    /// "require approval" toggle. Routes the primary button from
+    /// "Post" to "Submit for approval".</summary>
+    private bool _requiresApproval;
+    private Guid _currentUserId;
     private List<Customer> _customers = new();
     private List<Item> _items = new();
     private List<VatCategory> _vatCategories = new();
@@ -205,6 +231,18 @@
             .Where(c => c.Status == CustomerStatus.Active).OrderBy(c => c.Code).ToListAsync();
         _items = await Db.Set<Item>().AsNoTracking().OrderBy(i => i.Code).ToListAsync();
         _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
+
+        // Phase B — decide whether the primary button is "Post" or
+        // "Submit for approval". The toggle lives on SalesRepSettings;
+        // only sales reps (not admins) hit the approval path.
+        var authState = await Auth.GetAuthenticationStateAsync();
+        _currentUserId = authState.User.UserId() ?? Guid.Empty;
+        var isRepOnly = authState.User.IsInRole("SALES_REP") && !authState.User.IsInRole("ADMIN");
+        if (isRepOnly)
+        {
+            var prefs = await Settings.GetSalesRepSettingsAsync();
+            _requiresApproval = prefs.RequireApproval;
+        }
 
         if (Id is { } id)
         {
@@ -284,8 +322,11 @@
 
         if (_invoice is null)
         {
-            // Create a fresh draft.
-            _invoice = SalesInvoice.CreateDraft(_customerId, customer.TaxProfile, _documentDate);
+            // Create a fresh draft. CreatedByUserId stamps the rep
+            // who built the draft so the list view can scope per-rep
+            // (and so admin approval flows know who to route back to).
+            var creatorId = _currentUserId == Guid.Empty ? (Guid?)null : _currentUserId;
+            _invoice = SalesInvoice.CreateDraft(_customerId, customer.TaxProfile, _documentDate, creatorId);
             foreach (var line in _lines)
             {
                 _invoice.AddLine(line.ItemId, line.Quantity, MoneyEgp.From(line.UnitPrice),
@@ -343,10 +384,8 @@
         //     when Chart of Accounts isn't configured
         try
         {
-            var state = await Auth.GetAuthenticationStateAsync();
-            var userId = state.User.UserId() ?? Guid.Empty;
             var posted = await PostHandler.HandleAsync(
-                new PostSalesInvoiceCommand(_invoice.Id, userId), CancellationToken.None);
+                new PostSalesInvoiceCommand(_invoice.Id, _currentUserId), CancellationToken.None);
 
             Nav.NavigateTo($"/invoices/{posted.Id}", forceLoad: true);
         }
@@ -357,6 +396,33 @@
                     ? $"فشل ترحيل الفاتورة: {ex.Message}"
                     : $"Could not post the invoice: {ex.Message}",
                 error: true);
+        }
+    }
+
+    private async Task SubmitForApprovalAsync()
+    {
+        if (!CanPost)
+        {
+            ShowFlash(IsArabic ? "لا يوجد شيء للإرسال." : "Nothing to submit.", error: true);
+            return;
+        }
+        await SaveDraftAsync();
+        if (_invoice is null) return;
+        try
+        {
+            await ApprovalHandler.SubmitAsync(
+                new SubmitDocumentCommand(_invoice.Id, DocumentType.SalesInvoice, _currentUserId),
+                CancellationToken.None);
+            ShowFlash(IsArabic
+                ? "تم إرسال الفاتورة للاعتماد. هتلقى إشعار لما يعتمدها مديرك."
+                : "Submitted for approval. You'll be notified once your manager approves it.");
+            Nav.NavigateTo("/invoices", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            ShowFlash(IsArabic
+                ? $"فشل الإرسال: {ex.Message}"
+                : $"Could not submit for approval: {ex.Message}", error: true);
         }
     }
 

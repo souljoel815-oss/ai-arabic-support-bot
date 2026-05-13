@@ -6,7 +6,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider AuthState
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 @*
     Gux.13 — admin-panel shell. 10 tabs hosted under a single URL.

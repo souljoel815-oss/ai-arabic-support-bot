@@ -27,6 +27,7 @@ public static class AdminPanelTabs
         new("license",           "key",       "الترخيص",             "License",             AdminTabRole.AccountantViewAdminEdit),
         new("backup",            "save",      "النسخ الاحتياطي",      "Backup",              AdminTabRole.AdminOnly),
         new("notifications",     "bell",      "الإشعارات",           "Notifications",       AdminTabRole.AnyAuthenticated),
+        new("sales-reps",        "users",     "مناديب المبيعات",      "Sales Reps",          AdminTabRole.AdminOnly),
         new("about",             "info",      "حول ومساعدة",         "About & Support",     AdminTabRole.AnyAuthenticated),
     };
 

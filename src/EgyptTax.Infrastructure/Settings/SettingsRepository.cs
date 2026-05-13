@@ -62,4 +62,14 @@ public sealed class SettingsRepository
         await _db.SaveChangesAsync(ct);
         return fresh;
     }
+
+    public async Task<SalesRepSettings> GetSalesRepSettingsAsync(CancellationToken ct = default)
+    {
+        var existing = await _db.Set<SalesRepSettings>().FirstOrDefaultAsync(ct);
+        if (existing is not null) return existing;
+        var fresh = SalesRepSettings.CreateDefault();
+        _db.Add(fresh);
+        await _db.SaveChangesAsync(ct);
+        return fresh;
+    }
 }

@@ -30,6 +30,15 @@ public sealed class SalesInvoice
     public DocumentPostingMode? PostingMode { get; private set; }
 
     /// <summary>
+    /// Sales-rep workflow — the user who created the draft. Used to
+    /// scope the invoice list view (reps see only their own) and as
+    /// the default approver-target when sales-rep approval is
+    /// required. Nullable so historical drafts created before this
+    /// field landed don't fail to load; new drafts always set it.
+    /// </summary>
+    public Guid? CreatedByUserId { get; private set; }
+
+    /// <summary>
     /// FR-013 — when non-null, this document is a CreditNote
     /// referencing the original SalesInvoice. The
     /// <see cref="IsCreditNote"/> getter is the canonical predicate;
@@ -69,14 +78,17 @@ public sealed class SalesInvoice
     public static SalesInvoice CreateDraft(
         Guid customerId,
         CustomerTaxProfile customerTaxProfileSnapshot,
-        DateOnly documentDate
+        DateOnly documentDate,
+        Guid? createdByUserId = null
     )
     {
         if (customerId == Guid.Empty)
         {
             throw new ArgumentException("CustomerId is required.", nameof(customerId));
         }
-        return new SalesInvoice(customerId, customerTaxProfileSnapshot, documentDate);
+        var draft = new SalesInvoice(customerId, customerTaxProfileSnapshot, documentDate);
+        draft.CreatedByUserId = createdByUserId;
+        return draft;
     }
 
     /// <summary>

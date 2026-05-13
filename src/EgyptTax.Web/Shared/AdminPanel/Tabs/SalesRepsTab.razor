@@ -1,0 +1,95 @@
+@using EgyptTax.Domain.Settings
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Settings
+@inject SettingsRepository Settings
+@inject AppDbContext Db
+
+@*
+    Sales Reps tab — admin toggle for the sales-rep approval workflow.
+    When enabled, invoices created by users with the SALES_REP role
+    must be submitted for approval rather than posted directly. The
+    queue lives at /approvals (existing page); the rep's edit screen
+    swaps the "Post" button for "Submit for approval" automatically.
+*@
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<section class="sales-reps-tab">
+    <h2>@(IsArabic ? "مناديب المبيعات" : "Sales Representatives")</h2>
+
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+    }
+
+    <p class="page-subtitle" style="font-size:13px;">
+        @(IsArabic
+            ? "يستطيع المسؤول إنشاء حسابات مناديب من تبويب «إدارة المستخدمين». الإعدادات هنا تتحكم في الاعتماد المطلوب قبل ترحيل فواتيرهم."
+            : "Create rep accounts from the User Management tab. The settings here control whether their invoices need approval before posting.")
+    </p>
+
+    <div class="form-grid" style="max-width:520px;">
+        <label style="display:flex;gap:8px;align-items:flex-start;">
+            <input type="checkbox" @bind="_requireApproval" style="margin-top:4px;" />
+            <span>
+                <strong>@(IsArabic ? "اشترط اعتماد المدير قبل الترحيل" : "Require manager approval before posting")</strong>
+                <br />
+                <span class="page-subtitle" style="font-size:12px;color:var(--text-muted);">
+                    @(IsArabic
+                        ? "عند التفعيل، فاتورة المندوب تذهب لقائمة /approvals بدلاً من الترحيل المباشر؛ المدير (أو أي مستخدم له دور غير SALES_REP) يعتمدها فترحَّل وتُرسل لـ ETA."
+                        : "When on, a rep's invoice goes to /approvals instead of being posted directly. A manager (or any non-rep user) approves it; only then is it posted and sent to ETA.")
+                </span>
+            </span>
+        </label>
+    </div>
+
+    <div class="invoice-actions" style="margin-top:16px;">
+        <button type="button" class="btn-primary" disabled="@_saving" @onclick="OnSaveAsync">
+            <Icon Name="check" Class="ic" />
+            @(_saving ? (IsArabic ? "جارٍ الحفظ…" : "Saving…") : (IsArabic ? "حفظ" : "Save"))
+        </button>
+    </div>
+</section>
+
+@code {
+    private bool _loading = true;
+    private bool _saving;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private bool _requireApproval;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var prefs = await Settings.GetSalesRepSettingsAsync();
+        _requireApproval = prefs.RequireApproval;
+        _loading = false;
+    }
+
+    private async Task OnSaveAsync()
+    {
+        _saving = true;
+        _flash = null;
+        try
+        {
+            var prefs = await Settings.GetSalesRepSettingsAsync();
+            prefs.UpdateRequireApproval(_requireApproval);
+            await Db.SaveChangesAsync();
+            _flash = IsArabic ? "✓ تم الحفظ." : "✓ Saved.";
+            _flashClass = "kpi-card kpi-info";
+        }
+        catch (Exception ex)
+        {
+            _flash = (IsArabic ? "فشل الحفظ: " : "Save failed: ") + ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}
