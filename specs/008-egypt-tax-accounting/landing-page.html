@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>DaftarX — محاسبتك المصرية كاملة في برنامج واحد</title>
+<meta name="description" content="نظام محاسبة مصري متكامل: ETA متوافق · درع الغرامات · مناديب مع خط سير · بسعر سنوي يبدأ من 3,500 جنيه. جرّب 14 يوم مجاناً." />
+
+<style>
+:root {
+  --primary: #1e3a5f;
+  --primary-hover: #16284a;
+  --accent: #3b82f6;
+  --bg: #f6f8fb;
+  --surface: #fff;
+  --text: #111;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --warn: #f59e0b;
+  --success: #10b981;
+  --danger: #b91c1c;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+}
+.container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+/* ---- Topbar ---- */
+.topbar { background: #fff; border-bottom: 1px solid var(--border); }
+.topbar-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 24px; max-width: 1200px; margin: 0 auto;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; color: var(--primary); text-decoration: none; }
+.brand-mark {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+  color: #fff; display: grid; place-items: center; font-size: 13px;
+}
+.brand-mark .x { color: var(--accent); }
+.topbar-nav { display: flex; gap: 24px; align-items: center; }
+.topbar-nav a { color: var(--text); text-decoration: none; font-size: 14px; }
+.topbar-nav .cta {
+  background: var(--primary); color: #fff; padding: 8px 16px; border-radius: 8px;
+  font-weight: 600;
+}
+
+/* ---- Hero ---- */
+.hero { padding: 80px 0 60px; text-align: center; }
+.hero h1 { font-size: 56px; line-height: 1.2; margin: 0 0 16px; color: var(--primary); font-weight: 800; letter-spacing: -0.02em; }
+.hero h1 .x { color: var(--accent); }
+.hero .sub { font-size: 22px; color: var(--muted); margin: 0 0 8px; }
+.hero .body { font-size: 16px; max-width: 720px; margin: 24px auto 32px; }
+.cta-row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.btn-primary, .btn-secondary {
+  padding: 14px 28px; border-radius: 10px; font-size: 16px; font-weight: 600;
+  text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+  cursor: pointer; border: 2px solid transparent; transition: transform .1s;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+.btn-secondary { border-color: var(--primary); color: var(--primary); background: transparent; }
+.btn-secondary:hover { background: rgba(30, 58, 95, .05); }
+
+.hero-video {
+  margin: 48px auto 0; max-width: 880px; aspect-ratio: 16/9;
+  background: #000; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.15);
+  display: grid; place-items: center; color: #fff; font-size: 14px;
+}
+.trust-strip {
+  margin-top: 32px; font-size: 13px; color: var(--muted);
+  display: flex; gap: 24px; justify-content: center; flex-wrap: wrap;
+}
+
+/* ---- Section ---- */
+section.s { padding: 80px 0; }
+section.s.alt { background: #fff; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+section.s h2 { font-size: 40px; text-align: center; color: var(--primary); margin: 0 0 16px; font-weight: 800; }
+section.s .lede { text-align: center; color: var(--muted); font-size: 17px; max-width: 720px; margin: 0 auto 56px; }
+
+/* ---- Differentiators (3 cards) ---- */
+.cards-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  padding: 36px 28px; transition: transform .2s, box-shadow .2s;
+}
+.card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,.08); }
+.card .icon { font-size: 44px; margin-bottom: 16px; }
+.card h3 { font-size: 22px; color: var(--primary); margin: 0 0 12px; }
+.card p { color: var(--text); font-size: 15px; margin: 0 0 16px; }
+.card .en { color: var(--muted); font-size: 13px; font-style: italic; }
+.card .shot {
+  margin-top: 20px; aspect-ratio: 16/10; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 10px;
+  display: grid; place-items: center; font-size: 12px; color: var(--muted);
+}
+
+/* ---- Who is this for ---- */
+.who-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.who-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 28px;
+}
+.who-card .pic {
+  height: 120px; background: linear-gradient(135deg, var(--primary), var(--accent));
+  border-radius: 10px; margin-bottom: 16px; display: grid; place-items: center;
+  color: #fff; font-size: 32px;
+}
+.who-card h4 { margin: 0 0 8px; color: var(--primary); font-size: 18px; }
+
+/* ---- Compare table ---- */
+.compare-wrap { overflow-x: auto; }
+table.compare { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+table.compare th, table.compare td { padding: 14px 16px; text-align: start; border-bottom: 1px solid var(--border); font-size: 14px; }
+table.compare th { background: var(--bg); font-weight: 700; color: var(--primary); }
+table.compare tr:last-child td { border-bottom: none; }
+.verdict { background: #fff; border: 2px solid var(--primary); border-radius: 12px; padding: 24px; margin-top: 32px; }
+.verdict p { margin: 8px 0; font-size: 15px; }
+.verdict strong { color: var(--primary); }
+
+/* ---- Pricing ---- */
+.price-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.price-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  padding: 28px 24px; display: flex; flex-direction: column;
+}
+.price-card.popular { border: 2px solid var(--primary); position: relative; transform: scale(1.03); }
+.price-card.popular::before {
+  content: "الأكثر شيوعاً"; position: absolute; top: -12px; inset-inline-end: 16px;
+  background: var(--primary); color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 11px;
+}
+.price-card h4 { margin: 0 0 8px; color: var(--primary); font-size: 18px; }
+.price-card .price { font-size: 32px; font-weight: 800; color: var(--text); margin: 8px 0; }
+.price-card .price .unit { font-size: 14px; color: var(--muted); font-weight: 400; }
+.price-card ul { list-style: none; padding: 0; margin: 16px 0; flex: 1; }
+.price-card li { padding: 6px 0; font-size: 14px; }
+.price-card li::before { content: "✓ "; color: var(--success); font-weight: 700; }
+.price-foot { font-size: 13px; color: var(--muted); text-align: center; margin-top: 24px; }
+
+/* ---- FAQ ---- */
+.faq { max-width: 800px; margin: 0 auto; }
+details {
+  background: #fff; border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 20px; margin-bottom: 12px; cursor: pointer;
+}
+details[open] { background: var(--bg); }
+summary { font-weight: 600; color: var(--primary); font-size: 16px; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; float: inline-end; font-size: 22px; line-height: 1; }
+details[open] summary::after { content: "−"; }
+details .ans { padding-top: 12px; color: var(--text); font-size: 14px; }
+
+/* ---- Footer ---- */
+footer { background: var(--primary); color: #fff; padding: 48px 0 24px; margin-top: 80px; }
+footer .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+footer h5 { color: #fff; margin: 0 0 12px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; }
+footer ul { list-style: none; padding: 0; margin: 0; }
+footer li { margin: 6px 0; }
+footer a { color: rgba(255,255,255,.85); text-decoration: none; font-size: 14px; }
+footer a:hover { color: #fff; }
+footer .bottom {
+  margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.15);
+  display: flex; justify-content: space-between; flex-wrap: wrap; font-size: 13px; color: rgba(255,255,255,.7);
+}
+
+@media (max-width: 880px) {
+  .hero h1 { font-size: 36px; }
+  .hero .sub { font-size: 18px; }
+  .cards-3, .who-cards, .price-cards { grid-template-columns: 1fr; }
+  .topbar-nav a { display: none; }
+  .topbar-nav .cta { display: inline-flex; }
+  footer .cols { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#"><div class="brand-mark">D<span class="x">X</span></div> DaftarX</a>
+    <nav class="topbar-nav">
+      <a href="#diff">المميزات</a>
+      <a href="#pricing">الأسعار</a>
+      <a href="#faq">أسئلة شائعة</a>
+      <a class="cta" href="#download">جرّب 14 يوم</a>
+    </nav>
+  </div>
+</div>
+
+<!-- Hero -->
+<header class="hero container">
+  <h1>محاسبتك المصرية كاملة في برنامج واحد<br><span style="font-size:.7em;color:var(--muted);font-weight:600;">— بدون اشتراك شهري</span></h1>
+  <p class="sub">Your complete Egyptian accounting in one .exe.</p>
+  <p class="body">ETA متوافق · ضرائب 281/2025 محسوبة · مناديب مع خط سير · بسعر سنوي يبدأ من <strong>3,500 جنيه</strong>.</p>
+  <div class="cta-row">
+    <a class="btn-primary" href="#download">جرّب 14 يوم مجاناً ⬇</a>
+    <a class="btn-secondary" href="#video">شاهد العرض التجريبي (3 دقائق) ▶</a>
+  </div>
+
+  <div id="video" class="hero-video">
+    <div>
+      <div style="font-size:48px;">▶</div>
+      <div>3-min demo video — embed YouTube here once recorded (D1)</div>
+    </div>
+  </div>
+
+  <div class="trust-strip">
+    <span>🛡️ مبني خصيصاً للسوق المصري</span>
+    <span>🔌 يعمل أوفلاين</span>
+    <span>💾 بياناتك على جهازك</span>
+  </div>
+</header>
+
+<!-- Differentiators -->
+<section id="diff" class="s alt">
+  <div class="container">
+    <h2>اللي بنعمله ومحدش غيرنا بيعمله</h2>
+    <p class="lede">Three things only DaftarX does for Egyptian SMBs.</p>
+    <div class="cards-3">
+      <div class="card">
+        <div class="icon">🛡️</div>
+        <h3>درع الغرامات</h3>
+        <p>بنحسب الغرامات اللي ممكن تخسرها بسبب التأخر في إرسال الفواتير لمصلحة الضرائب — قبل ما تحصل. وبنعرضلك بالظبط الفواتير اللي محتاجة تتحرك النهارده عشان تتجنبها.</p>
+        <p class="en">Penalty Shield: we compute your ETA penalty exposure under Resolution 281/2025 before it materialises, and surface the exact invoices you must act on today.</p>
+        <div class="shot">[Screenshot: /penalty-shield page with 5,000 EGP exposure]</div>
+      </div>
+      <div class="card">
+        <div class="icon">📁</div>
+        <h3>حزمة الفحص الضريبي</h3>
+        <p>جالك مأمور الضرائب؟ بضغطة زرار بتجمعله ZIP فيه كل الفواتير والإيصالات وقيود الـ JE والمرفقات لأي فترة — مع manifest موقّع بـ SHA-256 يثبت إن الملفات ما اتغيرتش.</p>
+        <p class="en">Inspection Bundle: one-click signed ZIP of every invoice, receipt, JE, and attachment for any period.</p>
+        <div class="shot">[Screenshot: /inspection-bundle page]</div>
+      </div>
+      <div class="card">
+        <div class="icon">🚐</div>
+        <h3>خط سير المندوب + حد الائتمان</h3>
+        <p>المندوب في الشارع بيخطط زياراته على الموبايل، ياخد طلبيات، والمكتب يحوّلها لفواتير. النظام بيمنع البيع للعميل اللي تجاوز حد ائتمانه — تلقائياً.</p>
+        <p class="en">Reps plan visits on mobile, take orders in the field, office converts to invoices. Credit-limit auto-blocks over-limit sales.</p>
+        <div class="shot">[Screenshot: /dashboards/me on a phone viewport]</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Who -->
+<section class="s">
+  <div class="container">
+    <h2>النظام ده مناسب لمين بالظبط؟</h2>
+    <p class="lede">For these three Egyptian-SMB shapes specifically.</p>
+    <div class="who-cards">
+      <div class="who-card">
+        <div class="pic">📊</div>
+        <h4>مكتب محاسبة صغير</h4>
+        <p>عندك 10–50 عميل بتمسك حساباتهم. محتاج أداة واحدة تجمع كل عميل وتعمل إقراراته ETA + الإقفال الشهري + تجهيز فحص الضرائب.</p>
+      </div>
+      <div class="who-card">
+        <div class="pic">🏪</div>
+        <h4>محل بيع بمناديب</h4>
+        <p>عندك محل + فرع تخزين، 3–5 مناديب بيلفّوا على الزباين. محتاج تتبع الزيارات + التحصيلات + حد الائتمان لكل عميل.</p>
+      </div>
+      <div class="who-card">
+        <div class="pic">🔧</div>
+        <h4>شركة خدمات / اشتراكات</h4>
+        <p>بتوصّل خدمة شهرية / صيانة / استشارات. محتاج فوترة دورية تتولّد تلقائياً وكشف حساب لكل عميل.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Compare -->
+<section class="s alt">
+  <div class="container">
+    <h2>DaftarX مقابل Odoo Egypt — الحقيقة الكاملة</h2>
+    <p class="lede">We're not Odoo. Here's where Odoo wins, where we win, and who picks each.</p>
+    <div class="compare-wrap">
+      <table class="compare">
+        <thead>
+          <tr>
+            <th>الميزة / Feature</th>
+            <th>DaftarX</th>
+            <th>Odoo Egypt</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>الفاتورة الإلكترونية ETA</td><td>✅ مباشر + درع الغرامات</td><td>✅ مباشر</td></tr>
+          <tr><td>المخزون</td><td>✅ مكان واحد (متعدد قريباً)</td><td>✅ متعدد المستودعات</td></tr>
+          <tr><td>الموارد البشرية والرواتب</td><td>❌</td><td>✅ كامل</td></tr>
+          <tr><td>التصنيع MRP</td><td>❌</td><td>✅ كامل</td></tr>
+          <tr><td>المتجر الإلكتروني</td><td>❌</td><td>✅</td></tr>
+          <tr><td>CRM متكامل</td><td>⚠️ بسيط (خط سير فقط)</td><td>✅ Pipeline كامل</td></tr>
+          <tr><td><strong>خط سير المناديب</strong></td><td>✅ مدمج</td><td>❌ يحتاج موديول إضافي</td></tr>
+          <tr><td><strong>درع الغرامات</strong></td><td>✅</td><td>❌</td></tr>
+          <tr><td><strong>حزمة فحص ضريبي</strong></td><td>✅</td><td>❌</td></tr>
+          <tr><td><strong>حد ائتمان مع منع البيع</strong></td><td>✅ مدمج</td><td>⚠️ يحتاج تخصيص</td></tr>
+          <tr><td>السعر السنوي (10 مستخدمين)</td><td><strong>8,000 ج.م</strong></td><td>~55,000+ ج.م + تنفيذ</td></tr>
+          <tr><td>التشغيل</td><td>.exe + ملف واحد</td><td>يحتاج Postgres + IT</td></tr>
+          <tr><td>اللغة العربية</td><td>first-class</td><td>ترجمة</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="verdict">
+      <p><strong>اختار Odoo لو:</strong> عندك مصنع، 3 مستودعات، تحتاج HR ورواتب، عندك ميزانية 50 ألف+ جنيه للتنفيذ.</p>
+      <p><strong>اختار DaftarX لو:</strong> بتشتغل فاتورة وتحصيل وامتثال ضريبي، 1–20 موظف، عاوز حاجة تشغل النهارده بدون شركة تنفيذ.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section id="pricing" class="s">
+  <div class="container">
+    <h2>الأسعار واضحة. مفيش رسوم خفية.</h2>
+    <p class="lede">Annual subscription. Full features at every tier — limits are on user count + multi-company only.</p>
+    <div class="price-cards">
+      <div class="price-card">
+        <h4>Solo</h4>
+        <div class="price">3,500 <span class="unit">ج.م / سنة</span></div>
+        <ul>
+          <li>مستخدم واحد</li>
+          <li>1 شركة</li>
+          <li>ETA + درع الغرامات</li>
+          <li>كل المميزات الأساسية</li>
+        </ul>
+        <a class="btn-secondary" href="#download" style="justify-content:center;">ابدأ مجاناً 14 يوم</a>
+      </div>
+      <div class="price-card popular">
+        <h4>SMB</h4>
+        <div class="price">8,000 <span class="unit">ج.م / سنة</span></div>
+        <ul>
+          <li>3 مستخدمين</li>
+          <li>1 شركة</li>
+          <li>كل ميزات Solo</li>
+          <li>إيميل + واتساب</li>
+          <li>إدارة مناديب + كشف حساب</li>
+        </ul>
+        <a class="btn-primary" href="#download" style="justify-content:center;">ابدأ مجاناً 14 يوم</a>
+      </div>
+      <div class="price-card">
+        <h4>Enterprise</h4>
+        <div class="price">17,500 <span class="unit">ج.م / سنة</span></div>
+        <ul>
+          <li>مستخدمين غير محدود</li>
+          <li>1 شركة</li>
+          <li>كل ميزات SMB</li>
+          <li>تكاملات متقدمة</li>
+        </ul>
+        <a class="btn-secondary" href="#download" style="justify-content:center;">ابدأ مجاناً 14 يوم</a>
+      </div>
+      <div class="price-card">
+        <h4>Firm Portal</h4>
+        <div class="price">30,000 <span class="unit">ج.م / سنة</span></div>
+        <ul>
+          <li>مستخدمين غير محدود</li>
+          <li>شركات غير محدودة</li>
+          <li>وضع مراجعة المحاسب</li>
+          <li>تبديل بين الشركات</li>
+        </ul>
+        <a class="btn-secondary" href="#contact" style="justify-content:center;">تواصل معانا</a>
+      </div>
+    </div>
+    <p class="price-foot">مفيش رسوم تنفيذ. مفيش رسوم تركيب. تنزّل الـ .exe، تشغّله، خلاص.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq" class="s alt">
+  <div class="container">
+    <h2>أسئلة شائعة</h2>
+    <p class="lede">Honest answers to the objections we hear most.</p>
+    <div class="faq">
+      <details>
+        <summary>هل أقدر آخد بياناتي لو سبت البرنامج؟</summary>
+        <div class="ans">أكيد. كل صفحة فيها زرار "تصدير CSV" بيخرّجلك كل بياناتك Excel-ready. وملف الـ SQLite بتاعك على جهازك — تقدر تاخده وتفتحه بأي أداة SQL.</div>
+      </details>
+      <details>
+        <summary>لو المحاسب بتاعي مشي، هلاقي بديل يعرف DaftarX؟</summary>
+        <div class="ans">النظام مصمم بشكل بسيط — أي محاسب يتعلمه في يوم. مفيش شهادات مطلوبة، ولا أكاديميات. الواجهة بالعربي والمحاسب المصري عارف أصلاً الأكونتنج المصري — بس عاوز أداة سهلة.</div>
+      </details>
+      <details>
+        <summary>بتنافسوا Odoo إزاي وأنتم مش 12 مليون مستخدم؟</summary>
+        <div class="ans">إحنا مش بنحاول نكون Odoo. Odoo حلّ شامل لشركة متوسطة (50+ موظف). DaftarX حلّ مركّز للـ SMB المصرية (1–20 موظف) اللي شغّالة بالورق أو الإكسيل دلوقتي. الشركتين مش بتاعت نفس الزبون.</div>
+      </details>
+      <details>
+        <summary>بتشتغلوا أوفلاين؟</summary>
+        <div class="ans">الـ .exe بيشتغل على جهازك بالكامل. ده يعني إنك مش محتاج إنترنت لتفتحه — بس محتاج إنترنت بس عند إرسال الفاتورة لـ ETA. ده مش "كلاود-only" زي Daftra/Wafeq.</div>
+      </details>
+      <details>
+        <summary>التحديثات بتنزل إزاي؟</summary>
+        <div class="ans">كل تحديث بيكون .exe جديد — تنزّله من حسابك في الموقع وتشغّله مكان القديم. بياناتك في ملف الـ .db لوحده — التحديث ما بيمسهاش.</div>
+      </details>
+      <details>
+        <summary>لو احتاج ميزة مش موجودة؟</summary>
+        <div class="ans">إحنا فريق صغير بنركّز على الميزات اللي عملاؤنا فعلاً بيطلبوها. ابعتلنا على الإيميل اللي تحت — بنرد في 24 ساعة. لو الميزة مفيدة لأكتر من عميل، بنشحنها في الإصدار الجاي.</div>
+      </details>
+      <details>
+        <summary>مين عملاؤكم الحاليين؟</summary>
+        <div class="ans">إحنا في مرحلة Beta. أول 100 عميل بياخدوا خصم 50% مدى الحياة على الاشتراك السنوي + خط دعم مباشر معايا.</div>
+      </details>
+      <details>
+        <summary>شركتي عندها بيانات حساسة. مين بيقدر يشوفها؟</summary>
+        <div class="ans">الـ .db موجود على جهازك أنت — مش على سيرفر تابع لينا. حتى وضع Firm Portal للمحاسبين الخارجيين بيشتغل P2P بين الجهاز بتاع الشركة وجهاز المحاسب، بدون الحاجة لـ cloud وسيط.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="container">
+    <div class="cols">
+      <div>
+        <h5>DaftarX</h5>
+        <ul>
+          <li><a href="#about">نبذة عنّا</a></li>
+          <li><a href="#blog">المدوّنة (قريباً)</a></li>
+          <li><a href="#tax-news">قانون الضرائب المصري</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>المنتج</h5>
+        <ul>
+          <li><a href="#diff">المميزات</a></li>
+          <li><a href="#pricing">الأسعار</a></li>
+          <li><a href="#video">العروض التوضيحية</a></li>
+          <li><a href="#changelog">ملاحظات الإصدارات</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>تواصل</h5>
+        <ul>
+          <li><a href="mailto:support@daftarx.com">support@daftarx.com</a></li>
+          <li><a href="#wa">واتساب الدعم</a></li>
+          <li><a href="https://github.com/souljoel815-oss/ai-arabic-support-bot">GitHub</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="bottom">
+      <span>© 2026 DaftarX — مبني في القاهرة</span>
+      <span>
+        <a href="#privacy">الخصوصية</a> ·
+        <a href="#terms">شروط الخدمة</a> ·
+        <a href="#status">حالة الخدمة</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
