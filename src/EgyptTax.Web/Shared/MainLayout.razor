@@ -215,6 +215,7 @@
                 <a href="payments/customer-receipts/new" class="@ActiveLink("payments/customer-receipts/new")" @onclick="CloseSidebar">@Tr("إيصال قبض", "Receive payment")</a>
                 @if (!_isRepOnly)
                 {
+                    <a href="recurring-invoices" class="@ActiveLink("recurring-invoices")" @onclick="CloseSidebar">@Tr("فواتير متكررة", "Recurring invoices")</a>
                     <a href="invoices/bulk" class="@ActiveLink("invoices/bulk")" @onclick="CloseSidebar">@Tr("رفع جماعي", "Bulk upload")</a>
                     <a href="purchase-invoices" class="@ActiveLink("purchase-invoices")" @onclick="CloseSidebar">@Tr("فواتير المشتريات", "Purchases")</a>
                     <a href="expenses" class="@ActiveLink("expenses")" @onclick="CloseSidebar">@Tr("المصروفات", "Expenses")</a>

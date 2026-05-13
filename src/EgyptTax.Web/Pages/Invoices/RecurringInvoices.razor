@@ -1,0 +1,355 @@
+@page "/recurring-invoices"
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Invoices
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
+@inject GenerateRecurringInvoicesJob GenJob
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    L3 (v3 roadmap) — recurring invoice templates. Subscription /
+    service businesses define an invoice template once + an interval;
+    the daily Hangfire job generates Draft invoices on the next-run
+    date. The operator reviews + posts manually — no auto-post.
+
+    Admin / accountant only (NotSalesRepOnly). Reps don't manage
+    templates — those are office concerns.
+*@
+
+<h1>@(IsArabic ? "الفواتير المتكررة" : "Recurring Invoices")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "للعملاء اللي بياخدوا نفس الفاتورة كل شهر — اشتراكات، صيانة، إيجار، استشارات. تعرّف القالب مرة واحدة، والنظام يولّد المسودات تلقائياً في الموعد."
+        : "For customers who receive the same invoice every period — subscriptions, maintenance contracts, retainers. Define a template once; the system generates Draft invoices on the next-run date.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status">@_flash</div>
+}
+
+<div class="invoice-toolbar">
+    <button type="button" class="btn-primary" @onclick="ToggleAddForm">
+        @(_addFormOpen ? (IsArabic ? "إلغاء" : "Cancel") : (IsArabic ? "+ قالب جديد" : "+ New template"))
+    </button>
+    <button type="button" class="btn-secondary" @onclick="OnRunNowAsync" disabled="@_busy">
+        @(IsArabic ? "تشغيل الآن (للاختبار)" : "Run now (test)")
+    </button>
+</div>
+
+@if (_addFormOpen)
+{
+    <section class="form-grid" style="max-width:780px;margin-top:16px;">
+        <label>
+            <span>@(IsArabic ? "اسم القالب" : "Template name")</span>
+            <input type="text" @bind="_newName" placeholder="@(IsArabic ? "مثال: اشتراك شهر" : "e.g. Monthly subscription")" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "العميل" : "Customer")</span>
+            <select @bind="_newCustomerId">
+                <option value="@Guid.Empty">@(IsArabic ? "— اختر —" : "— choose —")</option>
+                @foreach (var c in _customers)
+                {
+                    <option value="@c.Id">@c.Code — @(IsArabic ? c.Name.Arabic : c.Name.English)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@(IsArabic ? "الفترة" : "Interval")</span>
+            <select @bind="_newInterval">
+                @foreach (var v in Enum.GetValues<RecurringInterval>())
+                {
+                    <option value="@v">@v</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@(IsArabic ? "أول تاريخ تشغيل" : "First-run date")</span>
+            <input type="date" @bind="_newNextRunDate" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "تاريخ الانتهاء (اختياري)" : "End date (optional)")</span>
+            <input type="date" @bind="_newEndDate" />
+        </label>
+        <label style="grid-column:1/-1;">
+            <span>@(IsArabic ? "ملاحظة" : "Note")</span>
+            <input type="text" @bind="_newNote" />
+        </label>
+
+        <fieldset style="grid-column:1/-1;">
+            <legend>@(IsArabic ? "بنود القالب" : "Template lines")</legend>
+            @if (_newLines.Count == 0)
+            {
+                <p><em>@(IsArabic ? "أضف بنداً واحداً على الأقل." : "Add at least one line.")</em></p>
+            }
+            else
+            {
+                <table class="data-grid">
+                    <thead><tr>
+                        <th>@(IsArabic ? "الصنف" : "Item")</th>
+                        <th class="num">@(IsArabic ? "الكمية" : "Qty")</th>
+                        <th class="num">@(IsArabic ? "سعر الوحدة" : "Unit price")</th>
+                        <th>@(IsArabic ? "VAT" : "VAT")</th>
+                        <th></th>
+                    </tr></thead>
+                    <tbody>
+                        @foreach (var (l, idx) in _newLines.Select((l, i) => (l, i)))
+                        {
+                            var item = _items.FirstOrDefault(x => x.Id == l.ItemId);
+                            var vat = _vatCategories.FirstOrDefault(v => v.Id == l.VatCategoryId);
+                            <tr>
+                                <td>@(item?.Code ?? "?") — @(item?.Name.English ?? "")</td>
+                                <td class="num">@l.Quantity.ToString("0.##")</td>
+                                <td class="num">@l.UnitPrice.ToString("F2")</td>
+                                <td>@(vat?.Code ?? "?") (@(vat?.RatePercent.ToString("0.##") ?? "?")%)</td>
+                                <td><button type="button" @onclick="() => _newLines.RemoveAt(idx)">@(IsArabic ? "إزالة" : "Remove")</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:end;">
+                <label style="flex:1;min-width:160px;">
+                    <span>@(IsArabic ? "الصنف" : "Item")</span>
+                    <select @bind="_addLineItemId">
+                        <option value="@Guid.Empty">— —</option>
+                        @foreach (var i in _items.Where(x => x.Status == ItemStatus.Active))
+                        {
+                            <option value="@i.Id">@i.Code — @i.Name.English</option>
+                        }
+                    </select>
+                </label>
+                <label style="width:90px;">
+                    <span>@(IsArabic ? "كمية" : "Qty")</span>
+                    <input type="number" step="0.01" min="0.01" @bind="_addLineQty" />
+                </label>
+                <label style="width:120px;">
+                    <span>@(IsArabic ? "سعر" : "Price")</span>
+                    <input type="number" step="0.01" min="0" @bind="_addLinePrice" />
+                </label>
+                <label style="flex:1;min-width:140px;">
+                    <span>@(IsArabic ? "VAT" : "VAT")</span>
+                    <select @bind="_addLineVatId">
+                        <option value="@Guid.Empty">@(IsArabic ? "افتراضي" : "default")</option>
+                        @foreach (var v in _vatCategories)
+                        {
+                            <option value="@v.Id">@v.Code (@v.RatePercent.ToString("0.##")%)</option>
+                        }
+                    </select>
+                </label>
+                <button type="button" @onclick="AddLine">@(IsArabic ? "أضف بند" : "Add line")</button>
+            </div>
+        </fieldset>
+
+        <div class="invoice-actions" style="grid-column:1/-1;">
+            <button type="button" class="btn-primary" @onclick="OnCreateAsync" disabled="@_busy">
+                @(IsArabic ? "إنشاء القالب" : "Create template")
+            </button>
+        </div>
+    </section>
+}
+
+@if (_loading) { <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p> return; }
+
+<section style="margin-top:24px;">
+    @if (_templates.Count == 0)
+    {
+        <p><em>@(IsArabic ? "لا توجد قوالب بعد. أضف واحد بالأعلى." : "No templates yet. Add one above.")</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead><tr>
+                <th>@(IsArabic ? "الاسم" : "Name")</th>
+                <th>@(IsArabic ? "العميل" : "Customer")</th>
+                <th>@(IsArabic ? "الفترة" : "Interval")</th>
+                <th>@(IsArabic ? "التشغيل التالي" : "Next run")</th>
+                <th>@(IsArabic ? "آخر تشغيل" : "Last run")</th>
+                <th class="num">@(IsArabic ? "عدد الفواتير" : "# generated")</th>
+                <th>@(IsArabic ? "الحالة" : "Status")</th>
+                <th></th>
+            </tr></thead>
+            <tbody>
+                @foreach (var row in _templates)
+                {
+                    <tr class="@(row.Template.IsActive ? "" : "row-muted")">
+                        <td>@row.Template.Name</td>
+                        <td>@row.CustomerName</td>
+                        <td>@row.Template.Interval</td>
+                        <td>@row.Template.NextRunDate.ToString("yyyy-MM-dd")</td>
+                        <td>@(row.Template.LastGeneratedDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                        <td class="num">@row.Template.InvoicesGeneratedCount</td>
+                        <td>@(row.Template.IsActive ? (IsArabic ? "نشط" : "Active") : (IsArabic ? "موقوف" : "Paused"))</td>
+                        <td>
+                            @if (row.Template.IsActive)
+                            {
+                                <button type="button" @onclick="() => OnPauseAsync(row.Template.Id)">@(IsArabic ? "إيقاف" : "Pause")</button>
+                            }
+                            else
+                            {
+                                <button type="button" @onclick="() => OnResumeAsync(row.Template.Id)">@(IsArabic ? "استئناف" : "Resume")</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private bool _addFormOpen;
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private Guid _currentUserId;
+
+    private List<Customer> _customers = new();
+    private List<Item> _items = new();
+    private List<VatCategory> _vatCategories = new();
+    private List<TemplateRow> _templates = new();
+
+    private string _newName = "";
+    private Guid _newCustomerId;
+    private RecurringInterval _newInterval = RecurringInterval.Monthly;
+    private DateTime _newNextRunDate = DateTime.UtcNow.Date.AddDays(1);
+    private DateTime? _newEndDate;
+    private string? _newNote;
+    private readonly List<DraftLine> _newLines = new();
+
+    private Guid _addLineItemId;
+    private decimal _addLineQty = 1m;
+    private decimal _addLinePrice;
+    private Guid _addLineVatId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await Auth.GetAuthenticationStateAsync();
+        _currentUserId = auth.User.UserId() ?? Guid.Empty;
+
+        _customers = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => c.Status == CustomerStatus.Active).OrderBy(c => c.Code).ToListAsync();
+        _items = await Db.Set<Item>().AsNoTracking().OrderBy(i => i.Code).ToListAsync();
+        _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
+        await ReloadAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        var templates = await Db.Set<RecurringInvoiceTemplate>().AsNoTracking()
+            .Include(t => t.Lines)
+            .OrderBy(t => t.NextRunDate)
+            .ToListAsync();
+        var custIds = templates.Select(t => t.CustomerId).Distinct().ToArray();
+        var custNames = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => custIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => IsArabic ? c.Name.Arabic : c.Name.English);
+        _templates = templates
+            .Select(t => new TemplateRow(t, custNames.GetValueOrDefault(t.CustomerId, t.CustomerId.ToString("D"))))
+            .ToList();
+    }
+
+    private void ToggleAddForm() => _addFormOpen = !_addFormOpen;
+
+    private void AddLine()
+    {
+        if (_addLineItemId == Guid.Empty || _addLineQty <= 0) return;
+        var item = _items.First(i => i.Id == _addLineItemId);
+        var vatId = _addLineVatId == Guid.Empty ? item.DefaultVatCategoryId : _addLineVatId;
+        var vat = _vatCategories.FirstOrDefault(v => v.Id == vatId);
+        if (vat is null) return;
+        _newLines.Add(new DraftLine(_addLineItemId, _addLineQty, _addLinePrice, vatId, vat.RatePercent));
+        _addLineItemId = Guid.Empty;
+        _addLineQty = 1m;
+        _addLinePrice = 0m;
+        _addLineVatId = Guid.Empty;
+    }
+
+    private async Task OnCreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newName) || _newCustomerId == Guid.Empty || _newLines.Count == 0)
+        {
+            _flash = IsArabic ? "املأ الاسم + العميل + بند واحد على الأقل." : "Fill name + customer + at least one line.";
+            _flashClass = "flash-error";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var creator = _currentUserId == Guid.Empty ? (Guid?)null : _currentUserId;
+            var template = new RecurringInvoiceTemplate(
+                customerId: _newCustomerId,
+                name: _newName,
+                interval: _newInterval,
+                nextRunDate: DateOnly.FromDateTime(_newNextRunDate),
+                endDate: _newEndDate is { } e ? DateOnly.FromDateTime(e) : null,
+                note: _newNote,
+                createdByUserId: creator);
+            foreach (var l in _newLines)
+            {
+                template.AddLine(l.ItemId, l.Quantity, MoneyEgp.From(l.UnitPrice), l.VatCategoryId, l.VatRatePercent);
+            }
+            Db.Add(template);
+            await Db.SaveChangesAsync();
+            _flash = IsArabic ? $"تم إنشاء القالب: {template.Name}." : $"Created template: {template.Name}.";
+            _flashClass = "flash-success";
+            _newName = ""; _newCustomerId = Guid.Empty; _newNote = null; _newLines.Clear();
+            _addFormOpen = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OnPauseAsync(Guid id)
+    {
+        var t = await Db.Set<RecurringInvoiceTemplate>().FirstAsync(x => x.Id == id);
+        t.Pause();
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task OnResumeAsync(Guid id)
+    {
+        var t = await Db.Set<RecurringInvoiceTemplate>().FirstAsync(x => x.Id == id);
+        t.Resume();
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task OnRunNowAsync()
+    {
+        _busy = true;
+        try
+        {
+            var count = await GenJob.RunAsync();
+            _flash = IsArabic
+                ? $"تم إنشاء {count} فاتورة مسودة."
+                : $"Generated {count} draft invoice(s).";
+            _flashClass = "flash-success";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private sealed record TemplateRow(RecurringInvoiceTemplate Template, string CustomerName);
+    private sealed record DraftLine(Guid ItemId, decimal Quantity, decimal UnitPrice, Guid VatCategoryId, decimal VatRatePercent);
+}

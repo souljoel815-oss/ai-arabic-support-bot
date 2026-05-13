@@ -437,6 +437,7 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.UpdateInvoiceNumberH
 // keyring (no per-request state).
 builder.Services.AddSingleton<EgyptTax.Infrastructure.Settings.SmtpPasswordProtector>();
 builder.Services.AddSingleton<EgyptTax.Infrastructure.Settings.SmtpTestSender>();
+builder.Services.AddSingleton<EgyptTax.Infrastructure.Settings.SendInvoiceByEmailHandler>();
 
 // Gux.13 Tab 7 — in-app license activation. Operator pastes the
 // license.token JSON; this writes it to the canonical disk path
@@ -624,6 +625,7 @@ builder.Services.AddSingleton<INtpTimeClient>(_ => new SntpTimeClient());
 builder.Services.AddTransient<NtpHealthCheckJob>();
 builder.Services.AddTransient<AuditCheckpointJob>();
 builder.Services.AddTransient<EtaSubmissionRetryJob>();
+builder.Services.AddTransient<EgyptTax.Infrastructure.Invoices.GenerateRecurringInvoicesJob>();
 builder.Services.AddTransient<EtaStatusPollingJob>();
 builder.Services.AddTransient<EtaReceivedInboxJob>();
 builder.Services.AddTransient<EtaItemCodeCheckJob>();
@@ -860,6 +862,16 @@ app.UseSerilogRequestLogging();
         recurringJobId: "eta-submission-retry",
         methodCall: j => j.RunOnceAsync(CancellationToken.None),
         cronExpression: "*/15 * * * *"
+    );
+
+    // L3 (v3 roadmap) — generate Draft invoices from recurring
+    // templates whose NextRunDate is today. Fires once daily at
+    // 02:00 UTC (~ 05:00 Cairo) so the office sees the new drafts
+    // when they arrive in the morning.
+    recurring.AddOrUpdate<EgyptTax.Infrastructure.Invoices.GenerateRecurringInvoicesJob>(
+        recurringJobId: "recurring-invoices-generate",
+        methodCall: j => j.RunAsync(CancellationToken.None),
+        cronExpression: "0 2 * * *"
     );
 
     // P1.3 — every minute, poll the regulator for documents that are
