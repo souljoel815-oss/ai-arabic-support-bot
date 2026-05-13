@@ -53,6 +53,7 @@
     private int _expensesMissingAttachment;
     private int _purchasesMissingAttachment;
     private int _draftsCount;
+    private int _postedInvoiceCount;
     private int _pendingApprovalCount;
 
     // --- Phase D — low-stock count (items at or below LowStockThreshold) ---
@@ -185,6 +186,12 @@
 
         _draftsCount = await Db.Set<SalesInvoice>().AsNoTracking()
             .CountAsync(i => i.State == DocumentState.Draft);
+
+        // D0.5 — show the "Next steps" onboarding panel when the
+        // operator has finished the wizard but hasn't posted any
+        // invoice yet. Disappears the moment they post their first.
+        _postedInvoiceCount = await Db.Set<SalesInvoice>().AsNoTracking()
+            .CountAsync(i => i.State == DocumentState.Posted);
         _pendingApprovalCount = await Db.Set<ApprovalRequest>().AsNoTracking()
             .CountAsync(r => r.ApprovedByUserId == null && r.RejectedByUserId == null);
 
@@ -431,6 +438,59 @@
         ? $"ملخص حركتك المحاسبية والامتثال الضريبي لفترة {_periodLabel}."
         : $"Your accounting and tax-compliance snapshot for {_periodLabel}.")
 </p>
+
+@* D0.5 — Next-steps onboarding panel. Shows after wizard completes,
+   disappears the first time the operator posts an invoice. Three
+   action cards aimed at the "first 5 minutes aha moment": create
+   first invoice → review ETA setup → understand Penalty Shield. *@
+@if (!_isRepOnly && _postedInvoiceCount == 0)
+{
+    <section class="kpi-card kpi-info" style="margin:12px 0;padding:18px;">
+        <strong style="font-size:16px;">
+            @(IsArabic ? "🚀 خطواتك الأولى" : "🚀 Your first steps")
+        </strong>
+        <p class="page-subtitle" style="margin:6px 0 14px 0;font-size:13px;">
+            @(IsArabic
+                ? "الإعداد كامل. جرّب أول 3 خطوات لتحس بالنظام شغّال:"
+                : "Setup complete. Try these 3 actions to feel the system at work:")
+        </p>
+        <div class="kpi-grid kpi-grid-3">
+            <a href="/invoices/new" class="kpi-card" style="text-decoration:none;">
+                <div class="kpi-label">
+                    <Icon Name="file-text" Class="ic" />
+                    1 · @(IsArabic ? "أنشئ أول فاتورة" : "Create your first invoice")
+                </div>
+                <div class="kpi-meta" style="margin-top:6px;font-size:12.5px;">
+                    @(IsArabic
+                        ? "اضغط «حفظ ونشر» لتشاهد النظام يحجز رقم الفاتورة، يحسب الضريبة، ويُسجّل في القيد."
+                        : "Click \"Post\" to watch the system allocate the invoice number, calculate VAT, and post the journal entry.")
+                </div>
+            </a>
+            <a href="/eta-wizard" class="kpi-card" style="text-decoration:none;">
+                <div class="kpi-label">
+                    <Icon Name="link" Class="ic" />
+                    2 · @(IsArabic ? "اربط ETA" : "Wire up ETA")
+                </div>
+                <div class="kpi-meta" style="margin-top:6px;font-size:12.5px;">
+                    @(IsArabic
+                        ? "ضع بيانات اعتمادك من مصلحة الضرائب لإرسال الفواتير مباشرة. تقدر تتخطاها وتجرب الوضع التجريبي."
+                        : "Add your ETA credentials to submit invoices live. You can also skip and stay in sandbox mode for now.")
+                </div>
+            </a>
+            <a href="/compliance/penalty-shield" class="kpi-card" style="text-decoration:none;">
+                <div class="kpi-label">
+                    <Icon Name="shield" Class="ic" />
+                    3 · @(IsArabic ? "افحص Penalty Shield" : "Check Penalty Shield")
+                </div>
+                <div class="kpi-meta" style="margin-top:6px;font-size:12.5px;">
+                    @(IsArabic
+                        ? "أكبر ميزة في النظام: ينبهك قبل ما تخسر فلوس بسبب غرامات تأخير ETA أو خطأ في الإقرار."
+                        : "The killer feature: warns you before you lose money to ETA late-filing penalties or filing errors.")
+                </div>
+            </a>
+        </div>
+    </section>
+}
 
 <!-- Period banner: open vs locked. Hidden for sales reps; period
      management is an accountant/admin concern. -->

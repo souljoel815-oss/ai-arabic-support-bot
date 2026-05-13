@@ -7,6 +7,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject NavigationManager Nav
+@inject EgyptTax.Infrastructure.Onboarding.SampleDataSeeder SampleSeeder
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 @*
@@ -173,6 +174,43 @@
                         ? "✓ تم حفظ بيانات الشركة. النظام جاهز للاستخدام."
                         : "✓ Company profile saved. The system is ready to use.")
                 </p>
+
+                @* D0.5 — sample data block. Optional one-click load
+                   so the operator can explore a populated app instead
+                   of an empty one. The button hides itself once the
+                   seed runs (or if data is already present from a
+                   previous run). *@
+                @if (!_sampleDataLoaded)
+                {
+                    <div class="kpi-card kpi-info" style="margin:16px 0;padding:14px;">
+                        <strong>
+                            @(IsArabic
+                                ? "🎁 جرّب النظام ببيانات تجريبية"
+                                : "🎁 Try the system with sample data")
+                        </strong>
+                        <p class="page-subtitle" style="margin:6px 0 12px 0;font-size:13px;">
+                            @(IsArabic
+                                ? "نضيف 5 عملاء، 8 أصناف، و3 فواتير تجريبية. تقدر تحذفها وقت ما تحب من شاشة العملاء/الأصناف. (مفيد لو حابب تشوف النظام شغال قبل ما تدخل بياناتك الحقيقية.)"
+                                : "We'll add 5 sample customers, 8 items, and 3 draft invoices. You can delete them anytime from the Customers/Items pages. (Useful if you want to see the system in action before entering real data.)")}
+                        </p>
+                        <button type="button" class="btn-secondary"
+                                disabled="@_seedingSample"
+                                @onclick="OnLoadSampleAsync">
+                            @(_seedingSample
+                                ? (IsArabic ? "جارٍ الإضافة…" : "Adding…")
+                                : (IsArabic ? "حمّل البيانات التجريبية" : "Load sample data"))
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="kpi-card kpi-success" style="margin:16px 0;padding:14px;">
+                        @(IsArabic
+                            ? "✓ تم تحميل البيانات التجريبية. افتح صفحة الفواتير وجرّب «حفظ ونشر» لفاتورة تجريبية لتشاهد Penalty Shield شغّال."
+                            : "✓ Sample data loaded. Open the Invoices page and try Posting a draft to see Penalty Shield in action.")
+                    </div>
+                }
+
                 <div class="invoice-actions">
                     <a href="/invoices/new" class="btn-primary">
                         <Icon Name="file-text" Class="ic" />
@@ -229,6 +267,12 @@
     private string _street = "";
     private string _buildingNumber = "";
 
+    // D0.5 — sample data state. Pre-set to true on init if the
+    // sample dataset is already present so the button doesn't
+    // re-prompt on a re-run of the wizard.
+    private bool _sampleDataLoaded;
+    private bool _seedingSample;
+
     protected override async Task OnInitializedAsync()
     {
         // If a Company row already exists, pre-fill so re-running
@@ -253,7 +297,34 @@
             _street = c.Address.Street == stub ? "" : c.Address.Street;
             _buildingNumber = c.Address.BuildingNumber == stub ? "" : c.Address.BuildingNumber;
         }
+
+        // D0.5 — show the seeded-data confirmation if the sample
+        // dataset has already been loaded, so re-running the wizard
+        // doesn't offer to load it again.
+        _sampleDataLoaded = await Db.Set<Customer>()
+            .AnyAsync(cust => cust.Code.StartsWith("SMP-"));
+
         _loading = false;
+    }
+
+    private async Task OnLoadSampleAsync()
+    {
+        _seedingSample = true;
+        _flash = null;
+        try
+        {
+            await SampleSeeder.SeedAsync();
+            _sampleDataLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            _flash = (IsArabic ? "فشل تحميل البيانات: " : "Failed to load sample data: ") + ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally
+        {
+            _seedingSample = false;
+        }
     }
 
     private string StepLabel(int s) => s switch

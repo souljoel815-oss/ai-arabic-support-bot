@@ -432,6 +432,10 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Tax.GenerateIncomeTaxReturnHa
 builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.SettingsRepository>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.UpdateInvoiceNumberHandler>();
 
+// D0.5 (v3 roadmap) — sample-data seeder for the onboarding wizard.
+// Scoped because it writes via AppDbContext.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.SampleDataSeeder>();
+
 // Gux.13 Tab 5 — SMTP password protector + test sender. Singleton
 // because IDataProtectionProvider keys are bound to the host's
 // keyring (no per-request state).
