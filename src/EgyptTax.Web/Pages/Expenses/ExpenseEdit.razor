@@ -10,6 +10,7 @@
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.SharedKernel
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
@@ -193,9 +194,83 @@
         else
         {
             _form.DocumentDate = DateTime.UtcNow.Date;
+            // M.1 (v3 roadmap) — when reached via the "Create expense
+            // from this" link on /scan-receipt, the URL carries
+            // ?vendor= &date= &total= &vat= &category= prefill params.
+            // Read them here so the operator lands on a populated form
+            // instead of a blank one.
+            ApplyOcrPrefill();
         }
 
         _loading = false;
+    }
+
+    private void ApplyOcrPrefill()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        if (string.IsNullOrEmpty(uri.Query)) return;
+
+        var qs = QueryHelpers.ParseQuery(uri.Query);
+
+        if (qs.TryGetValue("date", out var dateRaw)
+            && DateTime.TryParse(dateRaw.ToString(),
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var d))
+        {
+            _form.DocumentDate = d;
+        }
+
+        if (qs.TryGetValue("total", out var totalRaw)
+            && decimal.TryParse(totalRaw.ToString(),
+                System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out var amount))
+        {
+            _form.Amount = amount;
+        }
+
+        var vendor = qs.TryGetValue("vendor", out var v) ? v.ToString() : "";
+        var vatRaw = qs.TryGetValue("vat", out var vv) ? vv.ToString() : "";
+        var hasVendor = !string.IsNullOrWhiteSpace(vendor);
+        var hasVat = !string.IsNullOrWhiteSpace(vatRaw);
+
+        if (hasVendor || hasVat)
+        {
+            var arParts = new List<string>();
+            var enParts = new List<string>();
+            if (hasVendor)
+            {
+                arParts.Add(vendor);
+                enParts.Add(vendor);
+            }
+            if (hasVat)
+            {
+                arParts.Add($"ضريبة قيمة مضافة: {vatRaw} ج.م");
+                enParts.Add($"VAT: {vatRaw} EGP");
+            }
+            _form.DescriptionArabic = string.Join(" · ", arParts);
+            _form.DescriptionEnglish = string.Join(" · ", enParts);
+        }
+
+        // Category match: best-effort only. Try to find a category
+        // whose code or English/Arabic name contains the suggested
+        // word ("travel" → "سفر / Travel"). If no match, leave the
+        // dropdown unset; operator picks manually.
+        if (qs.TryGetValue("category", out var catRaw))
+        {
+            var raw = catRaw.ToString().Trim();
+            if (!string.IsNullOrEmpty(raw))
+            {
+                var match = _categories.FirstOrDefault(c =>
+                    c.Code.Contains(raw, StringComparison.OrdinalIgnoreCase)
+                    || c.Name.English.Contains(raw, StringComparison.OrdinalIgnoreCase)
+                    || c.Name.Arabic.Contains(raw, StringComparison.OrdinalIgnoreCase));
+                if (match is not null)
+                {
+                    _form.CategoryId = match.Id;
+                    _form.DeductibleFlag = match.DefaultDeductible;
+                }
+            }
+        }
     }
 
     private void OnCategoryChanged()
