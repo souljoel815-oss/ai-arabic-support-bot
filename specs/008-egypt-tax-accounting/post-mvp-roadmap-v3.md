@@ -372,3 +372,195 @@ Write v4 when ONE of these is true:
 
 If none of those is true after 12 weeks, the right move is to **extend
 v3** with more sales + onboarding work, not to plan v4 features.
+
+---
+
+## 6. Competitive Intel Cross-Check (May 2026)
+
+A late-May competitive analysis (Manus AI, 12 competitors, 9 axes) was
+captured as a separate reference doc at
+[competitive-intelligence-2026.md](competitive-intelligence-2026.md).
+This section reconciles its findings against the v3 plan: what v3
+already covers, what it under-prioritised, and what it missed.
+
+### 6.1 What the matrix validates in v3
+
+The matrix confirms — independently — every gap v3 already targets:
+
+| v3 Phase | Matrix confirmation |
+|---|---|
+| L1 — Email + WhatsApp invoice send | All 6 competitors with Arabic UX have email send; Wafeq is the only one with WhatsApp send. We now match the leader. |
+| L2 — CSV / Excel export | All 8 competitors export; Wafeq + QuickBooks have full Excel/PDF, others CSV-only. v3's CSV-with-BOM matches the floor, not the ceiling. |
+| L3 — Recurring invoices | All 7 sales-axis competitors ship this. We just shipped it. |
+| L4 — Multi-location inventory | All 6 inventory-axis competitors ship per-location stock. Without it we lose import/export + multi-shop SMBs. v3 keeps this scoped (per-location counters + transfers, no putaway). |
+| L5 — Customer portal | Only Daftra ships this. Gap is real but smaller than expected; one differentiated portal beats no portal. |
+| L6 — Paymob + Fawry | 5 of 6 Egyptian-relevant competitors have payment-gateway integration. Largest deal-killer in the list. |
+| D3 — Real ETA submission | Confirms ETA is *the* moat: Wafeq supports only Saudi ZATCA (not Egyptian ETA), QuickBooks/Xero/FreshBooks have zero ETA. Sandbox label is honest interim; live ETA must follow. |
+
+### 6.2 What the matrix surfaces that v3 missed
+
+Three load-bearing gaps the v3 plan does not cover:
+
+| Gap | v3 status | Action |
+|---|---|---|
+| **Cost centers** | Not in v3 | Add to v4 trigger list (project-costed businesses can't adopt without it) |
+| **Bank reconciliation** | Not in v3 | Add to v4 trigger list (every cloud competitor ships it) |
+| **Multi-currency** | Not in v3 | Add to v4 trigger list (any import/export buyer rejects without it) |
+| **Quotations** | Not in v3 | Small (S, ~½ day). Add to L-phase tail (L7) — it's a deal-shape mismatch with B2B buyers who expect to negotiate before invoicing. |
+| **Auto payment reminders** | Not in v3 | Small (S, ~½ day) on top of L1 SMTP plumbing. Add to L-phase tail (L8). |
+| **Arabic-native AI** | Not in v3 | **Biggest miss** — added as M-phase below. |
+
+### 6.3 The strategic miss — Arabic-native AI
+
+The matrix's biggest finding: **no Arabic accounting software ships
+AI features**. Wafeq has one (Arabic OCR for receipts); nobody else
+has any. Global players (QuickBooks Intuit Assist, Xero JAX, Sage
+Copilot) ship English-only AI — useless for Egyptian SMB accountants
+who do their data entry in Arabic.
+
+Gartner (2024) reports AI saves accountants 5.4 hrs/week and
+automates 80%+ of tax-return prep. The market is moving. The first
+Arabic-native AI accounting tool wins the segment of accountants who
+have already started using ChatGPT in their workflow informally.
+
+**This is the demo moment that closes the deal:** accountant pastes
+5 photos of paper receipts → Claude reads them, fills in date,
+vendor, amount, category, VAT. 5 seconds vs 90 seconds manually.
+None of the 12 surveyed competitors can do this in Arabic.
+
+v3 §0 says "the bottleneck is distribution + customer count, not
+feature depth." That thesis still holds — distribution work in
+weeks 1-3 stays as planned. But Arabic AI is one feature where
+shipping **before** customer #1 reshapes every subsequent sales
+conversation, because every demo gains a unique moment.
+
+The M-phase below is sized to slot between L3 and L4 in the
+sequencing without bumping any L-phase item.
+
+---
+
+## M — Arabic-native AI (Weeks 5-6, slots between L3 and L4)
+
+**Goal:** introduce the only feature class no Arabic competitor has.
+Two modules, both leaning on Claude (already in our toolbelt, no
+new vendor onboarding).
+
+### M.1 — Arabic OCR for receipts / paper invoices
+
+- **Pain:** SMB accountants spend hours per week typing in paper
+  receipts from couriers, suppliers, fuel stations, restaurants. Each
+  receipt: date, vendor, amount, VAT, category — 90 seconds of
+  attention. 30-40 receipts per day = 1 hour of pure transcription.
+- **Competitor parity / differentiator:** Wafeq has Arabic OCR
+  (their only AI feature). No Egyptian-native competitor (Edara,
+  DEXEF, Daftra, Hunt ERP, Sahl) has it. Differentiator vs all
+  Egyptian options; parity with Wafeq + better integration with
+  Egyptian tax structure (VAT 14%, WHT, Schedule tax).
+- **Complexity:** L (2-3 days)
+- **Dependencies:** Anthropic API key (already wired for the AI
+  Arabic support bot from the parent branch `ai-arabic-support-bot`).
+  `Item` master for the auto-categorisation suggestion.
+- **MVP slice:**
+  - "Scan receipt" button on the Purchases page → file picker (image
+    or PDF, up to 5 files at a time)
+  - Each file → POST to a server endpoint that pipes it to Claude
+    Vision with an Arabic-language prompt: *"اقرأ الإيصال واستخرج
+    التاريخ، اسم المورد، المبلغ الإجمالي، ضريبة القيمة المضافة،
+    والفئة المقترحة (سفر / وقود / مكتب / مطعم / اتصالات / أخرى)."*
+  - Returns JSON: `{date, vendor, total, vat, category}`
+  - Pre-fills a Purchase Invoice draft for the user to confirm in
+    one click
+  - Records a `ReceiptScan` row with original file + extracted JSON
+    for audit
+- **Avoid:** training a custom OCR model. Building a queue / batch
+  processor (do it inline). Auto-posting (always Draft — accountant
+  reviews). Multi-page invoice extraction (single-page receipts in
+  v1).
+
+### M.2 — Arabic NL queries via Claude chat
+
+- **Pain:** Accountants ask "كام ضريبتي الشهر دي؟" or "مين العملاء
+  اللي عليهم فلوس أكتر من ٣٠ يوم؟" then click through 4-5 pages to
+  find out. Same data, same answer, every time. Friction = adoption
+  gap; the senior accountant uses the app, the junior keeps Excel.
+- **Competitor:** None. QuickBooks Intuit Assist + Xero JAX exist
+  in English only. No Arabic accounting tool has NL queries.
+  Pure greenfield differentiator.
+- **Complexity:** L (2-3 days)
+- **Dependencies:** M.1 not strictly required, but ship M.1 first
+  so the chat sidebar has a destination users already trust.
+  Read-only access to the ledger / customer / inventory tables.
+- **MVP slice:**
+  - Floating chat sidebar (Claude logo, "اسأل دفترك") on every page
+  - Question goes to a server endpoint with a system prompt that
+    explains the schema + the user's role + Arabic conventions
+  - Claude returns either (a) plain Arabic text answer for "how
+    much / how many" questions, or (b) a structured query: which
+    page + filters to deep-link to
+  - 10 canonical questions pre-seeded as suggestion chips:
+    "كام ضريبتي؟" / "مين أكبر عميل؟" / "إيه المخزون اللي خلص؟" /
+    "كام فاتورة لسه مش متدفعة؟" / etc.
+  - All Claude queries logged in `AiChatLog` (audit + cost
+    tracking + future fine-tune corpus)
+- **Avoid:** letting Claude execute writes (read-only in v1).
+  Open-ended chat ("tell me a joke") — keep prompt tight to
+  accounting questions. Voice input (typed Arabic only in v1).
+  Multi-turn dialogue with memory beyond the current page session.
+
+### M.3 — (Deferred to v4) Auto-categorisation of transactions
+
+- **Pain:** Transaction categorisation is the second-biggest time
+  sink after data entry. Same vendor → same category 95% of the
+  time, but accountants still click the dropdown for every line.
+- **Defer rationale:** depends on M.1 + M.2 shipping + 2 weeks of
+  real usage data so the suggestions are accurate. Premature
+  without that data — bad suggestions train users to ignore the
+  feature.
+
+---
+
+## 7. Updated 12-week sequencing (replaces §4)
+
+The matrix-driven additions (M.1, M.2, L7 quotations, L8 reminders)
+slot in without bumping the distribution-first thesis. Quotations
++ reminders are small enough to ride alongside L1/L2 work.
+
+| Week | Focus | Deliverable |
+|---|---|---|
+| 1 | D0, D2 | All work in git + push. Landing page draft. |
+| 2 | D1, D3 | Demo video + sandbox label OR start real ETA |
+| 3 | Outreach | 30 prospect emails. Onboarding-flow polish. |
+| 4 | L1, L8 | Email + WhatsApp invoice send + auto payment reminders |
+| 5 | L2, L7 | CSV export + Quotations |
+| 6 | L3 | Recurring invoice templates |
+| **7** | **M.1** | **Arabic OCR for receipts** |
+| **8** | **M.2** | **Arabic NL queries via Claude chat** |
+| 9 | Outreach + L4 (only if asked) | First 1-3 trial customers. Multi-location only if a customer asks. |
+| 10 | L5 | Customer portal (read-only) |
+| 11-12 | L6 part 1 | Paymob real integration (Fawry slips to v4) |
+
+**Why M slots at weeks 7-8, not weeks 1-2:** distribution work
+still comes first. By week 7, D0-D3 + L1-L3 are shipped, the
+landing page is live, and M.1/M.2 become the killer **demo
+moment** for the outreach push that starts week 3 and intensifies
+through weeks 9-12.
+
+---
+
+## 8. Updated v4 triggers (replaces §5)
+
+Write v4 when ANY of these is true:
+
+1. **5 paying customers** for at least 30 days (unchanged).
+2. **A specific deal of 50K+ EGP/year ARR** blocked by a v3-out-of-scope
+   feature — that deal's needs become v4 priority 1 (unchanged).
+3. **A change in Egyptian tax law** mandates new behaviour (unchanged).
+4. **(New)** A trial customer asks for **cost centers**,
+   **bank reconciliation**, or **multi-currency**. Each one
+   excludes a whole segment today; the first ask validates that
+   segment is reachable for us.
+5. **(New)** M.1 + M.2 ship + 2 weeks of real usage data exist.
+   M.3 (auto-categorisation) becomes the first v4 module.
+
+If none of those is true after 12 weeks, the right move is still to
+**extend v3** with more sales + onboarding work.
