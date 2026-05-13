@@ -5,11 +5,14 @@
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Web.Auth
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject NavigationManager Nav
 @inject DocumentRiskScorer RiskScorer
+@inject AuthenticationStateProvider Auth
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <h1>@(IsArabic ? "فواتير المبيعات" : "Sales invoices")</h1>
@@ -86,9 +89,25 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        var rows = await Db.Set<SalesInvoice>()
+        // Sales-rep visibility: a user with ONLY the SALES_REP role
+        // (and not ADMIN) sees only invoices they created. Admins
+        // and other roles see everything.
+        var authState = await Auth.GetAuthenticationStateAsync();
+        var principal = authState.User;
+        var isAdmin = principal.IsInRole("ADMIN");
+        var isRep = principal.IsInRole("SALES_REP");
+        var creatorId = principal.UserId();
+
+        var query = Db.Set<SalesInvoice>()
             .AsNoTracking()
             .Include(i => i.Lines)
+            .AsQueryable();
+        if (isRep && !isAdmin && creatorId is not null)
+        {
+            query = query.Where(i => i.CreatedByUserId == creatorId);
+        }
+
+        var rows = await query
             .OrderByDescending(i => i.DocumentDate)
             .ThenByDescending(i => i.PostedAtUtc)
             .Take(500)

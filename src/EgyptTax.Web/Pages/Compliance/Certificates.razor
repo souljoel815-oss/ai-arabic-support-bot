@@ -3,7 +3,7 @@
 @using EgyptTax.Application.Compliance.CertificateMonitor
 @using Microsoft.AspNetCore.Authorization
 @inject ICertificateMonitorQuery CertQuery
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <PageTitle>@(IsArabic ? "الشهادات | DaftarX" : "Certificates | DaftarX")</PageTitle>
 

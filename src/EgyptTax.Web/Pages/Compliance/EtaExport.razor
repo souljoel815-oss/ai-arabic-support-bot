@@ -7,7 +7,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject NavigationManager Nav
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <PageTitle>@(IsArabic ? "تصدير ETA | DaftarX" : "ETA Export | DaftarX")</PageTitle>
 

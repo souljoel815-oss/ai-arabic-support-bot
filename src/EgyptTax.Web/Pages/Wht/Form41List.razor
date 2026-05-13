@@ -3,7 +3,7 @@
 @using EgyptTax.Domain.Tax
 @using Microsoft.AspNetCore.Authorization
 @inject IWhtLifecycleDashboardQuery Query
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <a href="/wht" class="btn-secondary">← @(IsArabic ? "العودة إلى اللوحة" : "Back to dashboard")</a>
 

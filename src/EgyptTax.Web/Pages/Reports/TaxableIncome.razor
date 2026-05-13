@@ -3,7 +3,7 @@
 @using EgyptTax.Domain.Workflow
 @using Microsoft.AspNetCore.Authorization
 @inject ITaxableIncomeReportQuery ReportQuery
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "تقرير الدخل الخاضع للضريبة" : "Taxable income report (FR-023)")</h1>
 

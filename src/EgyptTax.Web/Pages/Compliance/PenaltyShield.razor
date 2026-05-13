@@ -9,7 +9,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject IPenaltyExposureQuery Query
 @inject IDbContextFactory<AppDbContext> DbFactory
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <PageTitle>@(IsArabic ? "درع الغرامات | DaftarX" : "Penalty Shield | DaftarX")</PageTitle>
 

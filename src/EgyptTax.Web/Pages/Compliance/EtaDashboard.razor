@@ -12,7 +12,7 @@
 @inject IClock Clock
 @inject IEtaStatusNotifier Notifier
 @implements IDisposable
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "لوحة الامتثال للضرائب الإلكترونية" : "ETA Compliance Dashboard")</h1>
 <p>@(IsArabic

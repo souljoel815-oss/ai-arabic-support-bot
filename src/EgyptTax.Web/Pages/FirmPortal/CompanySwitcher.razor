@@ -7,7 +7,7 @@
 @inject AppDbContext Db
 @inject NavigationManager Nav
 @inject IJSRuntime Js
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "تبديل المنشأة" : "Switch installation")</h1>
 

@@ -1,4 +1,7 @@
+using EgyptTax.Domain.Identity;
 using EgyptTax.Domain.MasterData;
+using EgyptTax.Domain.Numbering;
+using EgyptTax.Domain.Workflow;
 using EgyptTax.Infrastructure.Persistence;
 using EgyptTax.SharedKernel;
 using Microsoft.EntityFrameworkCore;
@@ -64,6 +67,77 @@ internal static class StartupSeed
         if (added > 0)
         {
             await db.SaveChangesAsync(ct);
+        }
+
+        // Standard role catalogue. ADMIN is seeded by the install-
+        // time Seeder; the rest are added here so existing installs
+        // catch up automatically. MFA defaults follow the FR-001
+        // intent: elevated roles (ADMIN, ACCOUNTANT, MANAGER) get
+        // requires-MFA = true so the operator can flip it on without
+        // re-seeding; user-facing roles (SALES_REP, CASHIER, AUDITOR)
+        // default off. The operator can override per-role via Settings.
+        var seededRoles = await db.Set<Role>()
+            .Select(r => r.Code)
+            .ToListAsync(ct);
+        var defaultRoles = new[]
+        {
+            (Code: "MANAGER",    NameAr: "مدير",            NameEn: "Manager",                Mfa: true),
+            (Code: "ACCOUNTANT", NameAr: "محاسب",           NameEn: "Accountant",             Mfa: true),
+            (Code: "BOOKKEEPER", NameAr: "مساعد محاسب",     NameEn: "Bookkeeper",             Mfa: false),
+            (Code: "CASHIER",    NameAr: "أمين الخزينة",    NameEn: "Cashier",                Mfa: false),
+            (Code: "SALES_REP",  NameAr: "مندوب مبيعات",    NameEn: "Sales Representative",   Mfa: false),
+            (Code: "AUDITOR",    NameAr: "مراجع",           NameEn: "Auditor (read-only)",    Mfa: false),
+        };
+        var rolesAdded = 0;
+        foreach (var r in defaultRoles)
+        {
+            if (!seededRoles.Contains(r.Code))
+            {
+                db.Add(new Role(r.Code, new ArabicEnglishText(r.NameAr, r.NameEn), r.Mfa));
+                rolesAdded++;
+            }
+        }
+        if (rolesAdded > 0)
+        {
+            await db.SaveChangesAsync(ct);
+            added += rolesAdded;
+        }
+
+        // BUG-004 (May 2026 testing report) — DocumentSeries is seeded
+        // by migration 20260507105423_NumberingCore in full-mode (SQL
+        // Server) installs, but portable-mode boots use EnsureCreated
+        // and never run migrations, so the table was empty and the
+        // first invoice Post threw "No DocumentSeries seeded for
+        // document type SalesInvoice." Idempotent re-seed here covers
+        // both paths. GUIDs match the migration so cross-mode
+        // references stay stable.
+        var existingSeriesTypes = await db.Set<DocumentSeries>()
+            .Select(s => s.DocumentType)
+            .ToListAsync(ct);
+        var defaultSeries = new[]
+        {
+            (Id: new Guid("11111111-1111-4111-8111-000000000001"), Code: "INV", NameAr: "فاتورة مبيعات",       NameEn: "Sales invoice",            Type: DocumentType.SalesInvoice),
+            (Id: new Guid("11111111-1111-4111-8111-000000000002"), Code: "CN",  NameAr: "إشعار خصم",           NameEn: "Credit note",              Type: DocumentType.CreditNote),
+            (Id: new Guid("11111111-1111-4111-8111-000000000003"), Code: "PI",  NameAr: "فاتورة مشتريات",      NameEn: "Purchase invoice",         Type: DocumentType.PurchaseInvoice),
+            (Id: new Guid("11111111-1111-4111-8111-000000000004"), Code: "EXP", NameAr: "مصروف",               NameEn: "Expense",                  Type: DocumentType.Expense),
+            (Id: new Guid("11111111-1111-4111-8111-000000000005"), Code: "JV",  NameAr: "قيد محاسبي",          NameEn: "Journal voucher",          Type: DocumentType.JournalVoucher),
+            (Id: new Guid("11111111-1111-4111-8111-000000000006"), Code: "SPV", NameAr: "إيصال دفع لمورد",     NameEn: "Supplier payment voucher", Type: DocumentType.SupplierPaymentVoucher),
+            (Id: new Guid("11111111-1111-4111-8111-000000000007"), Code: "CRV", NameAr: "إيصال قبض من عميل",   NameEn: "Customer receipt voucher", Type: DocumentType.CustomerReceiptVoucher),
+            (Id: new Guid("11111111-1111-4111-8111-000000000008"), Code: "FA",  NameAr: "أصل ثابت",            NameEn: "Fixed asset",              Type: DocumentType.FixedAsset),
+        };
+        var seriesAdded = 0;
+        foreach (var s in defaultSeries)
+        {
+            if (!existingSeriesTypes.Contains(s.Type))
+            {
+                db.Add(new DocumentSeries(s.Id, s.Code, new ArabicEnglishText(s.NameAr, s.NameEn), s.Type));
+                seriesAdded++;
+            }
+        }
+        if (seriesAdded > 0)
+        {
+            await db.SaveChangesAsync(ct);
+            added += seriesAdded;
         }
 
         // P3.1 — ensure a default cash account exists so SPV/CRV

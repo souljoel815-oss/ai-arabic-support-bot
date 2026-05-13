@@ -7,7 +7,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbFactory
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <PageTitle>@(IsArabic ? "الخزائن والحسابات البنكية | DaftarX" : "Cashboxes & Bank Accounts | DaftarX")</PageTitle>
 

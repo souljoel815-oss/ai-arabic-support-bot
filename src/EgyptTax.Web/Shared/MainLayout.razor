@@ -26,6 +26,14 @@
     private string? _userInitial;
     private string? _userDisplayName;
 
+    /// <summary>Sales-rep mode — true when the signed-in user has the
+    /// SALES_REP role and NOT the ADMIN role. The nav uses this to
+    /// hide groups and items reps shouldn't see (Reports, Compliance,
+    /// Settings, Firm portal, Purchase/Expense quick actions, etc.).
+    /// Defaults to false so a slow auth lookup doesn't briefly hide
+    /// admin's nav while loading.</summary>
+    private bool _isRepOnly;
+
     /// <summary>Mobile-only sidebar drawer state. Toggled by the
     /// hamburger button in the topbar (CSS-hidden on desktop) and
     /// by the backdrop click. Closes automatically when the user
@@ -127,6 +135,7 @@
                 _userDisplayName = name;
                 _userInitial = name.Trim()[..1].ToUpperInvariant();
             }
+            _isRepOnly = auth.User.IsInRole("SALES_REP") && !auth.User.IsInRole("ADMIN");
 
             // Gux.10 — pending approvals → topbar bell badge.
             _pendingApprovalCount = await Db.Set<ApprovalRequest>()
@@ -155,7 +164,7 @@
     <div class="sidebar-backdrop" @onclick="CloseSidebar"></div>
 
     <aside class="app-sidebar">
-        <a href="" class="sidebar-brand" style="text-decoration:none;">
+        <a href="/" class="sidebar-brand" style="text-decoration:none;">
             <div class="sidebar-brand-mark">DX</div>
             <div class="sidebar-brand-name">Daftar<span class="brand-x">X</span></div>
         </a>
@@ -169,18 +178,27 @@
             @if (_quickActionsOpen)
             {
                 <div class="quick-action-menu">
+                    <a href="sales-orders/new" @onclick="CloseSidebar"><Icon Name="clipboard" Class="ic" />@Tr("أمر بيع", "Sales order")</a>
                     <a href="invoices/new" @onclick="CloseSidebar"><Icon Name="file-text" Class="ic" />@Tr("فاتورة مبيعات", "Sales invoice")</a>
-                    <a href="purchase-invoices/new" @onclick="CloseSidebar"><Icon Name="package" Class="ic" />@Tr("فاتورة مشتريات", "Purchase invoice")</a>
-                    <a href="expenses/new" @onclick="CloseSidebar"><Icon Name="credit-card" Class="ic" />@Tr("مصروف", "Expense")</a>
-                    <a href="invoices/bulk" @onclick="CloseSidebar"><Icon Name="archive" Class="ic" />@Tr("رفع جماعي", "Bulk upload")</a>
+                    @if (!_isRepOnly)
+                    {
+                        <a href="purchase-invoices/new" @onclick="CloseSidebar"><Icon Name="package" Class="ic" />@Tr("فاتورة مشتريات", "Purchase invoice")</a>
+                        <a href="expenses/new" @onclick="CloseSidebar"><Icon Name="credit-card" Class="ic" />@Tr("مصروف", "Expense")</a>
+                        <a href="invoices/bulk" @onclick="CloseSidebar"><Icon Name="archive" Class="ic" />@Tr("رفع جماعي", "Bulk upload")</a>
+                    }
                 </div>
             }
         </div>
 
-        @* Gux.1 — Home (no sub-items, just a link) *@
+        @* Gux.1 — Home (no sub-items, just a link). Explicit "/" so
+           the link works from any nested route; an empty href reloads
+           the current URL on some browsers + dev hosts (BUG-D-002). *@
         <nav class="app-nav app-nav-toplevel">
-            <a href="" class="@ActiveLink("")" @onclick="CloseSidebar">
+            <a href="/" class="@ActiveLink("")" @onclick="CloseSidebar">
                 <Icon Name="home" Class="nav-icon" />@Tr("الرئيسية", "Home")
+            </a>
+            <a href="dashboards/me" class="@ActiveLink("dashboards/me")" @onclick="CloseSidebar">
+                <Icon Name="user" Class="nav-icon" />@Tr("لوحتي", "My dashboard")
             </a>
         </nav>
 
@@ -191,12 +209,18 @@
                 <span>@Tr("الفواتير والعمليات", "Invoices & operations")</span>
             </summary>
             <nav class="app-nav">
+                <a href="routes" class="@ActiveLink("routes")" @onclick="CloseSidebar">@Tr("خط السير", "Route plan")</a>
+                <a href="sales-orders" class="@ActiveLink("sales-orders")" @onclick="CloseSidebar">@Tr("أوامر البيع", "Sales orders")</a>
                 <a href="invoices" class="@ActiveLink("invoices")" @onclick="CloseSidebar">@Tr("فواتير المبيعات", "Sales invoices")</a>
-                <a href="invoices/bulk" class="@ActiveLink("invoices/bulk")" @onclick="CloseSidebar">@Tr("رفع جماعي", "Bulk upload")</a>
-                <a href="purchase-invoices" class="@ActiveLink("purchase-invoices")" @onclick="CloseSidebar">@Tr("فواتير المشتريات", "Purchases")</a>
-                <a href="expenses" class="@ActiveLink("expenses")" @onclick="CloseSidebar">@Tr("المصروفات", "Expenses")</a>
-                <a href="payments/bank-statements" class="@ActiveLink("payments/bank-statements")" @onclick="CloseSidebar">@Tr("كشوف البنك", "Bank statements")</a>
-                <a href="payments/unmatched" class="@ActiveLink("payments/unmatched")" @onclick="CloseSidebar">@Tr("بنود غير مطابقة", "Unmatched lines")</a>
+                <a href="payments/customer-receipts/new" class="@ActiveLink("payments/customer-receipts/new")" @onclick="CloseSidebar">@Tr("إيصال قبض", "Receive payment")</a>
+                @if (!_isRepOnly)
+                {
+                    <a href="invoices/bulk" class="@ActiveLink("invoices/bulk")" @onclick="CloseSidebar">@Tr("رفع جماعي", "Bulk upload")</a>
+                    <a href="purchase-invoices" class="@ActiveLink("purchase-invoices")" @onclick="CloseSidebar">@Tr("فواتير المشتريات", "Purchases")</a>
+                    <a href="expenses" class="@ActiveLink("expenses")" @onclick="CloseSidebar">@Tr("المصروفات", "Expenses")</a>
+                    <a href="payments/bank-statements" class="@ActiveLink("payments/bank-statements")" @onclick="CloseSidebar">@Tr("كشوف البنك", "Bank statements")</a>
+                    <a href="payments/unmatched" class="@ActiveLink("payments/unmatched")" @onclick="CloseSidebar">@Tr("بنود غير مطابقة", "Unmatched lines")</a>
+                }
             </nav>
         </details>
 
@@ -208,12 +232,17 @@
             </summary>
             <nav class="app-nav">
                 <a href="customers" class="@ActiveLink("customers")" @onclick="CloseSidebar">@Tr("العملاء", "Customers")</a>
-                <a href="suppliers" class="@ActiveLink("suppliers")" @onclick="CloseSidebar">@Tr("الموردون", "Suppliers")</a>
+                @if (!_isRepOnly)
+                {
+                    <a href="suppliers" class="@ActiveLink("suppliers")" @onclick="CloseSidebar">@Tr("الموردون", "Suppliers")</a>
+                }
                 <a href="items" class="@ActiveLink("items")" @onclick="CloseSidebar">@Tr("الأصناف", "Items")</a>
             </nav>
         </details>
 
-        @* Gux.1 — Reports *@
+        @* Gux.1 — Reports (admin/accountant only — reps don't see this) *@
+        @if (!_isRepOnly)
+        {
         <details class="sidebar-group" @attributes="@OpenAttr("reports", "wht")">
             <summary>
                 <Icon Name="bar-chart" Class="nav-icon" />
@@ -224,14 +253,20 @@
                 <a href="reports/taxable-income" class="@ActiveLink("reports/taxable-income")" @onclick="CloseSidebar">@Tr("الدخل الخاضع للضريبة", "Taxable income")</a>
                 <a href="reports/trial-balance" class="@ActiveLink("reports/trial-balance")" @onclick="CloseSidebar">@Tr("ميزان المراجعة", "Trial balance")</a>
                 <a href="reports/turnover-tax" class="@ActiveLink("reports/turnover-tax")" @onclick="CloseSidebar">@Tr("ضريبة معدل الدوران", "Turnover tax")</a>
+                <a href="reports/sales-by-rep" class="@ActiveLink("reports/sales-by-rep")" @onclick="CloseSidebar">@Tr("مبيعات المناديب", "Sales by rep")</a>
+                <a href="reports/commissions" class="@ActiveLink("reports/commissions")" @onclick="CloseSidebar">@Tr("عمولات المناديب", "Commissions")</a>
+                <a href="dashboards/sales" class="@ActiveLink("dashboards/sales")" @onclick="CloseSidebar">@Tr("📊 لوحة المبيعات", "📊 Sales dashboard")</a>
                 <a href="wht" class="@ActiveLink("wht")" @onclick="CloseSidebar">@Tr("دورة الخصم", "WHT lifecycle")</a>
                 <a href="wht/inbound" class="@ActiveLink("wht/inbound")" @onclick="CloseSidebar">@Tr("شهادات خصم واردة", "Inbound WHT")</a>
                 <a href="tax/vat-return" class="@ActiveLink("tax/vat-return")" @onclick="CloseSidebar">@Tr("إقرارات الضريبة", "VAT returns")</a>
                 <a href="tax/income-tax-return" class="@ActiveLink("tax/income-tax-return")" @onclick="CloseSidebar">@Tr("إقرارات ضريبة الدخل", "Income-tax returns")</a>
             </nav>
         </details>
+        }
 
         @* Gux.1 + Gux.2 — Compliance (setup-only items moved to Settings) *@
+        @if (!_isRepOnly)
+        {
         <details class="sidebar-group" @attributes="@OpenAttr("penalty-shield", "compliance", "eta-dashboard", "eta-inbox", "eta-export")">
             <summary>
                 <Icon Name="shield" Class="nav-icon" />
@@ -246,8 +281,11 @@
                 <a href="eta-export" class="@ActiveLink("eta-export")" @onclick="CloseSidebar">@Tr("تصدير ETA", "ETA export")</a>
             </nav>
         </details>
+        }
 
         @* Gux.1 + Gux.2 — Settings (absorbs setup-only items from Compliance + Master Data) *@
+        @if (!_isRepOnly)
+        {
         <details class="sidebar-group" @attributes="@OpenAttr("settings", "eta-wizard", "certificates", "expense-categories", "audit-log", "inspection-bundle", "cockpit")">
             <summary>
                 <Icon Name="building" Class="nav-icon" />
@@ -274,8 +312,11 @@
                 <a href="inspection-bundle" class="@ActiveLink("inspection-bundle")" @onclick="CloseSidebar">@Tr("حزمة الفحص الضريبي", "Inspection bundle")</a>
             </nav>
         </details>
+        }
 
         @* Gux.1 — Firm Portal (only relevant for accounting firms; no role-gating yet, ships visible) *@
+        @if (!_isRepOnly)
+        {
         <details class="sidebar-group" @attributes="@OpenAttr("firm-portal")">
             <summary>
                 <Icon Name="landmark" Class="nav-icon" />
@@ -287,6 +328,7 @@
                 <a href="firm-portal/commissions" class="@ActiveLink("firm-portal/commissions")" @onclick="CloseSidebar">@Tr("عمولات المحاسبين", "Commissions")</a>
             </nav>
         </details>
+        }
     </aside>
 
     <header class="app-header">
@@ -356,7 +398,7 @@
        Four most-common destinations one tap away (vs. two taps
        through the hamburger drawer). *@
     <nav class="mobile-bottom-nav">
-        <a href="" class="@ActiveLink("")">
+        <a href="/" class="@ActiveLink("")">
             <Icon Name="home" Class="ic" />
             <span>@Tr("الرئيسية", "Home")</span>
         </a>

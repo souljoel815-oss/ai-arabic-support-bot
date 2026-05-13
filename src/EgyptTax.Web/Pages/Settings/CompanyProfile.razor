@@ -1,6 +1,6 @@
 @page "/settings/company"
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 @*
     Gux.13 — direct-link host for the Company Profile body.

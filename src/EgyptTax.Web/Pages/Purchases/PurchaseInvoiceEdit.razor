@@ -17,7 +17,7 @@
 @inject NavigationManager Nav
 @inject UploadAttachmentHandler UploadHandler
 @inject AuthenticationStateProvider AuthState
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(_isNew ? (IsArabic ? "فاتورة شراء جديدة" : "New purchase invoice") : (IsArabic ? "تعديل فاتورة شراء" : "Edit purchase invoice"))</h1>
 

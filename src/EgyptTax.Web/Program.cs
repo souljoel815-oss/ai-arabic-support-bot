@@ -349,6 +349,11 @@ builder.Services.AddScoped<EgyptTax.Application.Compliance.ICockpitCacheInvalida
 // eligible aggregates (SalesInvoice / PurchaseInvoice / Expense).
 builder.Services.AddScoped<EgyptTax.Infrastructure.Workflow.DocumentApprovalHandler>();
 
+// Phase F — Sales Order → Invoice converter. Used by the
+// SalesOrderList "Convert" button to produce a Draft SalesInvoice
+// from a Confirmed order.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Sales.ConvertSalesOrderToInvoiceHandler>();
+
 // US4 / FR-031 — manual adjusting journal voucher handler. Role-
 // gated to Administrator + Accountant; Bookkeeper rejected.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Journals.CreateManualAdjustingJournalHandler>();
@@ -731,6 +736,32 @@ builder.Services.AddAuthorization(options =>
                     EgyptTax.Web.Auth.AuthClaims.AuthStage,
                     EgyptTax.Web.Auth.AuthClaims.StageFullyAuthenticated
                 )
+    );
+
+    // Sales-rep restriction — pages reserved for accountant-style
+    // roles. A SALES_REP-only user is denied; users with any other
+    // role (including SALES_REP + ADMIN combined) pass through. The
+    // sidebar already hides these entries for reps; this policy is
+    // the URL-level enforcement so a typed-in /audit-log etc. also
+    // 403s.
+    options.AddPolicy(
+        "NotSalesRepOnly",
+        policy =>
+            policy
+                .RequireAuthenticatedUser()
+                .RequireClaim(
+                    EgyptTax.Web.Auth.AuthClaims.AuthStage,
+                    EgyptTax.Web.Auth.AuthClaims.StageFullyAuthenticated)
+                .RequireAssertion(ctx =>
+                {
+                    var roles = ctx.User
+                        .FindAll(System.Security.Claims.ClaimTypes.Role)
+                        .Select(c => c.Value)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    if (roles.Count == 0) return false;
+                    // Pass if the user has ANY non-SALES_REP role.
+                    return roles.Any(r => !string.Equals(r, "SALES_REP", StringComparison.OrdinalIgnoreCase));
+                })
     );
 });
 

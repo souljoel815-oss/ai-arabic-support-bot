@@ -10,7 +10,7 @@
 @inject AppDbContext Db
 @inject LockTaxPeriodHandler PeriodHandler
 @inject AuthenticationStateProvider AuthState
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <SettingsTabStrip Group="tax-setup" />
 

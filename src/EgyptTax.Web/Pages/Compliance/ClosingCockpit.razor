@@ -1,6 +1,6 @@
 @page "/cockpit"
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 @*
     Gux.9 — direct-link host for the cockpit. The real UI lives in

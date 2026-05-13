@@ -5,7 +5,7 @@
 @inject IEtaTaxpayerLookup TaxpayerLookup
 @inject IEtaActivityCodeCatalog ActivityCodes
 @inject IEtaSubmitter Submitter
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <PageTitle>@(IsArabic ? "إعداد ETA | DaftarX" : "ETA Setup | DaftarX")</PageTitle>
 

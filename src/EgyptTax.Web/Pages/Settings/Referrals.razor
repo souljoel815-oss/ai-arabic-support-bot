@@ -8,7 +8,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject IJSRuntime Js
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <PageTitle>@(IsArabic ? "ادعُ صديق | DaftarX" : "Refer a friend | DaftarX")</PageTitle>
 

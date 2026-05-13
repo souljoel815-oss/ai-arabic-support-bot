@@ -15,7 +15,7 @@
 @inject NavigationManager Nav
 @inject PostExpenseHandler PostHandler
 @inject AuthenticationStateProvider AuthState
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? $"مصروف {(_expense?.DocumentNumber ?? "(جارٍ التحميل)")}" : $"Expense {(_expense?.DocumentNumber ?? "(loading)")}")</h1>
 

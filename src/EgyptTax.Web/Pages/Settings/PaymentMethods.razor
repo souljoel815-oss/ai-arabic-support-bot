@@ -1,7 +1,7 @@
 @page "/settings/payment-methods"
 @using EgyptTax.Domain.Documents
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <SettingsTabStrip Group="money" />
 

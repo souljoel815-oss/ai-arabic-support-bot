@@ -6,7 +6,7 @@
 @inject IInspectionBundleBuilder Builder
 @inject AuthenticationStateProvider AuthState
 @inject IJSRuntime Js
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "إنشاء حزمة فحص ضريبي (US9 / FR-048)" : "Generate tax-inspection bundle (US9 / FR-048)")</h1>
 

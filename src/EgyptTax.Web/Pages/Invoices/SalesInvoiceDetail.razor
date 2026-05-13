@@ -19,7 +19,9 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>@(IsArabic ? $"فاتورة مبيعات {(_invoice?.DocumentNumber ?? "(جارٍ التحميل)")}" : $"Sales invoice {(_invoice?.DocumentNumber ?? "(loading)")}")</h1>
+<h1>@(IsArabic
+    ? $"فاتورة مبيعات {(_invoice is null ? "(جارٍ التحميل)" : (_invoice.DocumentNumber ?? $"({_invoice.State})"))}"
+    : $"Sales invoice {(_invoice is null ? "(loading)" : (_invoice.DocumentNumber ?? $"({_invoice.State})"))}")</h1>
 
 @if (_invoice is null)
 {

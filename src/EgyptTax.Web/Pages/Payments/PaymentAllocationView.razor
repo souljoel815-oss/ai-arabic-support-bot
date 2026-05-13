@@ -3,7 +3,7 @@
 @using EgyptTax.Domain.Workflow
 @using Microsoft.AspNetCore.Authorization
 @inject IPaymentVoucherQuery Query
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <a href="/journals" class="btn-secondary">← @(IsArabic ? "العودة" : "Back")</a>
 

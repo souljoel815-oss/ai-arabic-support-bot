@@ -18,7 +18,7 @@
 @inject UploadAttachmentHandler UploadHandler
 @inject AuthenticationStateProvider AuthState
 @inject EgyptTax.Application.Ocr.IReceiptOcrService Ocr
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(_isNew ? (IsArabic ? "مصروف جديد" : "New expense") : (IsArabic ? "تعديل مصروف" : "Edit expense"))</h1>
 

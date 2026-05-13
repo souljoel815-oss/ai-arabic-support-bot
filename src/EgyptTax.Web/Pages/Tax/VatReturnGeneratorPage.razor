@@ -14,7 +14,7 @@
 @inject GenerateVatReturnHandler Handler
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider AuthState
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <PageTitle>@(IsArabic ? "إقرار ضريبة جديد | DaftarX" : "Generate VAT Return | DaftarX")</PageTitle>
 

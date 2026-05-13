@@ -7,7 +7,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject ComplianceCalendarRefreshJob RefreshJob
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <PageTitle>@(IsArabic ? "تقويم الالتزامات | DaftarX" : "Compliance Calendar | DaftarX")</PageTitle>
 

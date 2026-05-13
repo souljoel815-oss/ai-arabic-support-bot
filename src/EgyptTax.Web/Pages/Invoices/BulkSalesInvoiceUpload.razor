@@ -11,7 +11,7 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject BulkSalesInvoicePostHandler BulkHandler
 @inject AuthenticationStateProvider AuthState
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <PageTitle>@(IsArabic ? "رفع جماعي للفواتير | DaftarX" : "Bulk Invoice Upload | DaftarX")</PageTitle>
 

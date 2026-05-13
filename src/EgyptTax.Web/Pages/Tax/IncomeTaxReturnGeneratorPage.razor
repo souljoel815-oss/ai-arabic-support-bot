@@ -16,7 +16,7 @@
 @inject GenerateIncomeTaxReturnHandler Handler
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider AuthState
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <PageTitle>@(IsArabic ? "إقرار ضريبة دخل جديد | DaftarX" : "Generate Income-Tax Return | DaftarX")</PageTitle>
 

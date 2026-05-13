@@ -3,7 +3,7 @@
 @using EgyptTax.Domain.Tax
 @using Microsoft.AspNetCore.Authorization
 @inject IWhtLifecycleDashboardQuery Query
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "دورة حياة الخصم" : "WHT lifecycle (FR-047)")</h1>
 

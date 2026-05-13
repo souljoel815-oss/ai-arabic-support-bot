@@ -11,7 +11,7 @@
 @inject AppDbContext Db
 @inject IClock Clock
 @inject NavigationManager Nav
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "وضع المراجعة" : "Firm portal — review mode (Differentiator 3)")</h1>
 

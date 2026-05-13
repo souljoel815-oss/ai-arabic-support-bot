@@ -3,7 +3,7 @@
 @using EgyptTax.Domain.Workflow
 @using Microsoft.AspNetCore.Authorization
 @inject IVatMonthlyReportQuery ReportQuery
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "تقرير ضريبة القيمة المضافة الشهري" : "Monthly VAT report (FR-021)")</h1>
 

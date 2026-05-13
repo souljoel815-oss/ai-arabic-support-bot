@@ -7,7 +7,7 @@
 @inject GenerateForm41Handler Generate
 @inject MarkForm41FiledHandler MarkFiled
 @inject IJSRuntime Js
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <a href="/wht" class="btn-secondary">← @(IsArabic ? "العودة إلى اللوحة" : "Back to dashboard")</a>
 

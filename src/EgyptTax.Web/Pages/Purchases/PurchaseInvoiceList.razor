@@ -11,7 +11,7 @@
 @inject NavigationManager Nav
 @inject PurchaseDocumentRiskScorer RiskScorer
 @inject IPurchaseInvoiceFingerprintQuery FingerprintQuery
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "فواتير الشراء" : "Purchase invoices")</h1>
 

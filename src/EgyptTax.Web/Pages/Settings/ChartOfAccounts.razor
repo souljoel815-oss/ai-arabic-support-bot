@@ -1,7 +1,7 @@
 @page "/settings/chart-of-accounts"
 @using EgyptTax.Domain.Accounting
 @using Microsoft.AspNetCore.Authorization
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "دليل الحسابات (للقراءة فقط)" : "Chart of accounts (read-only)")</h1>
 

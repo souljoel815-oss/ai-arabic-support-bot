@@ -16,7 +16,7 @@
 @inject IPurchaseInvoiceFingerprintQuery FingerprintQuery
 @inject PostPurchaseInvoiceHandler PostHandler
 @inject AuthenticationStateProvider AuthState
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? $"فاتورة شراء {(_invoice?.DocumentNumber ?? "(جارٍ التحميل)")}" : $"Purchase invoice {(_invoice?.DocumentNumber ?? "(loading)")}")</h1>
 

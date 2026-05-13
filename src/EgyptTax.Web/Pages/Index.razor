@@ -14,9 +14,11 @@
 @using EgyptTax.Infrastructure.Persistence
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject IPenaltyExposureQuery PenaltyQuery
 @inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <PageTitle>DaftarX</PageTitle>
@@ -30,6 +32,12 @@
     private string _periodLabel = "";
     private TaxPeriodStatus _periodStatus = TaxPeriodStatus.Open;
     private DateTime? _periodLockedAtUtc;
+
+    /// <summary>Sales-rep mode — true when signed-in user has SALES_REP
+    /// role and NOT ADMIN. Hides admin-only dashboard sections (period
+    /// banner, expense/purchase quick actions, accountant-targeted
+    /// quick links) per BUG-B-002/003.</summary>
+    private bool _isRepOnly;
 
     // --- KPI: VAT ---
     private decimal _outputVat;
@@ -46,6 +54,10 @@
     private int _purchasesMissingAttachment;
     private int _draftsCount;
     private int _pendingApprovalCount;
+
+    // --- Phase D — low-stock count (items at or below LowStockThreshold) ---
+    private int _lowStockCount;
+    private List<(string Code, decimal Qty, decimal Threshold)> _lowStockTop = new();
 
     // --- KPI: Penalty Shield ---
     private PenaltyExposureReport? _penalty;
@@ -73,6 +85,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await Auth.GetAuthenticationStateAsync();
+        _isRepOnly = authState.User.IsInRole("SALES_REP") && !authState.User.IsInRole("ADMIN");
+
         var now = DateTime.UtcNow;
         _monthStart = new DateOnly(now.Year, now.Month, 1);
         _monthEnd = _monthStart.AddMonths(1).AddDays(-1);
@@ -172,6 +187,25 @@
             .CountAsync(i => i.State == DocumentState.Draft);
         _pendingApprovalCount = await Db.Set<ApprovalRequest>().AsNoTracking()
             .CountAsync(r => r.ApprovedByUserId == null && r.RejectedByUserId == null);
+
+        // Phase D — low-stock alert. Only items with a configured
+        // threshold; items with no threshold are intentionally not in
+        // the alert pool (silent opt-in).
+        // BUG-D-003 — SQLite can't ORDER BY on decimal columns
+        // server-side, so we materialise the matching rows then sort
+        // + take in memory. Volumes are tiny (items below threshold).
+        var lowStockMatches = await Db.Set<Item>().AsNoTracking()
+            .Where(i => i.Status == ItemStatus.Active
+                && i.LowStockThreshold != null
+                && i.QuantityOnHand <= i.LowStockThreshold!.Value)
+            .Select(i => new { i.Code, i.QuantityOnHand, i.LowStockThreshold })
+            .ToListAsync();
+        _lowStockCount = lowStockMatches.Count;
+        _lowStockTop = lowStockMatches
+            .OrderBy(i => i.QuantityOnHand)
+            .Take(5)
+            .Select(i => (i.Code, i.QuantityOnHand, i.LowStockThreshold!.Value))
+            .ToList();
 
         // Penalty Shield snapshot — uses its own DbContext via factory
         // so it doesn't contend with the queries above.
@@ -398,7 +432,10 @@
         : $"Your accounting and tax-compliance snapshot for {_periodLabel}.")
 </p>
 
-<!-- Period banner: open vs locked -->
+<!-- Period banner: open vs locked. Hidden for sales reps; period
+     management is an accountant/admin concern. -->
+@if (!_isRepOnly)
+{
 <div class="period-banner @(_periodStatus == TaxPeriodStatus.Locked ? "is-locked" : "")">
     <div class="pb-icon">
         <Icon Name="@(_periodStatus == TaxPeriodStatus.Locked ? "lock" : "lock-open")" Class="ic" />
@@ -433,6 +470,29 @@
         <a href="settings/tax-periods" class="btn-secondary"><Icon Name="calendar" Class="ic" />@(IsArabic ? "إدارة الفترات" : "Manage periods")</a>
     </div>
 </div>
+}
+
+@* Phase D — low-stock alert banner. Admin/accountant only (rep
+   doesn't see it). Lists up to 5 items at or below their
+   configured low-stock threshold; clicking jumps to the items
+   page where the operator can receive more stock. *@
+@if (!_isRepOnly && _lowStockCount > 0)
+{
+    <div class="trial-banner trial-banner-warn" role="status" style="margin-top:12px;">
+        <div class="trial-banner-text">
+            <strong>📦 @(IsArabic ? "تنبيه مخزون منخفض:" : "Low-stock alert:")</strong>
+            <span>
+                @(IsArabic ? $"{_lowStockCount} صنف عند أو تحت حد التنبيه:" : $"{_lowStockCount} item(s) at or below threshold:")
+                @string.Join("، ", _lowStockTop.Select(t => $"{t.Code} ({t.Qty:0.###})"))
+            </span>
+        </div>
+        <div class="trial-banner-hwid">
+            <a href="/items" class="trial-banner-link">
+                @(IsArabic ? "استلم مخزون" : "Receive stock")
+            </a>
+        </div>
+    </div>
+}
 
 @*
     Gux.9 — Closing Cockpit drawer. Slides in from the inline-end
@@ -465,20 +525,23 @@
             <div class="action-desc">@(IsArabic ? "أنشئ، رحّل، وأرسل لمصلحة الضرائب" : "Create, post, submit to ETA")</div>
         </div>
     </a>
-    <a class="dashboard-action-btn" href="expenses/new">
-        <Icon Name="credit-card" Class="ic" />
-        <div>
-            <div class="action-title">@(IsArabic ? "مصروف جديد" : "New expense")</div>
-            <div class="action-desc">@(IsArabic ? "صنّف وأرفق الإيصال" : "Categorise + attach receipt")</div>
-        </div>
-    </a>
-    <a class="dashboard-action-btn" href="purchase-invoices/new">
-        <Icon Name="package" Class="ic" />
-        <div>
-            <div class="action-title">@(IsArabic ? "فاتورة مشتريات" : "New purchase")</div>
-            <div class="action-desc">@(IsArabic ? "سجّل فاتورة من مورد" : "Record a supplier invoice")</div>
-        </div>
-    </a>
+    @if (!_isRepOnly)
+    {
+        <a class="dashboard-action-btn" href="expenses/new">
+            <Icon Name="credit-card" Class="ic" />
+            <div>
+                <div class="action-title">@(IsArabic ? "مصروف جديد" : "New expense")</div>
+                <div class="action-desc">@(IsArabic ? "صنّف وأرفق الإيصال" : "Categorise + attach receipt")</div>
+            </div>
+        </a>
+        <a class="dashboard-action-btn" href="purchase-invoices/new">
+            <Icon Name="package" Class="ic" />
+            <div>
+                <div class="action-title">@(IsArabic ? "فاتورة مشتريات" : "New purchase")</div>
+                <div class="action-desc">@(IsArabic ? "سجّل فاتورة من مورد" : "Record a supplier invoice")</div>
+            </div>
+        </a>
+    }
 </section>
 
 <!-- Gux.4 + Gux.5 — Three colour-coded KPI cards (was six). Each
@@ -657,27 +720,30 @@
         }
     </div>
 
-    <div class="dashboard-col">
-        <h2 class="dashboard-section-h2">@(IsArabic ? "🔗 روابط سريعة" : "🔗 Quick links")</h2>
-        <div class="dashboard-quicklinks">
-            <a href="reports/vat-monthly" class="quicklink-row">
-                <Icon Name="bar-chart" Class="ic" />
-                <span>@(IsArabic ? "تقرير الضريبة الشهري" : "Monthly VAT report")</span>
-            </a>
-            <a href="reports/trial-balance" class="quicklink-row">
-                <Icon Name="scale" Class="ic" />
-                <span>@(IsArabic ? "ميزان المراجعة" : "Trial balance")</span>
-            </a>
-            <a href="cockpit" class="quicklink-row">
-                <Icon Name="target" Class="ic" />
-                <span>@(IsArabic ? "قمرة الإقفال الشهري" : "Closing cockpit")</span>
-            </a>
-            <a href="payments/unmatched" class="quicklink-row">
-                <Icon Name="search" Class="ic" />
-                <span>@(IsArabic ? "بنود البنك غير المطابقة" : "Unmatched bank lines")</span>
-            </a>
+    @if (!_isRepOnly)
+    {
+        <div class="dashboard-col">
+            <h2 class="dashboard-section-h2">@(IsArabic ? "🔗 روابط سريعة" : "🔗 Quick links")</h2>
+            <div class="dashboard-quicklinks">
+                <a href="reports/vat-monthly" class="quicklink-row">
+                    <Icon Name="bar-chart" Class="ic" />
+                    <span>@(IsArabic ? "تقرير الضريبة الشهري" : "Monthly VAT report")</span>
+                </a>
+                <a href="reports/trial-balance" class="quicklink-row">
+                    <Icon Name="scale" Class="ic" />
+                    <span>@(IsArabic ? "ميزان المراجعة" : "Trial balance")</span>
+                </a>
+                <a href="cockpit" class="quicklink-row">
+                    <Icon Name="target" Class="ic" />
+                    <span>@(IsArabic ? "قمرة الإقفال الشهري" : "Closing cockpit")</span>
+                </a>
+                <a href="payments/unmatched" class="quicklink-row">
+                    <Icon Name="search" Class="ic" />
+                    <span>@(IsArabic ? "بنود البنك غير المطابقة" : "Unmatched bank lines")</span>
+                </a>
+            </div>
         </div>
-    </div>
+    }
 </section>
 
 <!-- Activity feed -->

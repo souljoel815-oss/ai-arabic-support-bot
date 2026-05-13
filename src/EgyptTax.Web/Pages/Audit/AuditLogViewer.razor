@@ -6,7 +6,7 @@
 @inject AppDbContext Db
 @inject HttpClient Http
 @inject NavigationManager Nav
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "سجل التدقيق (FR-028)" : "Audit log (FR-028)")</h1>
 
