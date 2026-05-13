@@ -69,6 +69,46 @@
             <div class="kpi-value">@_totalReceived.ToString("N2") @(IsArabic ? "ج.م" : "EGP")</div>
         </div>
     </div>
+
+    @* L5 follow-on — aging breakdown. Only shown when there's an
+       outstanding balance; mirrors the FIFO logic on the admin
+       customer-statement page so the customer sees exactly what
+       the operator does. *@
+    @if (_outstanding > 0)
+    {
+        <table class="data-table" style="margin-top:14px;">
+            <thead>
+                <tr>
+                    <th>@Tr("الفترة", "Age bracket")</th>
+                    <th class="num">0-30 @Tr("يوم", "days")</th>
+                    <th class="num">31-60 @Tr("يوم", "days")</th>
+                    <th class="num">61-90 @Tr("يوم", "days")</th>
+                    <th class="num">90+ @Tr("يوم", "days")</th>
+                    <th class="num">@Tr("الإجمالي", "Total")</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>@Tr("متأخر", "Outstanding")</strong></td>
+                    <td class="num">@_aging0_30.ToString("N2")</td>
+                    <td class="num">@_aging31_60.ToString("N2")</td>
+                    <td class="num">@_aging61_90.ToString("N2")</td>
+                    <td class="num" style="color:@(_agingOver90 > 0 ? "var(--danger)" : "inherit");">
+                        <strong>@_agingOver90.ToString("N2")</strong>
+                    </td>
+                    <td class="num"><strong>@_outstanding.ToString("N2")</strong></td>
+                </tr>
+            </tbody>
+        </table>
+        @if (_agingOver90 > 0)
+        {
+            <p style="font-size:13px;color:var(--muted);margin-top:6px;">
+                @Tr(
+                    "⚠ يوجد رصيد مستحق متأخر أكثر من 90 يوم. يرجى السداد في أقرب وقت لتجنب توقف التعامل.",
+                    "⚠ Some balance is more than 90 days overdue. Please settle as soon as possible to avoid service interruption.")
+            </p>
+        }
+    }
 </section>
 
 <section class="form-section">
@@ -148,6 +188,14 @@
     private decimal _totalInvoiced;
     private decimal _totalReceived;
 
+    // L5 follow-on — FIFO-aged outstanding buckets, mirrors the
+    // admin /customers/{id}/statement page. Customer sees the same
+    // breakdown the operator sees.
+    private decimal _aging0_30;
+    private decimal _aging31_60;
+    private decimal _aging61_90;
+    private decimal _agingOver90;
+
     protected override async Task OnInitializedAsync()
     {
         var access = await PortalSvc.ValidateAsync(Token);
@@ -189,6 +237,26 @@
         _totalReceived = receiptAmounts.Sum();
 
         _outstanding = _totalInvoiced - _totalReceived - creditAmounts.Sum();
+
+        // FIFO aging: receipts + credit-notes pay off the oldest
+        // invoices first. Each invoice's unpaid remainder gets
+        // bucketed by document-date age. Sort oldest-first since
+        // the parent query was DESC for display purposes.
+        var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+        var paidPool = _totalReceived + creditAmounts.Sum();
+        foreach (var inv in _invoices.Where(i => !i.IsCreditNote)
+                     .OrderBy(i => i.DocumentDate))
+        {
+            var amt = inv.GrandTotal.Amount;
+            if (paidPool >= amt) { paidPool -= amt; continue; }
+            var unpaid = amt - paidPool;
+            paidPool = 0m;
+            var ageDays = todayUtc.DayNumber - inv.DocumentDate.DayNumber;
+            if (ageDays <= 30) _aging0_30 += unpaid;
+            else if (ageDays <= 60) _aging31_60 += unpaid;
+            else if (ageDays <= 90) _aging61_90 += unpaid;
+            else _agingOver90 += unpaid;
+        }
 
         _loading = false;
     }
