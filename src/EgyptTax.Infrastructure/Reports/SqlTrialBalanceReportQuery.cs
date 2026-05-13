@@ -46,18 +46,30 @@ public sealed class SqlTrialBalanceReportQuery : ITrialBalanceReportQuery
         var startUtc = periodStart.ToDateTime(TimeOnly.MinValue);
         var endExclusive = periodEnd.AddDays(1).ToDateTime(TimeOnly.MinValue);
 
-        var rows = await (
+        // BUG-TRIAL — SQLite's EF translator can't Sum() decimals
+        // server-side. Project the journal-line amounts to a flat
+        // list, then group + sum in memory. Volume is one period of
+        // posted journal lines (small for an SMB).
+        var rawLines = await (
             from e in _db.Set<JournalEntry>().AsNoTracking()
             from l in e.Lines
             where e.PostedAtUtc >= startUtc && e.PostedAtUtc < endExclusive
-            group l by l.AccountCode into g
             select new
             {
-                AccountCode = g.Key,
-                TotalDebit = g.Sum(x => x.Debit.Amount),
-                TotalCredit = g.Sum(x => x.Credit.Amount),
+                l.AccountCode,
+                Debit = l.Debit.Amount,
+                Credit = l.Credit.Amount,
             }
         ).ToListAsync(cancellationToken);
+        var rows = rawLines
+            .GroupBy(x => x.AccountCode)
+            .Select(g => new
+            {
+                AccountCode = g.Key,
+                TotalDebit = g.Sum(x => x.Debit),
+                TotalCredit = g.Sum(x => x.Credit),
+            })
+            .ToList();
 
         var ordered = rows.OrderBy(r => r.AccountCode, StringComparer.Ordinal)
             .Select(r => new TrialBalanceRow(

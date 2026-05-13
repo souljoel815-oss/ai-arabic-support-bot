@@ -2,7 +2,7 @@
 @using EgyptTax.Application.Reports
 @using Microsoft.AspNetCore.Authorization
 @inject ITrialBalanceReportQuery ReportQuery
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "ميزان المراجعة" : "Trial balance (FR-024)")</h1>
 

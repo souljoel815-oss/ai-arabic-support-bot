@@ -8,7 +8,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbFactory
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <PageTitle>@(IsArabic ? "ضريبة معدل الدوران (قانون 6/2025) | DaftarX" : "Turnover Tax (Law 6/2025) | DaftarX")</PageTitle>
 
@@ -42,7 +42,7 @@
                 .AsNoTracking()
                 .Where(i => i.State == DocumentState.Posted
                          && i.DocumentDate >= from && i.DocumentDate <= to
-                         && !i.IsCreditNote)
+                         && i.CreditNoteOfInvoiceId == null)
                 .Select(i => i.GrandTotal.Amount)
                 .ToListAsync();
             _annualRevenueEgp = grandTotals.Sum();

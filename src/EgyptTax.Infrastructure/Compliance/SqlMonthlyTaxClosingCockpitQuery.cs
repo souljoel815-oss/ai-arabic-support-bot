@@ -76,14 +76,20 @@ public sealed class SqlMonthlyTaxClosingCockpitQuery : IMonthlyTaxClosingCockpit
                 s.Id,
                 s.DocumentNumber,
                 s.DocumentDate,
-                s.IsCreditNote,
+                // Project the mapped column directly; the computed
+                // IsCreditNote getter isn't translatable by SQLite's
+                // EF provider (same class of bug as BUG-G-001).
+                IsCreditNote = s.CreditNoteOfInvoiceId != null,
                 s.CustomerId,
             })
             .ToListAsync(cancellationToken);
 
         // Posted purchases in period — pull line-level deductible
         // info because FR-016 + non-recoverable VAT both need it.
-        var postedPurchases = await (
+        // BUG-COMP-001 — SQLite's EF translator can't Sum() decimals
+        // server-side. Project the lines first then aggregate in
+        // memory.
+        var purchaseRaw = await (
             from p in _db.Set<PurchaseInvoice>().AsNoTracking()
             where
                 p.State == DocumentState.Posted
@@ -95,12 +101,20 @@ public sealed class SqlMonthlyTaxClosingCockpitQuery : IMonthlyTaxClosingCockpit
                 p.DocumentNumber,
                 p.DateReceived,
                 p.SupplierId,
-                p.SupplierTaxProfileSnapshot.ProfileType,
-                AnyDeductibleLine = p.Lines.Any(l => l.DeductibleFlag),
-                InputVat = p.Lines.Where(l => l.DeductibleFlag).Sum(l => (decimal?)l.LineVat.Amount)
-                    ?? 0m,
+                ProfileType = p.SupplierTaxProfileSnapshot.ProfileType,
+                Lines = p.Lines.Select(l => new { l.DeductibleFlag, Vat = l.LineVat.Amount }).ToList(),
             }
         ).ToListAsync(cancellationToken);
+        var postedPurchases = purchaseRaw.Select(p => new
+        {
+            p.Id,
+            p.DocumentNumber,
+            p.DateReceived,
+            p.SupplierId,
+            p.ProfileType,
+            AnyDeductibleLine = p.Lines.Any(l => l.DeductibleFlag),
+            InputVat = p.Lines.Where(l => l.DeductibleFlag).Sum(l => l.Vat),
+        }).ToList();
 
         // Posted expenses in period.
         var postedExpenses = await _db.Set<Expense>()

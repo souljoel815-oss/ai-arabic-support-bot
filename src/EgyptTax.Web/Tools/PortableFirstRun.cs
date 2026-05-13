@@ -4,6 +4,7 @@ using EgyptTax.Domain.Identity;
 using EgyptTax.Infrastructure.Persistence;
 using EgyptTax.SharedKernel;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace EgyptTax.Web.Tools;
 
@@ -33,7 +34,21 @@ internal static class PortableFirstRun
                 .CreateDbContext();
             try
             {
-                await db.Database.EnsureCreatedAsync();
+                // Switched from EnsureCreatedAsync to MigrateAsync so
+                // schema changes (new columns, new tables) land on
+                // existing portable DBs automatically — operators
+                // (and devs) no longer have to delete daftarx.db on
+                // every release.
+                //
+                // Backwards-compat for legacy DBs created via the
+                // old EnsureCreated path: detect a missing
+                // __EFMigrationsHistory table by trying to read it;
+                // if it's absent but the schema looks initialised
+                // (admin role exists), stamp the history with all
+                // applied migrations so MigrateAsync becomes a no-op
+                // on this first run, then runs new migrations only
+                // on the next change.
+                await EnsureMigratedAsync(db);
                 await EnsureRoleAsync(db);
                 await EnsureVatCategoriesAsync(db);
                 await EnsureAdminUserAsync(db, scope.ServiceProvider);
@@ -48,6 +63,96 @@ internal static class PortableFirstRun
         // listening. Fire-and-forget — we don't want to block startup
         // if the user doesn't have a default browser configured.
         _ = LaunchBrowserAsync(app);
+    }
+
+    private static async Task EnsureMigratedAsync(AppDbContext db)
+    {
+        // Direct schema probes — sqlite_master tells us authoritatively
+        // which tables exist on this SQLite file. EF's
+        // GetAppliedMigrationsAsync returns an empty list (not throws)
+        // when the history table is absent, so it can't distinguish
+        // "fresh DB" from "legacy EnsureCreated DB".
+        var historyExists = await TableExistsAsync(db, "__EFMigrationsHistory");
+        var legacySchemaExists = await TableExistsAsync(db, "roles");
+
+        // One-time legacy conversion: schema present but no migration
+        // history (DB was created via the old EnsureCreated path).
+        // Backfill history with all migrations that exist in the
+        // assembly RIGHT NOW so MigrateAsync treats them as applied.
+        // Future migrations added later will be missing from history
+        // and MigrateAsync will run them normally.
+        //
+        // CRITICAL: this branch must NOT run on every boot — that
+        // would stamp newly-added migrations as already-applied
+        // before they get a chance to run (BUG-H-001).
+        if (!historyExists && legacySchemaExists)
+        {
+            await db.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (
+                    ""MigrationId"" TEXT NOT NULL CONSTRAINT ""PK___EFMigrationsHistory"" PRIMARY KEY,
+                    ""ProductVersion"" TEXT NOT NULL
+                );");
+            var assemblyMigrations = db.Database
+                .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsAssembly>()
+                .Migrations
+                .Select(kvp => kvp.Key)
+                .ToList();
+            foreach (var migrationId in assemblyMigrations)
+            {
+                await db.Database.ExecuteSqlRawAsync(
+                    @"INSERT OR IGNORE INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"") VALUES ({0}, '8.0.0');",
+                    migrationId);
+            }
+        }
+
+        // BUG-H-001 recovery: an earlier code path stamped all
+        // assembly migrations into history without running their
+        // Up() methods, so DBs in the wild may have a history row
+        // for a migration whose tables were never actually created.
+        // For each well-known table that should exist if its
+        // migration is recorded as applied, verify both — and if the
+        // table is missing despite the history row, drop the row so
+        // MigrateAsync re-applies the migration. Targeted to the
+        // tables we know were affected; new migrations don't need
+        // entries here because the gating fix above prevents the
+        // same drift going forward.
+        await SelfHealMissingTableAsync(db,
+            tableName: "route_visits",
+            migrationIdSuffix: "_RouteVisits");
+
+        // Always end with MigrateAsync. On a fresh DB it builds the
+        // full schema. On a normal DB it applies any pending
+        // migrations. After the legacy backfill above it's a no-op
+        // (history covers everything in the assembly).
+        await db.Database.MigrateAsync();
+    }
+
+    private static async Task SelfHealMissingTableAsync(AppDbContext db, string tableName, string migrationIdSuffix)
+    {
+        var tableExists = await TableExistsAsync(db, tableName);
+        if (tableExists) return;
+        if (!await TableExistsAsync(db, "__EFMigrationsHistory")) return;
+
+        await db.Database.ExecuteSqlRawAsync(
+            @"DELETE FROM ""__EFMigrationsHistory"" WHERE ""MigrationId"" LIKE {0};",
+            "%" + migrationIdSuffix);
+    }
+
+    private static async Task<bool> TableExistsAsync(AppDbContext db, string tableName)
+    {
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+        {
+            await conn.OpenAsync();
+        }
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name = $name LIMIT 1";
+        var p = cmd.CreateParameter();
+        p.ParameterName = "$name";
+        p.Value = tableName;
+        cmd.Parameters.Add(p);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is not null;
     }
 
     private static async Task EnsureRoleAsync(AppDbContext db)

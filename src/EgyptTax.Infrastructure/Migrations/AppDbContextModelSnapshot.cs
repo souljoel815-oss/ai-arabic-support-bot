@@ -1472,6 +1472,10 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
+                    b.Property<decimal?>("CommissionRatePercent")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("commission_rate_percent");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(254)
@@ -1632,6 +1636,10 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_user_id");
+
                     b.Property<Guid?>("CreditNoteOfInvoiceId")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("credit_note_of_invoice_id");
@@ -1737,6 +1745,9 @@ namespace EgyptTax.Infrastructure.Migrations
                         });
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("ix_sales_invoices_created_by_user_id");
 
                     b.HasIndex("CreditNoteOfInvoiceId")
                         .HasDatabaseName("ix_sales_invoices_credit_note_of_invoice_id")
@@ -2057,6 +2068,10 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("varchar(32)")
                         .HasColumnName("code");
 
+                    b.Property<decimal?>("CreditLimitEgp")
+                        .HasColumnType("decimal(19,2)")
+                        .HasColumnName("credit_limit_egp");
+
                     b.Property<string>("Email")
                         .HasMaxLength(254)
                         .IsUnicode(false)
@@ -2274,6 +2289,14 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("varchar(32)")
                         .HasColumnName("eta_item_code");
 
+                    b.Property<decimal?>("LowStockThreshold")
+                        .HasColumnType("decimal(19,3)")
+                        .HasColumnName("low_stock_threshold");
+
+                    b.Property<decimal>("QuantityOnHand")
+                        .HasColumnType("decimal(19,3)")
+                        .HasColumnName("quantity_on_hand");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -2305,6 +2328,55 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasDatabaseName("ix_items_eta_code_pending");
 
                     b.ToTable("items", "master");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.MasterData.StockMovement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("item_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("note");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("occurred_at_utc");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("decimal(19,3)")
+                        .HasColumnName("quantity");
+
+                    b.Property<decimal>("QuantityOnHandAfter")
+                        .HasColumnType("decimal(19,3)")
+                        .HasColumnName("quantity_on_hand_after");
+
+                    b.Property<Guid?>("SourceDocumentId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("source_document_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ItemId", "OccurredAtUtc")
+                        .HasDatabaseName("ix_stock_movements_item_occurred");
+
+                    b.ToTable("stock_movements", "master");
                 });
 
             modelBuilder.Entity("EgyptTax.Domain.MasterData.Supplier", b =>
@@ -2879,6 +2951,196 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.ToTable("customer_referrals", "referrals");
                 });
 
+            modelBuilder.Entity("EgyptTax.Domain.Sales.RouteVisit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("completed_at_utc");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("PlannedNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("planned_note");
+
+                    b.Property<Guid>("RepUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("rep_user_id");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int")
+                        .HasColumnName("sequence");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("status");
+
+                    b.Property<DateOnly>("VisitDate")
+                        .HasColumnType("date")
+                        .HasColumnName("visit_date");
+
+                    b.Property<string>("VisitNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("visit_note");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_route_visits_customer_id");
+
+                    b.HasIndex("RepUserId", "VisitDate", "Sequence")
+                        .HasDatabaseName("ix_route_visits_rep_date_seq");
+
+                    b.ToTable("route_visits", "documents");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Sales.SalesOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("ConfirmedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("confirmed_at_utc");
+
+                    b.Property<DateTime?>("ConvertedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("converted_at_utc");
+
+                    b.Property<Guid?>("ConvertedToInvoiceId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("converted_to_invoice_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("note");
+
+                    b.Property<DateOnly>("OrderDate")
+                        .HasColumnType("date")
+                        .HasColumnName("order_date");
+
+                    b.Property<string>("OrderNumber")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("order_number");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("state");
+
+                    b.ComplexProperty<Dictionary<string, object>>("GrandTotal", "EgyptTax.Domain.Sales.SalesOrder.GrandTotal#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("grand_total");
+                        });
+
+                    b.ComplexProperty<Dictionary<string, object>>("Subtotal", "EgyptTax.Domain.Sales.SalesOrder.Subtotal#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("subtotal");
+                        });
+
+                    b.ComplexProperty<Dictionary<string, object>>("VatTotal", "EgyptTax.Domain.Sales.SalesOrder.VatTotal#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("vat_total");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("ix_sales_orders_created_by_user_id");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_sales_orders_customer_id");
+
+                    b.HasIndex("State")
+                        .HasDatabaseName("ix_sales_orders_state");
+
+                    b.ToTable("sales_orders", "documents");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Sales.SalesOrderLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("item_id");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("decimal(19,3)")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid>("SalesOrderId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("sales_order_id");
+
+                    b.Property<Guid>("VatCategoryId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("vat_category_id");
+
+                    b.Property<decimal>("VatRatePercent")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("vat_rate_percent");
+
+                    b.ComplexProperty<Dictionary<string, object>>("UnitPrice", "EgyptTax.Domain.Sales.SalesOrderLine.UnitPrice#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("unit_price");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SalesOrderId");
+
+                    b.ToTable("sales_order_lines", "documents");
+                });
+
             modelBuilder.Entity("EgyptTax.Domain.Settings.BackupConfig", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3034,6 +3296,21 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("notification_prefs", "settings");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Settings.SalesRepSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("RequireApproval")
+                        .HasColumnType("bit")
+                        .HasColumnName("require_approval");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("sales_rep_settings", "settings");
                 });
 
             modelBuilder.Entity("EgyptTax.Domain.Settings.SmtpSettings", b =>
@@ -3763,6 +4040,15 @@ namespace EgyptTax.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("EgyptTax.Domain.MasterData.StockMovement", b =>
+                {
+                    b.HasOne("EgyptTax.Domain.MasterData.Item", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("EgyptTax.Domain.Numbering.DocumentNumberAllocator", b =>
                 {
                     b.HasOne("EgyptTax.Domain.Numbering.DocumentSeries", null)
@@ -3777,6 +4063,15 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.HasOne("EgyptTax.Domain.Purchases.PurchaseInvoice", null)
                         .WithMany("Lines")
                         .HasForeignKey("PurchaseInvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Sales.SalesOrderLine", b =>
+                {
+                    b.HasOne("EgyptTax.Domain.Sales.SalesOrder", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("SalesOrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -3842,6 +4137,11 @@ namespace EgyptTax.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("EgyptTax.Domain.Purchases.PurchaseInvoice", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Sales.SalesOrder", b =>
                 {
                     b.Navigation("Lines");
                 });
