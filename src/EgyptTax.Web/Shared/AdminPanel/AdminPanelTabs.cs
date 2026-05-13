@@ -28,6 +28,7 @@ public static class AdminPanelTabs
         new("backup",            "save",      "النسخ الاحتياطي",      "Backup",              AdminTabRole.AdminOnly),
         new("notifications",     "bell",      "الإشعارات",           "Notifications",       AdminTabRole.AnyAuthenticated),
         new("sales-reps",        "users",     "مناديب المبيعات",      "Sales Reps",          AdminTabRole.AdminOnly),
+        new("ai",                "zap",       "الذكاء الاصطناعي",     "AI (Claude)",         AdminTabRole.AdminOnly),
         new("about",             "info",      "حول ومساعدة",         "About & Support",     AdminTabRole.AnyAuthenticated),
     };
 

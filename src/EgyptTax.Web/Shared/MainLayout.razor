@@ -242,6 +242,10 @@
                 {
                     <a href="data-import" class="@ActiveLink("data-import")" @onclick="CloseSidebar">@Tr("📥 استيراد بيانات", "📥 Import data")</a>
                 <a href="quotations" class="@ActiveLink("quotations")" @onclick="CloseSidebar">@Tr("📝 عروض الأسعار", "📝 Quotations")</a>
+                @if (!_isRepOnly)
+                {
+                    <a href="scan-receipt" class="@ActiveLink("scan-receipt")" @onclick="CloseSidebar">@Tr("🤖 مسح إيصال (AI)", "🤖 Scan receipt (AI)")</a>
+                }
                 }
             </nav>
         </details>

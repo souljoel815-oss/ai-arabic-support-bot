@@ -1,0 +1,191 @@
+@page "/scan-receipt"
+@using EgyptTax.Infrastructure.Ai
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject OcrReceiptHandler Ocr
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    M.1 (v3 roadmap) — Arabic OCR for receipts via Claude Vision.
+    The "first 5 seconds aha moment" of the M-phase: paste a photo
+    of a paper receipt, watch the form pre-fill itself with date,
+    vendor, amount, VAT, category. None of the surveyed Egyptian
+    competitors has this in Arabic.
+
+    The page intentionally does NOT auto-create a Purchase Invoice
+    Draft for v1. The operator clicks "Create Purchase Invoice"
+    after reviewing the extracted fields — keeps a human in the
+    loop for the first weeks of usage so we catch any extraction
+    bugs before they hit the books.
+*@
+
+<PageTitle>@Tr("📷 مسح إيصال | DaftarX", "📷 Scan Receipt | DaftarX")</PageTitle>
+
+<h1>@Tr("📷 مسح إيصال", "📷 Scan Receipt")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "ارفع صورة أو PDF للإيصال — Claude بيقرأها بالعربي ويستخرج التاريخ، البائع، المبلغ، الضريبة، والفئة في حوالي 5 ثوان. مفيش حد بيعمل ده بالعربي في مصر دلوقتي.",
+        "Upload a receipt image or PDF — Claude reads it in Arabic and extracts the date, vendor, amount, VAT, and category in about 5 seconds. No Egyptian competitor offers this in Arabic.")
+</p>
+
+<section class="form-section">
+    <h2>@Tr("١. اختر الصورة", "1. Pick the file")</h2>
+    <p class="page-subtitle" style="font-size:13px;">
+        @Tr(
+            "JPG / PNG / PDF · حجم أقصى 5 ميجا · أفضل النتائج لما تكون الصورة واضحة وغير مائلة.",
+            "JPG / PNG / PDF · 5 MB max · best results with a clear, upright photo.")
+    </p>
+    <InputFile OnChange="OnFileSelectedAsync" accept=".jpg,.jpeg,.png,.pdf,image/*"
+               disabled="@_busy" />
+</section>
+
+@if (_busy)
+{
+    <div class="kpi-card kpi-info" style="margin-top:16px;padding:14px;">
+        @Tr("⏳ Claude بيقرأ الإيصال… (عادةً 3-8 ثوان)", "⏳ Claude is reading the receipt… (usually 3-8 seconds)")
+    </div>
+}
+
+@if (_result is not null)
+{
+    @if (_result.Ok)
+    {
+        <section class="form-section" style="margin-top:16px;">
+            <h2>@Tr("٢. النتيجة", "2. Result")</h2>
+            <div class="kpi-card kpi-success" style="padding:14px;margin-bottom:16px;">
+                ✓ @Tr(
+                    $"تم الاستخراج في {(_result.InputTokens + _result.OutputTokens)} توكن (~ {EstimateCostEgp(_result):N2} ج.م).",
+                    $"Extracted in {(_result.InputTokens + _result.OutputTokens)} tokens (~ EGP {EstimateCostEgp(_result):N2}).")
+            </div>
+            <table class="data-table">
+                <tbody>
+                    <tr>
+                        <th>@Tr("البائع", "Vendor")</th>
+                        <td>@(_result.Vendor ?? "—")</td>
+                    </tr>
+                    <tr>
+                        <th>@Tr("التاريخ", "Date")</th>
+                        <td>@(_result.Date?.ToString("yyyy-MM-dd") ?? "—")</td>
+                    </tr>
+                    <tr>
+                        <th>@Tr("الإجمالي (ج.م)", "Total (EGP)")</th>
+                        <td>@(_result.TotalEgp?.ToString("N2") ?? "—")</td>
+                    </tr>
+                    <tr>
+                        <th>@Tr("ضريبة القيمة المضافة (ج.م)", "VAT (EGP)")</th>
+                        <td>@(_result.VatEgp?.ToString("N2") ?? "—")</td>
+                    </tr>
+                    <tr>
+                        <th>@Tr("الفئة المقترحة", "Suggested category")</th>
+                        <td>@(_result.Category ?? "—")</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="invoice-actions" style="margin-top:16px;">
+                <a href="/expenses/new?@BuildPrefillQuery()" class="btn-primary">
+                    @Tr("📝 أنشئ مصروف من البيانات دي", "📝 Create expense from this")
+                </a>
+                <a href="/scan-receipt" class="btn-secondary">@Tr("امسح إيصال آخر", "Scan another")</a>
+            </div>
+            <p class="page-subtitle" style="font-size:12px;margin-top:8px;">
+                @Tr(
+                    "الزرار بيعمل draft في صفحة المصروفات بالبيانات اللي ظهرت هنا — تقدر تعدّلها قبل الترحيل.",
+                    "The button creates a draft in the Expenses page pre-filled with the data above — you can edit it before posting.")
+            </p>
+        </section>
+    }
+    else
+    {
+        <div class="kpi-card kpi-error" style="margin-top:16px;padding:14px;">
+            ⚠ @_result.ErrorMessage
+        </div>
+    }
+}
+
+@code {
+    private const long MaxUploadBytes = 5 * 1024 * 1024;
+
+    private bool _busy;
+    private OcrResult? _result;
+    private Guid? _userId;
+
+    [CascadingParameter] public Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            var idClaim = state.User.FindFirst("user_id")?.Value
+                ?? state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (Guid.TryParse(idClaim, out var uid)) _userId = uid;
+        }
+    }
+
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _result = null;
+        var file = e.File;
+        if (file is null) return;
+
+        if (file.Size > MaxUploadBytes)
+        {
+            _result = OcrResult.Failure(
+                Tr($"الملف أكبر من {MaxUploadBytes / 1024 / 1024} ميجا.",
+                   $"File exceeds the {MaxUploadBytes / 1024 / 1024} MB cap."));
+            return;
+        }
+
+        var mime = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+
+        _busy = true;
+        try
+        {
+            byte[] bytes;
+            await using (var stream = file.OpenReadStream(MaxUploadBytes))
+            using (var ms = new MemoryStream())
+            {
+                await stream.CopyToAsync(ms);
+                bytes = ms.ToArray();
+            }
+
+            _result = await Ocr.ScanAsync(file.Name, mime, bytes, _userId);
+        }
+        catch (Exception ex)
+        {
+            _result = OcrResult.Failure(ex.Message);
+        }
+        finally { _busy = false; }
+    }
+
+    private string BuildPrefillQuery()
+    {
+        if (_result is null) return "";
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(_result.Vendor))
+            parts.Add($"vendor={Uri.EscapeDataString(_result.Vendor)}");
+        if (_result.Date is { } d)
+            parts.Add($"date={d:yyyy-MM-dd}");
+        if (_result.TotalEgp is { } t)
+            parts.Add($"total={t.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (_result.VatEgp is { } v)
+            parts.Add($"vat={v.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (!string.IsNullOrEmpty(_result.Category))
+            parts.Add($"category={Uri.EscapeDataString(_result.Category)}");
+        return string.Join("&", parts);
+    }
+
+    /// <summary>
+    /// Rough EGP-cost estimate using public Anthropic prices for
+    /// Haiku 4.5 (~$0.25/MTok input, ~$1.25/MTok output) at
+    /// 50 EGP/USD. Display-only — actual billing comes from
+    /// Anthropic's monthly invoice.
+    /// </summary>
+    private static decimal EstimateCostEgp(OcrResult r)
+    {
+        var inputCostUsd = (decimal)r.InputTokens / 1_000_000m * 0.25m;
+        var outputCostUsd = (decimal)r.OutputTokens / 1_000_000m * 1.25m;
+        return Math.Round((inputCostUsd + outputCostUsd) * 50m, 2);
+    }
+}

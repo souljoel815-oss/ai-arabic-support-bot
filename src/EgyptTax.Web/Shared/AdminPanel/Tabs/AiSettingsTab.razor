@@ -1,0 +1,207 @@
+@using EgyptTax.Domain.Settings
+@using EgyptTax.Infrastructure.Ai
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Settings
+@using Microsoft.EntityFrameworkCore
+@inject SettingsRepository Settings
+@inject AnthropicApiKeyProtector Protector
+@inject AppDbContext Db
+
+@*
+    M-phase (v3 roadmap) — AI Settings tab. Operator pastes their
+    Anthropic API key + picks a model. Key is DataProtector-encrypted
+    at rest; plaintext only in memory during the form save and during
+    the actual Claude HTTP call.
+
+    Disabled by default — flipping the master switch on without a
+    key short-circuits in OcrReceiptHandler with a clear "configure
+    the key first" error.
+*@
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<section class="ai-settings-tab">
+    <h2>@(IsArabic ? "الذكاء الاصطناعي (Claude)" : "AI (Claude)")</h2>
+    <p class="page-subtitle">
+        @(IsArabic
+            ? "بيستخدم Claude من Anthropic لاستخراج بيانات الإيصالات تلقائياً (M.1) والإجابة على أسئلتك المحاسبية بالعربي (M.2). محتاج مفتاح API من console.anthropic.com — التكلفة تقريبية: 0.20 جنيه لكل إيصال OCR."
+            : "Uses Claude from Anthropic for receipt OCR (M.1) and Arabic NL accounting queries (M.2). Needs an API key from console.anthropic.com — rough cost: ~0.20 EGP per receipt scan.")
+    </p>
+
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+    }
+
+    <div class="form-grid">
+        <label style="grid-column:span 2;">
+            <span>@(IsArabic ? "تفعيل الذكاء الاصطناعي" : "Enable AI features")</span>
+            <input type="checkbox" @bind="_enabled" />
+        </label>
+
+        <label style="grid-column:span 2;">
+            <span>@(IsArabic ? "مفتاح Anthropic API" : "Anthropic API key")</span>
+            <input type="password" @bind="_apiKey" placeholder="@_apiKeyHint" autocomplete="off" />
+            <em style="font-size:12px;color:var(--muted);">
+                @(IsArabic
+                    ? "احصل عليه من console.anthropic.com → Settings → API Keys. مش هيتعرض في أي مكان بعد ما تحفظ."
+                    : "Get one from console.anthropic.com → Settings → API Keys. It's encrypted at rest and never displayed again.")
+            </em>
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "نموذج Claude" : "Claude model")</span>
+            <select @bind="_modelName">
+                <option value="claude-haiku-4-5-20251001">Haiku 4.5 (recommended — fastest + cheapest)</option>
+                <option value="claude-sonnet-4-6">Sonnet 4.6 (smarter, ~3× cost)</option>
+                <option value="claude-opus-4-7">Opus 4.7 (smartest, ~10× cost)</option>
+            </select>
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "الميزانية الشهرية المقدرة (ج.م)" : "Monthly budget cap (EGP)")</span>
+            <input type="number" min="50" max="100000" step="50" @bind="_monthlyBudget" />
+            <em style="font-size:12px;color:var(--muted);">
+                @(IsArabic
+                    ? "للعرض فقط في v1 (مش بيمنع الاستخدام بعد التجاوز)."
+                    : "Informational in v1 (does not block calls past the cap).")
+            </em>
+        </label>
+    </div>
+
+    <div class="invoice-actions" style="margin-top:16px;">
+        <button type="button" class="btn-primary" disabled="@_saving" @onclick="OnSaveAsync">
+            @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ", "Save"))
+        </button>
+    </div>
+
+    @if (_recentScans.Count > 0)
+    {
+        <h3 style="margin-top:24px;">@(IsArabic ? "آخر العمليات" : "Recent scans")</h3>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "التاريخ" : "When")</th>
+                    <th>@(IsArabic ? "الملف" : "File")</th>
+                    <th>@(IsArabic ? "البائع" : "Vendor")</th>
+                    <th>@(IsArabic ? "الإجمالي" : "Total")</th>
+                    <th>@(IsArabic ? "Tokens" : "Tokens (in/out)")</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var scan in _recentScans)
+                {
+                    <tr>
+                        <td>@scan.ScannedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@scan.FileName</td>
+                        <td>@(scan.ExtractedVendor ?? "—")</td>
+                        <td>@(scan.ExtractedTotalEgp?.ToString("N2") ?? "—")</td>
+                        <td>@scan.InputTokens / @scan.OutputTokens</td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(scan.ErrorMessage))
+                            {
+                                <span style="color:var(--danger);">⚠ @scan.ErrorMessage</span>
+                            }
+                            else
+                            {
+                                <span style="color:var(--success);">✓</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    private bool _loading = true;
+    private bool _saving;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private bool _enabled;
+    private string _apiKey = "";
+    private string _apiKeyHint = "";
+    private string _modelName = "claude-haiku-4-5-20251001";
+    private int _monthlyBudget = 500;
+
+    private List<ReceiptScan> _recentScans = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var s = await Settings.GetAiSettingsAsync();
+        _enabled = s.Enabled;
+        _modelName = s.ModelName;
+        _monthlyBudget = s.MonthlyBudgetEgp;
+        _apiKey = "";
+        _apiKeyHint = string.IsNullOrEmpty(s.EncryptedApiKey)
+            ? Tr("sk-ant-api03-…", "sk-ant-api03-…")
+            : Tr("(محفوظ — اتركه فارغاً للإبقاء عليه)", "(stored — leave blank to keep)");
+
+        _recentScans = await Db.Set<ReceiptScan>()
+            .AsNoTracking()
+            .OrderByDescending(r => r.ScannedAtUtc)
+            .Take(10)
+            .ToListAsync();
+
+        _loading = false;
+    }
+
+    private async Task OnSaveAsync()
+    {
+        _saving = true;
+        _flash = null;
+        try
+        {
+            if (_monthlyBudget is < 50 or > 100000)
+            {
+                _flash = Tr("الميزانية لازم تكون بين 50 و 100,000 ج.م.", "Budget must be 50-100,000 EGP.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+
+            var s = await Settings.GetAiSettingsAsync();
+
+            var encryptedKey = string.IsNullOrWhiteSpace(_apiKey)
+                ? (s.EncryptedApiKey ?? "")
+                : Protector.Encrypt(_apiKey);
+
+            if (_enabled && string.IsNullOrEmpty(encryptedKey))
+            {
+                _flash = Tr("أدخل مفتاح API قبل التفعيل.", "Enter an API key before enabling.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+
+            if (_enabled)
+            {
+                s.Configure(encryptedKey, _modelName, _monthlyBudget);
+            }
+            else
+            {
+                // Allow model-only updates while disabled.
+                s.UpdateModelOnly(_modelName);
+                s.Disable();
+            }
+
+            await Db.SaveChangesAsync();
+
+            _apiKey = "";
+            _apiKeyHint = Tr("(محفوظ — اتركه فارغاً للإبقاء عليه)", "(stored — leave blank to keep)");
+            _flash = Tr("✓ تم الحفظ.", "✓ Saved.");
+            _flashClass = "kpi-card kpi-info";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _saving = false; }
+    }
+}

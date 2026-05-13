@@ -446,6 +446,14 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.ItemImportHandler>
 // sweep (daily Hangfire job).
 builder.Services.AddScoped<EgyptTax.Infrastructure.Quotations.QuotationService>();
 
+// M-phase (v3 roadmap) — Anthropic Claude integration. Singleton
+// HttpClient (typed) per .NET guidance, Singleton key protector
+// (DataProtection keyring), Scoped OCR handler (writes via
+// AppDbContext per-request).
+builder.Services.AddSingleton<EgyptTax.Infrastructure.Ai.AnthropicApiKeyProtector>();
+builder.Services.AddHttpClient<EgyptTax.Infrastructure.Ai.AnthropicVisionClient>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.OcrReceiptHandler>();
+
 // Gux.13 Tab 5 — SMTP password protector + test sender. Singleton
 // because IDataProtectionProvider keys are bound to the host's
 // keyring (no per-request state).

@@ -72,4 +72,14 @@ public sealed class SettingsRepository
         await _db.SaveChangesAsync(ct);
         return fresh;
     }
+
+    public async Task<AiSettings> GetAiSettingsAsync(CancellationToken ct = default)
+    {
+        var existing = await _db.Set<AiSettings>().FirstOrDefaultAsync(ct);
+        if (existing is not null) return existing;
+        var fresh = AiSettings.CreateDefault();
+        _db.Add(fresh);
+        await _db.SaveChangesAsync(ct);
+        return fresh;
+    }
 }
