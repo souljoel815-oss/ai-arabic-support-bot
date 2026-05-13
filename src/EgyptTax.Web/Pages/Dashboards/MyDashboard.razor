@@ -1,0 +1,325 @@
+@page "/dashboards/me"
+@using System.Globalization
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Sales
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    Phase J — "My Dashboard". Personal KPIs scoped to the
+    currently-signed-in user (their visits, their pipeline, their
+    sales, their collections, customers approaching credit limit on
+    their book). Designed for the SALES_REP role — the global home
+    page hides most sections for reps, so this is their landing.
+    Admins / managers can also visit; they'll just see their own
+    personal stats, which is useful when an admin posts invoices
+    themselves.
+*@
+
+<h1>@(IsArabic ? "لوحتي" : "My Dashboard")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? $"أداؤك الشخصي لشهر {_periodLabel}."
+        : $"Your personal performance for {_periodLabel}.")
+</p>
+
+@if (_loading) { <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p> return; }
+
+<section class="kpi-grid kpi-grid-3" style="margin-bottom:24px;">
+    <div class="kpi-card @(_visitsTodayPlanned > 0 ? "kpi-card-warn" : "kpi-card-ok")">
+        <div class="kpi-card-h">@(IsArabic ? "زيارات اليوم" : "Today's visits")</div>
+        <div class="kpi-card-value">@_visitsTodayPlanned</div>
+        <div class="kpi-card-foot">
+            @if (_visitsTodayCompleted > 0)
+            {
+                @(IsArabic
+                    ? $"تمت {_visitsTodayCompleted} من أصل {_visitsTodayPlanned + _visitsTodayCompleted}"
+                    : $"{_visitsTodayCompleted} of {_visitsTodayPlanned + _visitsTodayCompleted} completed")
+            }
+            else
+            {
+                <a href="/routes">@(IsArabic ? "افتح خطة السير ←" : "Open route plan →")</a>
+            }
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card-h">@(IsArabic ? "خط الأنابيب" : "Pipeline")</div>
+        <div class="kpi-card-value">@_pipelineTotal.ToString("N0") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">
+            @(IsArabic
+                ? $"{_pipelineCount} أمر بيع مؤكّد بانتظار التحويل"
+                : $"{_pipelineCount} confirmed order(s) awaiting conversion")
+        </div>
+    </div>
+
+    <div class="kpi-card kpi-card-ok">
+        <div class="kpi-card-h">@(IsArabic ? "مبيعات الشهر" : "This-month sales")</div>
+        <div class="kpi-card-value">@_salesThisMonth.ToString("N0") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">
+            @(IsArabic
+                ? $"{_salesCount} فاتورة مرحَّلة"
+                : $"{_salesCount} posted invoice(s)")
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card-h">@(IsArabic ? "تحصيلات الشهر" : "This-month collections")</div>
+        <div class="kpi-card-value">@_collectionsThisMonth.ToString("N0") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">
+            @(IsArabic
+                ? $"{_collectionsCount} إيصال قبض"
+                : $"{_collectionsCount} receipt(s)")
+        </div>
+    </div>
+
+    <div class="kpi-card @(_riskCount > 0 ? "kpi-card-warn" : "kpi-card-ok")">
+        <div class="kpi-card-h">@(IsArabic ? "عملاء قرب الحد" : "At-risk customers")</div>
+        <div class="kpi-card-value">@_riskCount</div>
+        <div class="kpi-card-foot">
+            @(IsArabic ? "تخطّوا 80% من حد الائتمان" : "Over 80% of credit limit")
+        </div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-card-h">@(IsArabic ? "متوسط الفاتورة" : "Avg invoice")</div>
+        <div class="kpi-card-value">@_avgInvoice.ToString("N0") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">
+            @(IsArabic ? "إجمالي / عدد الفواتير" : "this month")
+        </div>
+    </div>
+</section>
+
+@if (_todayVisits.Count > 0)
+{
+    <section style="margin-bottom:24px;">
+        <h2>@(IsArabic ? "زيارات اليوم" : "Today's planned visits")</h2>
+        <table class="data-grid">
+            <thead><tr>
+                <th>#</th>
+                <th>@(IsArabic ? "العميل" : "Customer")</th>
+                <th>@(IsArabic ? "النوع" : "Kind")</th>
+                <th>@(IsArabic ? "ملاحظة" : "Note")</th>
+                <th></th>
+            </tr></thead>
+            <tbody>
+                @foreach (var v in _todayVisits)
+                {
+                    <tr>
+                        <td>@v.Visit.Sequence</td>
+                        <td><a href="/customers/@v.Visit.CustomerId/statement">@v.CustomerName</a></td>
+                        <td>@v.Visit.Kind</td>
+                        <td style="font-size:12px;color:var(--text-muted);">@(v.Visit.PlannedNote ?? "—")</td>
+                        <td><a href="/routes">@(IsArabic ? "إدارة ←" : "Manage →")</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+}
+
+@if (_atRiskCustomers.Count > 0)
+{
+    <section style="margin-bottom:24px;">
+        <h2>@(IsArabic ? "عملاء يحتاجون متابعة" : "Customers needing attention")</h2>
+        <table class="data-grid">
+            <thead><tr>
+                <th>@(IsArabic ? "العميل" : "Customer")</th>
+                <th class="num">@(IsArabic ? "الرصيد المستحق" : "Outstanding")</th>
+                <th class="num">@(IsArabic ? "حد الائتمان" : "Credit limit")</th>
+                <th class="num">@(IsArabic ? "الاستخدام" : "Utilisation")</th>
+                <th></th>
+            </tr></thead>
+            <tbody>
+                @foreach (var c in _atRiskCustomers)
+                {
+                    var util = c.Limit == 0 ? 0m : (c.Outstanding / c.Limit) * 100m;
+                    <tr>
+                        <td>@c.Name <code style="font-size:11px;">@c.Code</code></td>
+                        <td class="num">@c.Outstanding.ToString("N0")</td>
+                        <td class="num">@c.Limit.ToString("N0")</td>
+                        <td class="num" style="@(util >= 100 ? "color:var(--color-danger);font-weight:bold;" : "color:var(--color-warning);")">
+                            @util.ToString("0.#")%
+                        </td>
+                        <td>
+                            <a href="/customers/@c.Id/statement">@(IsArabic ? "كشف حساب" : "Statement")</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+}
+
+@if (_pipelineOrders.Count > 0)
+{
+    <section style="margin-bottom:24px;">
+        <h2>@(IsArabic ? "أوامر مؤكَّدة بانتظار التحويل" : "Confirmed orders awaiting conversion")</h2>
+        <table class="data-grid">
+            <thead><tr>
+                <th>@(IsArabic ? "الرقم" : "#")</th>
+                <th>@(IsArabic ? "العميل" : "Customer")</th>
+                <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                <th class="num">@(IsArabic ? "الإجمالي" : "Grand total")</th>
+                <th></th>
+            </tr></thead>
+            <tbody>
+                @foreach (var o in _pipelineOrders)
+                {
+                    <tr>
+                        <td>@o.Order.OrderNumber</td>
+                        <td>@o.CustomerName</td>
+                        <td>@o.Order.OrderDate.ToString("yyyy-MM-dd")</td>
+                        <td class="num">@o.Order.GrandTotal.Amount.ToString("N0")</td>
+                        <td><a href="/sales-orders">@(IsArabic ? "افتح ←" : "Open →")</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+}
+
+@code {
+    private bool _loading = true;
+    private string _periodLabel = "";
+    private Guid _currentUserId;
+    private DateOnly _monthStart;
+    private DateOnly _monthEnd;
+
+    private int _visitsTodayPlanned;
+    private int _visitsTodayCompleted;
+    private List<VisitRow> _todayVisits = new();
+
+    private int _pipelineCount;
+    private decimal _pipelineTotal;
+    private List<PipelineRow> _pipelineOrders = new();
+
+    private int _salesCount;
+    private decimal _salesThisMonth;
+    private decimal _avgInvoice;
+
+    private int _collectionsCount;
+    private decimal _collectionsThisMonth;
+
+    private int _riskCount;
+    private List<RiskRow> _atRiskCustomers = new();
+
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await Auth.GetAuthenticationStateAsync();
+        _currentUserId = auth.User.UserId() ?? Guid.Empty;
+        if (_currentUserId == Guid.Empty) { _loading = false; return; }
+
+        var nowUtc = DateTime.UtcNow;
+        var today = DateOnly.FromDateTime(nowUtc);
+        _monthStart = new DateOnly(nowUtc.Year, nowUtc.Month, 1);
+        _monthEnd = _monthStart.AddMonths(1).AddDays(-1);
+        _periodLabel = nowUtc.ToString("MMMM yyyy", IsArabic ? new CultureInfo("ar-EG") : CultureInfo.InvariantCulture);
+
+        // Today's visits
+        var todayVisits = await Db.Set<RouteVisit>().AsNoTracking()
+            .Where(v => v.RepUserId == _currentUserId && v.VisitDate == today)
+            .OrderBy(v => v.Sequence)
+            .ToListAsync();
+        _visitsTodayPlanned = todayVisits.Count(v => v.Status == RouteVisitStatus.Planned);
+        _visitsTodayCompleted = todayVisits.Count(v => v.Status != RouteVisitStatus.Planned);
+        var todayCustIds = todayVisits.Where(v => v.Status == RouteVisitStatus.Planned).Select(v => v.CustomerId).Distinct().ToArray();
+        var todayCustNames = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => todayCustIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => IsArabic ? c.Name.Arabic : c.Name.English);
+        _todayVisits = todayVisits
+            .Where(v => v.Status == RouteVisitStatus.Planned)
+            .Select(v => new VisitRow(v, todayCustNames.GetValueOrDefault(v.CustomerId, v.CustomerId.ToString("D"))))
+            .ToList();
+
+        // Pipeline — confirmed orders not yet converted, that I created
+        var pipeline = await Db.Set<SalesOrder>().AsNoTracking()
+            .Where(o => o.CreatedByUserId == _currentUserId
+                && o.State == SalesOrderState.Confirmed)
+            .OrderByDescending(o => o.OrderDate)
+            .Take(20)
+            .ToListAsync();
+        _pipelineCount = pipeline.Count;
+        _pipelineTotal = pipeline.Sum(o => o.GrandTotal.Amount);
+        var pipeCustIds = pipeline.Select(o => o.CustomerId).Distinct().ToArray();
+        var pipeCustNames = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => pipeCustIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => IsArabic ? c.Name.Arabic : c.Name.English);
+        _pipelineOrders = pipeline.Select(o => new PipelineRow(o,
+            pipeCustNames.GetValueOrDefault(o.CustomerId, o.CustomerId.ToString("D")))).ToList();
+
+        // This-month sales (mine)
+        var monthSales = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted
+                && i.CreatedByUserId == _currentUserId
+                && i.CreditNoteOfInvoiceId == null
+                && i.DocumentDate >= _monthStart
+                && i.DocumentDate <= _monthEnd)
+            .Select(i => new { Net = i.NetBeforeVat.Amount, Grand = i.GrandTotal.Amount })
+            .ToListAsync();
+        _salesCount = monthSales.Count;
+        _salesThisMonth = monthSales.Sum(s => s.Net);
+        _avgInvoice = _salesCount == 0 ? 0 : monthSales.Sum(s => s.Grand) / _salesCount;
+
+        // This-month collections (receipts I posted)
+        var monthReceipts = await Db.Set<CustomerReceiptVoucher>().AsNoTracking()
+            .Where(r => r.State == DocumentState.Posted
+                && r.PostedByUserId == _currentUserId
+                && r.ReceiptDate >= _monthStart
+                && r.ReceiptDate <= _monthEnd)
+            .Select(r => r.GrossReceiptAmount.Amount)
+            .ToListAsync();
+        _collectionsCount = monthReceipts.Count;
+        _collectionsThisMonth = monthReceipts.Sum();
+
+        // At-risk customers — customers with credit limit set, on
+        // whom I've posted at least one invoice. Outstanding =
+        // posted invoices total - posted receipts total. Flag when
+        // outstanding >= 80% of limit.
+        var myCustomerIds = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.CreatedByUserId == _currentUserId && i.State == DocumentState.Posted)
+            .Select(i => i.CustomerId)
+            .Distinct()
+            .ToListAsync();
+        var creditCustomers = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => myCustomerIds.Contains(c.Id) && c.CreditLimitEgp != null)
+            .Select(c => new { c.Id, c.Code, c.Name, Limit = c.CreditLimitEgp!.Value })
+            .ToListAsync();
+        var atRisk = new List<RiskRow>();
+        foreach (var c in creditCustomers)
+        {
+            var posted = await Db.Set<SalesInvoice>().AsNoTracking()
+                .Where(i => i.CustomerId == c.Id && i.State == DocumentState.Posted)
+                .Select(i => i.GrandTotal.Amount)
+                .ToListAsync();
+            var receipts = await Db.Set<CustomerReceiptVoucher>().AsNoTracking()
+                .Where(r => r.CustomerId == c.Id && r.State == DocumentState.Posted)
+                .Select(r => r.GrossReceiptAmount.Amount)
+                .ToListAsync();
+            var outstanding = posted.Sum() - receipts.Sum();
+            if (outstanding >= c.Limit * 0.8m && c.Limit > 0)
+            {
+                atRisk.Add(new RiskRow(c.Id, c.Code, IsArabic ? c.Name.Arabic : c.Name.English, outstanding, c.Limit));
+            }
+        }
+        _atRiskCustomers = atRisk.OrderByDescending(r => r.Outstanding / Math.Max(r.Limit, 1m)).ToList();
+        _riskCount = _atRiskCustomers.Count;
+
+        _loading = false;
+    }
+
+    private sealed record VisitRow(RouteVisit Visit, string CustomerName);
+    private sealed record PipelineRow(SalesOrder Order, string CustomerName);
+    private sealed record RiskRow(Guid Id, string Code, string Name, decimal Outstanding, decimal Limit);
+}
