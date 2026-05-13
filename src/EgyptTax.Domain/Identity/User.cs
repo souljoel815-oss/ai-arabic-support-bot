@@ -24,6 +24,14 @@ public sealed class User
     public Language PreferredLanguage { get; private set; } = Language.Ar;
     public UserStatus Status { get; private set; } = UserStatus.Active;
 
+    /// <summary>
+    /// Phase K — commission percentage earned on the user's posted
+    /// sales. Null = no commission (default for admins/accountants).
+    /// Stored as percent (0–100); the commission report multiplies
+    /// the rep's net sales by this rate / 100.
+    /// </summary>
+    public decimal? CommissionRatePercent { get; private set; }
+
     public DateTime? LastLoginAtUtc { get; private set; }
     public bool LastLoginSucceeded { get; private set; }
     public int FailedLoginCount { get; private set; }
@@ -79,6 +87,14 @@ public sealed class User
     }
 
     public bool RequiresMfa() => Roles.Any(r => r.RequiresMfa);
+
+    public void SetCommissionRate(decimal? ratePercent)
+    {
+        if (ratePercent is < 0 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(ratePercent),
+                "Commission rate must be between 0 and 100 percent.");
+        CommissionRatePercent = ratePercent;
+    }
 
     public void DisableMfa()
     {

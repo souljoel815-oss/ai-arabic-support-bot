@@ -40,8 +40,17 @@ public sealed class UserManagementHandler
                 u.DisplayName.English,
                 u.Roles.Select(r => r.Code).ToList(),
                 u.Status,
-                u.LastLoginAtUtc))
+                u.LastLoginAtUtc,
+                u.CommissionRatePercent))
             .ToListAsync(ct);
+    }
+
+    public async Task SetCommissionRateAsync(Guid userId, decimal? ratePercent, CancellationToken ct = default)
+    {
+        var user = await _db.Set<User>().FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new InvalidOperationException($"User {userId} not found.");
+        user.SetCommissionRate(ratePercent);
+        await _db.SaveChangesAsync(ct);
     }
 
     public async Task<List<RoleSummary>> ListRolesAsync(CancellationToken ct = default)
@@ -87,7 +96,7 @@ public sealed class UserManagementHandler
 
         return new UserSummary(
             user.Id, user.Email, user.DisplayName.Arabic, user.DisplayName.English,
-            new List<string> { role.Code }, user.Status, null);
+            new List<string> { role.Code }, user.Status, null, user.CommissionRatePercent);
     }
 
     public async Task DisableAsync(Guid userId, CancellationToken ct = default)
@@ -154,7 +163,8 @@ public sealed record UserSummary(
     string DisplayNameEn,
     IReadOnlyList<string> RoleCodes,
     UserStatus Status,
-    DateTime? LastLoginAtUtc);
+    DateTime? LastLoginAtUtc,
+    decimal? CommissionRatePercent);
 
 public sealed record RoleSummary(
     Guid Id,

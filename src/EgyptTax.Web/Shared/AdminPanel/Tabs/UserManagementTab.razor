@@ -59,6 +59,9 @@
                 <th>@(IsArabic ? "الدور" : "Role")</th>
                 <th>@(IsArabic ? "الحالة" : "Status")</th>
                 <th>@(IsArabic ? "آخر دخول" : "Last login")</th>
+                <th class="num" title="@(IsArabic ? "نسبة العمولة من صافي المبيعات" : "Commission % of net sales")">
+                    @(IsArabic ? "عمولة %" : "Commission %")
+                </th>
                 <th>@(IsArabic ? "إجراءات" : "Actions")</th>
             </tr>
         </thead>
@@ -81,6 +84,13 @@
                     </td>
                     <td style="font-size:12px;color:var(--text-muted);">
                         @(u.LastLoginAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "—")
+                    </td>
+                    <td class="num">
+                        <input type="number" step="0.01" min="0" max="100"
+                               style="width:70px;"
+                               placeholder="—"
+                               @bind="_commissionInput[u.Id]"
+                               @bind:after="() => OnSetCommissionAsync(u.Id)" />
                     </td>
                     <td style="white-space:nowrap;">
                         @if (u.Status == UserStatus.Active)
@@ -168,6 +178,7 @@
 
     private List<UserSummary> _users = new();
     private List<RoleSummary> _roles = new();
+    private readonly Dictionary<Guid, decimal?> _commissionInput = new();
 
     private string _newEmail = "";
     private string _newDisplayAr = "";
@@ -184,7 +195,41 @@
         }
         _users = await Users.ListAsync();
         _roles = await Users.ListRolesAsync();
+        // Pre-seed the commission input dictionary so the per-row
+        // @bind doesn't throw KeyNotFoundException on first render.
+        foreach (var u in _users)
+        {
+            _commissionInput[u.Id] = u.CommissionRatePercent;
+        }
         _loading = false;
+    }
+
+    private async Task OnSetCommissionAsync(Guid userId)
+    {
+        if (!_commissionInput.TryGetValue(userId, out var newRate)) return;
+        var existing = _users.FirstOrDefault(u => u.Id == userId);
+        if (existing is null) return;
+        // Treat 0 same as cleared (no commission).
+        var rate = newRate is { } v && v > 0 ? (decimal?)v : null;
+        if (existing.CommissionRatePercent == rate) return;
+        try
+        {
+            await Users.SetCommissionRateAsync(userId, rate);
+            _flash = IsArabic
+                ? (rate is null ? $"تم إلغاء عمولة {existing.Email}." : $"تم تعيين عمولة {existing.Email} عند {rate}%.")
+                : (rate is null ? $"Cleared commission for {existing.Email}." : $"Set commission for {existing.Email} to {rate}%.");
+            _flashClass = "kpi-card kpi-info";
+            _users = await Users.ListAsync();
+            foreach (var u in _users)
+            {
+                _commissionInput[u.Id] = u.CommissionRatePercent;
+            }
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
     }
 
     private void OnGeneratePassword() => _newPassword = UserManagementHandler.GenerateTempPassword();
@@ -211,6 +256,13 @@
                 : $"✓ User {_newEmail} created. Temp password: {_newPassword} (forced change on first login).";
             _flashClass = "kpi-card kpi-info";
             _users = await Users.ListAsync();
+            // BUG-K-001 — seed the commission input dictionary for the
+            // newly-added user so the @bind on the per-row input doesn't
+            // throw KeyNotFoundException on the next render.
+            foreach (var u in _users)
+            {
+                _commissionInput.TryAdd(u.Id, u.CommissionRatePercent);
+            }
             _newEmail = ""; _newDisplayAr = ""; _newDisplayEn = ""; _newRoleCode = ""; _newPassword = "";
         }
         catch (Exception ex)

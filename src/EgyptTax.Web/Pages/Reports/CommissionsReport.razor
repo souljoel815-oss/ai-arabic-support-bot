@@ -1,0 +1,155 @@
+@page "/reports/commissions"
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    Phase K — Commissions report. Admin / manager / accountant view.
+    For each user with a CommissionRatePercent set, sum their net
+    sales (NetBeforeVat) on posted invoices created by them within
+    the chosen date range, then multiply by the rate / 100 to get
+    the commission owed. Reps don't see this page (NotSalesRepOnly)
+    — manager pays them out separately.
+*@
+
+<h1>@(IsArabic ? "تقرير العمولات" : "Commissions Report")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "عمولات المستخدمين الذين لديهم نسبة عمولة مُعرَّفة. تُحسب على صافي المبيعات (قبل الضريبة) للفواتير المرحَّلة في الفترة المختارة."
+        : "Earned commission for users with a rate set. Computed on net (pre-VAT) sales of posted invoices in the selected period.")
+</p>
+
+<div class="form-grid" style="max-width:560px;margin-bottom:16px;">
+    <label>
+        <span>@(IsArabic ? "من تاريخ" : "From")</span>
+        <input type="date" @bind="_from" @bind:after="ReloadAsync" />
+    </label>
+    <label>
+        <span>@(IsArabic ? "إلى تاريخ" : "To")</span>
+        <input type="date" @bind="_to" @bind:after="ReloadAsync" />
+    </label>
+</div>
+
+@if (_loading) { <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p> return; }
+
+@if (_rows.Count == 0)
+{
+    <p><em>
+        @(IsArabic
+            ? "لا يوجد مستخدمون لديهم نسبة عمولة مُعرَّفة. اذهب إلى إدارة المستخدمين لتعيين النسب."
+            : "No users have a commission rate set yet. Set rates in the User Management tab to populate this report.")
+    </em></p>
+    return;
+}
+
+<table class="data-grid">
+    <thead><tr>
+        <th>@(IsArabic ? "المستخدم" : "User")</th>
+        <th>@(IsArabic ? "البريد" : "Email")</th>
+        <th class="num">@(IsArabic ? "النسبة" : "Rate")</th>
+        <th class="num">@(IsArabic ? "عدد الفواتير" : "Invoices")</th>
+        <th class="num">@(IsArabic ? "صافي المبيعات" : "Net sales")</th>
+        <th class="num">@(IsArabic ? "العمولة المستحقة" : "Commission owed")</th>
+    </tr></thead>
+    <tbody>
+        @foreach (var r in _rows)
+        {
+            <tr>
+                <td>@(IsArabic ? r.NameAr : r.NameEn)</td>
+                <td><code>@r.Email</code></td>
+                <td class="num">@r.RatePercent.ToString("0.##")%</td>
+                <td class="num">@r.InvoiceCount</td>
+                <td class="num">@r.NetSales.ToString("N2")</td>
+                <td class="num"><strong>@r.Commission.ToString("N2")</strong></td>
+            </tr>
+        }
+    </tbody>
+    <tfoot>
+        <tr>
+            <td colspan="3"><strong>@(IsArabic ? "الإجمالي" : "Total")</strong></td>
+            <td class="num"><strong>@_rows.Sum(r => r.InvoiceCount)</strong></td>
+            <td class="num"><strong>@_rows.Sum(r => r.NetSales).ToString("N2")</strong></td>
+            <td class="num"><strong>@_rows.Sum(r => r.Commission).ToString("N2")</strong></td>
+        </tr>
+    </tfoot>
+</table>
+
+@code {
+    private bool _loading = true;
+    private DateTime _from = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    private DateTime _to = DateTime.UtcNow.Date;
+    private List<CommissionRow> _rows = new();
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        var fromDate = DateOnly.FromDateTime(_from);
+        var toDate = DateOnly.FromDateTime(_to);
+
+        // Pull all users who have a commission rate set.
+        var earners = await Db.Set<User>().AsNoTracking()
+            .Where(u => u.CommissionRatePercent != null && u.CommissionRatePercent > 0)
+            .ToListAsync();
+        if (earners.Count == 0)
+        {
+            _rows = new();
+            _loading = false;
+            return;
+        }
+        var earnerIds = earners.Select(u => u.Id).ToArray();
+
+        // Per-user, sum their posted invoices' net (pre-VAT) sales in
+        // the period. We pull and aggregate in memory because SQLite
+        // can't Sum() decimals server-side.
+        var raw = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted
+                && i.CreditNoteOfInvoiceId == null
+                && i.CreatedByUserId != null
+                && earnerIds.Contains(i.CreatedByUserId!.Value)
+                && i.DocumentDate >= fromDate
+                && i.DocumentDate <= toDate)
+            .Select(i => new { UserId = i.CreatedByUserId!.Value, Net = i.NetBeforeVat.Amount })
+            .ToListAsync();
+        var grouped = raw
+            .GroupBy(x => x.UserId)
+            .ToDictionary(g => g.Key, g => (Count: g.Count(), Net: g.Sum(x => x.Net)));
+
+        _rows = earners
+            .Select(u =>
+            {
+                var rate = u.CommissionRatePercent ?? 0m;
+                grouped.TryGetValue(u.Id, out var stats);
+                var commission = decimal.Round(stats.Net * (rate / 100m), 2, MidpointRounding.ToEven);
+                return new CommissionRow(
+                    UserId: u.Id,
+                    NameAr: u.DisplayName.Arabic,
+                    NameEn: u.DisplayName.English,
+                    Email: u.Email,
+                    RatePercent: rate,
+                    InvoiceCount: stats.Count,
+                    NetSales: stats.Net,
+                    Commission: commission);
+            })
+            .OrderByDescending(r => r.Commission)
+            .ToList();
+
+        _loading = false;
+    }
+
+    private sealed record CommissionRow(
+        Guid UserId,
+        string NameAr,
+        string NameEn,
+        string Email,
+        decimal RatePercent,
+        int InvoiceCount,
+        decimal NetSales,
+        decimal Commission);
+}

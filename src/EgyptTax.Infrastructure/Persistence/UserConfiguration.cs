@@ -59,6 +59,10 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .HasMaxLength(2);
         b.Property(u => u.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(16);
 
+        b.Property(u => u.CommissionRatePercent)
+            .HasColumnName("commission_rate_percent")
+            .HasColumnType("decimal(5,2)");
+
         b.Property(u => u.LastLoginAtUtc)
             .HasColumnName("last_login_at_utc")
             .HasColumnType("datetime2(3)");
