@@ -1,0 +1,298 @@
+@page "/customers/{Id:guid}/statement"
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    Phase C.1 — Customer Statement (كشف حساب العميل). Aggregates all
+    posted SalesInvoices, CreditNotes, and CustomerReceiptVouchers for
+    a single customer into a chronological ledger with running balance,
+    plus aging buckets (0-30 / 31-60 / 61-90 / 90+) computed from
+    document-date age. The headline is the outstanding balance — the
+    rep checks this before extending more credit; the manager uses it
+    to chase collections.
+
+    Reps can hit this page for any customer (visibility lookup not
+    scoped) so they can advise customers about their account standing.
+*@
+
+<h1>@(IsArabic ? "كشف حساب العميل" : "Customer Statement")</h1>
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+@if (_customer is null)
+{
+    <div class="flash-error">@(IsArabic ? "العميل غير موجود." : "Customer not found.")</div>
+    <a href="/customers">@(IsArabic ? "← قائمة العملاء" : "← Customer list")</a>
+    return;
+}
+
+<section class="customer-statement-head">
+    <div>
+        <strong>@(IsArabic ? _customer.Name.Arabic : _customer.Name.English)</strong>
+        <span class="page-subtitle">— @_customer.Code</span>
+    </div>
+    <div class="page-subtitle" style="font-size:13px;">
+        @(IsArabic ? "كشف حساب حتى:" : "Statement as of:") @DateTime.UtcNow.ToString("yyyy-MM-dd")
+    </div>
+    <div>
+        <a href="/routes" class="btn-secondary" style="font-size:13px;">
+            @(IsArabic ? "→ خطّط زيارة" : "→ Plan a visit")
+        </a>
+    </div>
+</section>
+
+<section class="kpi-grid kpi-grid-3" style="margin-top:12px;">
+    <div class="kpi-card @(_outstanding > 0 ? "kpi-card-warn" : "kpi-card-ok")">
+        <div class="kpi-card-h">@(IsArabic ? "الرصيد المستحق" : "Outstanding balance")</div>
+        <div class="kpi-card-value">@_outstanding.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">
+            @if (_customer.CreditLimitEgp is { } limit)
+            {
+                var available = limit - _outstanding;
+                <span>
+                    @(IsArabic ? "حد الائتمان:" : "Credit limit:") @limit.ToString("F2") @(IsArabic ? "ج.م." : "EGP")
+                    — @(IsArabic ? "متاح:" : "available:")
+                    <strong style="color:@(available < 0 ? "var(--color-danger)" : "var(--color-success)");">
+                        @available.ToString("F2") @(IsArabic ? "ج.م." : "EGP")
+                    </strong>
+                </span>
+            }
+            else
+            {
+                <span>@(IsArabic ? "لا يوجد حد ائتمان مُعرَّف." : "No credit limit set.")</span>
+            }
+        </div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-card-h">@(IsArabic ? "إجمالي المبيعات" : "Total sales")</div>
+        <div class="kpi-card-value">@_totalSales.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">@(_invoiceCount) @(IsArabic ? "فاتورة" : "invoices")</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-card-h">@(IsArabic ? "إجمالي التحصيل" : "Total received")</div>
+        <div class="kpi-card-value">@_totalReceived.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">@(_receiptCount) @(IsArabic ? "إيصال قبض" : "receipts")</div>
+    </div>
+</section>
+
+@if (_outstanding > 0)
+{
+    <section style="margin-top:16px;">
+        <h2>@(IsArabic ? "تقادم الديون (الفواتير غير المسددة)" : "Aging buckets (unpaid invoices)")</h2>
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "0-30 يوم" : "0-30 days")</th>
+                    <th>@(IsArabic ? "31-60 يوم" : "31-60 days")</th>
+                    <th>@(IsArabic ? "61-90 يوم" : "61-90 days")</th>
+                    <th>@(IsArabic ? "أكثر من 90 يوم" : "Over 90 days")</th>
+                    <th>@(IsArabic ? "الإجمالي" : "Total")</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="num">@_aging0_30.ToString("F2")</td>
+                    <td class="num">@_aging31_60.ToString("F2")</td>
+                    <td class="num">@_aging61_90.ToString("F2")</td>
+                    <td class="num" style="color:@(_agingOver90 > 0 ? "var(--color-danger)" : "inherit");">
+                        <strong>@_agingOver90.ToString("F2")</strong>
+                    </td>
+                    <td class="num"><strong>@_outstanding.ToString("F2")</strong></td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+}
+
+<section style="margin-top:16px;">
+    <h2>@(IsArabic ? "حركة الحساب" : "Ledger")</h2>
+    @if (_rows.Count == 0)
+    {
+        <p><em>@(IsArabic ? "لا توجد حركات لهذا العميل بعد." : "No activity for this customer yet.")</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                    <th>@(IsArabic ? "النوع" : "Type")</th>
+                    <th>@(IsArabic ? "المرجع" : "Reference")</th>
+                    <th class="num">@(IsArabic ? "مدين" : "Debit")</th>
+                    <th class="num">@(IsArabic ? "دائن" : "Credit")</th>
+                    <th class="num">@(IsArabic ? "الرصيد" : "Balance")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _rows)
+                {
+                    <tr>
+                        <td>@r.Date.ToString("yyyy-MM-dd")</td>
+                        <td>@r.TypeLabel</td>
+                        <td>
+                            @if (r.LinkUrl is not null)
+                            {
+                                <a href="@r.LinkUrl">@r.Reference</a>
+                            }
+                            else
+                            {
+                                @r.Reference
+                            }
+                        </td>
+                        <td class="num">@(r.Debit > 0 ? r.Debit.ToString("F2") : "")</td>
+                        <td class="num">@(r.Credit > 0 ? r.Credit.ToString("F2") : "")</td>
+                        <td class="num"><strong>@r.RunningBalance.ToString("F2")</strong></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private Customer? _customer;
+    private readonly List<LedgerRow> _rows = new();
+    private decimal _outstanding;
+    private decimal _totalSales;
+    private decimal _totalReceived;
+    private int _invoiceCount;
+    private int _receiptCount;
+    private decimal _aging0_30;
+    private decimal _aging31_60;
+    private decimal _aging61_90;
+    private decimal _agingOver90;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customer = await Db.Set<Customer>().AsNoTracking().FirstOrDefaultAsync(c => c.Id == Id);
+        if (_customer is null) { _loading = false; return; }
+
+        // Posted sales invoices (incl. credit notes — they share the
+        // sales_invoices table with negative grand totals).
+        var invoices = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.CustomerId == Id && i.State == DocumentState.Posted)
+            .OrderBy(i => i.DocumentDate)
+            .ToListAsync();
+
+        // Posted receipts.
+        var receipts = await Db.Set<CustomerReceiptVoucher>().AsNoTracking()
+            .Where(r => r.CustomerId == Id && r.State == DocumentState.Posted)
+            .OrderBy(r => r.ReceiptDate)
+            .ToListAsync();
+
+        // Build the unified ledger. Invoices increase the receivable
+        // (debit); receipts and credit-notes (negative invoice totals)
+        // decrease it (credit). We sort by date then by document type
+        // so receipts on the same day as their invoice land after.
+        var entries = new List<LedgerRow>();
+        foreach (var inv in invoices)
+        {
+            var amount = inv.GrandTotal.Amount; // negative for credit notes
+            if (inv.IsCreditNote)
+            {
+                entries.Add(new LedgerRow(
+                    Date: inv.DocumentDate,
+                    TypeLabel: IsArabic ? "إشعار خصم" : "Credit note",
+                    Reference: inv.DocumentNumber ?? inv.Id.ToString("D"),
+                    LinkUrl: $"/invoices/{inv.Id}",
+                    Debit: 0m,
+                    Credit: Math.Abs(amount),
+                    RunningBalance: 0m,
+                    SortKey: 1));
+            }
+            else
+            {
+                entries.Add(new LedgerRow(
+                    Date: inv.DocumentDate,
+                    TypeLabel: IsArabic ? "فاتورة مبيعات" : "Sales invoice",
+                    Reference: inv.DocumentNumber ?? inv.Id.ToString("D"),
+                    LinkUrl: $"/invoices/{inv.Id}",
+                    Debit: amount,
+                    Credit: 0m,
+                    RunningBalance: 0m,
+                    SortKey: 0));
+                _totalSales += amount;
+                _invoiceCount++;
+            }
+        }
+        foreach (var r in receipts)
+        {
+            entries.Add(new LedgerRow(
+                Date: r.ReceiptDate,
+                TypeLabel: IsArabic ? "إيصال قبض" : "Receipt voucher",
+                Reference: r.DocumentNumber ?? r.Id.ToString("D"),
+                LinkUrl: null,
+                Debit: 0m,
+                Credit: r.GrossReceiptAmount.Amount,
+                RunningBalance: 0m,
+                SortKey: 2));
+            _totalReceived += r.GrossReceiptAmount.Amount;
+            _receiptCount++;
+        }
+
+        // Sort + compute running balance.
+        var ordered = entries
+            .OrderBy(e => e.Date)
+            .ThenBy(e => e.SortKey)
+            .ToList();
+        var running = 0m;
+        foreach (var e in ordered)
+        {
+            running += e.Debit - e.Credit;
+            _rows.Add(e with { RunningBalance = running });
+        }
+        _outstanding = running;
+
+        // Aging — only positive (debit) invoices that haven't been
+        // fully paid. We use a FIFO match: the oldest invoices are
+        // considered paid first by accumulated receipts/credit-notes.
+        // For each unpaid remainder, bucket by document-date age.
+        var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+        var paidPool = _totalReceived
+            + invoices.Where(i => i.IsCreditNote).Sum(i => Math.Abs(i.GrandTotal.Amount));
+        foreach (var inv in invoices.Where(i => !i.IsCreditNote))
+        {
+            var amt = inv.GrandTotal.Amount;
+            if (paidPool >= amt)
+            {
+                paidPool -= amt;
+                continue; // fully paid — no aging contribution
+            }
+            var unpaid = amt - paidPool;
+            paidPool = 0m;
+            var ageDays = todayUtc.DayNumber - inv.DocumentDate.DayNumber;
+            if (ageDays <= 30) _aging0_30 += unpaid;
+            else if (ageDays <= 60) _aging31_60 += unpaid;
+            else if (ageDays <= 90) _aging61_90 += unpaid;
+            else _agingOver90 += unpaid;
+        }
+
+        _loading = false;
+    }
+
+    private sealed record LedgerRow(
+        DateOnly Date,
+        string TypeLabel,
+        string Reference,
+        string? LinkUrl,
+        decimal Debit,
+        decimal Credit,
+        decimal RunningBalance,
+        int SortKey);
+}

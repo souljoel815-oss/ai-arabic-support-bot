@@ -50,6 +50,7 @@
                         <td>@(c.TaxProfile.TinValue ?? "—")</td>
                         <td>@c.Status</td>
                         <td>
+                            <a href="/customers/@c.Id/statement" style="margin-inline-end:8px;">@(IsArabic ? "كشف حساب" : "Statement")</a>
                             @if (c.Status == CustomerStatus.Active)
                             {
                                 <button type="button" @onclick="() => DeactivateAsync(c.Id)">@(IsArabic ? "تعطيل" : "Deactivate")</button>
@@ -129,6 +130,10 @@
                         }
                     }
                 </InputSelect>
+            </label>
+            <label>
+                <span>@(IsArabic ? "حد الائتمان (ج.م.) — اتركه فارغاً = لا حد" : "Credit limit (EGP) — blank = no limit")</span>
+                <InputNumber @bind-Value="_form.CreditLimitEgp" />
             </label>
         </fieldset>
 
@@ -221,6 +226,10 @@
             taxProfile: taxProfile,
             phone: string.IsNullOrWhiteSpace(_form.Phone) ? null : _form.Phone,
             email: string.IsNullOrWhiteSpace(_form.Email) ? null : _form.Email);
+        if (_form.CreditLimitEgp is { } limit)
+        {
+            customer.UpdateCreditLimit(limit);
+        }
         Db.Add(customer);
         await Db.SaveChangesAsync();
 
@@ -265,6 +274,7 @@
         public string? Tin { get; set; }
         public bool VatExemption { get; set; }
         public Guid DefaultVatCategoryId { get; set; }
+        public decimal? CreditLimitEgp { get; set; }
 
         [Required, StringLength(500)] public string AddressDisplayEnglish { get; set; } = "";
         [Required, StringLength(500)] public string AddressDisplayArabic { get; set; } = "";

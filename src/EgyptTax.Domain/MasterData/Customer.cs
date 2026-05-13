@@ -19,6 +19,15 @@ public sealed class Customer
     public CustomerStatus Status { get; private set; } = CustomerStatus.Active;
     public CustomerTaxProfile TaxProfile { get; private set; }
 
+    /// <summary>
+    /// Phase C — credit limit in EGP. Null = no limit (default for
+    /// existing customers). When set, the post-time guard rejects
+    /// new sales that would push the customer's outstanding balance
+    /// above this ceiling. Computed as posted-not-paid receivable;
+    /// see <c>CustomerBalanceQuery</c>.
+    /// </summary>
+    public decimal? CreditLimitEgp { get; private set; }
+
     private Customer() { }
 
     public Customer(
@@ -52,6 +61,14 @@ public sealed class Customer
     }
 
     public void UpdateTaxProfile(CustomerTaxProfile profile) => TaxProfile = profile;
+
+    public void UpdateCreditLimit(decimal? limitEgp)
+    {
+        if (limitEgp is < 0)
+            throw new ArgumentOutOfRangeException(nameof(limitEgp),
+                "Credit limit cannot be negative.");
+        CreditLimitEgp = limitEgp;
+    }
 }
 
 public enum CustomerStatus

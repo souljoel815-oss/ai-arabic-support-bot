@@ -77,6 +77,10 @@ internal sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
             .HasMaxLength(16)
             .IsRequired();
 
+        b.Property(c => c.CreditLimitEgp)
+            .HasColumnName("credit_limit_egp")
+            .HasColumnType("decimal(19,2)");
+
         b.ComplexProperty(
             c => c.TaxProfile,
             t =>

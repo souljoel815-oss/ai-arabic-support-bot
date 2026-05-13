@@ -229,13 +229,19 @@ public sealed class SqlPaymentVoucherQuery : IPaymentVoucherQuery
             return Array.Empty<OutstandingInvoiceRow>();
         }
 
+        // BUG-C-001 — SQLite's EF translator can't Sum() decimals
+        // server-side. Materialise the allocation amounts then group/
+        // sum in memory. Allocation rows per receipt are tiny (one per
+        // invoice in the run), so the round-trip stays cheap.
         var ids = seed.Select(s => s.InvoiceId).ToArray();
-        var allocatedByInvoice = await _db.Set<PaymentAllocation>()
+        var allocationsRaw = await _db.Set<PaymentAllocation>()
             .AsNoTracking()
             .Where(a => ids.Contains(a.TargetDocumentId))
-            .GroupBy(a => a.TargetDocumentId)
-            .Select(g => new { Id = g.Key, Sum = g.Sum(x => x.AllocatedAmount.Amount) })
-            .ToDictionaryAsync(x => x.Id, x => x.Sum, cancellationToken);
+            .Select(a => new { Id = a.TargetDocumentId, Amount = a.AllocatedAmount.Amount })
+            .ToListAsync(cancellationToken);
+        var allocatedByInvoice = allocationsRaw
+            .GroupBy(a => a.Id)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
 
         return seed.Select(s =>
             {

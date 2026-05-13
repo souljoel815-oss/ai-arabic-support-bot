@@ -13,7 +13,7 @@
 @inject PostSupplierPaymentVoucherHandler PostHandler
 @inject AppDbContext Db
 @inject NavigationManager Nav
-@attribute [Authorize(Policy = "FullyAuthenticated")]
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "إيصال دفع لمورد" : "New supplier payment voucher (FR-051)")</h1>
 
@@ -199,6 +199,13 @@ else
             Db.Add(_voucher);
             await Db.SaveChangesAsync();
             _outstanding = await Query.ListOutstandingPurchaseInvoicesAsync(_supplierId);
+            // Pre-seed _allocateInputs so the per-row @bind doesn't
+            // throw KeyNotFoundException on first render. Same fix
+            // as the customer-receipt page (BUG-C-001).
+            foreach (var inv in _outstanding)
+            {
+                _allocateInputs.TryAdd(inv.InvoiceId, 0m);
+            }
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
@@ -224,6 +231,10 @@ else
                 .FirstAsync(v => v.Id == _voucher.Id);
             _outstanding = await Query.ListOutstandingPurchaseInvoicesAsync(_supplierId);
             _allocateInputs[invoiceId] = 0m;
+            foreach (var inv in _outstanding)
+            {
+                _allocateInputs.TryAdd(inv.InvoiceId, 0m);
+            }
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
