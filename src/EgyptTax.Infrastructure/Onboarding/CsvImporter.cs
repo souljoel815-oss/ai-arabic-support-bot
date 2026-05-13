@@ -27,8 +27,23 @@ public static class CsvImporter
     public static (IReadOnlyList<string> Headers, IReadOnlyList<Dictionary<string, string>> Rows) Parse(
         ReadOnlySpan<byte> bytes)
     {
-        // Strip BOM if present so the first header doesn't carry
-        // U+FEFF as a prefix character.
+        // Reject UTF-16 (LE/BE) up front with a clear message — we
+        // can't decode it as UTF-8 and silently producing garbage
+        // headers leads to "Missing required field" errors that
+        // mislead the operator.
+        if (bytes.Length >= 2)
+        {
+            if ((bytes[0] == 0xFF && bytes[1] == 0xFE) ||
+                (bytes[0] == 0xFE && bytes[1] == 0xFF))
+            {
+                throw new InvalidDataException(
+                    "File appears to be UTF-16 encoded. Re-save in Excel as " +
+                    "\"CSV UTF-8 (Comma delimited)\" and re-upload.");
+            }
+        }
+
+        // Strip UTF-8 BOM if present so the first header doesn't
+        // carry U+FEFF as a prefix character.
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
         {
             bytes = bytes[3..];
@@ -41,8 +56,14 @@ public static class CsvImporter
             return (Array.Empty<string>(), Array.Empty<Dictionary<string, string>>());
         }
 
+        // Headers are trimmed; an extra U+FEFF strip on the FIRST
+        // header guards against any BOM that survived past the byte
+        // strip above (e.g. double-BOM, BOM-after-UTF8-conversion in
+        // some upload pipelines, or Excel quirks). Cheap defensive
+        // layer; closes the Manus-AI verification report bug #1.
+        const char Bom = '﻿';
         var headers = allRows[0]
-            .Select(h => h.Trim())
+            .Select((h, idx) => idx == 0 ? h.TrimStart(Bom).Trim() : h.Trim())
             .ToList();
 
         var dataRows = new List<Dictionary<string, string>>(capacity: allRows.Count - 1);
