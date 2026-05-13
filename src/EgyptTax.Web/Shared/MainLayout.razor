@@ -238,6 +238,10 @@
                     <a href="suppliers" class="@ActiveLink("suppliers")" @onclick="CloseSidebar">@Tr("الموردون", "Suppliers")</a>
                 }
                 <a href="items" class="@ActiveLink("items")" @onclick="CloseSidebar">@Tr("الأصناف", "Items")</a>
+                @if (!_isRepOnly)
+                {
+                    <a href="data-import" class="@ActiveLink("data-import")" @onclick="CloseSidebar">@Tr("📥 استيراد بيانات", "📥 Import data")</a>
+                }
             </nav>
         </details>
 

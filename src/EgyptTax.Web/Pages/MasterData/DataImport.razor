@@ -1,0 +1,172 @@
+@page "/data-import"
+@using EgyptTax.Infrastructure.Onboarding
+@using Microsoft.AspNetCore.Authorization
+@inject CustomerImportHandler CustomerImporter
+@inject ItemImportHandler ItemImporter
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    D2.5 (v3 roadmap) — CSV import wizard. Anti-switching-cost
+    feature; the universal Egyptian-SMB objection when migrating
+    away from QuickBooks / Edara / Excel is "كل البيانات بتاعتي
+    هتضيع". This page accepts CSV files (the format that EVERY
+    competitor exports to) for Customers + Items.
+
+    Workflow per target:
+      1. Operator downloads the template (sample 2-row CSV with
+         the expected headers) so they know the column shape.
+      2. They prep their file in Excel (or open the QB export +
+         tweak headers) and upload.
+      3. The handler parses, validates per-row, inserts the OK
+         rows, and reports skipped/errored rows back. Existing
+         records (matched by Code) are skipped, not overwritten —
+         re-running the import is safe.
+*@
+
+<PageTitle>@Tr("استيراد البيانات | DaftarX", "Data Import | DaftarX")</PageTitle>
+
+<h1>@Tr("استيراد البيانات", "Data Import")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "هاجر بياناتك من Excel أو QuickBooks أو Edara بضغطة واحدة. اختر نوع البيانات، حمّل ملف CSV، واتأكد من النتيجة قبل ما تعتمدها.",
+        "Migrate your data from Excel, QuickBooks, or Edara in one click. Pick a target, upload a CSV file, and review the result before relying on it.")
+</p>
+
+<section class="kpi-card kpi-info" style="padding:14px;margin-bottom:16px;">
+    <strong>@Tr("ملاحظات قبل الاستيراد:", "Before you import:")</strong>
+    <ul style="margin:6px 0 0 20px;font-size:13px;">
+        <li>@Tr(
+            "الملف لازم يكون بصيغة CSV ومُرمّز UTF-8. لو فتحت الملف في Excel، احفظه باسم «CSV UTF-8 (Comma delimited)».",
+            "Files must be CSV encoded as UTF-8. In Excel, save as \"CSV UTF-8 (Comma delimited)\".")</li>
+        <li>@Tr(
+            "السجلات اللي ليها نفس الكود الموجود عندك دلوقتي هيتم تخطّيها — مفيش بيانات بتتكتب فوق بعض.",
+            "Records whose Code already exists in the system are skipped — existing data is never overwritten.")</li>
+        <li>@Tr(
+            "الأخطاء بتتعرض لكل صف على حدة. صحّح الملف وحمّله تاني — العملية idempotent.",
+            "Errors are reported per row. Fix the source file and re-upload — the operation is idempotent.")</li>
+    </ul>
+</section>
+
+@* ----- Customers import ----- *@
+
+<section class="form-section" style="margin-bottom:24px;">
+    <h2>@Tr("١. استيراد العملاء", "1. Import Customers")</h2>
+    <p class="page-subtitle" style="font-size:13px;">
+        @Tr(
+            "الأعمدة المطلوبة: Code, NameEnglish, NameArabic. الأعمدة الاختيارية: Tin, Email, Phone, Governorate, RegionCity, Street, BuildingNumber, CreditLimitEgp.",
+            "Required columns: Code, NameEnglish, NameArabic. Optional: Tin, Email, Phone, Governorate, RegionCity, Street, BuildingNumber, CreditLimitEgp.")
+    </p>
+
+    <div class="invoice-actions" style="margin:8px 0;">
+        <a href="/data-import/sample-customers.csv" class="btn-secondary"
+           style="text-decoration:none;" download="customers-template.csv">
+            <Icon Name="download" Class="ic" />
+            @Tr("حمّل القالب", "Download template")
+        </a>
+        <InputFile OnChange="OnCustomerFileAsync" accept=".csv,text/csv" disabled="@_busy" />
+    </div>
+
+    @if (_customerResult is { } cr)
+    {
+        <ImportResultPanel Result="cr" />
+    }
+</section>
+
+@* ----- Items import ----- *@
+
+<section class="form-section">
+    <h2>@Tr("٢. استيراد الأصناف", "2. Import Items")</h2>
+    <p class="page-subtitle" style="font-size:13px;">
+        @Tr(
+            "الأعمدة المطلوبة: Code, NameEnglish, NameArabic. الأعمدة الاختيارية: EtaItemCode (الأصناف بدون كود ETA هتتم تنبيه عنها وقت ترحيل الفواتير).",
+            "Required: Code, NameEnglish, NameArabic. Optional: EtaItemCode (items without an ETA code will trigger Penalty Shield warnings when invoiced).")
+    </p>
+
+    <div class="invoice-actions" style="margin:8px 0;">
+        <a href="/data-import/sample-items.csv" class="btn-secondary"
+           style="text-decoration:none;" download="items-template.csv">
+            <Icon Name="download" Class="ic" />
+            @Tr("حمّل القالب", "Download template")
+        </a>
+        <InputFile OnChange="OnItemFileAsync" accept=".csv,text/csv" disabled="@_busy" />
+    </div>
+
+    @if (_itemResult is { } ir)
+    {
+        <ImportResultPanel Result="ir" />
+    }
+</section>
+
+@if (_flash is not null)
+{
+    <div class="kpi-card kpi-error" style="margin-top:16px;">@_flash</div>
+}
+
+@code {
+    private const long MaxUploadBytes = 10 * 1024 * 1024; // 10 MB cap
+
+    private bool _busy;
+    private string? _flash;
+    private ImportResult? _customerResult;
+    private ImportResult? _itemResult;
+
+    private async Task OnCustomerFileAsync(InputFileChangeEventArgs e) =>
+        await ImportAsync(e, isCustomer: true);
+
+    private async Task OnItemFileAsync(InputFileChangeEventArgs e) =>
+        await ImportAsync(e, isCustomer: false);
+
+    private async Task ImportAsync(InputFileChangeEventArgs e, bool isCustomer)
+    {
+        _flash = null;
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > MaxUploadBytes)
+        {
+            _flash = Tr(
+                $"الملف أكبر من {MaxUploadBytes / 1024 / 1024} ميجا.",
+                $"File exceeds the {MaxUploadBytes / 1024 / 1024} MB cap.");
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            byte[] bytes;
+            await using (var stream = file.OpenReadStream(MaxUploadBytes))
+            using (var ms = new MemoryStream())
+            {
+                await stream.CopyToAsync(ms);
+                bytes = ms.ToArray();
+            }
+
+            var (_, rows) = CsvImporter.Parse(bytes);
+            if (rows.Count == 0)
+            {
+                _flash = Tr(
+                    "الملف فاضي أو مفيهوش صفوف بيانات.",
+                    "The file is empty or has no data rows.");
+                return;
+            }
+
+            if (isCustomer)
+            {
+                _customerResult = await CustomerImporter.ImportAsync(rows);
+            }
+            else
+            {
+                _itemResult = await ItemImporter.ImportAsync(rows);
+            }
+        }
+        catch (Exception ex)
+        {
+            _flash = Tr(
+                $"فشل القراءة: {ex.Message}",
+                $"Failed to read file: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

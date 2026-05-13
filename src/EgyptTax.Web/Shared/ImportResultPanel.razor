@@ -1,0 +1,60 @@
+@using EgyptTax.Infrastructure.Onboarding
+
+@*
+    D2.5 — small component reused by /data-import to render an
+    ImportResult: success/skip/error counts + per-row error table.
+*@
+
+@if (Result is null)
+{
+    return;
+}
+
+<div class="kpi-card @ToneClass" style="margin-top:12px;padding:14px;">
+    <strong>
+        @Tr(
+            $"تم: {Result.InsertedCount} مُضاف · {Result.SkippedCount} متخطّى · {Result.Errors.Count} خطأ (إجمالي {Result.TotalRowsRead} صف)",
+            $"Done: {Result.InsertedCount} inserted · {Result.SkippedCount} skipped · {Result.Errors.Count} errors (read {Result.TotalRowsRead} rows)")
+    </strong>
+</div>
+
+@if (Result.Errors.Count > 0)
+{
+    <details style="margin-top:8px;">
+        <summary style="cursor:pointer;font-weight:600;">
+            @Tr($"عرض تفاصيل الأخطاء ({Result.Errors.Count})", $"Show error details ({Result.Errors.Count})")
+        </summary>
+        <table class="data-table" style="margin-top:8px;">
+            <thead>
+                <tr>
+                    <th>@Tr("الصف", "Row")</th>
+                    <th>@Tr("الكود", "Code")</th>
+                    <th>@Tr("السبب", "Reason")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var err in Result.Errors)
+                {
+                    <tr>
+                        <td>@err.RowNumber</td>
+                        <td>@err.Code</td>
+                        <td>@err.Reason</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </details>
+}
+
+@code {
+    [Parameter, EditorRequired] public ImportResult? Result { get; set; }
+
+    private string ToneClass =>
+        Result is null
+            ? "kpi-info"
+            : Result.Errors.Count == 0
+                ? "kpi-success"
+                : Result.InsertedCount > 0
+                    ? "kpi-warn"
+                    : "kpi-error";
+}

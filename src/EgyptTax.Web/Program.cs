@@ -436,6 +436,11 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Settings.UpdateInvoiceNumberH
 // Scoped because it writes via AppDbContext.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.SampleDataSeeder>();
 
+// D2.5 (v3 roadmap) — CSV import handlers for the migration page.
+// Scoped because they write via AppDbContext per-request.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.CustomerImportHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.ItemImportHandler>();
+
 // Gux.13 Tab 5 — SMTP password protector + test sender. Singleton
 // because IDataProtectionProvider keys are bound to the host's
 // keyring (no per-request state).
