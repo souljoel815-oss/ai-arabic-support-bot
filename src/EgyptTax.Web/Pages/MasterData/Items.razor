@@ -72,6 +72,13 @@
                             {
                                 <span title="@(IsArabic ? $"تحت حد التنبيه ({item.LowStockThreshold})" : $"Below low-stock threshold ({item.LowStockThreshold})")"> ⚠️</span>
                             }
+                            @if (_locations.Count > 1
+                                 && _stockByItem.TryGetValue(item.Id, out var bd) && bd.Count > 0)
+                            {
+                                <div style="font-weight:normal;color:var(--muted);font-size:11px;margin-top:2px;">
+                                    @string.Join(" · ", bd.Select(x => $"{x.LocCode}: {x.Qty.ToString("0.###")}"))
+                                </div>
+                            }
                         </td>
                         <td class="num">
                             <input type="number" step="0.01" min="0"
@@ -217,6 +224,11 @@
     private List<StockLocation> _locations = new();
     private readonly Dictionary<Guid, Guid> _receiveLoc = new();
 
+    // L4 phase 3 — per-location stock breakdown for the items table.
+    // Keyed by item.Id → list of (location code, quantity). Empty
+    // for items that haven't received any per-location stock yet.
+    private Dictionary<Guid, List<(string LocCode, decimal Qty)>> _stockByItem = new();
+
     // G2.1 — live ETA-code suggestions for the create form.
     // Recomputed whenever the operator types in either name field
     // (debounce isn't needed — the suggester is in-memory and
@@ -353,6 +365,28 @@
         var defaultLocationId = _locations.FirstOrDefault(l => l.IsDefault)?.Id
             ?? _locations.FirstOrDefault()?.Id
             ?? Guid.Empty;
+
+        // L4 phase 3 — pre-load the per-(item, location) stock rows
+        // in one query so the table render can show a breakdown
+        // without N+1 lookups. Group + project to (location code,
+        // quantity) so the render doesn't need to know location IDs.
+        if (_locations.Count > 1)
+        {
+            var stockRows = await Db.Set<ItemStockByLocation>().AsNoTracking().ToListAsync();
+            var locByCode = _locations.ToDictionary(l => l.Id, l => l.Code);
+            _stockByItem = stockRows
+                .Where(s => locByCode.ContainsKey(s.LocationId) && s.Quantity > 0)
+                .GroupBy(s => s.ItemId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(s => (locByCode[s.LocationId], s.Quantity))
+                          .OrderBy(x => x.Item1)
+                          .ToList());
+        }
+        else
+        {
+            _stockByItem = new();
+        }
 
         // Pre-seed _receiveQty + _thresholdInput so the per-row @bind
         // doesn't throw KeyNotFoundException on first render (same

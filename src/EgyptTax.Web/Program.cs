@@ -676,6 +676,7 @@ builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.UpdateCheck
 // since the last successful backup.
 builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.BackupAutoFireJob>();
 builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.PaymentReminderJob>();
+builder.Services.AddTransient<EgyptTax.Infrastructure.BackgroundJobs.QuotationExpirySweepJob>();
 
 // T110 / R-13 — supplier-TIN revalidation cron. The revalidator is
 // still the always-valid stub (the live registry feed is a Near-term
@@ -1004,6 +1005,16 @@ app.UseSerilogRequestLogging();
         recurringJobId: "payment-reminders",
         methodCall: j => j.RunOnceAsync(CancellationToken.None),
         cronExpression: "0 3 * * *"
+    );
+
+    // L1.5 follow-on — daily quotation expiry sweep at 02:30 UTC
+    // (between auto-backup at 02:00 and payment reminders at 03:00).
+    // Flips Sent quotations whose ValidUntilDate has passed into
+    // Expired state so the operator + customer see the right status.
+    recurring.AddOrUpdate<EgyptTax.Infrastructure.BackgroundJobs.QuotationExpirySweepJob>(
+        recurringJobId: "quotation-expiry-sweep",
+        methodCall: j => j.RunOnceAsync(CancellationToken.None),
+        cronExpression: "30 2 * * *"
     );
 }
 
