@@ -188,6 +188,22 @@ public sealed class PostSalesInvoiceHandler
             .Where(i => lineItemIds.Contains(i.Id))
             .ToDictionaryAsync(i => i.Id, cancellationToken);
         var pendingMovements = new List<EgyptTax.Domain.MasterData.StockMovement>();
+
+        // L4 phase 2 — load the default-location row alongside so we
+        // can mirror per-location stock changes. Safe-clamp design:
+        // never throw on per-location decrement (Item.QuantityOnHand
+        // stays authoritative). Installs that haven't seeded location
+        // rows for these items see no behaviour change.
+        var defaultLocationId = await _db.Set<EgyptTax.Domain.MasterData.StockLocation>()
+            .Where(l => l.IsDefault && l.IsActive)
+            .Select(l => (Guid?)l.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        var locationStockRows = defaultLocationId is { } locId
+            ? await _db.Set<EgyptTax.Domain.MasterData.ItemStockByLocation>()
+                .Where(s => lineItemIds.Contains(s.ItemId) && s.LocationId == locId)
+                .ToDictionaryAsync(s => s.ItemId, cancellationToken)
+            : new Dictionary<Guid, EgyptTax.Domain.MasterData.ItemStockByLocation>();
+
         foreach (var line in invoice.Lines)
         {
             if (!trackedItems.TryGetValue(line.ItemId, out var item)) continue;
@@ -202,6 +218,17 @@ public sealed class PostSalesInvoiceHandler
                             + "Receive more stock or reduce the line quantity before posting.",
                         ex);
                 }
+
+                // Mirror to per-location row — clamp to 0 to stay
+                // additive. If the row was never seeded for this
+                // item, skip entirely (operator hasn't started using
+                // locations for this SKU yet).
+                if (locationStockRows.TryGetValue(line.ItemId, out var locRow))
+                {
+                    var deduction = Math.Min(qty, locRow.Quantity);
+                    if (deduction > 0) locRow.DecreaseStock(deduction);
+                }
+
                 pendingMovements.Add(new EgyptTax.Domain.MasterData.StockMovement(
                     itemId: item.Id,
                     occurredAtUtc: nowUtc,
@@ -217,6 +244,25 @@ public sealed class PostSalesInvoiceHandler
                 // absolute value is what we put back into stock.
                 var put = -qty;
                 item.IncreaseStock(put);
+
+                // Mirror to per-location row. Create the row if it
+                // doesn't exist yet (the return seeds the default
+                // location with the returned units — sensible default).
+                if (defaultLocationId is { } defLoc)
+                {
+                    if (locationStockRows.TryGetValue(line.ItemId, out var locRow))
+                    {
+                        locRow.IncreaseStock(put);
+                    }
+                    else
+                    {
+                        var fresh = new EgyptTax.Domain.MasterData.ItemStockByLocation(
+                            itemId: line.ItemId, locationId: defLoc, initialQuantity: put);
+                        _db.Add(fresh);
+                        locationStockRows[line.ItemId] = fresh;
+                    }
+                }
+
                 pendingMovements.Add(new EgyptTax.Domain.MasterData.StockMovement(
                     itemId: item.Id,
                     occurredAtUtc: nowUtc,

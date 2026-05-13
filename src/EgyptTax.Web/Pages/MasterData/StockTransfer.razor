@@ -1,0 +1,249 @@
+@page "/stock-transfer"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    L4 phase 2 — stock transfer between two locations. Decrements
+    from-location, increments to-location, writes two
+    StockMovement rows (Out + In) for the audit trail. Refuses to
+    transfer more than the from-location currently holds —
+    "insufficient stock at this location" is surfaced cleanly to
+    the operator.
+
+    Does NOT touch Item.QuantityOnHand (the global total). The
+    item-level stock is unchanged because the units stayed in the
+    company; they just moved between locations.
+*@
+
+<PageTitle>@Tr("نقل مخزون | DaftarX", "Stock Transfer | DaftarX")</PageTitle>
+
+<h1>@Tr("نقل مخزون بين فرعين", "Stock Transfer")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "نقل عدد من الوحدات من فرع لفرع تاني (مثلاً من المخزن الكبير للفرع). الإجمالي على مستوى الصنف ميتغيرش — بس بيتوزع بشكل مختلف.",
+        "Move units of an item from one location to another (e.g. warehouse → shop). The global Item.QuantityOnHand stays the same — only the per-location split changes.")
+</p>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+@if (_locations.Count < 2)
+{
+    <div class="kpi-card kpi-info" style="padding:14px;">
+        @Tr(
+            "محتاج اتنين فرع/مخزن على الأقل لتعمل نقل. روح لـ ",
+            "You need at least two locations to transfer between. Go to ")
+        <a href="/stock-locations">@Tr("صفحة الفروع", "Stock Locations")</a>
+        @Tr(" وأضف فرع تاني.", " and add another.")
+    </div>
+    return;
+}
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+}
+
+<section class="form-section">
+    <div class="form-grid">
+        <label>
+            <span>@Tr("الصنف *", "Item *")</span>
+            <select @bind="_form.ItemId" @bind:after="OnItemChangedAsync">
+                <option value="@Guid.Empty">@Tr("— اختر صنف —", "— pick an item —")</option>
+                @foreach (var item in _items)
+                {
+                    <option value="@item.Id">@item.Code · @item.Name.Display(IsArabic ? Language.Ar : Language.En)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@Tr("من فرع *", "From location *")</span>
+            <select @bind="_form.FromLocationId" @bind:after="RefreshAvailableAsync">
+                <option value="@Guid.Empty">@Tr("— اختر —", "— pick —")</option>
+                @foreach (var loc in _locations)
+                {
+                    <option value="@loc.Id">@loc.Code · @loc.Name.Display(IsArabic ? Language.Ar : Language.En)</option>
+                }
+            </select>
+            @if (_availableAtFrom is not null)
+            {
+                <em style="color:var(--muted);font-size:12px;">
+                    @Tr($"المتوفر دلوقتي في الفرع ده: {_availableAtFrom:0.###}",
+                        $"Currently available at this location: {_availableAtFrom:0.###}")
+                </em>
+            }
+        </label>
+        <label>
+            <span>@Tr("إلى فرع *", "To location *")</span>
+            <select @bind="_form.ToLocationId">
+                <option value="@Guid.Empty">@Tr("— اختر —", "— pick —")</option>
+                @foreach (var loc in _locations.Where(l => l.Id != _form.FromLocationId))
+                {
+                    <option value="@loc.Id">@loc.Code · @loc.Name.Display(IsArabic ? Language.Ar : Language.En)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@Tr("الكمية *", "Quantity *")</span>
+            <input type="number" step="0.01" min="0.01" @bind="_form.Quantity" />
+        </label>
+        <label style="grid-column:span 2;">
+            <span>@Tr("ملاحظات (اختياري)", "Notes (optional)")</span>
+            <input type="text" @bind="_form.Note" maxlength="200" />
+        </label>
+    </div>
+    <div class="invoice-actions" style="margin-top:12px;">
+        <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnTransferAsync">
+            @(_busy ? Tr("جارٍ النقل…", "Transferring…") : Tr("نقل", "Transfer"))
+        </button>
+    </div>
+</section>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private List<Item> _items = new();
+    private List<StockLocation> _locations = new();
+    private FormModel _form = new();
+    private decimal? _availableAtFrom;
+
+    private sealed class FormModel
+    {
+        public Guid ItemId { get; set; } = Guid.Empty;
+        public Guid FromLocationId { get; set; } = Guid.Empty;
+        public Guid ToLocationId { get; set; } = Guid.Empty;
+        public decimal Quantity { get; set; } = 1m;
+        public string? Note { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => i.Status == ItemStatus.Active)
+            .OrderBy(i => i.Code).ToListAsync();
+        _locations = await Db.Set<StockLocation>().AsNoTracking()
+            .Where(l => l.IsActive)
+            .OrderByDescending(l => l.IsDefault)
+            .ThenBy(l => l.Code)
+            .ToListAsync();
+        _form.FromLocationId = _locations.FirstOrDefault(l => l.IsDefault)?.Id ?? Guid.Empty;
+        _loading = false;
+    }
+
+    private async Task OnItemChangedAsync() => await RefreshAvailableAsync();
+
+    private async Task RefreshAvailableAsync()
+    {
+        _availableAtFrom = null;
+        if (_form.ItemId == Guid.Empty || _form.FromLocationId == Guid.Empty) return;
+        var row = await Db.Set<ItemStockByLocation>().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.ItemId == _form.ItemId && s.LocationId == _form.FromLocationId);
+        _availableAtFrom = row?.Quantity ?? 0m;
+    }
+
+    private async Task OnTransferAsync()
+    {
+        _flash = null;
+        if (_form.ItemId == Guid.Empty || _form.FromLocationId == Guid.Empty ||
+            _form.ToLocationId == Guid.Empty || _form.Quantity <= 0)
+        {
+            _flash = Tr("اختر صنف + فرعين + كمية موجبة.", "Pick an item, both locations, and a positive quantity.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        if (_form.FromLocationId == _form.ToLocationId)
+        {
+            _flash = Tr("الفرعين لازم يبقوا مختلفين.", "From and To must differ.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var fromRow = await Db.Set<ItemStockByLocation>()
+                .FirstOrDefaultAsync(s => s.ItemId == _form.ItemId && s.LocationId == _form.FromLocationId);
+            if (fromRow is null || fromRow.Quantity < _form.Quantity)
+            {
+                _flash = Tr(
+                    $"الفرع المصدر مفيهوش الكمية المطلوبة. المتوفر: {(fromRow?.Quantity ?? 0m):0.###}",
+                    $"Source location has insufficient stock. Available: {(fromRow?.Quantity ?? 0m):0.###}");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+
+            fromRow.DecreaseStock(_form.Quantity);
+
+            var toRow = await Db.Set<ItemStockByLocation>()
+                .FirstOrDefaultAsync(s => s.ItemId == _form.ItemId && s.LocationId == _form.ToLocationId);
+            if (toRow is null)
+            {
+                Db.Add(new ItemStockByLocation(_form.ItemId, _form.ToLocationId, _form.Quantity));
+            }
+            else
+            {
+                toRow.IncreaseStock(_form.Quantity);
+            }
+
+            // Audit trail: two StockMovement rows (Out + In) so the
+            // existing per-item stock-movement page surfaces the
+            // transfer. Note column carries the from/to + notes.
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId();
+            var item = await Db.Set<Item>().AsNoTracking().FirstAsync(i => i.Id == _form.ItemId);
+            var fromName = _locations.First(l => l.Id == _form.FromLocationId).Code;
+            var toName = _locations.First(l => l.Id == _form.ToLocationId).Code;
+            var noteText = string.IsNullOrWhiteSpace(_form.Note)
+                ? $"Transfer {fromName} → {toName}"
+                : $"Transfer {fromName} → {toName} · {_form.Note}";
+
+            Db.Add(new StockMovement(
+                itemId: _form.ItemId,
+                occurredAtUtc: DateTime.UtcNow,
+                quantity: -_form.Quantity,
+                quantityOnHandAfter: item.QuantityOnHand,
+                kind: StockMovementKind.Adjustment,
+                note: noteText,
+                createdByUserId: userId));
+            Db.Add(new StockMovement(
+                itemId: _form.ItemId,
+                occurredAtUtc: DateTime.UtcNow,
+                quantity: _form.Quantity,
+                quantityOnHandAfter: item.QuantityOnHand,
+                kind: StockMovementKind.Adjustment,
+                note: noteText,
+                createdByUserId: userId));
+
+            await Db.SaveChangesAsync();
+
+            _flash = Tr(
+                $"✓ تم نقل {_form.Quantity:0.###} من {fromName} لـ {toName}.",
+                $"✓ Transferred {_form.Quantity:0.###} units from {fromName} to {toName}.");
+            _flashClass = "kpi-card kpi-success";
+            _form.Quantity = 1m;
+            _form.Note = null;
+            await RefreshAvailableAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+}
