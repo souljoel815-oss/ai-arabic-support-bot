@@ -1,0 +1,368 @@
+@page "/dashboards/sales"
+@using System.Globalization
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Sales
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    Phase G — Sales Dashboard. Admin / manager / accountant view of
+    commercial performance: this month's revenue, collections, top
+    customers / items / reps, 6-month trend, and the orders→invoices
+    conversion rate. Reps don't see this page (NotSalesRepOnly) —
+    they have their own per-rep visibility on the regular pages.
+*@
+
+<h1>@(IsArabic ? "لوحة المبيعات" : "Sales Dashboard")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? $"الأداء التجاري لشهر {_periodLabel} حتى {DateTime.UtcNow:yyyy-MM-dd}."
+        : $"Commercial performance for {_periodLabel} through {DateTime.UtcNow:yyyy-MM-dd}.")
+</p>
+
+@if (_loading) { <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p> return; }
+
+<section class="kpi-grid kpi-grid-3" style="margin-bottom:24px;">
+    <div class="kpi-card kpi-card-ok">
+        <div class="kpi-card-h">@(IsArabic ? "إيرادات الشهر" : "This-month revenue")</div>
+        <div class="kpi-card-value">@_revenueThisMonth.ToString("N0") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">@_invoiceCountThisMonth @(IsArabic ? "فاتورة مرحَّلة" : "posted invoice(s)")</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-card-h">@(IsArabic ? "تحصيلات الشهر" : "This-month collections")</div>
+        <div class="kpi-card-value">@_collectedThisMonth.ToString("N0") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">@_receiptCountThisMonth @(IsArabic ? "إيصال قبض" : "receipts")</div>
+    </div>
+    <div class="kpi-card @(_outstandingAr > 0 ? "kpi-card-warn" : "kpi-card-ok")">
+        <div class="kpi-card-h">@(IsArabic ? "الذمم المستحقة" : "Outstanding receivable")</div>
+        <div class="kpi-card-value">@_outstandingAr.ToString("N0") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">
+            @if (_avgInvoice > 0)
+            {
+                @(IsArabic ? $"متوسط الفاتورة: {_avgInvoice:N0} ج.م." : $"Avg invoice: {_avgInvoice:N0} EGP")
+            }
+        </div>
+    </div>
+</section>
+
+<section style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
+    <div>
+        <h2>@(IsArabic ? "أعلى 5 عملاء (إيراد الشهر)" : "Top 5 customers (this-month revenue)")</h2>
+        @if (_topCustomers.Count == 0)
+        {
+            <p><em>@(IsArabic ? "لا توجد فواتير في الشهر الحالي." : "No invoices this month.")</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead><tr>
+                    <th>@(IsArabic ? "العميل" : "Customer")</th>
+                    <th class="num">@(IsArabic ? "فواتير" : "Invoices")</th>
+                    <th class="num">@(IsArabic ? "الإجمالي" : "Total")</th>
+                </tr></thead>
+                <tbody>
+                    @foreach (var c in _topCustomers)
+                    {
+                        <tr>
+                            <td>@c.Name</td>
+                            <td class="num">@c.Count</td>
+                            <td class="num">@c.Total.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div>
+        <h2>@(IsArabic ? "أعلى 5 أصناف (كميات الشهر)" : "Top 5 items (units sold this month)")</h2>
+        @if (_topItems.Count == 0)
+        {
+            <p><em>@(IsArabic ? "لا توجد بنود مباعة في الشهر الحالي." : "No items sold this month.")</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead><tr>
+                    <th>@(IsArabic ? "الكود" : "Code")</th>
+                    <th>@(IsArabic ? "الاسم" : "Name")</th>
+                    <th class="num">@(IsArabic ? "الكمية" : "Qty")</th>
+                    <th class="num">@(IsArabic ? "الإيراد" : "Revenue")</th>
+                </tr></thead>
+                <tbody>
+                    @foreach (var it in _topItems)
+                    {
+                        <tr>
+                            <td><code>@it.Code</code></td>
+                            <td>@it.Name</td>
+                            <td class="num">@it.Quantity.ToString("0.###")</td>
+                            <td class="num">@it.Revenue.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</section>
+
+<section style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
+    <div>
+        <h2>@(IsArabic ? "أعلى 5 مناديب" : "Top 5 reps")</h2>
+        @if (_topReps.Count == 0)
+        {
+            <p><em>@(IsArabic ? "لا توجد مبيعات منسوبة لمناديب." : "No invoices attributed to a rep yet.")</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead><tr>
+                    <th>@(IsArabic ? "المندوب" : "Rep")</th>
+                    <th class="num">@(IsArabic ? "فواتير" : "Invoices")</th>
+                    <th class="num">@(IsArabic ? "الإجمالي" : "Total")</th>
+                </tr></thead>
+                <tbody>
+                    @foreach (var r in _topReps)
+                    {
+                        <tr>
+                            <td>@r.Name</td>
+                            <td class="num">@r.Count</td>
+                            <td class="num">@r.Total.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div>
+        <h2>@(IsArabic ? "تحويل الأوامر إلى فواتير" : "Order → Invoice conversion")</h2>
+        @if (_ordersTotalThisMonth == 0)
+        {
+            <p><em>@(IsArabic ? "لا توجد أوامر بيع هذا الشهر." : "No sales orders this month.")</em></p>
+        }
+        else
+        {
+            var pct = _ordersTotalThisMonth == 0 ? 0 : (decimal)_ordersConvertedThisMonth * 100m / _ordersTotalThisMonth;
+            <div class="kpi-card">
+                <div class="kpi-card-value">@pct.ToString("0.0")%</div>
+                <div class="kpi-card-foot">
+                    @(IsArabic
+                        ? $"{_ordersConvertedThisMonth} من {_ordersTotalThisMonth} أمر تحوّل لفاتورة"
+                        : $"{_ordersConvertedThisMonth} of {_ordersTotalThisMonth} orders converted")
+                </div>
+            </div>
+        }
+    </div>
+</section>
+
+<section style="margin-bottom:24px;">
+    <h2>@(IsArabic ? "اتجاه الإيرادات (آخر 6 أشهر)" : "Revenue trend (last 6 months)")</h2>
+    @if (_trend.Count == 0 || _trend.All(b => b.Total == 0))
+    {
+        <p><em>@(IsArabic ? "لا توجد بيانات كافية لرسم الاتجاه بعد." : "Not enough data yet to plot a trend.")</em></p>
+    }
+    else
+    {
+        var maxVal = _trend.Max(b => b.Total);
+        if (maxVal <= 0) { maxVal = 1m; }
+        <div style="max-width:720px;background:var(--surface,#fff);border:1px solid var(--border);border-radius:12px;padding:16px;">
+            <div style="display:grid;grid-template-columns:repeat(@_trend.Count, 1fr);gap:8px;align-items:end;height:160px;">
+                @foreach (var b in _trend)
+                {
+                    var ratio = (double)(b.Total / maxVal);
+                    var heightPx = (int)Math.Round(ratio * 140d);
+                    if (heightPx < 2 && b.Total > 0) { heightPx = 2; }
+                    <div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;">
+                        <div style="font-size:10px;color:#111;margin-bottom:2px;">@b.Total.ToString("N0")</div>
+                        <div style="width:80%;background:#3b82f6;border-radius:4px 4px 0 0;height:@(heightPx)px;"></div>
+                    </div>
+                }
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(@_trend.Count, 1fr);gap:8px;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+                @foreach (var b in _trend)
+                {
+                    <div style="text-align:center;font-size:11px;color:#6b7280;">@MonthShort(b.Month)</div>
+                }
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private bool _loading = true;
+    private string _periodLabel = "";
+    private DateOnly _monthStart;
+    private DateOnly _monthEnd;
+
+    private decimal _revenueThisMonth;
+    private decimal _collectedThisMonth;
+    private decimal _outstandingAr;
+    private decimal _avgInvoice;
+    private int _invoiceCountThisMonth;
+    private int _receiptCountThisMonth;
+
+    private List<TopCustomer> _topCustomers = new();
+    private List<TopItem> _topItems = new();
+    private List<TopRep> _topReps = new();
+
+    private int _ordersTotalThisMonth;
+    private int _ordersConvertedThisMonth;
+
+    private List<TrendBucket> _trend = new();
+
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var nowUtc = DateTime.UtcNow;
+        _monthStart = new DateOnly(nowUtc.Year, nowUtc.Month, 1);
+        _monthEnd = _monthStart.AddMonths(1).AddDays(-1);
+        _periodLabel = nowUtc.ToString(IsArabic ? "MMMM yyyy" : "MMMM yyyy",
+            IsArabic ? new CultureInfo("ar-EG") : CultureInfo.InvariantCulture);
+
+        // Materialise the month's posted invoices once, then group +
+        // sum in memory (SQLite can't aggregate decimal server-side).
+        var monthInvoices = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted
+                && i.CreditNoteOfInvoiceId == null
+                && i.DocumentDate >= _monthStart
+                && i.DocumentDate <= _monthEnd)
+            .Select(i => new
+            {
+                i.Id,
+                i.CustomerId,
+                i.CreatedByUserId,
+                Net = i.NetBeforeVat.Amount,
+                Grand = i.GrandTotal.Amount,
+            })
+            .ToListAsync();
+        _invoiceCountThisMonth = monthInvoices.Count;
+        _revenueThisMonth = monthInvoices.Sum(i => i.Net);
+        _avgInvoice = _invoiceCountThisMonth == 0 ? 0 : monthInvoices.Sum(i => i.Grand) / _invoiceCountThisMonth;
+
+        // Collections this month — gross receipts.
+        var monthReceipts = await Db.Set<CustomerReceiptVoucher>().AsNoTracking()
+            .Where(r => r.State == DocumentState.Posted
+                && r.ReceiptDate >= _monthStart
+                && r.ReceiptDate <= _monthEnd)
+            .Select(r => r.GrossReceiptAmount.Amount)
+            .ToListAsync();
+        _collectedThisMonth = monthReceipts.Sum();
+        _receiptCountThisMonth = monthReceipts.Count;
+
+        // Outstanding AR — all-time posted invoices (incl. negative
+        // credit notes) minus all-time receipts.
+        var allInvoiceTotals = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted)
+            .Select(i => i.GrandTotal.Amount)
+            .ToListAsync();
+        var allReceiptTotals = await Db.Set<CustomerReceiptVoucher>().AsNoTracking()
+            .Where(r => r.State == DocumentState.Posted)
+            .Select(r => r.GrossReceiptAmount.Amount)
+            .ToListAsync();
+        _outstandingAr = allInvoiceTotals.Sum() - allReceiptTotals.Sum();
+
+        // Top customers (this month).
+        var customerIds = monthInvoices.Select(i => i.CustomerId).Distinct().ToArray();
+        var customerNames = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => customerIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => IsArabic ? c.Name.Arabic : c.Name.English);
+        _topCustomers = monthInvoices
+            .GroupBy(i => i.CustomerId)
+            .Select(g => new TopCustomer(
+                customerNames.GetValueOrDefault(g.Key, g.Key.ToString("D")),
+                g.Count(),
+                g.Sum(x => x.Grand)))
+            .OrderByDescending(c => c.Total)
+            .Take(5)
+            .ToList();
+
+        // Top items (units + revenue this month). Have to reach into
+        // the line table since lines don't ship in the projection
+        // above.
+        var monthInvoiceIds = monthInvoices.Select(i => i.Id).ToArray();
+        var monthLines = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => monthInvoiceIds.Contains(i.Id))
+            .SelectMany(i => i.Lines)
+            .Select(l => new { l.ItemId, l.Quantity, Sub = l.LineSubtotal.Amount })
+            .ToListAsync();
+        var itemIds = monthLines.Select(l => l.ItemId).Distinct().ToArray();
+        var items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => itemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, i => (i.Code, IsArabic ? i.Name.Arabic : i.Name.English));
+        _topItems = monthLines
+            .GroupBy(l => l.ItemId)
+            .Select(g =>
+            {
+                var info = items.GetValueOrDefault(g.Key, ("?", "?"));
+                return new TopItem(info.Item1, info.Item2,
+                    g.Sum(x => x.Quantity), g.Sum(x => x.Sub));
+            })
+            .OrderByDescending(t => t.Quantity)
+            .Take(5)
+            .ToList();
+
+        // Top reps (this month).
+        var repIds = monthInvoices.Where(i => i.CreatedByUserId is not null)
+            .Select(i => i.CreatedByUserId!.Value).Distinct().ToArray();
+        var users = await Db.Set<User>().AsNoTracking()
+            .Where(u => repIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => IsArabic ? u.DisplayName.Arabic : u.DisplayName.English);
+        _topReps = monthInvoices
+            .Where(i => i.CreatedByUserId is not null)
+            .GroupBy(i => i.CreatedByUserId!.Value)
+            .Select(g => new TopRep(
+                users.GetValueOrDefault(g.Key, g.Key.ToString("D")),
+                g.Count(),
+                g.Sum(x => x.Grand)))
+            .OrderByDescending(r => r.Total)
+            .Take(5)
+            .ToList();
+
+        // Order → Invoice conversion (orders created this month).
+        _ordersTotalThisMonth = await Db.Set<SalesOrder>().AsNoTracking()
+            .CountAsync(o => o.OrderDate >= _monthStart && o.OrderDate <= _monthEnd);
+        _ordersConvertedThisMonth = await Db.Set<SalesOrder>().AsNoTracking()
+            .CountAsync(o => o.State == SalesOrderState.Converted
+                && o.OrderDate >= _monthStart
+                && o.OrderDate <= _monthEnd);
+
+        // 6-month revenue trend (current + previous 5).
+        var trendStart = new DateOnly(nowUtc.Year, nowUtc.Month, 1).AddMonths(-5);
+        var trendInvoices = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted
+                && i.CreditNoteOfInvoiceId == null
+                && i.DocumentDate >= trendStart
+                && i.DocumentDate <= _monthEnd)
+            .Select(i => new { i.DocumentDate, Grand = i.GrandTotal.Amount })
+            .ToListAsync();
+        _trend = Enumerable.Range(0, 6)
+            .Select(offset =>
+            {
+                var monthDate = trendStart.AddMonths(offset);
+                var monthFirst = new DateOnly(monthDate.Year, monthDate.Month, 1);
+                var monthLast = monthFirst.AddMonths(1).AddDays(-1);
+                var total = trendInvoices
+                    .Where(i => i.DocumentDate >= monthFirst && i.DocumentDate <= monthLast)
+                    .Sum(i => i.Grand);
+                return new TrendBucket(monthFirst, total);
+            })
+            .ToList();
+
+        _loading = false;
+    }
+
+    private static string MonthShort(DateOnly d) => d.ToString("MMM", CultureInfo.InvariantCulture);
+
+    private sealed record TopCustomer(string Name, int Count, decimal Total);
+    private sealed record TopItem(string Code, string Name, decimal Quantity, decimal Revenue);
+    private sealed record TopRep(string Name, int Count, decimal Total);
+    private sealed record TrendBucket(DateOnly Month, decimal Total);
+}
