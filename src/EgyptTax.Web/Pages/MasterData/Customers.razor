@@ -8,6 +8,8 @@
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject IJSRuntime Js
+@inject EgyptTax.Infrastructure.Customers.CustomerPortalService Portal
+@inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <h1>
@@ -62,6 +64,10 @@
                         <td>@c.Status</td>
                         <td>
                             <a href="/customers/@c.Id/statement" style="margin-inline-end:8px;">@(IsArabic ? "كشف حساب" : "Statement")</a>
+                            <button type="button" style="margin-inline-end:8px;font-size:12px;"
+                                    @onclick="() => GeneratePortalLinkAsync(c.Id)">
+                                @(IsArabic ? "🔗 رابط البوابة" : "🔗 Portal link")
+                            </button>
                             @if (c.Status == CustomerStatus.Active)
                             {
                                 <button type="button" @onclick="() => DeactivateAsync(c.Id)">@(IsArabic ? "تعطيل" : "Deactivate")</button>
@@ -271,6 +277,41 @@
             ? $"تم إعادة تفعيل العميل {c.Code}."
             : $"Customer {c.Code} reactivated.";
         await ReloadAsync();
+    }
+
+    /// <summary>L5 (v3 roadmap) — generate a magic-link portal URL
+    /// for the customer + copy it to the clipboard. Operator can
+    /// paste into WhatsApp / email / SMS to send to the customer.</summary>
+    private async Task GeneratePortalLinkAsync(Guid id)
+    {
+        try
+        {
+            var c = await Db.Set<Customer>().AsNoTracking().FirstAsync(x => x.Id == id);
+            var token = await Portal.GenerateLinkAsync(id, createdByUserId: null);
+            var baseUri = Nav.BaseUri.TrimEnd('/');
+            var url = $"{baseUri}/portal/{token}";
+
+            // Best-effort clipboard copy via JS interop. Fall back
+            // to just showing the URL in the flash message if the
+            // browser blocks clipboard access.
+            try
+            {
+                await Js.InvokeVoidAsync("navigator.clipboard.writeText", url);
+                _savedFlash = IsArabic
+                    ? $"✓ تم نسخ رابط البوابة لـ {c.Code}: {url}"
+                    : $"✓ Portal link for {c.Code} copied to clipboard: {url}";
+            }
+            catch
+            {
+                _savedFlash = IsArabic
+                    ? $"رابط البوابة لـ {c.Code} (انسخه يدوياً): {url}"
+                    : $"Portal link for {c.Code} (copy manually): {url}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _savedFlash = IsArabic ? $"فشل التوليد: {ex.Message}" : $"Failed: {ex.Message}";
+        }
     }
 
     private async Task ExportCsvAsync()

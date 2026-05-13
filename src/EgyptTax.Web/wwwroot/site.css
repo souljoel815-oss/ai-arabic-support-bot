@@ -3586,3 +3586,60 @@ a.btn-secondary .ic {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* L5 (v3 roadmap) — customer-portal layout. Minimal chrome,
+   centered content column, no admin sidebar. Reuses the same
+   color tokens as the main app. */
+.portal-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg, #f6f8fb);
+}
+.portal-header {
+    background: var(--surface, #fff);
+    border-block-end: 1px solid var(--border, #e5e7eb);
+    padding: 16px 24px;
+}
+.portal-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 960px;
+    margin: 0 auto;
+}
+.portal-brand-mark {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: var(--primary, #1e3a5f);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    font-weight: 700;
+}
+.portal-brand-name {
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--primary, #1e3a5f);
+}
+.portal-brand-x { color: var(--accent, #3b82f6); }
+.portal-brand-tag {
+    margin-inline-start: auto;
+    font-size: 13px;
+    color: var(--muted, #6b7280);
+}
+.portal-main {
+    flex: 1;
+    max-width: 960px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 24px;
+}
+.portal-footer {
+    border-block-start: 1px solid var(--border, #e5e7eb);
+    padding: 16px 24px;
+    text-align: center;
+    color: var(--muted, #6b7280);
+    background: var(--surface, #fff);
+}

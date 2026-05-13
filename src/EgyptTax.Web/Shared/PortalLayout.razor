@@ -1,0 +1,30 @@
+@inherits LayoutComponentBase
+
+@*
+    L5 (v3 roadmap) — minimal layout for the customer portal.
+    No admin sidebar, no chat sidebar, no nav menu. Just a header
+    with company brand + a centered content column. Used by the
+    /portal/{token} page family.
+*@
+
+<div class="portal-shell">
+    <header class="portal-header">
+        <div class="portal-brand">
+            <div class="portal-brand-mark">DX</div>
+            <div class="portal-brand-name">Daftar<span class="portal-brand-x">X</span></div>
+            <span class="portal-brand-tag">@Tr("بوابة العميل", "Customer Portal")</span>
+        </div>
+    </header>
+
+    <main class="portal-main">
+        @Body
+    </main>
+
+    <footer class="portal-footer">
+        <small>
+            @Tr(
+                "هذه بوابة محمية بمفتاح فردي خاص بك. لا تشاركها مع أحد لا تثق به.",
+                "This is a token-protected portal scoped to you. Don't share the URL with anyone you don't trust.")
+        </small>
+    </footer>
+</div>

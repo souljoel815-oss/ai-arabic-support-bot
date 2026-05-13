@@ -455,6 +455,9 @@ builder.Services.AddHttpClient<EgyptTax.Infrastructure.Ai.AnthropicVisionClient>
 builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.OcrReceiptHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.NlQueryHandler>();
 
+// L5 (v3 roadmap) — customer-portal magic-link issuance + validation.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Customers.CustomerPortalService>();
+
 // Gux.13 Tab 5 — SMTP password protector + test sender. Singleton
 // because IDataProtectionProvider keys are bound to the host's
 // keyring (no per-request state).
@@ -1222,6 +1225,43 @@ app.MapGet(
         }
     )
     .RequireAuthorization("FullyAuthenticated");
+
+// L5 (v3 roadmap) — portal-token-protected PDF download. Same
+// renderer as the admin /invoices/{id}/pdf route, but the auth
+// gate is the portal token (validated against
+// customer_portal_access) + an ownership check that the invoice
+// belongs to the customer the token is for. No admin auth needed.
+app.MapGet(
+    "/portal/{token}/invoices/{id:guid}/pdf",
+    async (
+        string token,
+        Guid id,
+        EgyptTax.Infrastructure.Customers.CustomerPortalService portal,
+        EgyptTax.Infrastructure.Persistence.AppDbContext db,
+        EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer renderer,
+        CancellationToken cancellationToken
+    ) =>
+    {
+        var access = await portal.ValidateAsync(token, cancellationToken);
+        if (access is null) return Results.NotFound();
+
+        // Ownership check: the invoice must belong to the customer
+        // the token authenticates. Defense-in-depth — a token
+        // owner can't probe other customers' invoice IDs.
+        var invoiceCustomerId = await db.Set<EgyptTax.Domain.Invoices.SalesInvoice>()
+            .AsNoTracking()
+            .Where(i => i.Id == id)
+            .Select(i => (Guid?)i.CustomerId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (invoiceCustomerId != access.CustomerId) return Results.NotFound();
+
+        var bundle = await EgyptTax.Infrastructure.Invoices.InvoiceRenderingPipeline.LoadAsync(
+            db, id, cancellationToken);
+        if (bundle is null) return Results.NotFound();
+        var pdf = renderer.Render(bundle.PdfRequest);
+        return Results.File(pdf, "application/pdf", $"{bundle.Invoice.DocumentNumber}.pdf");
+    }
+);
 
 // T123 / T077 — eInvoice JSON view for a posted sales invoice.
 app.MapGet(

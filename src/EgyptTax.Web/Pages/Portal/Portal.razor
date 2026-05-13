@@ -1,0 +1,195 @@
+@page "/portal/{Token}"
+@layout PortalLayout
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Customers
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.EntityFrameworkCore
+@inject CustomerPortalService PortalSvc
+@inject AppDbContext Db
+
+@*
+    L5 (v3 roadmap) — customer-facing portal. Token-in-URL auth:
+    the {Token} parameter is validated against
+    customer_portal_access; valid tokens load the customer + their
+    statement + invoice list. No password, no OTP, no admin
+    auth scheme — just a magic link the operator generates and
+    forwards.
+
+    Defense-in-depth: token validation happens server-side on
+    every render (no client cache that could be replayed if the
+    operator revokes the token).
+*@
+
+<PageTitle>@Tr("بوابة العميل | DaftarX", "Customer Portal | DaftarX")</PageTitle>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+@if (_customer is null)
+{
+    <div class="kpi-card kpi-error" style="padding:18px;text-align:center;">
+        <h2>@Tr("الرابط غير صالح", "Link not valid")</h2>
+        <p>
+            @Tr(
+                "ممكن يكون انتهت صلاحية الرابط أو تم إلغاؤه. تواصل مع المحاسب اللي بعتلك الرابط لطلب رابط جديد.",
+                "The link may have expired or been revoked. Contact whoever sent you the link to request a fresh one.")
+        </p>
+    </div>
+    return;
+}
+
+<h1>@_customer.Name.Display(IsArabic ? Language.Ar : Language.En)</h1>
+<p class="page-subtitle">
+    @if (_customer.TaxProfile.TinValue is { } tin)
+    {
+        <span>@Tr("الرقم الضريبي:", "TIN:") @tin · </span>
+    }
+    @Tr("ملخص حسابك مع المنشأة.", "Your account summary.")
+</p>
+
+<section class="form-section" style="margin-top:16px;">
+    <div class="kpi-grid kpi-grid-3">
+        <div class="kpi-card @(_outstanding > 0 ? "kpi-warn" : "kpi-success")">
+            <div class="kpi-label">@Tr("الرصيد المستحق", "Outstanding")</div>
+            <div class="kpi-value">@_outstanding.ToString("N2") @(IsArabic ? "ج.م" : "EGP")</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@Tr("إجمالي المبيعات", "Total invoiced")</div>
+            <div class="kpi-value">@_totalInvoiced.ToString("N2") @(IsArabic ? "ج.م" : "EGP")</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@Tr("إجمالي المدفوع", "Total paid")</div>
+            <div class="kpi-value">@_totalReceived.ToString("N2") @(IsArabic ? "ج.م" : "EGP")</div>
+        </div>
+    </div>
+</section>
+
+<section class="form-section">
+    <h2>@Tr("الفواتير", "Invoices")</h2>
+    @if (_invoices.Count == 0)
+    {
+        <p class="page-subtitle">@Tr("لا توجد فواتير بعد.", "No invoices yet.")</p>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>@Tr("الرقم", "Number")</th>
+                    <th>@Tr("التاريخ", "Date")</th>
+                    <th>@Tr("النوع", "Type")</th>
+                    <th>@Tr("الإجمالي", "Total")</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var inv in _invoices)
+                {
+                    <tr>
+                        <td>@(inv.DocumentNumber ?? "—")</td>
+                        <td>@inv.DocumentDate.ToString("yyyy-MM-dd")</td>
+                        <td>
+                            @if (inv.IsCreditNote)
+                            {
+                                <span style="color:var(--success);">@Tr("إشعار دائن", "Credit note")</span>
+                            }
+                            else
+                            {
+                                @Tr("فاتورة", "Invoice")
+                            }
+                        </td>
+                        <td>@inv.GrandTotal.Amount.ToString("N2")</td>
+                        <td>
+                            <a href="/portal/@Token/invoices/@inv.Id/pdf" target="_blank" rel="noopener">
+                                @Tr("⬇ PDF", "⬇ PDF")
+                            </a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section class="form-section">
+    <h2>@Tr("بيانات التواصل", "Contact info")</h2>
+    <table class="data-table">
+        <tbody>
+            @if (!string.IsNullOrEmpty(_customer.Phone))
+            {
+                <tr><th>@Tr("الهاتف", "Phone")</th><td>@_customer.Phone</td></tr>
+            }
+            @if (!string.IsNullOrEmpty(_customer.Email))
+            {
+                <tr><th>@Tr("البريد الإلكتروني", "Email")</th><td>@_customer.Email</td></tr>
+            }
+            <tr>
+                <th>@Tr("العنوان", "Address")</th>
+                <td>@_customer.Address.Display.Display(IsArabic ? Language.Ar : Language.En)</td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private bool _loading = true;
+    private Customer? _customer;
+    private List<SalesInvoice> _invoices = new();
+    private decimal _outstanding;
+    private decimal _totalInvoiced;
+    private decimal _totalReceived;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var access = await PortalSvc.ValidateAsync(Token);
+        if (access is null)
+        {
+            _loading = false;
+            return;
+        }
+
+        _customer = await Db.Set<Customer>().AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == access.CustomerId);
+        if (_customer is null)
+        {
+            _loading = false;
+            return;
+        }
+
+        _invoices = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.CustomerId == access.CustomerId && i.State == DocumentState.Posted)
+            .OrderByDescending(i => i.DocumentDate)
+            .Take(50)
+            .ToListAsync();
+
+        // SQLite-decimal-safe: materialise then aggregate in C#.
+        var invoiceAmounts = _invoices
+            .Where(i => !i.IsCreditNote)
+            .Select(i => i.GrandTotal.Amount)
+            .ToList();
+        var creditAmounts = _invoices
+            .Where(i => i.IsCreditNote)
+            .Select(i => Math.Abs(i.GrandTotal.Amount))
+            .ToList();
+        _totalInvoiced = invoiceAmounts.Sum();
+
+        var receiptAmounts = await Db.Set<CustomerReceiptVoucher>().AsNoTracking()
+            .Where(r => r.CustomerId == access.CustomerId && r.State == DocumentState.Posted)
+            .Select(r => r.GrossReceiptAmount.Amount)
+            .ToListAsync();
+        _totalReceived = receiptAmounts.Sum();
+
+        _outstanding = _totalInvoiced - _totalReceived - creditAmounts.Sum();
+
+        _loading = false;
+    }
+}
