@@ -313,8 +313,18 @@
         _flash = null;
         try
         {
-            await SampleSeeder.SeedAsync();
+            // Returns true when at least one kind was added; false when
+            // every kind already had sample rows. Either way, mark
+            // loaded so the wizard moves past the offer card.
+            var added = await SampleSeeder.SeedAsync();
             _sampleDataLoaded = true;
+            if (!added)
+            {
+                _flash = IsArabic
+                    ? "البيانات التجريبية كاملة بالفعل."
+                    : "Sample data is already fully loaded.";
+                _flashClass = "kpi-card kpi-info";
+            }
         }
         catch (Exception ex)
         {
