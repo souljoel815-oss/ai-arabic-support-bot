@@ -45,8 +45,27 @@ public static class AuditChainVerifier
                 );
             }
 
-            var recomputed = AuditChainHasher.ComputeHash(entry.PayloadJson, entry.PrevHash);
-            if (!entry.ThisHash.AsSpan().SequenceEqual(recomputed))
+            byte[]? recomputed = null;
+            try
+            {
+                recomputed = AuditChainHasher.ComputeHash(entry.PayloadJson, entry.PrevHash);
+            }
+            catch (Exception ex)
+            {
+                // BUG-008 (May 2026 testing report) — a malformed payload
+                // (empty / non-JSON / truncated) used to bubble a
+                // System.Text.Json exception out of the verifier and
+                // crash the walk. Surface it as a finding so the
+                // auditor sees WHICH entry is bad, and keep walking.
+                findings.Add(
+                    new AuditChainFinding(
+                        Kind: AuditChainFindingKind.ThisHashMismatch,
+                        AtIndex: entry.Index,
+                        Notes: $"Could not canonicalize payload: {ex.Message}"
+                    )
+                );
+            }
+            if (recomputed is not null && !entry.ThisHash.AsSpan().SequenceEqual(recomputed))
             {
                 findings.Add(
                     new AuditChainFinding(

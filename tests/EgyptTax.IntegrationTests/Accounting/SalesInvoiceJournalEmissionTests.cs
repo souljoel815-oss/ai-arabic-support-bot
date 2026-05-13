@@ -156,6 +156,86 @@ public class SalesInvoiceJournalEmissionTests(SqlServerFixture fixture)
     }
 
     [Fact]
+    public async Task ExemptInvoice_EmitsTwoLines_WithNoVatRow()
+    {
+        // BUG-004 regression — an invoice with zero VAT (all lines
+        // exempt or zero-rated) used to crash the emitter because the
+        // OutputVAT row was 0/0 and JournalEntryLine refuses
+        // neither-debit-nor-credit lines. The emitter now skips the
+        // VAT leg when vatAmount==0; AR + Revenue still balance.
+        await using var db = await _fixture.CreateContextAsync();
+        var (_, item, _, operatorUser) = await SeedAsync(db);
+
+        var exempt = new VatCategory(
+            code: "Exempt",
+            name: new ArabicEnglishText("معفى", "Exempt"),
+            ratePercent: 0m,
+            effectiveFromDate: new DateOnly(2026, 1, 1),
+            effectiveToDate: null,
+            recoverableInputVat: false
+        );
+        var exemptCustomer = new Customer(
+            code: "CUST-EXEMPT",
+            name: new ArabicEnglishText("جمعية خيرية", "Charity"),
+            address: PostalAddress.Create(
+                new ArabicEnglishText("الجيزة", "Giza"),
+                "Giza",
+                "Dokki",
+                "Tahrir",
+                "5"
+            ),
+            taxProfile: CustomerTaxProfile.B2BRegistered(
+                EgyptianTin.Parse("111222333"),
+                true,
+                exempt.Id
+            )
+        );
+        db.Add(exempt);
+        db.Add(exemptCustomer);
+        await db.SaveChangesAsync();
+
+        var draft = SalesInvoice.CreateDraft(
+            exemptCustomer.Id,
+            exemptCustomer.TaxProfile,
+            new DateOnly(2026, 5, 8)
+        );
+        draft.AddLine(item.Id, 1m, MoneyEgp.From(500m), exempt.Id, exempt.RatePercent);
+        db.Add(draft);
+        await db.SaveChangesAsync();
+
+        var clock = new TestClock(new DateTime(2026, 5, 8, 11, 0, 0, DateTimeKind.Utc));
+        var allocator = new SqlSequentialNumberAllocator(db);
+        var emitter = new SalesInvoiceJournalEmitter(db);
+        var auditCapture = new CaptureAuditLogStore();
+        var handler = new PostSalesInvoiceHandler(db, allocator, clock, auditCapture, emitter);
+
+        var posted = await handler.HandleAsync(
+            new PostSalesInvoiceCommand(draft.Id, operatorUser.Id),
+            CancellationToken.None
+        );
+
+        posted.VatTotal.Amount.Should().Be(0m, because: "exempt customer + zero-rated line → no VAT");
+        posted.GrandTotal.Amount.Should().Be(500m);
+
+        var entry = await db.Set<JournalEntry>()
+            .Include(e => e.Lines)
+            .AsNoTracking()
+            .FirstAsync(e => e.SourceDocumentId == posted.Id);
+
+        entry.Lines.Should().HaveCount(2, because: "no VAT row when VAT total is zero");
+        entry.Lines.Should().NotContain(l => l.AccountCode == ChartOfAccountCodes.OutputVatPayable);
+
+        var ar = entry.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.AccountsReceivable);
+        var revenue = entry.Lines.Single(l => l.AccountCode == ChartOfAccountCodes.SalesRevenue);
+        ar.Debit.Amount.Should().Be(500m);
+        revenue.Credit.Amount.Should().Be(500m);
+
+        var sumDebits = entry.Lines.Sum(l => l.Debit.Amount);
+        var sumCredits = entry.Lines.Sum(l => l.Credit.Amount);
+        sumDebits.Should().Be(sumCredits, because: "the two-line journal still balances");
+    }
+
+    [Fact]
     public async Task TwoLineMixedRate_StillProducesBalancedJournal()
     {
         await using var db = await _fixture.CreateContextAsync();
