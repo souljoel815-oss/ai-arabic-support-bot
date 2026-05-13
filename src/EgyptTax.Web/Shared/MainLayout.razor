@@ -226,7 +226,7 @@
         </details>
 
         @* Gux.1 — Customers & Suppliers (was "Master data") *@
-        <details class="sidebar-group" @attributes="@OpenAttr("customers", "suppliers", "items", "data-import", "quotations", "stock-locations", "stock-transfer", "scan-receipt")">
+        <details class="sidebar-group" @attributes="@OpenAttr("customers", "suppliers", "items", "data-import", "quotations", "stock-locations", "stock-transfer", "scan-receipt", "scan-history")">
             <summary>
                 <Icon Name="users" Class="nav-icon" />
                 <span>@Tr("العملاء والموردون", "Customers & suppliers")</span>
@@ -250,6 +250,7 @@
                 @if (!_isRepOnly)
                 {
                     <a href="scan-receipt" class="@ActiveLink("scan-receipt")" @onclick="CloseSidebar">@Tr("🤖 مسح إيصال (AI)", "🤖 Scan receipt (AI)")</a>
+                    <a href="scan-history" class="@ActiveLink("scan-history")" @onclick="CloseSidebar">@Tr("📜 سجل عمليات الـ AI", "📜 AI activity log")</a>
                 }
                 }
             </nav>

@@ -1,0 +1,231 @@
+@page "/scan-history"
+@using EgyptTax.Domain.Settings
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    M.1 + M.2 follow-on — combined audit log of all AI calls.
+    Receipt scans + chat queries side-by-side, filterable by date
+    range and status (success / failure). Powers two real
+    use-cases:
+      1. Operator asks "why did Claude suggest 850 EGP when the
+         receipt clearly says 950" — they find the row + read the
+         RawResponseJson column.
+      2. Operator audits monthly AI spend by reviewing the volume
+         + token totals.
+*@
+
+<PageTitle>@Tr("سجل عمليات الذكاء الاصطناعي | DaftarX", "AI Activity Log | DaftarX")</PageTitle>
+
+<h1>@Tr("سجل عمليات الذكاء الاصطناعي", "AI Activity Log")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "كل عملية مسح إيصال أو سؤال شات مع Claude. مفيد للمراجعة + استكشاف الأخطاء + تتبع التكلفة.",
+        "Every receipt scan + chat question sent to Claude. Useful for audit, debugging, and cost-tracking.")
+</p>
+
+<div class="invoice-toolbar" style="gap:12px;flex-wrap:wrap;">
+    <label>
+        @Tr("من", "From")
+        <input type="date" @bind="_fromDate" @bind:after="ReloadAsync" />
+    </label>
+    <label>
+        @Tr("إلى", "To")
+        <input type="date" @bind="_toDate" @bind:after="ReloadAsync" />
+    </label>
+    <label>
+        @Tr("النوع", "Type")
+        <select @bind="_kindFilter" @bind:after="ReloadAsync">
+            <option value="all">@Tr("الكل", "All")</option>
+            <option value="scan">@Tr("مسح إيصال", "Receipt scan")</option>
+            <option value="chat">@Tr("سؤال شات", "Chat query")</option>
+        </select>
+    </label>
+    <label>
+        @Tr("الحالة", "Status")
+        <select @bind="_statusFilter" @bind:after="ReloadAsync">
+            <option value="all">@Tr("الكل", "All")</option>
+            <option value="ok">@Tr("نجاح", "Success")</option>
+            <option value="fail">@Tr("فشل", "Failure")</option>
+        </select>
+    </label>
+</div>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+}
+else if (_rows.Count == 0)
+{
+    <div class="kpi-card kpi-info" style="padding:14px;">
+        @Tr("مفيش عمليات في الفترة دي.", "No AI activity in this range.")
+    </div>
+}
+else
+{
+    <div class="kpi-grid kpi-grid-3" style="margin-bottom:16px;">
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@Tr("إجمالي العمليات", "Total calls")</div>
+            <div class="kpi-value">@_rows.Count</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@Tr("إجمالي الـ tokens", "Total tokens (in / out)")</div>
+            <div class="kpi-value" style="font-size:14px;">
+                @_totalInputTokens / @_totalOutputTokens
+            </div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@Tr("التكلفة التقديرية (Haiku)", "Estimated cost (Haiku)")</div>
+            <div class="kpi-value">~ @_estimatedCostEgp.ToString("N2") @Tr("ج.م", "EGP")</div>
+        </div>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>@Tr("التاريخ", "When")</th>
+                <th>@Tr("النوع", "Type")</th>
+                <th>@Tr("التفاصيل", "Details")</th>
+                <th>@Tr("Tokens (in/out)", "Tokens (in/out)")</th>
+                <th>@Tr("الحالة", "Status")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _rows)
+            {
+                <tr>
+                    <td style="white-space:nowrap;">@r.At.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>
+                        @if (r.Kind == "scan")
+                        {
+                            <span title="@Tr("مسح إيصال", "Receipt scan")">📷</span>
+                        }
+                        else
+                        {
+                            <span title="@Tr("سؤال شات", "Chat query")">💬</span>
+                        }
+                    </td>
+                    <td style="max-width:400px;">
+                        @if (r.Kind == "scan")
+                        {
+                            <code style="font-size:11px;">@r.Detail1</code>
+                            @if (!string.IsNullOrEmpty(r.Detail2))
+                            {
+                                <span style="color:var(--muted);"> · @r.Detail2</span>
+                            }
+                        }
+                        else
+                        {
+                            <em>@r.Detail1</em>
+                            @if (!string.IsNullOrEmpty(r.Detail2))
+                            {
+                                <div style="font-size:12px;color:var(--muted);margin-top:4px;">→ @r.Detail2</div>
+                            }
+                        }
+                    </td>
+                    <td style="white-space:nowrap;font-size:12px;">@r.InputTokens / @r.OutputTokens</td>
+                    <td>
+                        @if (string.IsNullOrEmpty(r.ErrorMessage))
+                        {
+                            <span style="color:var(--success);">✓</span>
+                        }
+                        else
+                        {
+                            <span style="color:var(--danger);" title="@r.ErrorMessage">⚠</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private DateTime _fromDate = DateTime.UtcNow.AddDays(-30).Date;
+    private DateTime _toDate = DateTime.UtcNow.Date;
+    private string _kindFilter = "all";
+    private string _statusFilter = "all";
+
+    private List<Row> _rows = new();
+    private int _totalInputTokens;
+    private int _totalOutputTokens;
+    private decimal _estimatedCostEgp;
+
+    private sealed record Row(
+        DateTime At, string Kind, string Detail1, string Detail2,
+        int InputTokens, int OutputTokens, string? ErrorMessage);
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        var fromUtc = DateTime.SpecifyKind(_fromDate, DateTimeKind.Utc);
+        var toUtc = DateTime.SpecifyKind(_toDate.AddDays(1), DateTimeKind.Utc);
+
+        var rows = new List<Row>();
+
+        if (_kindFilter is "all" or "scan")
+        {
+            var scans = await Db.Set<ReceiptScan>().AsNoTracking()
+                .Where(s => s.ScannedAtUtc >= fromUtc && s.ScannedAtUtc < toUtc)
+                .OrderByDescending(s => s.ScannedAtUtc)
+                .Take(500)
+                .ToListAsync();
+            rows.AddRange(scans.Select(s => new Row(
+                At: s.ScannedAtUtc,
+                Kind: "scan",
+                Detail1: s.FileName,
+                Detail2: BuildScanDetail(s),
+                InputTokens: s.InputTokens,
+                OutputTokens: s.OutputTokens,
+                ErrorMessage: s.ErrorMessage)));
+        }
+
+        if (_kindFilter is "all" or "chat")
+        {
+            var chats = await Db.Set<AiChatLog>().AsNoTracking()
+                .Where(c => c.AskedAtUtc >= fromUtc && c.AskedAtUtc < toUtc)
+                .OrderByDescending(c => c.AskedAtUtc)
+                .Take(500)
+                .ToListAsync();
+            rows.AddRange(chats.Select(c => new Row(
+                At: c.AskedAtUtc,
+                Kind: "chat",
+                Detail1: c.Question,
+                Detail2: c.Reply ?? "",
+                InputTokens: c.InputTokens,
+                OutputTokens: c.OutputTokens,
+                ErrorMessage: c.ErrorMessage)));
+        }
+
+        if (_statusFilter == "ok")
+            rows = rows.Where(r => string.IsNullOrEmpty(r.ErrorMessage)).ToList();
+        else if (_statusFilter == "fail")
+            rows = rows.Where(r => !string.IsNullOrEmpty(r.ErrorMessage)).ToList();
+
+        _rows = rows.OrderByDescending(r => r.At).ToList();
+        _totalInputTokens = _rows.Sum(r => r.InputTokens);
+        _totalOutputTokens = _rows.Sum(r => r.OutputTokens);
+        // Haiku 4.5 published rates (May 2026): ~$0.25/MTok input,
+        // ~$1.25/MTok output. Convert at 50 EGP/USD. Display-only.
+        _estimatedCostEgp = Math.Round(
+            ((decimal)_totalInputTokens / 1_000_000m * 0.25m
+             + (decimal)_totalOutputTokens / 1_000_000m * 1.25m) * 50m, 2);
+
+        _loading = false;
+    }
+
+    private static string BuildScanDetail(ReceiptScan s)
+    {
+        var bits = new List<string>();
+        if (!string.IsNullOrEmpty(s.ExtractedVendor)) bits.Add(s.ExtractedVendor);
+        if (s.ExtractedTotalEgp is { } t) bits.Add($"{t:N2} EGP");
+        if (!string.IsNullOrEmpty(s.ExtractedCategory)) bits.Add(s.ExtractedCategory);
+        return string.Join(" · ", bits);
+    }
+}

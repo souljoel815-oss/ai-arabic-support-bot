@@ -79,6 +79,34 @@
         </button>
     </div>
 
+    @* Monthly cost meter — sums tokens across receipt scans + chat
+       logs in the current calendar month, converts via Haiku 4.5
+       pricing × 50 EGP/USD. Display-only. *@
+    <h3 style="margin-top:24px;">
+        @(IsArabic ? "تكلفة هذا الشهر" : "This month's cost")
+    </h3>
+    <div class="kpi-grid kpi-grid-3" style="margin-bottom:8px;">
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@(IsArabic ? "العمليات" : "Calls")</div>
+            <div class="kpi-value">@_monthCallCount</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@(IsArabic ? "Tokens (in/out)" : "Tokens (in/out)")</div>
+            <div class="kpi-value" style="font-size:14px;">
+                @_monthInputTokens / @_monthOutputTokens
+            </div>
+        </div>
+        <div class="kpi-card @(_monthEgp > _monthlyBudget ? "kpi-warn" : "kpi-info")">
+            <div class="kpi-label">
+                @(IsArabic ? $"التكلفة من أصل {_monthlyBudget} ج.م" : $"Cost vs {_monthlyBudget} EGP cap")
+            </div>
+            <div class="kpi-value">~ @_monthEgp.ToString("N2") @(IsArabic ? "ج.م" : "EGP")</div>
+        </div>
+    </div>
+    <p class="page-subtitle" style="font-size:12px;margin-top:0;">
+        <a href="/scan-history">@(IsArabic ? "افتح السجل الكامل ←" : "Open full activity log →")</a>
+    </p>
+
     @if (_recentScans.Count > 0)
     {
         <h3 style="margin-top:24px;">@(IsArabic ? "آخر العمليات" : "Recent scans")</h3>
@@ -132,6 +160,10 @@
     private int _monthlyBudget = 500;
 
     private List<ReceiptScan> _recentScans = new();
+    private int _monthCallCount;
+    private int _monthInputTokens;
+    private int _monthOutputTokens;
+    private decimal _monthEgp;
 
     protected override async Task OnInitializedAsync()
     {
@@ -149,6 +181,25 @@
             .OrderByDescending(r => r.ScannedAtUtc)
             .Take(10)
             .ToListAsync();
+
+        // Monthly aggregate across receipt scans + chat logs.
+        var now = DateTime.UtcNow;
+        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var scanTotals = await Db.Set<ReceiptScan>().AsNoTracking()
+            .Where(r => r.ScannedAtUtc >= monthStart)
+            .Select(r => new { r.InputTokens, r.OutputTokens })
+            .ToListAsync();
+        var chatTotals = await Db.Set<AiChatLog>().AsNoTracking()
+            .Where(c => c.AskedAtUtc >= monthStart)
+            .Select(c => new { c.InputTokens, c.OutputTokens })
+            .ToListAsync();
+        _monthCallCount = scanTotals.Count + chatTotals.Count;
+        _monthInputTokens = scanTotals.Sum(x => x.InputTokens) + chatTotals.Sum(x => x.InputTokens);
+        _monthOutputTokens = scanTotals.Sum(x => x.OutputTokens) + chatTotals.Sum(x => x.OutputTokens);
+        // Haiku 4.5 published rates × 50 EGP/USD. Display-only.
+        _monthEgp = Math.Round(
+            ((decimal)_monthInputTokens / 1_000_000m * 0.25m
+             + (decimal)_monthOutputTokens / 1_000_000m * 1.25m) * 50m, 2);
 
         _loading = false;
     }
