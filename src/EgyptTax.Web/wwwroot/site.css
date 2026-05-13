@@ -3364,3 +3364,73 @@ a.btn-secondary .ic {
     color: var(--text, #111);
     font-weight: 500;
 }
+
+/* ---------------------------------------------------------------- */
+/* Phase E — PWA / mobile polish for the rep-in-the-field flows.    */
+/* ---------------------------------------------------------------- */
+@media (max-width: 600px) {
+    /* Tables turn horizontally scrollable so customer / invoice /
+       items grids don't spill or squeeze the columns into illegible
+       text on a phone. Browser scrolls the table inside its own box. */
+    .data-grid {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+    }
+    .data-grid thead, .data-grid tbody { display: table; width: 100%; min-width: 600px; }
+
+    /* Bigger tap targets on form controls so a thumb hits them
+       cleanly. Apple HIG recommends 44px; we land near that. */
+    button, .btn-primary, .btn-secondary,
+    input[type="text"], input[type="number"], input[type="email"],
+    input[type="password"], input[type="date"], input[type="search"],
+    select {
+        min-height: 42px;
+    }
+
+    /* Form-grid columns collapse to single-column on phones so labels
+       + inputs stack vertically (no horizontal scroll, no squeeze). */
+    .form-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Honour iOS notch / status-bar safe areas now that the manifest
+       declares display:standalone + the meta is "black-translucent". */
+    body { padding-top: env(safe-area-inset-top); }
+    .app-sidebar { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* ---------------------------------------------------------------- */
+/* Phase I — offline indicator banner.                              */
+/* ---------------------------------------------------------------- */
+#offline-banner {
+    position: fixed;
+    top: 0;
+    inset-inline: 0;
+    z-index: 99999;
+    background: #b91c1c;
+    color: #fff;
+    padding: 8px 16px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+#offline-banner .offline-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #fca5a5;
+    animation: offline-pulse 1.2s ease-in-out infinite;
+}
+@keyframes offline-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+

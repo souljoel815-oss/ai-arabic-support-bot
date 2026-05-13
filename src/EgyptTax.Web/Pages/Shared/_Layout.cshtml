@@ -19,9 +19,23 @@
 <html lang="@lang" dir="@dir">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <base href="~/" />
     <title>@(ViewData["Title"] ?? "DaftarX") — DaftarX</title>
+
+    @* Phase E — PWA. Manifest + theme color make Chrome / Edge /
+       Android show "Install app" prompts; iOS uses the apple-* tags
+       for "Add to Home Screen" + standalone display + status-bar
+       styling. SVG icon is sized "any" so all platforms scale it. *@
+    <link rel="manifest" href="~/manifest.webmanifest" />
+    <meta name="theme-color" content="#1e3a5f" />
+    <link rel="icon" href="~/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="~/icon.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="DaftarX" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
     <link rel="stylesheet" href="~/site.css" asp-append-version="true" />
 </head>
 <body class="@bodyClass">
@@ -32,7 +46,9 @@
         <a href="" class="reload">Reload</a>
         <a class="dismiss">🗙</a>
     </div>
+
     <script src="_framework/blazor.server.js"></script>
     <script src="~/js/firm-portal-pool.js"></script>
+    <script src="~/js/pwa-register.js" asp-append-version="true"></script>
 </body>
 </html>
