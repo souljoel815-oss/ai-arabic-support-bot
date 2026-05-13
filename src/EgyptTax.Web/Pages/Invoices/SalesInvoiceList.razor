@@ -6,6 +6,7 @@
 @using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.Web.Auth
+@using EgyptTax.Web.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -13,9 +14,19 @@
 @inject NavigationManager Nav
 @inject DocumentRiskScorer RiskScorer
 @inject AuthenticationStateProvider Auth
+@inject IJSRuntime Js
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>@(IsArabic ? "فواتير المبيعات" : "Sales invoices")</h1>
+<h1>
+    @(IsArabic ? "فواتير المبيعات" : "Sales invoices")
+    @if (_invoices is { Count: > 0 })
+    {
+        <button type="button" class="btn-secondary" style="font-size:13px;margin-inline-start:12px;"
+                @onclick="ExportCsvAsync">
+            ⬇ @(IsArabic ? "تصدير CSV" : "Export CSV")
+        </button>
+    }
+</h1>
 
 <div class="invoice-toolbar">
     <a class="btn-primary" href="/invoices/new">@(IsArabic ? "+ فاتورة جديدة" : "+ New invoice")</a>
@@ -153,6 +164,27 @@ else
             || r.CustomerName.Contains(_search, StringComparison.OrdinalIgnoreCase))
         .Where(r => string.IsNullOrEmpty(_stateFilter)
             || r.Invoice.State.ToString() == _stateFilter);
+
+    private async Task ExportCsvAsync()
+    {
+        if (_invoices is null) return;
+        var bytes = CsvExporter.Build(
+            headers: new[] { "Document #", "Date", "Customer", "State", "Subtotal", "VAT", "Grand total" },
+            rows: _invoices,
+            rowSelector: r => new object?[]
+            {
+                r.Invoice.DocumentNumber ?? "(draft)",
+                r.Invoice.DocumentDate,
+                r.CustomerName,
+                r.Invoice.State.ToString(),
+                r.Invoice.Subtotal.Amount,
+                r.Invoice.VatTotal.Amount,
+                r.Invoice.GrandTotal.Amount,
+            });
+        var b64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("daftarxDownloadBytes",
+            $"sales-invoices-{DateTime.UtcNow:yyyyMMdd}.csv", b64, "text/csv");
+    }
 
     private sealed record Row(SalesInvoice Invoice, string CustomerName, IReadOnlyList<RiskFinding> RiskFindings);
 }

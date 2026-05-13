@@ -3,12 +3,23 @@
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.SharedKernel
+@using EgyptTax.Web.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
+@inject IJSRuntime Js
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>@(IsArabic ? "العملاء" : "Customers")</h1>
+<h1>
+    @(IsArabic ? "العملاء" : "Customers")
+    @if (_customers is { Count: > 0 })
+    {
+        <button type="button" class="btn-secondary" style="font-size:13px;margin-inline-start:12px;"
+                @onclick="ExportCsvAsync">
+            ⬇ @(IsArabic ? "تصدير CSV" : "Export CSV")
+        </button>
+    }
+</h1>
 
 @if (_savedFlash is not null)
 {
@@ -260,6 +271,29 @@
             ? $"تم إعادة تفعيل العميل {c.Code}."
             : $"Customer {c.Code} reactivated.";
         await ReloadAsync();
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (_customers is null) return;
+        var bytes = CsvExporter.Build(
+            headers: new[] { "Code", "Name (EN)", "Name (AR)", "TIN", "Profile type", "Phone", "Email", "Status", "Credit limit (EGP)" },
+            rows: _customers,
+            rowSelector: c => new object?[]
+            {
+                c.Code,
+                c.Name.English,
+                c.Name.Arabic,
+                c.TaxProfile.TinValue,
+                c.TaxProfile.ProfileType.ToString(),
+                c.Phone,
+                c.Email,
+                c.Status.ToString(),
+                c.CreditLimitEgp,
+            });
+        var b64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("daftarxDownloadBytes",
+            $"customers-{DateTime.UtcNow:yyyyMMdd}.csv", b64, "text/csv");
     }
 
     private sealed class FormModel

@@ -5,10 +5,12 @@
 @using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.SharedKernel
+@using EgyptTax.Web.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject NavigationManager Nav
+@inject IJSRuntime Js
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 @*
@@ -47,10 +49,16 @@
     <div class="page-subtitle" style="font-size:13px;">
         @(IsArabic ? "كشف حساب حتى:" : "Statement as of:") @DateTime.UtcNow.ToString("yyyy-MM-dd")
     </div>
-    <div>
+    <div style="display:flex;gap:8px;">
         <a href="/routes" class="btn-secondary" style="font-size:13px;">
             @(IsArabic ? "→ خطّط زيارة" : "→ Plan a visit")
         </a>
+        @if (_rows.Count > 0)
+        {
+            <button type="button" class="btn-secondary" style="font-size:13px;" @onclick="ExportCsvAsync">
+                ⬇ @(IsArabic ? "تصدير CSV" : "Export CSV")
+            </button>
+        }
     </div>
 </section>
 
@@ -284,6 +292,26 @@
         }
 
         _loading = false;
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (_customer is null) return;
+        var bytes = CsvExporter.Build(
+            headers: new[] { "Date", "Type", "Reference", "Debit (EGP)", "Credit (EGP)", "Running balance (EGP)" },
+            rows: _rows,
+            rowSelector: r => new object?[]
+            {
+                r.Date,
+                r.TypeLabel,
+                r.Reference,
+                r.Debit > 0 ? (object)r.Debit : "",
+                r.Credit > 0 ? (object)r.Credit : "",
+                r.RunningBalance,
+            });
+        var b64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("daftarxDownloadBytes",
+            $"statement-{_customer.Code}-{DateTime.UtcNow:yyyyMMdd}.csv", b64, "text/csv");
     }
 
     private sealed record LedgerRow(

@@ -15,6 +15,29 @@
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(IsArabic ? "لوحة الامتثال للضرائب الإلكترونية" : "ETA Compliance Dashboard")</h1>
+
+@* D3 — sandbox-mode banner. The current ETA submission path runs
+   against a mock endpoint, not the live regulator. This is a trust-
+   killer if it's not surfaced clearly, so we label it everywhere
+   the operator might look for ETA status. Replaced by real
+   submission once the customer plugs in their ETA activation
+   credentials + USB signing token. *@
+<div class="trial-banner trial-banner-warn" role="status" style="margin:12px 0;">
+    <div class="trial-banner-text">
+        <strong>🧪 @(IsArabic ? "وضع تجريبي:" : "Sandbox mode:")</strong>
+        <span>
+            @(IsArabic
+                ? "الفواتير لا تُرسل للمصلحة الفعلية. شغّل الوضع المباشر بإدخال بيانات تفعيل ETA + شهادة التوقيع من «إعدادات → ربط منظومة ETA»."
+                : "Invoices are NOT being sent to the live regulator. Switch to live mode by entering your ETA activation credentials + signing certificate under Settings → ETA Integration.")
+        </span>
+    </div>
+    <div class="trial-banner-hwid">
+        <a href="/settings?tab=eta-integration" class="trial-banner-link">
+            @(IsArabic ? "افتح إعدادات ETA" : "Open ETA settings")
+        </a>
+    </div>
+</div>
+
 <p>@(IsArabic
     ? "وفقاً لـ FR-043، عرض كل فاتورة مُرحَّلة قاربت أو تجاوزت موعد الإرسال إلى مصلحة الضرائب حتى يتدخل المشغّل قبل الموعد النهائي المفروض من الجهة التنظيمية."
     : "Per FR-043, surface every posted invoice approaching or past its ETA submission deadline so the operator can intervene before the regulator-imposed cutoff.")</p>

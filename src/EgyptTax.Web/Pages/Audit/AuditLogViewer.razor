@@ -1,14 +1,25 @@
 @page "/audit-log"
 @using EgyptTax.Domain.Audit
 @using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Web.Shared
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject HttpClient Http
 @inject NavigationManager Nav
+@inject IJSRuntime Js
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
-<h1>@(IsArabic ? "سجل التدقيق (FR-028)" : "Audit log (FR-028)")</h1>
+<h1>
+    @(IsArabic ? "سجل التدقيق (FR-028)" : "Audit log (FR-028)")
+    @if (_entries is { Count: > 0 })
+    {
+        <button type="button" class="btn-secondary" style="font-size:13px;margin-inline-start:12px;"
+                @onclick="ExportCsvAsync">
+            ⬇ @(IsArabic ? "تصدير CSV" : "Export CSV")
+        </button>
+    }
+</h1>
 
 <form class="invoice-toolbar" @onsubmit="OnSearch" @onsubmit:preventDefault>
     <label>
@@ -184,6 +195,26 @@
         {
             _verifying = false;
         }
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (_entries is null) return;
+        var bytes = CsvExporter.Build(
+            headers: new[] { "Index", "Timestamp (UTC)", "Actor user id", "Kind", "Payload (JSON)", "This hash (hex)" },
+            rows: _entries,
+            rowSelector: e => new object?[]
+            {
+                e.Index,
+                e.TsUtc,
+                e.ActorUserId,
+                e.Kind,
+                e.PayloadJson,
+                Convert.ToHexString(e.ThisHash),
+            });
+        var b64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("daftarxDownloadBytes",
+            $"audit-log-{DateTime.UtcNow:yyyyMMddHHmm}.csv", b64, "text/csv");
     }
 
     public sealed record VerifyChainResponse(

@@ -9,6 +9,7 @@
 @using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.Infrastructure.Pdf
+@using EgyptTax.Infrastructure.Settings
 @using EgyptTax.Infrastructure.Verification
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -17,6 +18,11 @@
 @inject DocumentRiskScorer RiskScorer
 @inject IWhatsAppDispatcher WhatsAppDispatcher
 @inject AuthenticationStateProvider AuthState
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject SettingsRepository Settings
+@inject SendInvoiceByEmailHandler EmailSender
+@inject IJSRuntime Js
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <h1>@(IsArabic
@@ -130,9 +136,17 @@
 {
     <section class="invoice-actions">
         <a class="btn-primary" href="/invoices/@_invoice.Id/pdf" target="_blank">📄 @(IsArabic ? "تنزيل PDF" : "Download PDF")</a>
+        <button type="button" class="btn-secondary" @onclick="SendByEmailAsync" disabled="@_emailSending">
+            <Icon Name="mail" Class="ic" />
+            @(_emailSending ? (IsArabic ? "جارٍ الإرسال…" : "Sending…") : (IsArabic ? "إرسال بالبريد" : "Send by email"))
+        </button>
+        <button type="button" class="btn-secondary" @onclick="QuickSendWhatsAppAsync">
+            <Icon Name="message-square" Class="ic" />
+            @(IsArabic ? "واتساب سريع" : "Quick WhatsApp")
+        </button>
         <button type="button" class="btn-secondary" @onclick="OpenWhatsAppModal">
             <Icon Name="receipt" Class="ic" />
-            @(IsArabic ? "إرسال عبر واتساب" : "Send via WhatsApp")
+            @(IsArabic ? "واتساب رسمي" : "WhatsApp (formal)")
         </button>
         <a href="/invoices/@_invoice.Id/einvoice.json" target="_blank">@(IsArabic ? "عرض JSON الفاتورة الإلكترونية" : "View eInvoice JSON")</a>
         @if (_seal is not null)
@@ -141,6 +155,11 @@
         }
         <a href="/document360/@(_invoice.IsCreditNote ? "credit-note" : "sales-invoice")/@_invoice.Id">📂 @(IsArabic ? "ملف المستند الكامل" : "Document 360")</a>
     </section>
+
+    @if (_sendFlash is not null)
+    {
+        <div class="@_sendFlashClass" style="margin-top:12px;">@_sendFlash</div>
+    }
 
     @if (_whatsAppFlash is not null)
     {
@@ -308,6 +327,11 @@
     private bool _whatsAppModalOpen;
     private string _whatsAppPhone = "";
     private string _whatsAppMessage = "";
+
+    // L1 — email + quick-WhatsApp send state.
+    private bool _emailSending;
+    private string? _sendFlash;
+    private string _sendFlashClass = "kpi-card kpi-info";
     private bool _whatsAppSending;
     private string? _whatsAppFlash;
     private string _whatsAppFlashClass = "kpi-card kpi-info";
@@ -389,6 +413,108 @@
         {
             _whatsAppSending = false;
         }
+    }
+
+    /// <summary>
+    /// L1 — email the invoice PDF to the customer. Fetches the
+    /// already-generated PDF from /invoices/{id}/pdf (same endpoint
+    /// the Download button hits) and pipes the bytes to the
+    /// SendInvoiceByEmailHandler which talks SMTP.
+    /// </summary>
+    private async Task SendByEmailAsync()
+    {
+        if (_invoice is null || _customer is null) return;
+        _sendFlash = null;
+        if (string.IsNullOrWhiteSpace(_customer.Email))
+        {
+            _sendFlash = IsArabic
+                ? "البريد الإلكتروني للعميل غير مسجَّل. حدّثه من صفحة العميل أولاً."
+                : "Customer email is not set. Update it on the customer page first.";
+            _sendFlashClass = "flash-error";
+            return;
+        }
+        _emailSending = true;
+        try
+        {
+            var smtp = await Settings.GetSmtpSettingsAsync();
+            // Fetch PDF from the running app's own endpoint — keeps
+            // the rendering pipeline DRY (same code path as the
+            // Download PDF button).
+            var pdfUrl = Nav.ToAbsoluteUri($"/invoices/{_invoice.Id}/pdf").ToString();
+            var pdfBytes = await Http.GetByteArrayAsync(pdfUrl);
+            var result = await EmailSender.SendAsync(
+                smtp,
+                toAddress: _customer.Email,
+                documentNumber: _invoice.DocumentNumber ?? _invoice.Id.ToString("D"),
+                grandTotalEgp: _invoice.GrandTotal.Amount,
+                pdfBytes: pdfBytes);
+            if (result.Ok)
+            {
+                _sendFlash = IsArabic
+                    ? $"✓ تم إرسال الفاتورة على {_customer.Email}."
+                    : $"✓ {result.Message}";
+                _sendFlashClass = "kpi-card kpi-info";
+            }
+            else
+            {
+                _sendFlash = IsArabic
+                    ? $"فشل الإرسال: {result.Message}"
+                    : $"Send failed: {result.Message}";
+                _sendFlashClass = "flash-error";
+            }
+        }
+        catch (Exception ex)
+        {
+            _sendFlash = ex.Message;
+            _sendFlashClass = "flash-error";
+        }
+        finally { _emailSending = false; }
+    }
+
+    /// <summary>
+    /// L1 — quick WhatsApp send. Opens wa.me in a new tab with the
+    /// customer's phone + a templated message that includes the
+    /// invoice number, total, and a download link to the PDF on
+    /// THIS server. The user's own WhatsApp account handles the
+    /// actual delivery — no Meta Business API needed for this path.
+    /// (The "Send via WhatsApp" modal on the same page is the
+    /// formal Meta API path, currently mocked.)
+    /// </summary>
+    private async Task QuickSendWhatsAppAsync()
+    {
+        if (_invoice is null || _customer is null) return;
+        _sendFlash = null;
+        var phone = _customer.Phone?.Trim();
+        if (string.IsNullOrWhiteSpace(phone))
+        {
+            _sendFlash = IsArabic
+                ? "رقم العميل غير مسجَّل. حدّثه من صفحة العميل أولاً."
+                : "Customer phone is not set. Update it on the customer page first.";
+            _sendFlashClass = "flash-error";
+            return;
+        }
+        // Strip non-digits — wa.me wants raw country-code + number.
+        var clean = new string(phone.Where(char.IsDigit).ToArray());
+        if (clean.Length < 10)
+        {
+            _sendFlash = IsArabic
+                ? "رقم العميل قصير جداً — تأكد أنه يبدأ بكود الدولة."
+                : "Customer phone looks too short — make sure it starts with the country code.";
+            _sendFlashClass = "flash-error";
+            return;
+        }
+        var pdfUrl = Nav.ToAbsoluteUri($"/invoices/{_invoice.Id}/pdf").ToString();
+        var doc = _invoice.DocumentNumber ?? _invoice.Id.ToString("D");
+        var total = _invoice.GrandTotal.Amount.ToString("N2");
+        var message = IsArabic
+            ? $"السلام عليكم،\nفاتورة رقم {doc}.\nالإجمالي: {total} ج.م.\nرابط الفاتورة: {pdfUrl}\nشكراً لتعاملكم معنا."
+            : $"Hello,\nInvoice {doc}.\nTotal: {total} EGP.\nDownload: {pdfUrl}\nThank you for your business.";
+        var url = $"https://wa.me/{clean}?text={Uri.EscapeDataString(message)}";
+        await Js.InvokeVoidAsync("open", url, "_blank");
+        _sendFlash = IsArabic
+            ? $"تم فتح واتساب — اضغط Send لإرسال الرسالة لـ {phone}."
+            : $"WhatsApp opened — press Send to deliver the message to {phone}.";
+        _sendFlashClass = "kpi-card kpi-info";
     }
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();

@@ -10,9 +10,19 @@
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject AuthenticationStateProvider Auth
+@inject IJSRuntime Js
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<h1>@(IsArabic ? "الأصناف" : "Items")</h1>
+<h1>
+    @(IsArabic ? "الأصناف" : "Items")
+    @if (_items is { Count: > 0 })
+    {
+        <button type="button" class="btn-secondary" style="font-size:13px;margin-inline-start:12px;"
+                @onclick="ExportCsvAsync">
+            ⬇ @(IsArabic ? "تصدير CSV" : "Export CSV")
+        </button>
+    }
+</h1>
 
 @if (_savedFlash is not null)
 {
@@ -263,6 +273,24 @@
             : $"Received {qty} of {item.Code}. New stock: {item.QuantityOnHand}.";
         _receiveQty[itemId] = 0m;
         await ReloadAsync();
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (_items is null) return;
+        var bytes = EgyptTax.Web.Shared.CsvExporter.Build(
+            headers: new[] { "Code", "Name (EN)", "Name (AR)", "VAT category", "ETA code", "Status", "Stock on hand", "Low-stock threshold" },
+            rows: _items,
+            rowSelector: i => new object?[]
+            {
+                i.Code, i.Name.English, i.Name.Arabic,
+                _vatCategories?.FirstOrDefault(v => v.Id == i.DefaultVatCategoryId)?.Code ?? "?",
+                i.EtaItemCode, i.Status.ToString(),
+                i.QuantityOnHand, i.LowStockThreshold,
+            });
+        var b64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("daftarxDownloadBytes",
+            $"items-{DateTime.UtcNow:yyyyMMdd}.csv", b64, "text/csv");
     }
 
     private async Task ReloadAsync()
