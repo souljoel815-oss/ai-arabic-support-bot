@@ -26,10 +26,10 @@
 </p>
 
 <p class="kpi-card kpi-info" style="padding:12px;">
-    <strong>@Tr("ملاحظة:", "Note:")</strong>
+    <strong>@Tr("نصيحة:", "Tip:")</strong>
     @Tr(
-        "v1: بنحفظ بيانات الفروع دلوقتي. الحركة المخزنية الفعلية (الفصل بين الفروع، تحويلات المخزون) تيجي في تحديث قريب. الفواتير دلوقتي بتسحب من الإجمالي زي ما كانت.",
-        "v1: locations are stored now. Actual per-location stock accounting (separate counters, transfers) lands in a follow-on update. Invoices currently decrement from the global Item.QuantityOnHand as before.")
+        "لو الأصناف بتاعتك عندها أرصدة قديمة قبل ما تستخدم فروع متعددة، اضغط «تهيئة المخزون لكل فرع» تحت لتنقل كل الأرصدة الحالية للفرع الافتراضي. بعد كده استخدم «نقل مخزون» لتوزّع الكميات بين الفروع.",
+        "If your items have stock balances from before you started using multiple locations, click \"Initialize per-location tracking\" below to seed the default location with all current quantities. Then use Stock Transfer to redistribute units between locations.")
 </p>
 
 @if (_flash is not null)
@@ -133,6 +133,23 @@ else
             </button>
         </div>
     </EditForm>
+
+    @* L4 phase 3 — one-time backfill that seeds ItemStockByLocation
+       at the default location from existing Item.QuantityOnHand.
+       Only creates rows that don't already exist (idempotent), so
+       running it twice does nothing the second time. *@
+    @if (_locations.Any(l => l.IsDefault))
+    {
+        <h2 style="margin-top:32px;">@Tr("تهيئة المخزون لكل فرع", "Initialize per-location tracking")</h2>
+        <p class="page-subtitle" style="font-size:13px;">
+            @Tr(
+                "يقرأ كل صنف عنده رصيد دلوقتي وينشئ سجل في الفرع الافتراضي بنفس الكمية. مفيد بعد ما تضيف فرع جديد لتنقل الأرصدة القديمة. آمن للتشغيل أكتر من مرة (مش بيعدّل أرصدة موجودة).",
+                "Reads every item with current stock and creates a row at the default location with the same quantity. Useful after adding a new location to seed historical balances. Safe to run multiple times (skips items that already have a row).")
+        </p>
+        <button type="button" class="btn-secondary" disabled="@_busy" @onclick="OnBackfillAsync">
+            @(_busy ? Tr("جارٍ التهيئة…", "Initializing…") : Tr("🔄 تهيئة الآن", "🔄 Initialize now"))
+        </button>
+    }
 }
 
 @code {
@@ -255,5 +272,66 @@ else
             await ReloadAsync();
         }
         catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    /// <summary>L4 phase 3 — one-time backfill. Loads every Item
+    /// with QuantityOnHand > 0, then for each one that doesn't
+    /// already have an ItemStockByLocation row at the default
+    /// location, creates a row with quantity = Item.QuantityOnHand.
+    /// Items that already have a default-location row are skipped
+    /// so re-running is safe.</summary>
+    private async Task OnBackfillAsync()
+    {
+        _flash = null;
+        _busy = true;
+        try
+        {
+            var defaultLoc = _locations.FirstOrDefault(l => l.IsDefault);
+            if (defaultLoc is null)
+            {
+                _flash = Tr("اعمل فرع افتراضي الأول.", "Mark a location as default first.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+
+            var itemsWithStock = await Db.Set<Item>().AsNoTracking()
+                .Where(i => i.QuantityOnHand > 0)
+                .Select(i => new { i.Id, i.QuantityOnHand })
+                .ToListAsync();
+
+            if (itemsWithStock.Count == 0)
+            {
+                _flash = Tr("مفيش أصناف عندها رصيد للتهيئة.", "No items with positive stock to initialize.");
+                _flashClass = "kpi-card kpi-info";
+                return;
+            }
+
+            var itemIds = itemsWithStock.Select(i => i.Id).ToList();
+            var existing = await Db.Set<ItemStockByLocation>()
+                .Where(s => s.LocationId == defaultLoc.Id && itemIds.Contains(s.ItemId))
+                .Select(s => s.ItemId)
+                .ToListAsync();
+            var existingSet = new HashSet<Guid>(existing);
+
+            var added = 0;
+            foreach (var item in itemsWithStock)
+            {
+                if (existingSet.Contains(item.Id)) continue;
+                Db.Add(new ItemStockByLocation(item.Id, defaultLoc.Id, item.QuantityOnHand));
+                added++;
+            }
+
+            if (added > 0) await Db.SaveChangesAsync();
+            _flash = Tr(
+                $"✓ تم تهيئة {added} صنف في فرع {defaultLoc.Code}. (تم تخطي {existingSet.Count} صنف عنده سجل بالفعل.)",
+                $"✓ Initialized {added} items at {defaultLoc.Code}. (Skipped {existingSet.Count} items that already had a row.)");
+            _flashClass = "kpi-card kpi-success";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
     }
 }
