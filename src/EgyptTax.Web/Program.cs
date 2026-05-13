@@ -506,6 +506,11 @@ builder.Services.AddSingleton<
     EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer,
     EgyptTax.Infrastructure.Pdf.QuestPdfInvoiceRenderer
 >();
+// L1.5 follow-on (v3 roadmap) — quotation PDF renderer.
+builder.Services.AddSingleton<
+    EgyptTax.Application.Pdf.IQuotationPdfRenderer,
+    EgyptTax.Infrastructure.Pdf.QuestPdfQuotationRenderer
+>();
 builder.Services.AddSingleton<
     EgyptTax.Application.Eta.IEInvoiceJsonGenerator,
     EgyptTax.Infrastructure.Eta.EInvoiceJsonGenerator
@@ -1225,6 +1230,56 @@ app.MapGet(
         }
     )
     .RequireAuthorization("FullyAuthenticated");
+
+// L1.5 follow-on (v3 roadmap) — quotation PDF download. Auth-
+// gated like the regular invoice PDF; loads the company + customer
+// + items so the renderer has everything it needs.
+app.MapGet(
+    "/quotations/{id:guid}/pdf",
+    async (
+        Guid id,
+        EgyptTax.Infrastructure.Persistence.AppDbContext db,
+        EgyptTax.Application.Pdf.IQuotationPdfRenderer renderer,
+        CancellationToken ct
+    ) =>
+    {
+        var quotation = await db.Set<EgyptTax.Domain.Quotations.Quotation>()
+            .Include(q => q.Lines)
+            .FirstOrDefaultAsync(q => q.Id == id, ct);
+        if (quotation is null) return Results.NotFound();
+
+        var issuer = await db.Set<EgyptTax.Domain.MasterData.Company>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(ct);
+        if (issuer is null) return Results.BadRequest(
+            "Company profile is not set. Complete the setup wizard first.");
+
+        var receiver = await db.Set<EgyptTax.Domain.MasterData.Customer>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == quotation.CustomerId, ct);
+        if (receiver is null) return Results.NotFound();
+
+        var itemIds = quotation.Lines.Select(l => l.ItemId).Distinct().ToList();
+        var items = await db.Set<EgyptTax.Domain.MasterData.Item>()
+            .AsNoTracking()
+            .Where(i => itemIds.Contains(i.Id))
+            .ToDictionaryAsync(
+                i => i.Id,
+                i => new EgyptTax.Application.Pdf.ItemRenderInfo(i.Code, i.Name),
+                ct);
+
+        var request = new EgyptTax.Application.Pdf.QuotationPdfRequest(
+            Quotation: quotation,
+            Issuer: issuer,
+            Receiver: receiver,
+            Items: items);
+
+        var pdf = renderer.Render(request);
+        var fileName = quotation.QuotationNumber ?? $"quotation-{quotation.Id:N}";
+        return Results.File(pdf, "application/pdf", $"{fileName}.pdf");
+    }
+)
+.RequireAuthorization("FullyAuthenticated");
 
 // L5 (v3 roadmap) — portal-token-protected PDF download. Same
 // renderer as the admin /invoices/{id}/pdf route, but the auth

@@ -66,6 +66,12 @@
         {
             <a href="/invoices/@invId" class="btn-secondary">@Tr("افتح الفاتورة المرتبطة", "Open linked invoice")</a>
         }
+        @if (_quotation.State != QuotationState.Draft)
+        {
+            <a href="/quotations/@Id/pdf" target="_blank" rel="noopener" class="btn-secondary">
+                @Tr("⬇ PDF", "⬇ PDF")
+            </a>
+        }
         <a href="/quotations" class="btn-secondary">@Tr("الرجوع للقائمة", "Back to list")</a>
     </div>
 </div>
