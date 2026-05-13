@@ -18,6 +18,23 @@ public sealed class Item
     public ItemStatus Status { get; private set; } = ItemStatus.Active;
 
     /// <summary>
+    /// Phase D — current quantity on hand. Decremented when a sales
+    /// invoice line is posted; incremented on credit-note return,
+    /// stock receipt, or manual upward adjustment. Decimal so the
+    /// system supports both whole-unit goods (laptops) and divisible
+    /// goods (kg of rice). Defaults to zero — operators set opening
+    /// stock via the Receive Stock screen.
+    /// </summary>
+    public decimal QuantityOnHand { get; private set; }
+
+    /// <summary>
+    /// Phase D — when QuantityOnHand drops below this number, the
+    /// item shows up on the dashboard's low-stock badge. Null = no
+    /// alert (operator hasn't set a reorder point yet).
+    /// </summary>
+    public decimal? LowStockThreshold { get; private set; }
+
+    /// <summary>
     /// FR-035 / Differentiator 1 — ETA's GS1-style item code from
     /// the regulator's master commodity list (assigned per item by
     /// the operator). Optional in the MVP because not every demo
@@ -78,6 +95,44 @@ public sealed class Item
     public void Deactivate() => Status = ItemStatus.Inactive;
 
     public void Reactivate() => Status = ItemStatus.Active;
+
+    /// <summary>
+    /// Phase D — receive stock or post an upward adjustment. The
+    /// caller (StockMovementHandler) is responsible for writing the
+    /// matching audit entry; this method just bumps the counter.
+    /// </summary>
+    public void IncreaseStock(decimal quantity)
+    {
+        if (quantity <= 0)
+            throw new ArgumentOutOfRangeException(nameof(quantity),
+                "Stock receipt / adjustment quantity must be positive.");
+        QuantityOnHand += quantity;
+    }
+
+    /// <summary>
+    /// Phase D — sell stock (called from sales-invoice post) or post
+    /// a downward adjustment. Refuses to go below zero so the post
+    /// fails BEFORE the invoice is committed; caller surfaces the
+    /// throw to the operator as "insufficient stock".
+    /// </summary>
+    public void DecreaseStock(decimal quantity)
+    {
+        if (quantity <= 0)
+            throw new ArgumentOutOfRangeException(nameof(quantity),
+                "Stock decrement quantity must be positive.");
+        if (QuantityOnHand < quantity)
+            throw new InvalidOperationException(
+                $"Insufficient stock for item {Code}: have {QuantityOnHand}, need {quantity}.");
+        QuantityOnHand -= quantity;
+    }
+
+    public void SetLowStockThreshold(decimal? threshold)
+    {
+        if (threshold is < 0)
+            throw new ArgumentOutOfRangeException(nameof(threshold),
+                "Low-stock threshold cannot be negative.");
+        LowStockThreshold = threshold;
+    }
 
     public void UpdateDefaultVatCategory(Guid vatCategoryId) =>
         DefaultVatCategoryId = vatCategoryId;

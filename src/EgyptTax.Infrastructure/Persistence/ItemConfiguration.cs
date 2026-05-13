@@ -36,6 +36,14 @@ internal sealed class ItemConfiguration : IEntityTypeConfiguration<Item>
             .HasConversion<string>()
             .HasMaxLength(16)
             .IsRequired();
+
+        b.Property(i => i.QuantityOnHand)
+            .HasColumnName("quantity_on_hand")
+            .HasColumnType("decimal(19,3)")
+            .IsRequired();
+        b.Property(i => i.LowStockThreshold)
+            .HasColumnName("low_stock_threshold")
+            .HasColumnType("decimal(19,3)");
         b.Property(i => i.EtaItemCode)
             .HasColumnName("eta_item_code")
             .HasMaxLength(32)

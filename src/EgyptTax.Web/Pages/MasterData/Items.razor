@@ -4,9 +4,12 @@
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <h1>@(IsArabic ? "الأصناف" : "Items")</h1>
@@ -36,6 +39,9 @@
                     <th>@(IsArabic ? "الاسم (عربي)" : "Name (Arabic)")</th>
                     <th>@(IsArabic ? "فئة الضريبة الافتراضية" : "Default VAT")</th>
                     <th>@(IsArabic ? "كود ETA" : "ETA code")</th>
+                    <th class="num">@(IsArabic ? "الرصيد" : "Stock")</th>
+                    <th class="num" title="@(IsArabic ? "حد التنبيه — اتركه فارغ = بلا تنبيه" : "Low-stock threshold — blank = no alert")">@(IsArabic ? "حد التنبيه" : "Threshold")</th>
+                    <th>@(IsArabic ? "استلام" : "Receive")</th>
                     <th>@(IsArabic ? "الحالة" : "Status")</th>
                     <th></th>
                 </tr>
@@ -43,12 +49,34 @@
             <tbody>
                 @foreach (var item in _items)
                 {
+                    var isLow = item.LowStockThreshold is { } t && item.QuantityOnHand <= t;
                     <tr class="@(item.Status == ItemStatus.Inactive ? "row-muted" : "")">
                         <td>@item.Code</td>
                         <td>@item.Name.English</td>
                         <td>@item.Name.Arabic</td>
                         <td>@VatCodeFor(item.DefaultVatCategoryId)</td>
                         <td>@RenderEtaCodeCell(item)</td>
+                        <td class="num" style="@(isLow ? "color:var(--color-danger);font-weight:bold;" : "")">
+                            @item.QuantityOnHand.ToString("0.###")
+                            @if (isLow)
+                            {
+                                <span title="@(IsArabic ? $"تحت حد التنبيه ({item.LowStockThreshold})" : $"Below low-stock threshold ({item.LowStockThreshold})")"> ⚠️</span>
+                            }
+                        </td>
+                        <td class="num">
+                            <input type="number" step="0.01" min="0"
+                                   style="width:70px;"
+                                   placeholder="—"
+                                   @bind="_thresholdInput[item.Id]"
+                                   @bind:after="() => OnSetThresholdAsync(item.Id)" />
+                        </td>
+                        <td>
+                            <input type="number" step="0.01" min="0.01"
+                                   style="width:80px;"
+                                   @bind="_receiveQty[item.Id]" />
+                            <button type="button" class="btn-secondary" style="font-size:12px;padding:4px 8px;"
+                                    @onclick="() => OnReceiveStockAsync(item.Id)">@(IsArabic ? "أضف" : "Add")</button>
+                        </td>
                         <td>@item.Status</td>
                         <td>
                             @if (item.EtaCodeStatus == EtaItemCodeStatus.None
@@ -159,6 +187,8 @@
     private List<VatCategory>? _vatCategories;
     private FormModel _form = new();
     private string? _savedFlash;
+    private readonly Dictionary<Guid, decimal> _receiveQty = new();
+    private readonly Dictionary<Guid, decimal?> _thresholdInput = new();
 
     // G2.1 — live ETA-code suggestions for the create form.
     // Recomputed whenever the operator types in either name field
@@ -190,9 +220,66 @@
         }
     }
 
+    private async Task OnSetThresholdAsync(Guid itemId)
+    {
+        if (!_thresholdInput.TryGetValue(itemId, out var newValue)) return;
+        var item = await Db.Set<Item>().FirstAsync(x => x.Id == itemId);
+        // Treat 0 same as cleared so the operator can disable the
+        // alert by typing 0 or leaving the field blank.
+        var threshold = newValue is { } v && v > 0 ? (decimal?)v : null;
+        if (item.LowStockThreshold == threshold) return;
+        item.SetLowStockThreshold(threshold);
+        await Db.SaveChangesAsync();
+        _savedFlash = IsArabic
+            ? (threshold is null
+                ? $"تم إلغاء حد التنبيه لـ {item.Code}."
+                : $"تم تعيين حد التنبيه لـ {item.Code} عند {threshold}.")
+            : (threshold is null
+                ? $"Cleared low-stock alert for {item.Code}."
+                : $"Set low-stock threshold for {item.Code} to {threshold}.");
+        await ReloadAsync();
+    }
+
+    private async Task OnReceiveStockAsync(Guid itemId)
+    {
+        if (!_receiveQty.TryGetValue(itemId, out var qty) || qty <= 0)
+        {
+            _savedFlash = IsArabic ? "أدخل كمية موجبة." : "Enter a positive quantity.";
+            return;
+        }
+        var item = await Db.Set<Item>().FirstAsync(x => x.Id == itemId);
+        item.IncreaseStock(qty);
+        var auth = await Auth.GetAuthenticationStateAsync();
+        Db.Add(new StockMovement(
+            itemId: itemId,
+            occurredAtUtc: DateTime.UtcNow,
+            quantity: qty,
+            quantityOnHandAfter: item.QuantityOnHand,
+            kind: StockMovementKind.Receipt,
+            createdByUserId: auth.User.UserId()));
+        await Db.SaveChangesAsync();
+        _savedFlash = IsArabic
+            ? $"تم استلام {qty} وحدة من {item.Code}. الرصيد الجديد: {item.QuantityOnHand}."
+            : $"Received {qty} of {item.Code}. New stock: {item.QuantityOnHand}.";
+        _receiveQty[itemId] = 0m;
+        await ReloadAsync();
+    }
+
     private async Task ReloadAsync()
     {
         _items = await Db.Set<Item>().AsNoTracking().OrderBy(i => i.Code).ToListAsync();
+        // Pre-seed _receiveQty + _thresholdInput so the per-row @bind
+        // doesn't throw KeyNotFoundException on first render (same
+        // pattern as the receipt voucher page). Threshold input
+        // mirrors the persisted value so the field shows what's set.
+        if (_items is not null)
+        {
+            foreach (var i in _items)
+            {
+                _receiveQty.TryAdd(i.Id, 0m);
+                _thresholdInput[i.Id] = i.LowStockThreshold;
+            }
+        }
         _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
 
         // Defensive auto-seed — if no VAT categories exist when an

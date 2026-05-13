@@ -5,8 +5,10 @@ using EgyptTax.Application.Invoices;
 using EgyptTax.Application.Numbering;
 using EgyptTax.Application.Periods;
 using EgyptTax.Domain.Audit;
+using EgyptTax.Domain.Documents;
 using EgyptTax.Domain.Eta;
 using EgyptTax.Domain.Invoices;
+using EgyptTax.Domain.MasterData;
 using EgyptTax.Domain.Workflow;
 using EgyptTax.Infrastructure.Persistence;
 using EgyptTax.SharedKernel.Time;
@@ -98,6 +100,49 @@ public sealed class PostSalesInvoiceHandler
             }
         }
 
+        // Phase C.2 — credit-limit guard. Skipped for credit notes
+        // (which REDUCE the receivable). For regular sales invoices,
+        // load the customer's CreditLimit; if set, sum the customer's
+        // existing posted receivable + this invoice's grand total and
+        // refuse the post when it would push the customer over.
+        // Note: SQLite's EF translator can't Sum() decimals server-
+        // side ("cannot apply aggregate operator 'Sum' on decimal"),
+        // so we project the amounts to a list and sum in memory. The
+        // row count per customer stays small (a single rep's book of
+        // business), so this is operationally fine.
+        if (!invoice.IsCreditNote)
+        {
+            var customer = await _db.Set<Customer>().AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == invoice.CustomerId, cancellationToken);
+            if (customer?.CreditLimitEgp is { } limit)
+            {
+                var postedSalesAmounts = await _db.Set<SalesInvoice>().AsNoTracking()
+                    .Where(i => i.CustomerId == invoice.CustomerId
+                        && i.State == DocumentState.Posted)
+                    .Select(i => i.GrandTotal.Amount)
+                    .ToListAsync(cancellationToken);
+                // Credit-note grand totals are negative; receipts go on
+                // the credit side. The list above includes credit notes
+                // by construction (negative amounts subtract via Sum).
+                // Receipts we deduct explicitly.
+                var receiptAmounts = await _db.Set<CustomerReceiptVoucher>().AsNoTracking()
+                    .Where(r => r.CustomerId == invoice.CustomerId
+                        && r.State == DocumentState.Posted)
+                    .Select(r => r.GrossReceiptAmount.Amount)
+                    .ToListAsync(cancellationToken);
+                var existingReceivable = postedSalesAmounts.Sum() - receiptAmounts.Sum();
+                var projected = existingReceivable + invoice.GrandTotal.Amount;
+                if (projected > limit)
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot post sales invoice {invoice.Id}: this would push the customer's "
+                            + $"outstanding balance to {projected:F2} EGP, above their credit limit of "
+                            + $"{limit:F2} EGP. Collect a receipt or raise the limit before posting."
+                    );
+                }
+            }
+        }
+
         // FR-013 — credit notes allocate from the CN series + use the
         // CreditNote approval setting; regular invoices use SalesInvoice.
         // Derived from the entity rather than the command so the
@@ -125,17 +170,89 @@ public sealed class PostSalesInvoiceHandler
         }
 
         var fiscalYear = invoice.DocumentDate.Year;
+        var nowUtc = _clock.UtcNow;
+
+        // Phase D — stock check + decrement runs BEFORE MarkPosted so
+        // an insufficient-stock throw leaves the invoice's in-memory
+        // State as Draft (BUG-D-001 fix). Otherwise the page's tracked
+        // entity shows Posted on reload even though the rollback kept
+        // the DB row at Draft, which is misleading.
+        //
+        // Sales invoices decrement; credit notes (negated quantities
+        // → negative line.Quantity) effectively increment because we
+        // apply the line's signed quantity directly. Items are loaded
+        // with tracking so the QuantityOnHand mutation is included in
+        // the pending SaveChanges below.
+        var lineItemIds = invoice.Lines.Select(l => l.ItemId).Distinct().ToArray();
+        var trackedItems = await _db.Set<EgyptTax.Domain.MasterData.Item>()
+            .Where(i => lineItemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, cancellationToken);
+        var pendingMovements = new List<EgyptTax.Domain.MasterData.StockMovement>();
+        foreach (var line in invoice.Lines)
+        {
+            if (!trackedItems.TryGetValue(line.ItemId, out var item)) continue;
+            var qty = line.Quantity; // negative on credit notes
+            if (qty > 0)
+            {
+                try { item.DecreaseStock(qty); }
+                catch (InvalidOperationException ex)
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot post invoice {invoice.Id}: {ex.Message} "
+                            + "Receive more stock or reduce the line quantity before posting.",
+                        ex);
+                }
+                pendingMovements.Add(new EgyptTax.Domain.MasterData.StockMovement(
+                    itemId: item.Id,
+                    occurredAtUtc: nowUtc,
+                    quantity: -qty,
+                    quantityOnHandAfter: item.QuantityOnHand,
+                    kind: EgyptTax.Domain.MasterData.StockMovementKind.Sale,
+                    sourceDocumentId: invoice.Id,
+                    createdByUserId: command.PostedByUserId));
+            }
+            else if (qty < 0)
+            {
+                // Credit note line — quantity is negative, so the
+                // absolute value is what we put back into stock.
+                var put = -qty;
+                item.IncreaseStock(put);
+                pendingMovements.Add(new EgyptTax.Domain.MasterData.StockMovement(
+                    itemId: item.Id,
+                    occurredAtUtc: nowUtc,
+                    quantity: put,
+                    quantityOnHandAfter: item.QuantityOnHand,
+                    kind: EgyptTax.Domain.MasterData.StockMovementKind.Return,
+                    sourceDocumentId: invoice.Id,
+                    createdByUserId: command.PostedByUserId));
+            }
+        }
+
         var documentNumber = await _allocator.AllocateAsync(
             documentType,
             fiscalYear,
             cancellationToken
         );
 
+        // Stamp the now-known document number on the pending stock
+        // movement notes so the audit trail links back to the doc.
+        foreach (var m in pendingMovements)
+        {
+            _db.Add(new EgyptTax.Domain.MasterData.StockMovement(
+                itemId: m.ItemId,
+                occurredAtUtc: m.OccurredAtUtc,
+                quantity: m.Quantity,
+                quantityOnHandAfter: m.QuantityOnHandAfter,
+                kind: m.Kind,
+                sourceDocumentId: m.SourceDocumentId,
+                note: documentNumber,
+                createdByUserId: m.CreatedByUserId));
+        }
+
         var postingMode = approvalRequired
             ? DocumentPostingMode.ApprovedThenPosted
             : DocumentPostingMode.UnapprovedDirect;
 
-        var nowUtc = _clock.UtcNow;
         invoice.MarkPosted(
             documentNumber: documentNumber,
             postedByUserId: command.PostedByUserId,
