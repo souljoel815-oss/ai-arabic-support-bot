@@ -189,4 +189,88 @@ public class BankStatementParserTests
         BankStatementParserRegistry.ByName("CIB").Should().NotBeNull();
         BankStatementParserRegistry.ByName("Unknown").Should().BeNull();
     }
+
+    // ---------- v4 C.8 OFX 2.x ----------
+
+    private const string OfxFixture =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+        "<OFX>\n" +
+        "  <BANKMSGSRSV1><STMTTRNRS><STMTRS>\n" +
+        "    <CURDEF>EGP</CURDEF>\n" +
+        "    <BANKACCTFROM><BANKID>CIB</BANKID><ACCTID>1234567890</ACCTID><ACCTTYPE>CHECKING</ACCTTYPE></BANKACCTFROM>\n" +
+        "    <BANKTRANLIST>\n" +
+        "      <DTSTART>20260401</DTSTART>\n" +
+        "      <DTEND>20260403</DTEND>\n" +
+        "      <STMTTRN>\n" +
+        "        <TRNTYPE>CREDIT</TRNTYPE>\n" +
+        "        <DTPOSTED>20260402</DTPOSTED>\n" +
+        "        <TRNAMT>5000.00</TRNAMT>\n" +
+        "        <FITID>TRX-5001</FITID>\n" +
+        "        <NAME>HOPE CO TRANSFER</NAME>\n" +
+        "      </STMTTRN>\n" +
+        "      <STMTTRN>\n" +
+        "        <TRNTYPE>DEBIT</TRNTYPE>\n" +
+        "        <DTPOSTED>20260403120000</DTPOSTED>\n" +
+        "        <TRNAMT>-2000.00</TRNAMT>\n" +
+        "        <FITID>ATM-9876</FITID>\n" +
+        "        <NAME>ATM CAIRO</NAME>\n" +
+        "        <MEMO>Withdrawal</MEMO>\n" +
+        "      </STMTTRN>\n" +
+        "    </BANKTRANLIST>\n" +
+        "    <LEDGERBAL>\n" +
+        "      <BALAMT>103000.00</BALAMT>\n" +
+        "      <DTASOF>20260403</DTASOF>\n" +
+        "    </LEDGERBAL>\n" +
+        "  </STMTRS></STMTTRNRS></BANKMSGSRSV1>\n" +
+        "</OFX>\n";
+
+    [Fact]
+    public void Ofx_DetectsXmlPi()
+    {
+        new OfxBankStatementParser().CanParse("<?xml version=\"1.0\"?>").Should().BeTrue();
+        new OfxBankStatementParser().CanParse("<OFX>").Should().BeTrue();
+        new OfxBankStatementParser().CanParse("Date,Amount,Balance").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Ofx_Parses_TwoTransactions()
+    {
+        var result = new OfxBankStatementParser().Parse(OfxFixture);
+
+        result.Lines.Should().HaveCount(2);
+        result.PeriodStart.Should().Be(new DateOnly(2026, 4, 1));
+        result.PeriodEnd.Should().Be(new DateOnly(2026, 4, 3));
+        result.ClosingBalance.Should().Be(103000.00m);
+
+        var credit = result.Lines[0];
+        credit.TransactionDate.Should().Be(new DateOnly(2026, 4, 2));
+        credit.Credit.Should().Be(5000.00m);
+        credit.Debit.Should().Be(0m);
+        credit.BankReference.Should().Be("TRX-5001");
+        credit.Description.Should().Contain("HOPE CO");
+
+        var debit = result.Lines[1];
+        debit.TransactionDate.Should().Be(new DateOnly(2026, 4, 3));
+        debit.Debit.Should().Be(2000.00m); // negative TRNAMT → debit
+        debit.Credit.Should().Be(0m);
+        debit.Description.Should().Contain("ATM CAIRO");
+        debit.Description.Should().Contain("Withdrawal");
+    }
+
+    [Fact]
+    public void Ofx_Rejects_Sgml1x_WithClearWarning()
+    {
+        const string sgml = "OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\n\n<OFX>...";
+        var result = new OfxBankStatementParser().Parse(sgml);
+        result.Lines.Should().BeEmpty();
+        result.Warnings.Should().ContainSingle()
+            .Which.Should().Contain("OFX 2.x");
+    }
+
+    [Fact]
+    public void Registry_DetectsOfx_BeforeCsvParsers()
+    {
+        BankStatementParserRegistry.Detect(OfxFixture)
+            .Should().BeOfType<OfxBankStatementParser>();
+    }
 }

@@ -17,6 +17,10 @@ public static class BankStatementParserRegistry
     private static readonly IReadOnlyList<IBankStatementParser> _parsers =
         new IBankStatementParser[]
         {
+            // v4 C.8 — OFX 2.x XML; tried first because its
+            // CanParse signature (`<?xml` / `<OFX`) is unambiguous
+            // and never collides with the CSV parsers' headers.
+            new OfxBankStatementParser(),
             new CibBankStatementParser(),
             new NbeBankStatementParser(),
             new QnbBankStatementParser(),
