@@ -1,0 +1,307 @@
+@page "/pos"
+@using EgyptTax.Application.Invoices
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Invoices
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+@inject PostSalesInvoiceWithEtaSubmissionHandler PostHandler
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v3 §11 #10 — POS (Point of Sale). MVP: single-page fast
+    checkout for retail counter staff. Item grid on the left
+    (search + click to add), cart on the right, "Charge"
+    creates + posts a SalesInvoice via the regular handler.
+
+    Deferred to v4 trigger / follow-on:
+    - Offline mode (PWA service worker queue)
+    - Receipt printer integration
+    - Barcode scanner USB HID input
+    - Cash drawer trigger
+    - Multi-payment-method allocation (cash + card split)
+    - Returns / refunds via POS UI (use credit-note flow today)
+*@
+
+<PageTitle>@Tr("نقطة البيع | DaftarX", "POS | DaftarX")</PageTitle>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+@if (_postedInvoiceId is { } postedId)
+{
+    <div class="kpi-card kpi-success" style="padding:24px;text-align:center;">
+        <h1>✓ @Tr("تم البيع", "Sale complete")</h1>
+        <p>@Tr("الإجمالي:", "Total:") <strong>@_lastTotal.ToString("N2") @Tr("ج.م", "EGP")</strong></p>
+        <div class="invoice-actions" style="justify-content:center;margin-top:16px;">
+            <a href="/invoices/@postedId" target="_blank" rel="noopener" class="btn-secondary">
+                @Tr("افتح الفاتورة", "Open invoice")
+            </a>
+            <a href="/invoices/@postedId/pdf" target="_blank" rel="noopener" class="btn-secondary">
+                ⬇ PDF
+            </a>
+            <button type="button" class="btn-primary" @onclick="OnNewSaleAsync">
+                @Tr("بيع جديد →", "New sale →")
+            </button>
+        </div>
+    </div>
+    return;
+}
+
+<div class="pos-shell">
+    <!-- Left: items grid -->
+    <div class="pos-items">
+        <div class="pos-search">
+            <input type="search" @bind="_search" @bind:event="oninput"
+                   placeholder="@Tr("ابحث عن صنف…", "Search items…")" />
+        </div>
+        <div class="pos-grid">
+            @foreach (var item in FilteredItems)
+            {
+                <button type="button" class="pos-item-card" @onclick="() => AddToCart(item)">
+                    <div class="pos-item-code">@item.Code</div>
+                    <div class="pos-item-name">@item.Name.Display(IsArabic ? Language.Ar : Language.En)</div>
+                    @if (_priceSuggestions.TryGetValue(item.Id, out var p))
+                    {
+                        <div class="pos-item-price">@p.ToString("N2") @Tr("ج.م", "EGP")</div>
+                    }
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Right: cart -->
+    <aside class="pos-cart">
+        <div class="pos-cart-head">
+            <strong>🛒 @Tr("السلة", "Cart")</strong>
+            <button type="button" class="btn-secondary" style="font-size:12px;"
+                    @onclick="ClearCart" disabled="@(_cart.Count == 0)">
+                @Tr("تفريغ", "Clear")
+            </button>
+        </div>
+
+        <div class="pos-customer">
+            <label>
+                <span>@Tr("العميل", "Customer")</span>
+                <select @bind="_customerId">
+                    <option value="@Guid.Empty">@Tr("— عميل عابر —", "— Walk-in —")</option>
+                    @foreach (var c in _customers)
+                    {
+                        <option value="@c.Id">@c.Code · @c.Name.Display(IsArabic ? Language.Ar : Language.En)</option>
+                    }
+                </select>
+            </label>
+        </div>
+
+        <div class="pos-cart-items">
+            @if (_cart.Count == 0)
+            {
+                <p class="pos-cart-empty">@Tr("(فاضية)", "(empty)")</p>
+            }
+            else
+            {
+                @foreach (var line in _cart)
+                {
+                    var l = line;
+                    <div class="pos-cart-line">
+                        <div class="pos-cart-line-name">@l.ItemCode · @l.ItemName</div>
+                        <div class="pos-cart-line-row">
+                            <input type="number" min="0.01" step="0.01" style="width:60px;"
+                                   @bind="l.Quantity" @bind:event="oninput"
+                                   @bind:after="Recalc" />
+                            <span>×</span>
+                            <input type="number" min="0" step="0.01" style="width:80px;"
+                                   @bind="l.UnitPrice" @bind:event="oninput"
+                                   @bind:after="Recalc" />
+                            <button type="button" @onclick="() => Remove(l)" style="margin-inline-start:auto;background:transparent;border:0;color:var(--danger);cursor:pointer;">×</button>
+                        </div>
+                        <div class="pos-cart-line-total">
+                            @((l.Quantity * l.UnitPrice).ToString("N2"))
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="pos-totals">
+            <div class="pos-total-row"><span>@Tr("المجموع", "Subtotal")</span><span>@_subtotal.ToString("N2")</span></div>
+            <div class="pos-total-row"><span>@Tr("الضريبة 14%", "VAT 14%")</span><span>@_vat.ToString("N2")</span></div>
+            <div class="pos-total-row pos-grand"><span>@Tr("الإجمالي", "Total")</span><span>@_grandTotal.ToString("N2")</span></div>
+        </div>
+
+        @if (_flash is not null)
+        {
+            <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+        }
+
+        <button type="button" class="btn-primary pos-charge"
+                disabled="@(_cart.Count == 0 || _busy)"
+                @onclick="OnChargeAsync">
+            @(_busy ? Tr("جارٍ…", "Charging…") : Tr($"💳 احصل {_grandTotal:N2} ج.م", $"💳 Charge {_grandTotal:N2} EGP"))
+        </button>
+    </aside>
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private List<Item> _items = new();
+    private List<Customer> _customers = new();
+    private VatCategory? _standardVat;
+    private Dictionary<Guid, decimal> _priceSuggestions = new();
+
+    private string _search = "";
+    private Guid _customerId = Guid.Empty;
+    private List<CartLine> _cart = new();
+    private decimal _subtotal;
+    private decimal _vat;
+    private decimal _grandTotal;
+    private Guid _userId;
+    private Guid? _postedInvoiceId;
+    private decimal _lastTotal;
+
+    private sealed class CartLine
+    {
+        public Guid ItemId { get; set; }
+        public string ItemCode { get; set; } = "";
+        public string ItemName { get; set; } = "";
+        public decimal Quantity { get; set; } = 1m;
+        public decimal UnitPrice { get; set; }
+        public Guid VatCategoryId { get; set; }
+    }
+
+    private IEnumerable<Item> FilteredItems => string.IsNullOrWhiteSpace(_search)
+        ? _items.Take(50)
+        : _items.Where(i => i.Code.Contains(_search, StringComparison.OrdinalIgnoreCase)
+            || i.Name.Arabic.Contains(_search, StringComparison.OrdinalIgnoreCase)
+            || i.Name.English.Contains(_search, StringComparison.OrdinalIgnoreCase)).Take(50);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => i.Status == ItemStatus.Active)
+            .OrderBy(i => i.Code).ToListAsync();
+        _customers = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => c.Status == CustomerStatus.Active)
+            .OrderBy(c => c.Code).ToListAsync();
+        _standardVat = await Db.Set<VatCategory>().AsNoTracking()
+            .Where(v => v.RatePercent == 14m)
+            .OrderBy(v => v.EffectiveFromDate)
+            .FirstOrDefaultAsync();
+
+        // Price suggestion: average unit price from the last 5
+        // posted lines for each item. Empty when no history.
+        var recentLines = await Db.Set<SalesInvoiceLine>().AsNoTracking()
+            .OrderByDescending(l => l.Id)
+            .Take(2000)
+            .Select(l => new { l.ItemId, Price = l.UnitPrice.Amount })
+            .ToListAsync();
+        _priceSuggestions = recentLines.GroupBy(l => l.ItemId)
+            .ToDictionary(g => g.Key, g => g.Take(5).Average(x => x.Price));
+
+        var auth = await Auth.GetAuthenticationStateAsync();
+        _userId = auth.User.UserId() ?? Guid.Empty;
+        _loading = false;
+    }
+
+    private void AddToCart(Item item)
+    {
+        var existing = _cart.FirstOrDefault(l => l.ItemId == item.Id);
+        if (existing is not null) { existing.Quantity++; Recalc(); return; }
+        var price = _priceSuggestions.GetValueOrDefault(item.Id, 0m);
+        _cart.Add(new CartLine
+        {
+            ItemId = item.Id,
+            ItemCode = item.Code,
+            ItemName = item.Name.Display(IsArabic ? Language.Ar : Language.En),
+            Quantity = 1m,
+            UnitPrice = price,
+            VatCategoryId = _standardVat?.Id ?? item.DefaultVatCategoryId,
+        });
+        Recalc();
+    }
+
+    private void Remove(CartLine line) { _cart.Remove(line); Recalc(); }
+    private void ClearCart() { _cart.Clear(); Recalc(); }
+
+    private void Recalc()
+    {
+        _subtotal = _cart.Sum(l => l.Quantity * l.UnitPrice);
+        _vat = _subtotal * 0.14m;
+        _grandTotal = _subtotal + _vat;
+    }
+
+    private async Task OnChargeAsync()
+    {
+        if (_cart.Count == 0) return;
+        if (_standardVat is null)
+        {
+            _flash = Tr("مفيش فئة ضريبة 14% معرّفة. ادخل /settings/tax-periods أولاً.",
+                       "No 14% VAT category. Configure /settings/tax-periods first.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        _busy = true; _flash = null;
+        try
+        {
+            // Walk-in fallback: if no customer picked, use the first
+            // active customer with a valid B2C profile. If none
+            // exists, surface a clear error.
+            Customer? customer = _customerId == Guid.Empty
+                ? _customers.FirstOrDefault(c => c.TaxProfile.ProfileType == CustomerTaxProfileType.B2CConsumer)
+                  ?? _customers.FirstOrDefault()
+                : _customers.FirstOrDefault(c => c.Id == _customerId);
+            if (customer is null)
+            {
+                _flash = Tr("لازم تنشئ على الأقل عميل واحد قبل ما تستخدم POS.",
+                           "Create at least one customer before using POS.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+
+            var draft = SalesInvoice.CreateDraft(
+                customerId: customer.Id,
+                customerTaxProfileSnapshot: customer.TaxProfile,
+                documentDate: DateOnly.FromDateTime(DateTime.UtcNow),
+                createdByUserId: _userId == Guid.Empty ? null : _userId);
+            foreach (var l in _cart)
+            {
+                draft.AddLine(l.ItemId, l.Quantity, MoneyEgp.From(l.UnitPrice),
+                    l.VatCategoryId, vatRatePercent: 14m);
+            }
+            Db.Add(draft);
+            await Db.SaveChangesAsync();
+
+            var posted = await PostHandler.HandleAsync(
+                new PostSalesInvoiceCommand(draft.Id, _userId == Guid.Empty ? Guid.Empty : _userId),
+                CancellationToken.None);
+
+            _postedInvoiceId = posted.Id;
+            _lastTotal = _grandTotal;
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _busy = false; }
+    }
+
+    private void OnNewSaleAsync()
+    {
+        _postedInvoiceId = null;
+        _cart.Clear();
+        _customerId = Guid.Empty;
+        _search = "";
+        Recalc();
+    }
+}

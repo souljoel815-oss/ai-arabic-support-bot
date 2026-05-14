@@ -200,6 +200,12 @@
             <a href="dashboards/me" class="@ActiveLink("dashboards/me")" @onclick="CloseSidebar">
                 <Icon Name="user" Class="nav-icon" />@Tr("لوحتي", "My dashboard")
             </a>
+            @if (!_isRepOnly)
+            {
+                <a href="pos" class="@ActiveLink("pos")" @onclick="CloseSidebar">
+                    <Icon Name="shopping-cart" Class="nav-icon" />@Tr("نقطة البيع", "POS")
+                </a>
+            }
         </nav>
 
         @* Gux.1 — Invoices & Operations *@
