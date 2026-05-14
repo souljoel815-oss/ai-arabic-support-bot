@@ -97,18 +97,36 @@
                 </td>
             </tr>
             <tr>
-                <td><strong>@(IsArabic ? "تذكير العملاء بالسداد (تلقائي)" : "Auto payment reminders to customers")</strong></td>
-                <td><input type="checkbox" @bind="_paymentReminderEnabled" @bind:after="OnPaymentReminderChangedAsync" /></td>
+                <td><strong>@(IsArabic ? "تذكير العملاء بالسداد (تلقائي، بثلاث مراحل)" : "Auto payment reminders (three-tier escalation)")</strong></td>
+                <td><input type="checkbox" @bind="_paymentReminderEnabled" @bind:after="OnPaymentReminderEnabledChangedAsync" /></td>
                 <td>
-                    <label>@(IsArabic ? "بعد تأخير:" : "After overdue:")</label>
-                    <input type="number" min="1" max="365" style="width:80px;"
-                           @bind="_paymentReminderDaysOverdue" @bind:after="OnPaymentReminderChangedAsync"
-                           disabled="@(!_paymentReminderEnabled)" />
-                    <span>@(IsArabic ? "يوم" : "days")</span>
-                    <em style="display:block;color:var(--text-muted);font-size:12px;margin-top:4px;">
+                    <div style="display:grid;grid-template-columns:auto auto;gap:6px 12px;align-items:center;">
+                        <label>@(IsArabic ? "ودّي بعد:" : "Gentle after:")</label>
+                        <span>
+                            <input type="number" min="1" max="365" style="width:70px;"
+                                   @bind="_paymentReminderDaysOverdue" @bind:after="OnPaymentReminderTiersChangedAsync"
+                                   disabled="@(!_paymentReminderEnabled)" />
+                            @(IsArabic ? "يوم" : "days")
+                        </span>
+                        <label>@(IsArabic ? "صارم بعد:" : "Firm after:")</label>
+                        <span>
+                            <input type="number" min="1" max="365" style="width:70px;"
+                                   @bind="_paymentReminderDaysOverdueFirm" @bind:after="OnPaymentReminderTiersChangedAsync"
+                                   disabled="@(!_paymentReminderEnabled)" />
+                            @(IsArabic ? "يوم" : "days")
+                        </span>
+                        <label>@(IsArabic ? "إنذار نهائي بعد:" : "Final notice after:")</label>
+                        <span>
+                            <input type="number" min="1" max="365" style="width:70px;"
+                                   @bind="_paymentReminderDaysOverdueFinal" @bind:after="OnPaymentReminderTiersChangedAsync"
+                                   disabled="@(!_paymentReminderEnabled)" />
+                            @(IsArabic ? "يوم" : "days")
+                        </span>
+                    </div>
+                    <em style="display:block;color:var(--text-muted);font-size:12px;margin-top:6px;">
                         @(IsArabic
-                            ? "يحتاج SMTP وعنوان بريد للعميل. لا يرسل أكتر من مرة كل 7 أيام لنفس العميل."
-                            : "Requires SMTP + a customer email address. Won't re-send within 7 days to the same customer.")
+                            ? "يحتاج SMTP وعنوان بريد للعميل. كل مرحلة بترفض إعادة الإرسال لنفس العميل خلال 30 يوم. القيم لازم تكون: ودّي < صارم < نهائي."
+                            : "Requires SMTP + a customer email address. Each tier respects a 30-day per-customer cooldown. Thresholds must satisfy gentle < firm < final.")
                     </em>
                 </td>
             </tr>
@@ -159,9 +177,11 @@
 
     private bool _emailNotificationsEnabled;
 
-    // L8 — auto payment reminders to customers.
+    // L8 + v4 B.2 — three-tier dunning escalation.
     private bool _paymentReminderEnabled;
     private int _paymentReminderDaysOverdue;
+    private int _paymentReminderDaysOverdueFirm;
+    private int _paymentReminderDaysOverdueFinal;
 
     protected override async Task OnInitializedAsync()
     {
@@ -179,13 +199,40 @@
         _emailNotificationsEnabled = p.EmailNotificationsEnabled;
         _paymentReminderEnabled = p.PaymentReminderEnabled;
         _paymentReminderDaysOverdue = p.PaymentReminderDaysOverdue;
+        _paymentReminderDaysOverdueFirm = p.PaymentReminderDaysOverdueFirm;
+        _paymentReminderDaysOverdueFinal = p.PaymentReminderDaysOverdueFinal;
         _loading = false;
     }
 
-    private Task OnPaymentReminderChangedAsync()
+    private Task OnPaymentReminderEnabledChangedAsync()
     {
-        var days = _paymentReminderDaysOverdue is < 1 or > 365 ? 14 : _paymentReminderDaysOverdue;
+        var days = _paymentReminderDaysOverdue is < 1 or > 365 ? 7 : _paymentReminderDaysOverdue;
         return ApplyAsync(p => p.SetPaymentReminder(_paymentReminderEnabled, days));
+    }
+
+    private Task OnPaymentReminderTiersChangedAsync()
+    {
+        // Validate locally so the user sees the error inline rather
+        // than reading a generic save failure. Bad values just no-op.
+        if (_paymentReminderDaysOverdue is < 1 or > 365
+            || _paymentReminderDaysOverdueFirm is < 1 or > 365
+            || _paymentReminderDaysOverdueFinal is < 1 or > 365)
+        {
+            return Task.CompletedTask;
+        }
+        if (!(_paymentReminderDaysOverdue < _paymentReminderDaysOverdueFirm
+            && _paymentReminderDaysOverdueFirm < _paymentReminderDaysOverdueFinal))
+        {
+            _flash = IsArabic
+                ? "ودّي لازم يكون أقل من صارم، وصارم أقل من نهائي."
+                : "Gentle must be less than Firm, and Firm less than Final.";
+            _flashClass = "kpi-card kpi-error";
+            return Task.CompletedTask;
+        }
+        return ApplyAsync(p => p.SetPaymentReminderTiers(
+            _paymentReminderDaysOverdue,
+            _paymentReminderDaysOverdueFirm,
+            _paymentReminderDaysOverdueFinal));
     }
 
     private static int[] ParseDayList(string raw) =>

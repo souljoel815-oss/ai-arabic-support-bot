@@ -34,12 +34,29 @@ public sealed class NotificationPrefs
 
     /// <summary>L8 (v3 roadmap) — when enabled, the daily
     /// payment-reminder Hangfire job sends an email to customers
-    /// whose oldest unpaid invoice is older than
-    /// <see cref="PaymentReminderDaysOverdue"/>. Off by default
-    /// because new installs don't have customer email addresses
-    /// yet — flip on once email + customer contact data is solid.</summary>
+    /// whose oldest unpaid invoice is older than the matching
+    /// tier threshold. v4 B.2 turned the single threshold into a
+    /// three-tier escalation (Gentle / Firm / FinalNotice); the
+    /// existing field becomes the Gentle threshold for back-compat.
+    /// Off by default — flip on once email + customer contact data
+    /// is solid.</summary>
     public bool PaymentReminderEnabled { get; private set; }
-    public int PaymentReminderDaysOverdue { get; private set; } = 14;
+
+    /// <summary>v4 B.2 — Gentle-tier threshold (days overdue).
+    /// Default 7 for new installs; existing rows kept their pre-v4
+    /// 14-day default via the migration.</summary>
+    public int PaymentReminderDaysOverdue { get; private set; } = 7;
+
+    /// <summary>v4 B.2 — Firm-tier threshold (days overdue).
+    /// Customer must be at least this overdue + have either
+    /// (a) never had a Firm dispatch or (b) be past the cooldown.</summary>
+    public int PaymentReminderDaysOverdueFirm { get; private set; } = 14;
+
+    /// <summary>v4 B.2 — FinalNotice-tier threshold (days overdue).
+    /// Same gating as Firm; once sent + cooled-down the operator
+    /// is expected to take the next step manually (phone call,
+    /// collections, write-off).</summary>
+    public int PaymentReminderDaysOverdueFinal { get; private set; } = 30;
 
     private NotificationPrefs() { }
 
@@ -82,6 +99,28 @@ public sealed class NotificationPrefs
             throw new ArgumentOutOfRangeException(nameof(daysOverdue));
         PaymentReminderEnabled = enabled;
         PaymentReminderDaysOverdue = daysOverdue;
+    }
+
+    /// <summary>v4 B.2 — set all three tier thresholds at once.
+    /// Validates that gentle &lt; firm &lt; finalNotice — overlapping
+    /// thresholds would let a customer qualify for two tiers at once
+    /// and produce non-deterministic dispatches.</summary>
+    public void SetPaymentReminderTiers(int gentleDays, int firmDays, int finalDays)
+    {
+        if (gentleDays is < 1 or > 365)
+            throw new ArgumentOutOfRangeException(nameof(gentleDays));
+        if (firmDays is < 1 or > 365)
+            throw new ArgumentOutOfRangeException(nameof(firmDays));
+        if (finalDays is < 1 or > 365)
+            throw new ArgumentOutOfRangeException(nameof(finalDays));
+        if (!(gentleDays < firmDays && firmDays < finalDays))
+        {
+            throw new ArgumentException(
+                $"Reminder tier thresholds must satisfy gentle ({gentleDays}) < firm ({firmDays}) < final ({finalDays}).");
+        }
+        PaymentReminderDaysOverdue = gentleDays;
+        PaymentReminderDaysOverdueFirm = firmDays;
+        PaymentReminderDaysOverdueFinal = finalDays;
     }
 
     private static int[] ValidateDayArray(int[] days)

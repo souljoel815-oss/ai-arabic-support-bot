@@ -43,9 +43,17 @@ internal sealed class NotificationPrefsConfiguration : IEntityTypeConfiguration<
 
         b.Property(x => x.EmailNotificationsEnabled).HasColumnName("email_notifications_enabled").IsRequired();
 
-        // L8 (v3 roadmap) — auto payment reminders.
+        // L8 (v3 roadmap) + v4 B.2 — auto payment reminders. The
+        // existing single threshold becomes the Gentle tier; two
+        // new columns hold the Firm + FinalNotice thresholds.
         b.Property(x => x.PaymentReminderEnabled).HasColumnName("payment_reminder_enabled").IsRequired();
         b.Property(x => x.PaymentReminderDaysOverdue).HasColumnName("payment_reminder_days_overdue").IsRequired();
+        b.Property(x => x.PaymentReminderDaysOverdueFirm)
+            .HasColumnName("payment_reminder_days_overdue_firm").IsRequired()
+            .HasDefaultValue(14);
+        b.Property(x => x.PaymentReminderDaysOverdueFinal)
+            .HasColumnName("payment_reminder_days_overdue_final").IsRequired()
+            .HasDefaultValue(30);
     }
 
     /// <summary>Stores int[] as comma-separated string. Avoids JSON

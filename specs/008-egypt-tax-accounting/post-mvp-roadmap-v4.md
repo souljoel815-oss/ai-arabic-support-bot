@@ -231,7 +231,7 @@ without spinning up a new entity family.
 - **Avoid:** Probability customisation per pipeline (over-scoped).
   Cohort analysis. Time-to-close analytics.
 
-### B.2 — Automated invoice follow-up sequences (extend L8)
+### B.2 — Automated invoice follow-up sequences (extend L8) ✅ SHIPPED
 
 - **Pain:** L8 sends a single reminder when an invoice is
   N-days-overdue. Real DSO reduction needs a schedule:

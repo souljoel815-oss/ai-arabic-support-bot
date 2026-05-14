@@ -14,28 +14,37 @@ using Microsoft.Extensions.Logging;
 namespace EgyptTax.Infrastructure.BackgroundJobs;
 
 /// <summary>
-/// L8 (v3 roadmap) — daily Hangfire job that sends polite payment-
-/// reminder emails to customers whose oldest unpaid invoice is older
-/// than the configured threshold (default 14 days).
+/// L8 (v3 roadmap) + v4 B.2 — daily Hangfire job that escalates
+/// dunning emails through three tiers: Gentle / Firm / FinalNotice.
+/// Each tier has its own days-overdue threshold (configurable per
+/// tenant; defaults 7 / 14 / 30) and its own per-customer cooldown
+/// (30 days same-tier — once a tier fires, the customer rests from
+/// that tier for a month even if they're still overdue).
+///
+/// Tier selection per customer per run: pick the HIGHEST tier the
+/// customer is overdue for that ALSO has no recent same-tier
+/// dispatch. So a 35-day-overdue customer who's never been emailed
+/// gets a FinalNotice on the first run; if Firm + FinalNotice were
+/// already sent within the cooldown window, they get nothing today.
 ///
 /// Per-customer (NOT per-invoice) reminders: receipts are FIFO-
 /// applied to oldest invoices to find the oldest still-unpaid one.
 /// One email summarises all outstanding amounts. Avoids spamming
 /// customers with five separate emails for five overdue invoices.
 ///
-/// Anti-spam: a 7-day cooldown — won't re-send to the same customer
-/// within 7 days of the previous dispatch (recorded in
-/// <see cref="PaymentReminderDispatch"/>).
-///
 /// Skips silently when:
 ///   - PaymentReminderEnabled is false
 ///   - SMTP is not configured for DirectSmtp
 ///   - The customer has no email address on file
-///   - The 7-day cooldown is still active
+///   - The matched tier is on cooldown
 /// </summary>
 public sealed class PaymentReminderJob
 {
-    private const int CooldownDays = 7;
+    /// <summary>v4 B.2 — same-tier cooldown. Once a tier fires for a
+    /// customer they don't get another email of THAT tier for 30
+    /// days; a higher tier may still fire if they cross its
+    /// threshold in the meantime.</summary>
+    private const int CooldownDays = 30;
 
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly SettingsRepository _settings;
@@ -77,7 +86,9 @@ public sealed class PaymentReminderJob
             return;
         }
 
-        var threshold = prefs.PaymentReminderDaysOverdue;
+        var gentleThreshold = prefs.PaymentReminderDaysOverdue;
+        var firmThreshold = prefs.PaymentReminderDaysOverdueFirm;
+        var finalThreshold = prefs.PaymentReminderDaysOverdueFinal;
         var today = DateOnly.FromDateTime(_clock.UtcNow);
         var cooldownCutoff = _clock.UtcNow.AddDays(-CooldownDays);
 
@@ -96,18 +107,6 @@ public sealed class PaymentReminderJob
         {
             ct.ThrowIfCancellationRequested();
 
-            // Cooldown check first (cheapest).
-            var lastSent = await db.Set<PaymentReminderDispatch>().AsNoTracking()
-                .Where(d => d.CustomerId == customer.Id && d.SentAtUtc >= cooldownCutoff)
-                .OrderByDescending(d => d.SentAtUtc)
-                .Select(d => (DateTime?)d.SentAtUtc)
-                .FirstOrDefaultAsync(ct);
-            if (lastSent is not null)
-            {
-                skippedCooldown++;
-                continue;
-            }
-
             var (oldestDate, outstanding) = await ComputeOldestUnpaidAsync(db, customer.Id, ct);
             if (oldestDate is null || outstanding <= 0m)
             {
@@ -116,30 +115,53 @@ public sealed class PaymentReminderJob
             }
 
             var ageDays = today.DayNumber - oldestDate.Value.DayNumber;
-            if (ageDays < threshold)
+
+            // v4 B.2 — pick the highest tier the customer qualifies
+            // for. Threshold comparison is "age >= tier-days".
+            ReminderTier? tier = null;
+            if (ageDays >= finalThreshold) tier = ReminderTier.FinalNotice;
+            else if (ageDays >= firmThreshold) tier = ReminderTier.Firm;
+            else if (ageDays >= gentleThreshold) tier = ReminderTier.Gentle;
+
+            if (tier is null)
             {
                 skippedNoOverdue++;
                 continue;
             }
 
+            // Per-tier cooldown: skip if a dispatch of THIS tier
+            // happened within the cooldown window. A higher tier
+            // becoming due in the meantime can still fire.
+            var sameTierRecent = await db.Set<PaymentReminderDispatch>().AsNoTracking()
+                .AnyAsync(d => d.CustomerId == customer.Id
+                    && d.Tier == tier.Value
+                    && d.SentAtUtc >= cooldownCutoff, ct);
+            if (sameTierRecent)
+            {
+                skippedCooldown++;
+                continue;
+            }
+
             try
             {
-                await SendReminderEmailAsync(smtp, customer, outstanding, oldestDate.Value, ageDays, ct);
+                await SendReminderEmailAsync(
+                    smtp, customer, outstanding, oldestDate.Value, ageDays, tier.Value, ct);
 
                 db.Add(new PaymentReminderDispatch(
                     customerId: customer.Id,
                     sentAtUtc: _clock.UtcNow,
                     outstandingAtSendEgp: outstanding,
                     oldestUnpaidInvoiceDate: oldestDate.Value,
-                    sentToEmail: customer.Email!));
+                    sentToEmail: customer.Email!,
+                    tier: tier.Value));
                 await db.SaveChangesAsync(ct);
                 sent++;
             }
             catch (Exception ex)
             {
                 _log.LogWarning(ex,
-                    "Payment-reminder email to {Email} for customer {Customer} failed.",
-                    customer.Email, customer.Id);
+                    "Payment-reminder email to {Email} for customer {Customer} (tier={Tier}) failed.",
+                    customer.Email, customer.Id, tier.Value);
                 failed++;
             }
         }
@@ -200,6 +222,7 @@ public sealed class PaymentReminderJob
         decimal outstanding,
         DateOnly oldestDate,
         int ageDays,
+        ReminderTier tier,
         CancellationToken ct)
     {
         var password = _protector.Decrypt(smtp.EncryptedPassword!);
@@ -210,25 +233,8 @@ public sealed class PaymentReminderJob
             DeliveryMethod = SmtpDeliveryMethod.Network,
         };
 
-        var subjectAr = $"تذكير ودّي بالرصيد المستحق — {outstanding:N2} ج.م";
-        var subjectEn = $"Friendly payment reminder — EGP {outstanding:N2} outstanding";
-
-        var bodyAr =
-            $"السيد / السيدة {customer.Name.Arabic},\n\n" +
-            $"دي رسالة تذكيرية ودّية بالرصيد المستحق على حضرتكم:\n\n" +
-            $"  • إجمالي الرصيد المستحق: {outstanding:N2} ج.م\n" +
-            $"  • أقدم فاتورة غير مسددة: {oldestDate:yyyy-MM-dd} (مر عليها {ageDays} يوم)\n\n" +
-            $"لو سبق التحويل، يرجى تجاهل الرسالة. للتواصل أو الاستفسار، رد على البريد ده مباشرةً.\n\n" +
-            $"شكراً لتعاملكم.";
-
-        var bodyEn =
-            $"Dear {customer.Name.English},\n\n" +
-            $"This is a friendly reminder regarding your outstanding balance:\n\n" +
-            $"  • Total outstanding: EGP {outstanding:N2}\n" +
-            $"  • Oldest unpaid invoice: {oldestDate:yyyy-MM-dd} ({ageDays} days ago)\n\n" +
-            $"If payment has already been sent, please disregard this notice. " +
-            $"For questions, reply directly to this email.\n\n" +
-            $"Thank you for your business.";
+        var (subjectAr, subjectEn, bodyAr, bodyEn) = BuildEmailContent(
+            customer, outstanding, oldestDate, ageDays, tier);
 
         using var message = new MailMessage
         {
@@ -240,4 +246,73 @@ public sealed class PaymentReminderJob
         message.To.Add(customer.Email!);
         await client.SendMailAsync(message, ct);
     }
+
+    /// <summary>v4 B.2 — per-tier copy. Tone escalates from
+    /// "friendly nudge" (Gentle) to "this is now overdue, please
+    /// action" (Firm) to "final notice — escalation pending"
+    /// (FinalNotice). Each tier ships in both Ar + En so the
+    /// customer reads the language they're used to.</summary>
+    private static (string SubjectAr, string SubjectEn, string BodyAr, string BodyEn)
+        BuildEmailContent(
+            Customer customer,
+            decimal outstanding,
+            DateOnly oldestDate,
+            int ageDays,
+            ReminderTier tier) => tier switch
+    {
+        ReminderTier.Gentle => (
+            $"تذكير ودّي بالرصيد المستحق — {outstanding:N2} ج.م",
+            $"Friendly payment reminder — EGP {outstanding:N2} outstanding",
+            $"السيد / السيدة {customer.Name.Arabic},\n\n" +
+            $"دي رسالة تذكيرية ودّية بالرصيد المستحق على حضرتكم:\n\n" +
+            $"  • إجمالي الرصيد المستحق: {outstanding:N2} ج.م\n" +
+            $"  • أقدم فاتورة غير مسددة: {oldestDate:yyyy-MM-dd} (مر عليها {ageDays} يوم)\n\n" +
+            $"لو سبق التحويل، يرجى تجاهل الرسالة. للتواصل أو الاستفسار، رد على البريد ده مباشرةً.\n\n" +
+            $"شكراً لتعاملكم.",
+            $"Dear {customer.Name.English},\n\n" +
+            $"This is a friendly reminder regarding your outstanding balance:\n\n" +
+            $"  • Total outstanding: EGP {outstanding:N2}\n" +
+            $"  • Oldest unpaid invoice: {oldestDate:yyyy-MM-dd} ({ageDays} days ago)\n\n" +
+            $"If payment has already been sent, please disregard this notice. " +
+            $"For questions, reply directly to this email.\n\n" +
+            $"Thank you for your business."
+        ),
+        ReminderTier.Firm => (
+            $"رصيد متأخر — {outstanding:N2} ج.م يرجى السداد",
+            $"OVERDUE balance — EGP {outstanding:N2} requires action",
+            $"السيد / السيدة {customer.Name.Arabic},\n\n" +
+            $"الرصيد المستحق على حضرتكم تأخر سداده ومحتاج إجراء:\n\n" +
+            $"  • إجمالي الرصيد المتأخر: {outstanding:N2} ج.م\n" +
+            $"  • أقدم فاتورة غير مسددة: {oldestDate:yyyy-MM-dd} (مر عليها {ageDays} يوم)\n\n" +
+            $"يرجى تحويل المبلغ خلال أسبوع من تاريخ هذه الرسالة، أو الرد عليها بإيصال السداد لو تم بالفعل.\n\n" +
+            $"تواصلكم السريع يساعدنا نحافظ على علاقة العمل دي.",
+            $"Dear {customer.Name.English},\n\n" +
+            $"Your account is now significantly overdue and requires action:\n\n" +
+            $"  • Total overdue balance: EGP {outstanding:N2}\n" +
+            $"  • Oldest unpaid invoice: {oldestDate:yyyy-MM-dd} ({ageDays} days ago)\n\n" +
+            $"Please remit payment within seven days, or reply to this email with proof of payment if already sent.\n\n" +
+            $"Prompt action helps us preserve our working relationship."
+        ),
+        ReminderTier.FinalNotice => (
+            $"إنذار نهائي — {outstanding:N2} ج.م متأخرة منذ {ageDays} يوم",
+            $"FINAL NOTICE — EGP {outstanding:N2} overdue {ageDays} days",
+            $"السيد / السيدة {customer.Name.Arabic},\n\n" +
+            $"هذا إنذار نهائي بشأن الرصيد المستحق على حضرتكم:\n\n" +
+            $"  • إجمالي الرصيد المتأخر: {outstanding:N2} ج.م\n" +
+            $"  • أقدم فاتورة غير مسددة: {oldestDate:yyyy-MM-dd} (مر عليها {ageDays} يوم)\n\n" +
+            $"إذا لم نتلقَّ السداد أو تواصلاً منكم خلال 7 أيام عمل، سنضطر لتصعيد الموضوع للإجراءات التالية " +
+            $"(تعليق التعاملات الجديدة، إحالة الموضوع لقسم التحصيل، أو الإجراءات القانونية حسب طبيعة الرصيد).\n\n" +
+            $"نُفضّل تسوية ودّية — يرجى التواصل بالرد على هذه الرسالة بأقرب فرصة.",
+            $"Dear {customer.Name.English},\n\n" +
+            $"This is a FINAL NOTICE regarding the outstanding balance on your account:\n\n" +
+            $"  • Total overdue balance: EGP {outstanding:N2}\n" +
+            $"  • Oldest unpaid invoice: {oldestDate:yyyy-MM-dd} ({ageDays} days ago)\n\n" +
+            $"If we do not receive payment or a response within seven business days, we will be forced to " +
+            $"escalate (suspend new business, refer to collections, or pursue further action depending on " +
+            $"the balance).\n\n" +
+            $"We would much prefer an amicable resolution — please reply to this message at your earliest " +
+            $"convenience."
+        ),
+        _ => throw new InvalidOperationException($"Unknown reminder tier: {tier}"),
+    };
 }
