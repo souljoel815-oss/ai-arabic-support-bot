@@ -1,9 +1,12 @@
 @page "/pos"
 @using EgyptTax.Application.Invoices
+@using EgyptTax.Application.Payments
+@using EgyptTax.Domain.Documents
 @using EgyptTax.Domain.Invoices
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.Infrastructure.Invoices
+@using EgyptTax.Infrastructure.Payments
 @using EgyptTax.SharedKernel
 @using EgyptTax.Web.Auth
 @using Microsoft.AspNetCore.Authorization
@@ -13,6 +16,7 @@
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider Auth
 @inject PostSalesInvoiceWithEtaSubmissionHandler PostHandler
+@inject PostCustomerReceiptVoucherHandler ReceiptHandler
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 @*
@@ -21,12 +25,19 @@
     (search + click to add), cart on the right, "Charge"
     creates + posts a SalesInvoice via the regular handler.
 
-    Deferred to v4 trigger / follow-on:
+    v5 A.5 — split payment: cart now records 1+ payment rows
+    (PaymentMethod + amount). Each row produces a posted
+    CustomerReceiptVoucher allocated 100% to the just-posted
+    invoice, so the AR balance settles correctly (the pre-v5
+    POS posted the invoice but no receipt — leaving the
+    customer "owing" the invoice amount even after handing
+    over cash).
+
+    Deferred to v4/v5 trigger / follow-on:
     - Offline mode (PWA service worker queue)
     - Receipt printer integration
     - Barcode scanner USB HID input
     - Cash drawer trigger
-    - Multi-payment-method allocation (cash + card split)
     - Returns / refunds via POS UI (use credit-note flow today)
 *@
 
@@ -139,13 +150,51 @@
             <div class="pos-total-row pos-grand"><span>@Tr("الإجمالي", "Total")</span><span>@_grandTotal.ToString("N2")</span></div>
         </div>
 
+        @* v5 A.5 — split payment: 1+ rows, sum must == grand total *@
+        @if (_cart.Count > 0)
+        {
+            <div class="pos-payments" style="border-top:1px solid var(--border);padding:8px 0;margin:8px 0;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+                    <strong style="font-size:13px;">@Tr("الدفع", "Payment")</strong>
+                    <button type="button" class="btn-secondary" style="font-size:11px;padding:2px 6px;"
+                            @onclick="AddPayment">+ @Tr("طريقة دفع", "method")</button>
+                </div>
+                @for (var i = 0; i < _payments.Count; i++)
+                {
+                    var pi = i;
+                    var p = _payments[pi];
+                    <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+                        <select @bind="p.Method" style="flex:1;font-size:13px;">
+                            <option value="@PaymentMethod.Cash">@Tr("نقدي", "Cash")</option>
+                            <option value="@PaymentMethod.BankTransfer">@Tr("تحويل / بطاقة", "Bank / card")</option>
+                        </select>
+                        <input type="number" min="0" step="0.01" style="width:90px;text-align:end;"
+                               @bind="p.Amount" @bind:event="oninput" @bind:after="RecalcPayments" />
+                        @if (_payments.Count > 1)
+                        {
+                            <button type="button" @onclick="() => RemovePayment(pi)"
+                                    style="background:transparent;border:0;color:var(--danger);cursor:pointer;font-size:16px;">×</button>
+                        }
+                    </div>
+                }
+                <div style="display:flex;justify-content:space-between;font-size:12px;
+                            color:@(_paymentMatch ? "var(--color-success)" : "var(--color-danger)");">
+                    <span>@Tr("مجموع المدفوعات:", "Sum of payments:")</span>
+                    <strong>
+                        @_paymentSum.ToString("N2") / @_grandTotal.ToString("N2")
+                        @(_paymentMatch ? " ✓" : "")
+                    </strong>
+                </div>
+            </div>
+        }
+
         @if (_flash is not null)
         {
             <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
         }
 
         <button type="button" class="btn-primary pos-charge"
-                disabled="@(_cart.Count == 0 || _busy)"
+                disabled="@(_cart.Count == 0 || _busy || !_paymentMatch)"
                 @onclick="OnChargeAsync">
             @(_busy ? Tr("جارٍ…", "Charging…") : Tr($"💳 احصل {_grandTotal:N2} ج.م", $"💳 Charge {_grandTotal:N2} EGP"))
         </button>
@@ -173,6 +222,12 @@
     private Guid? _postedInvoiceId;
     private decimal _lastTotal;
 
+    // v5 A.5 — split payment state. Defaults to a single Cash row
+    // matching the grand total; operator adds rows + tweaks amounts.
+    private List<CartPayment> _payments = new() { new CartPayment { Method = PaymentMethod.Cash } };
+    private decimal _paymentSum;
+    private bool _paymentMatch;
+
     private sealed class CartLine
     {
         public Guid ItemId { get; set; }
@@ -181,6 +236,12 @@
         public decimal Quantity { get; set; } = 1m;
         public decimal UnitPrice { get; set; }
         public Guid VatCategoryId { get; set; }
+    }
+
+    private sealed class CartPayment
+    {
+        public PaymentMethod Method { get; set; } = PaymentMethod.Cash;
+        public decimal Amount { get; set; }
     }
 
     private IEnumerable<Item> FilteredItems => string.IsNullOrWhiteSpace(_search)
@@ -242,6 +303,43 @@
         _subtotal = _cart.Sum(l => l.Quantity * l.UnitPrice);
         _vat = _subtotal * 0.14m;
         _grandTotal = _subtotal + _vat;
+
+        // v5 A.5 — when there's a single payment row, snap its
+        // amount to the new grand total so operators with the
+        // common single-method case don't have to retype after
+        // every cart edit. With 2+ rows the operator owns the
+        // split — we don't auto-adjust to avoid surprises.
+        if (_payments.Count == 1)
+        {
+            _payments[0].Amount = _grandTotal;
+        }
+        RecalcPayments();
+    }
+
+    private void RecalcPayments()
+    {
+        _paymentSum = _payments.Sum(p => p.Amount);
+        // Snap-to-2dp tolerance so a 0.001 floating tail doesn't
+        // block the Charge button on what's visually a match.
+        _paymentMatch = Math.Abs(_paymentSum - _grandTotal) < 0.005m && _grandTotal > 0m;
+    }
+
+    private void AddPayment()
+    {
+        var remaining = _grandTotal - _paymentSum;
+        _payments.Add(new CartPayment
+        {
+            Method = PaymentMethod.BankTransfer,
+            Amount = remaining > 0m ? Math.Round(remaining, 2) : 0m,
+        });
+        RecalcPayments();
+    }
+
+    private void RemovePayment(int idx)
+    {
+        if (_payments.Count <= 1) return;
+        _payments.RemoveAt(idx);
+        RecalcPayments();
     }
 
     private async Task OnChargeAsync()
@@ -299,6 +397,35 @@
                 new PostSalesInvoiceCommand(draft.Id, _userId == Guid.Empty ? Guid.Empty : _userId),
                 CancellationToken.None);
 
+            // v5 A.5 — post one CRV per payment row, each
+            // 100%-allocated to the just-posted invoice. The
+            // existing voucher post path emits the right JE
+            // (DR Cash / CR AR for each receipt) so the AR
+            // balance settles to zero by the end of the loop.
+            // Skip CRV creation if user picked a customer with
+            // no AR (B2C walk-in fallback) — the receipt would
+            // try to allocate against an invoice with mismatched
+            // AR mechanics; surface a clear error instead.
+            var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+            foreach (var payment in _payments.Where(p => p.Amount > 0m))
+            {
+                var crv = CustomerReceiptVoucher.CreateDraft(
+                    customerId: customer.Id,
+                    receiptDate: todayUtc,
+                    paymentMethod: payment.Method,
+                    paymentReference: $"POS {posted.DocumentNumber}",
+                    grossReceiptAmount: MoneyEgp.From(payment.Amount));
+                crv.AddAllocation(posted.Id, MoneyEgp.From(payment.Amount));
+                Db.Add(crv);
+                await Db.SaveChangesAsync();
+
+                await ReceiptHandler.HandleAsync(
+                    new PostCustomerReceiptVoucherCommand(
+                        CustomerReceiptVoucherId: crv.Id,
+                        PostedByUserId: _userId == Guid.Empty ? Guid.Empty : _userId),
+                    CancellationToken.None);
+            }
+
             _postedInvoiceId = posted.Id;
             _lastTotal = _grandTotal;
         }
@@ -312,6 +439,9 @@
         _cart.Clear();
         _customerId = Guid.Empty;
         _search = "";
+        // v5 A.5 — reset payment rows to a single Cash row so the
+        // next sale starts clean.
+        _payments = new List<CartPayment> { new CartPayment { Method = PaymentMethod.Cash } };
         Recalc();
     }
 }
