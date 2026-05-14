@@ -3,6 +3,8 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @inject OcrReceiptHandler Ocr
+@inject ReceiptImageStash Stash
+@inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 @*
@@ -83,9 +85,9 @@
             </table>
 
             <div class="invoice-actions" style="margin-top:16px;">
-                <a href="/expenses/new?@BuildPrefillQuery()" class="btn-primary">
+                <button type="button" class="btn-primary" @onclick="OnCreateExpenseAsync">
                     @Tr("📝 أنشئ مصروف من البيانات دي", "📝 Create expense from this")
-                </a>
+                </button>
                 <a href="/scan-receipt" class="btn-secondary">@Tr("امسح إيصال آخر", "Scan another")</a>
             </div>
             <p class="page-subtitle" style="font-size:12px;margin-top:8px;">
@@ -109,6 +111,14 @@
     private bool _busy;
     private OcrResult? _result;
     private Guid? _userId;
+    // v4 A.4 — held between OnFileSelectedAsync (when Claude reads
+    // the image) and OnCreateExpenseAsync (when the operator confirms
+    // they want to turn it into an expense). Stashed server-side at
+    // that point so the original bytes survive the redirect to
+    // /expenses/new and end up as an Attachment row.
+    private byte[]? _capturedBytes;
+    private string? _capturedFileName;
+    private string? _capturedMimeType;
 
     [CascadingParameter] public Task<AuthenticationState>? AuthState { get; set; }
 
@@ -151,12 +161,33 @@
             }
 
             _result = await Ocr.ScanAsync(file.Name, mime, bytes, _userId);
+            if (_result.Ok)
+            {
+                _capturedBytes = bytes;
+                _capturedFileName = file.Name;
+                _capturedMimeType = mime;
+            }
         }
         catch (Exception ex)
         {
             _result = OcrResult.Failure(ex.Message);
         }
         finally { _busy = false; }
+    }
+
+    private void OnCreateExpenseAsync()
+    {
+        var prefill = BuildPrefillQuery();
+        var query = prefill;
+        if (_capturedBytes is { Length: > 0 } bytes
+            && !string.IsNullOrEmpty(_capturedFileName)
+            && !string.IsNullOrEmpty(_capturedMimeType))
+        {
+            var token = Stash.Stash(bytes, _capturedFileName, _capturedMimeType);
+            query = string.IsNullOrEmpty(query) ? $"img={token}" : $"{query}&img={token}";
+        }
+        var url = string.IsNullOrEmpty(query) ? "/expenses/new" : $"/expenses/new?{query}";
+        Nav.NavigateTo(url);
     }
 
     private string BuildPrefillQuery()

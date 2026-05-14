@@ -150,7 +150,7 @@ high-ROI per day of effort.
   with mid-count freezes). Cycle-counting schedules. Variance
   approval workflow — operator just commits.
 
-### A.4 — Receipt image → Expense attachment
+### A.4 — Receipt image → Expense attachment ✅ SHIPPED
 
 - **Pain:** M.1 (Arabic OCR via Claude Vision) shipped. It
   pre-fills the Expense form with extracted fields. But the

@@ -454,6 +454,12 @@ builder.Services.AddSingleton<EgyptTax.Infrastructure.Ai.AnthropicApiKeyProtecto
 builder.Services.AddHttpClient<EgyptTax.Infrastructure.Ai.AnthropicVisionClient>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.OcrReceiptHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.NlQueryHandler>();
+// v4 A.4 — short-lived stash that carries the original receipt
+// image bytes from /scan-receipt to /expenses/new so the saved
+// expense ends up with the source image as an Attachment row.
+// Singleton: backed by IMemoryCache (process-wide), holds entries
+// for ~15min then auto-evicts.
+builder.Services.AddSingleton<EgyptTax.Infrastructure.Ai.ReceiptImageStash>();
 
 // L5 (v3 roadmap) — customer-portal magic-link issuance + validation.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Customers.CustomerPortalService>();

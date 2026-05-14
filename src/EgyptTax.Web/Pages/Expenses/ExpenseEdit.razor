@@ -19,6 +19,7 @@
 @inject UploadAttachmentHandler UploadHandler
 @inject AuthenticationStateProvider AuthState
 @inject EgyptTax.Application.Ocr.IReceiptOcrService Ocr
+@inject EgyptTax.Infrastructure.Ai.ReceiptImageStash ReceiptStash
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
 <h1>@(_isNew ? (IsArabic ? "مصروف جديد" : "New expense") : (IsArabic ? "تعديل مصروف" : "Edit expense"))</h1>
@@ -180,6 +181,17 @@
     private string? _ocrFlash;
     private string _ocrFlashClass = "kpi-card kpi-info";
 
+    // v4 A.4 — original receipt image bytes carried into the new
+    // expense draft so that the saved expense gets the source image
+    // as an attachment automatically. Two paths populate this:
+    //   1. Stash token from /scan-receipt (in ?img= query param) —
+    //      consumed in OnInitializedAsync.
+    //   2. Inline camera capture via the "Scan receipt" button — set
+    //      directly from the bytes we already read for OCR.
+    private byte[]? _pendingReceiptBytes;
+    private string? _pendingReceiptFileName;
+    private string? _pendingReceiptMimeType;
+
     protected override async Task OnInitializedAsync()
     {
         _isNew = Id is null;
@@ -230,6 +242,21 @@
         if (string.IsNullOrEmpty(uri.Query)) return;
 
         var qs = QueryHelpers.ParseQuery(uri.Query);
+
+        // v4 A.4 — claim the stashed receipt image bytes (if any).
+        // Done up-front so a stale token surfaces immediately rather
+        // than after the operator finishes editing the form.
+        if (qs.TryGetValue("img", out var imgToken)
+            && !string.IsNullOrWhiteSpace(imgToken.ToString()))
+        {
+            var stashed = ReceiptStash.Take(imgToken.ToString());
+            if (stashed is not null)
+            {
+                _pendingReceiptBytes = stashed.Bytes;
+                _pendingReceiptFileName = stashed.FileName;
+                _pendingReceiptMimeType = stashed.MimeType;
+            }
+        }
 
         if (qs.TryGetValue("date", out var dateRaw)
             && DateTime.TryParse(dateRaw.ToString(),
@@ -329,6 +356,11 @@
             draft.SetCostCenter(_form.CostCenterId);
             Db.Add(draft);
             await Db.SaveChangesAsync();
+            // v4 A.4 — if the operator arrived from /scan-receipt
+            // (or used the inline camera), attach the source image
+            // to the just-saved draft so it shows up under the
+            // Attachments section after the navigation.
+            await TryAttachPendingReceiptAsync(draft.Id);
             Nav.NavigateTo($"/expenses/{draft.Id}/edit", forceLoad: true);
             return;
         }
@@ -360,7 +392,21 @@
             await using var stream = file.OpenReadStream(maxAllowedSize: maxBytes);
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
-            var result = await Ocr.RecognizeAsync(ms.ToArray());
+            var bytes = ms.ToArray();
+            var result = await Ocr.RecognizeAsync(bytes);
+
+            // v4 A.4 — even before we know whether OCR succeeded,
+            // hold onto the bytes so the saved expense gets the
+            // image as an attachment. Only when the form is for a
+            // *new* expense (we have nowhere to attach to otherwise).
+            if (_isNew)
+            {
+                _pendingReceiptBytes = bytes;
+                _pendingReceiptFileName = string.IsNullOrWhiteSpace(file.Name)
+                    ? "receipt.jpg" : file.Name;
+                _pendingReceiptMimeType = string.IsNullOrWhiteSpace(file.ContentType)
+                    ? "image/jpeg" : file.ContentType;
+            }
 
             if (!result.Available)
             {
@@ -420,6 +466,69 @@
         {
             _ocrRunning = false;
         }
+    }
+
+    private async Task TryAttachPendingReceiptAsync(Guid expenseId)
+    {
+        if (_pendingReceiptBytes is null
+            || _pendingReceiptBytes.Length == 0
+            || string.IsNullOrEmpty(_pendingReceiptFileName)
+            || string.IsNullOrEmpty(_pendingReceiptMimeType))
+        {
+            return;
+        }
+
+        // UploadAttachmentHandler restricts MIME types to PDF / JPG /
+        // PNG. The /scan-receipt page already accepts only those
+        // types, but the inline camera capture might surface
+        // image/heic on some phones — silently skip the attach in
+        // that case (the OCR data still got prefilled).
+        var normalisedMime = NormaliseMime(_pendingReceiptMimeType);
+        if (normalisedMime is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var auth = await AuthState.GetAuthenticationStateAsync();
+            var userIdClaim = auth.User.FindFirst("sub")?.Value
+                ?? auth.User.FindFirst("userId")?.Value;
+            var operatorUserId = Guid.TryParse(userIdClaim, out var u) ? u : Guid.Empty;
+
+            using var stream = new MemoryStream(_pendingReceiptBytes, writable: false);
+            await UploadHandler.HandleAsync(new UploadAttachmentCommand(
+                DocumentId: expenseId,
+                DocumentType: DocumentType.Expense,
+                FilenameOriginal: _pendingReceiptFileName,
+                MimeType: normalisedMime,
+                ContentStream: stream,
+                UploadedByUserId: operatorUserId), CancellationToken.None);
+        }
+        catch
+        {
+            // Best-effort: never fail the expense save because the
+            // attachment didn't take. The operator can re-upload via
+            // the Attachments widget on the edit page.
+        }
+        finally
+        {
+            _pendingReceiptBytes = null;
+            _pendingReceiptFileName = null;
+            _pendingReceiptMimeType = null;
+        }
+    }
+
+    private static string? NormaliseMime(string mime)
+    {
+        var lower = mime.Trim().ToLowerInvariant();
+        return lower switch
+        {
+            "application/pdf" => "application/pdf",
+            "image/jpeg" or "image/jpg" or "image/pjpeg" => "image/jpeg",
+            "image/png" or "image/x-png" => "image/png",
+            _ => null,
+        };
     }
 
     private async Task OnUploadAsync(InputFileChangeEventArgs e)
