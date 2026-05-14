@@ -124,7 +124,7 @@ high-ROI per day of effort.
 - **Avoid:** Re-implementing if it works. New columns. Period
   comparison.
 
-### A.3 — Inventory adjustments (stock count)
+### A.3 — Inventory adjustments (stock count) ✅ SHIPPED
 
 - **Pain:** Every warehouse does a periodic physical count and
   needs to enter "actual count = X, system shows Y, adjust the

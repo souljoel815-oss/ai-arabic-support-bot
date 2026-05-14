@@ -1,0 +1,351 @@
+@page "/stock-adjustments"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v4 A.3 — physical stock-count adjustment. Operator picks a
+    location, types the actual count for each item, picks a reason
+    on each row that differs, hits Submit. The page produces one
+    StockAdjustment audit row per non-zero delta + adjusts both the
+    item-total (Item.QuantityOnHand) and the per-location row
+    (ItemStockByLocation) + writes the corresponding StockMovement
+    so the existing per-item ledger surfaces the count.
+
+    Single-shot count session — no Odoo-style mid-count freeze. If
+    posts happen between "Load items" and "Submit", the system
+    counts shown will be stale; the operator's typed actuals still
+    take effect (the actual is the operator's source of truth — the
+    whole point of doing a count).
+*@
+
+<PageTitle>@Tr("جرد مخزني | DaftarX", "Stock Count | DaftarX")</PageTitle>
+
+<h1>@Tr("جرد مخزني (تسوية رصيد)", "Stock Count (Adjustments)")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "اختر المكان، اعدّ كل صنف فعلياً، اكتب الرقم اللي طلع معاك، اختر السبب وقدّم. كل صنف فيه فرق هيتعمله سطر تسوية في السجل.",
+        "Pick a location, count each item physically, type the actual figure, pick a reason and submit. Every item with a delta gets one StockAdjustment audit row.")
+</p>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+@if (_locations.Count == 0)
+{
+    <div class="kpi-card kpi-info" style="padding:14px;">
+        @Tr("اعمل فرع/مخزن أولاً من ", "Create a location first via ")
+        <a href="/stock-locations">@Tr("صفحة الفروع", "Stock Locations")</a>.
+    </div>
+    return;
+}
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+}
+
+<section class="form-section">
+    <div class="form-grid">
+        <label>
+            <span>@Tr("الفرع/المخزن *", "Location *")</span>
+            <select @bind="_locationId" @bind:after="LoadItemsAsync">
+                <option value="@Guid.Empty">@Tr("— اختر —", "— pick —")</option>
+                @foreach (var loc in _locations)
+                {
+                    <option value="@loc.Id">@loc.Code · @loc.Name.Display(IsArabic ? Language.Ar : Language.En)</option>
+                }
+            </select>
+        </label>
+    </div>
+</section>
+
+@if (_locationId == Guid.Empty)
+{
+    return;
+}
+
+@if (_rows.Count == 0)
+{
+    <p><em>@Tr("ما فيش أصناف نشطة ليتم جردها.", "No active items to count.")</em></p>
+    return;
+}
+
+<section style="margin-top:16px;">
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>@Tr("الكود", "Code")</th>
+                <th>@Tr("الصنف", "Item")</th>
+                <th class="num">@Tr("في النظام", "System count")</th>
+                <th class="num">@Tr("عدّ فعلي", "Actual count")</th>
+                <th class="num">@Tr("الفرق", "Delta")</th>
+                <th>@Tr("السبب", "Reason")</th>
+                <th>@Tr("ملاحظة", "Note")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @for (var i = 0; i < _rows.Count; i++)
+            {
+                var idx = i;
+                var row = _rows[idx];
+                var delta = (row.ActualCount ?? row.SystemCount) - row.SystemCount;
+                <tr style="@(delta != 0 ? "background-color:rgba(255,200,0,0.08);" : "")">
+                    <td><code>@row.Code</code></td>
+                    <td>@row.Name</td>
+                    <td class="num">@row.SystemCount.ToString("F3")</td>
+                    <td class="num">
+                        <input type="number" step="0.001" min="0"
+                               style="width:8em;text-align:end;"
+                               value="@(row.ActualCount?.ToString(System.Globalization.CultureInfo.InvariantCulture))"
+                               @oninput="@(e => OnActualChanged(idx, e.Value?.ToString()))" />
+                    </td>
+                    <td class="num">@(delta == 0 ? "" : delta.ToString("F3"))</td>
+                    <td>
+                        @if (delta != 0)
+                        {
+                            <select value="@row.Reason" @onchange="@(e => row.Reason = Enum.Parse<StockAdjustmentReason>(e.Value!.ToString()!))">
+                                @foreach (var r in Enum.GetValues<StockAdjustmentReason>())
+                                {
+                                    <option value="@r">@ReasonLabel(r)</option>
+                                }
+                            </select>
+                        }
+                    </td>
+                    <td>
+                        @if (delta != 0)
+                        {
+                            <input type="text" maxlength="200"
+                                   placeholder="@(IsArabic ? "اختياري" : "optional")"
+                                   value="@row.Note"
+                                   @oninput="@(e => row.Note = e.Value?.ToString())" />
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</section>
+
+<div class="invoice-actions" style="margin-top:16px;">
+    <button type="button" class="btn-primary"
+            disabled="@(!CanSubmit() || _submitting)"
+            @onclick="SubmitAsync">
+        @(_submitting ? Tr("جارٍ الحفظ…", "Submitting…") : Tr($"💾 سجل التسويات ({CountChanged()})", $"💾 Submit adjustments ({CountChanged()})"))
+    </button>
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _submitting;
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private List<StockLocation> _locations = new();
+    private Guid _locationId = Guid.Empty;
+    private List<RowModel> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _locations = await Db.Set<StockLocation>().AsNoTracking()
+            .Where(l => l.IsActive)
+            .OrderBy(l => l.Code).ToListAsync();
+        var defaultLoc = _locations.FirstOrDefault(l => l.IsDefault) ?? _locations.FirstOrDefault();
+        if (defaultLoc is not null)
+        {
+            _locationId = defaultLoc.Id;
+            await LoadItemsAsync();
+        }
+        _loading = false;
+    }
+
+    private async Task LoadItemsAsync()
+    {
+        _rows = new();
+        if (_locationId == Guid.Empty) return;
+
+        var items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => i.Status == ItemStatus.Active)
+            .OrderBy(i => i.Code).ToListAsync();
+
+        var stockByLoc = await Db.Set<ItemStockByLocation>().AsNoTracking()
+            .Where(s => s.LocationId == _locationId)
+            .ToDictionaryAsync(s => s.ItemId, s => s.Quantity);
+
+        foreach (var item in items)
+        {
+            var qty = stockByLoc.TryGetValue(item.Id, out var q) ? q : 0m;
+            _rows.Add(new RowModel
+            {
+                ItemId = item.Id,
+                Code = item.Code,
+                Name = item.Name.Display(IsArabic ? Language.Ar : Language.En),
+                SystemCount = qty,
+                ActualCount = null,
+                Reason = StockAdjustmentReason.Recount,
+                Note = null,
+            });
+        }
+    }
+
+    private void OnActualChanged(int idx, string? raw)
+    {
+        if (idx < 0 || idx >= _rows.Count) return;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            _rows[idx].ActualCount = null;
+            return;
+        }
+        if (decimal.TryParse(raw, System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0m)
+        {
+            _rows[idx].ActualCount = v;
+        }
+    }
+
+    private int CountChanged() => _rows.Count(r =>
+        r.ActualCount.HasValue && r.ActualCount.Value != r.SystemCount);
+
+    private bool CanSubmit() => CountChanged() > 0;
+
+    private async Task SubmitAsync()
+    {
+        if (!CanSubmit()) return;
+        _submitting = true;
+        _flash = null;
+        try
+        {
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId() ?? Guid.Empty;
+            if (userId == Guid.Empty)
+            {
+                throw new InvalidOperationException("No user id on the principal.");
+            }
+
+            var nowUtc = DateTime.UtcNow;
+            var changedRows = _rows
+                .Where(r => r.ActualCount.HasValue && r.ActualCount.Value != r.SystemCount)
+                .ToList();
+
+            // Pull live Item + ItemStockByLocation rows tracked so we
+            // can mutate via the domain methods + persist them in a
+            // single SaveChanges.
+            var itemIds = changedRows.Select(r => r.ItemId).ToList();
+            var liveItems = await Db.Set<Item>()
+                .Where(i => itemIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id);
+            var liveStock = await Db.Set<ItemStockByLocation>()
+                .Where(s => s.LocationId == _locationId && itemIds.Contains(s.ItemId))
+                .ToDictionaryAsync(s => s.ItemId);
+
+            foreach (var row in changedRows)
+            {
+                var actual = row.ActualCount!.Value;
+                var delta = actual - row.SystemCount;
+
+                var item = liveItems[row.ItemId];
+
+                // Per-location count: create row if missing, otherwise
+                // adjust it via Increase/Decrease. ItemStockByLocation
+                // refuses to go below zero — actuals are non-negative
+                // by guard above, so the path is safe.
+                if (!liveStock.TryGetValue(row.ItemId, out var stockRow))
+                {
+                    stockRow = new ItemStockByLocation(row.ItemId, _locationId, actual);
+                    Db.Add(stockRow);
+                }
+                else if (delta > 0m)
+                {
+                    stockRow.IncreaseStock(delta);
+                }
+                else
+                {
+                    stockRow.DecreaseStock(-delta);
+                }
+
+                // Item-total adjustment + audit row.
+                if (delta > 0m)
+                {
+                    item.IncreaseStock(delta);
+                }
+                else
+                {
+                    item.DecreaseStock(-delta);
+                }
+
+                Db.Add(new StockAdjustment(
+                    itemId: row.ItemId,
+                    locationId: _locationId,
+                    countedAtUtc: nowUtc,
+                    countedByUserId: userId,
+                    systemCount: row.SystemCount,
+                    actualCount: actual,
+                    reason: row.Reason,
+                    note: row.Note));
+
+                Db.Add(new StockMovement(
+                    itemId: row.ItemId,
+                    occurredAtUtc: nowUtc,
+                    quantity: delta,
+                    quantityOnHandAfter: item.QuantityOnHand,
+                    kind: StockMovementKind.Adjustment,
+                    note: BuildMovementNote(row),
+                    createdByUserId: userId));
+            }
+
+            await Db.SaveChangesAsync();
+
+            _flash = IsArabic
+                ? $"✓ تم تسجيل {changedRows.Count} تسوية مخزون."
+                : $"✓ Recorded {changedRows.Count} stock adjustment(s).";
+            _flashClass = "flash-success";
+            await LoadItemsAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private static string BuildMovementNote(RowModel row)
+    {
+        var reason = row.Reason.ToString();
+        return string.IsNullOrWhiteSpace(row.Note)
+            ? $"Stock count: {reason}"
+            : $"Stock count: {reason} — {row.Note}";
+    }
+
+    private string ReasonLabel(StockAdjustmentReason r) => r switch
+    {
+        StockAdjustmentReason.Shrinkage => IsArabic ? "عجز / سرقة" : "Shrinkage",
+        StockAdjustmentReason.Damage => IsArabic ? "تالف" : "Damage",
+        StockAdjustmentReason.Recount => IsArabic ? "إعادة عد" : "Recount",
+        StockAdjustmentReason.Other => IsArabic ? "أخرى" : "Other",
+        _ => r.ToString(),
+    };
+
+    private sealed class RowModel
+    {
+        public Guid ItemId { get; set; }
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public decimal SystemCount { get; set; }
+        public decimal? ActualCount { get; set; }
+        public StockAdjustmentReason Reason { get; set; } = StockAdjustmentReason.Recount;
+        public string? Note { get; set; }
+    }
+}
