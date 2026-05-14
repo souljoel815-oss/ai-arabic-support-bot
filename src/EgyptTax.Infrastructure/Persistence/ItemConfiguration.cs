@@ -74,5 +74,8 @@ internal sealed class ItemConfiguration : IEntityTypeConfiguration<Item>
         // index keeps the periodic scan cheap.
         b.HasIndex(i => new { i.EtaCodeStatus, i.EtaCodeRequestedAtUtc })
             .HasDatabaseName("ix_items_eta_code_pending");
+
+        // v3 §11 #5 — lot-tracking opt-in flag.
+        b.Property(i => i.TracksLots).HasColumnName("tracks_lots").IsRequired();
     }
 }

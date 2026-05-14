@@ -1,0 +1,263 @@
+@page "/items/{Id:guid}/lots"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v3 §11 #5 (lot tracking) — per-item lot management. Operator
+    flips "Tracks lots" on then receives stock as named batches
+    with optional expiry. Sales auto-FIFO from oldest expiry will
+    land in a follow-on; v1 ships visibility + manual adjustments.
+
+    Receive form upserts: same (item, lot_code) increments the
+    existing row instead of throwing on the unique constraint.
+*@
+
+<PageTitle>@Tr("الدفعات | DaftarX", "Lots | DaftarX")</PageTitle>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+@if (_item is null)
+{
+    <p>@Tr("الصنف مش موجود.", "Item not found.")</p>
+    return;
+}
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div>
+        <h1 style="margin-bottom:4px;">
+            🧪 @Tr("دفعات الصنف", "Item Lots") — @_item.Code
+        </h1>
+        <p class="page-subtitle" style="margin:0;">
+            @_item.Name.Display(IsArabic ? Language.Ar : Language.En)
+        </p>
+    </div>
+    <div class="invoice-actions" style="margin:0;">
+        <a href="/items" class="btn-secondary">@Tr("الرجوع", "Back to items")</a>
+    </div>
+</div>
+
+<section class="form-section" style="margin-top:16px;">
+    <label style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" @bind="_tracksLots" @bind:after="OnToggleTracksAsync" />
+        <strong>@Tr("تفعيل تتبع الدفعات لهذا الصنف", "Enable lot tracking for this item")</strong>
+    </label>
+    @if (_tracksLots)
+    {
+        <p class="page-subtitle" style="font-size:13px;margin-top:4px;">
+            @Tr(
+                "كل استلام مخزون لازم يكون مع كود دفعة. تنبيه انتهاء الصلاحية يبدأ يطلع للدفعات اللي قرّبت تنتهي خلال 30 يوم.",
+                "Every stock receipt must specify a lot code. Expiring-soon alerts surface for lots within 30 days of expiry.")
+        </p>
+    }
+    else
+    {
+        <p class="page-subtitle" style="font-size:13px;margin-top:4px;">
+            @Tr(
+                "الصنف مش متتبع بالدفعات حالياً. الاستلامات بتذهب للرصيد العام بدون تفصيل.",
+                "Lot tracking is off; receipts go to the global stock total without batch detail.")
+        </p>
+    }
+</section>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+}
+
+@if (_tracksLots)
+{
+    <section class="form-section">
+        <h2>@Tr("+ استلام دفعة", "+ Receive lot")</h2>
+        <div class="form-grid">
+            <label>
+                <span>@Tr("كود الدفعة *", "Lot code *")</span>
+                <input type="text" @bind="_form.LotCode" @bind:event="oninput"
+                       placeholder="LOT-2026-A001" maxlength="64" />
+            </label>
+            <label>
+                <span>@Tr("الكمية *", "Quantity *")</span>
+                <input type="number" min="0.01" step="0.01" @bind="_form.Quantity" />
+            </label>
+            <label>
+                <span>@Tr("تاريخ الانتهاء (اختياري)", "Expiry date (optional)")</span>
+                <input type="date" @bind="_form.ExpiryDate" />
+            </label>
+            <label>
+                <span>@Tr("مرجع المورد (اختياري)", "Supplier reference (optional)")</span>
+                <input type="text" @bind="_form.SupplierReference" maxlength="200" />
+            </label>
+            <div style="grid-column:1/-1;">
+                <button type="button" class="btn-primary" disabled="@_busy"
+                        @onclick="OnReceiveLotAsync">
+                    @(_busy ? Tr("جارٍ…", "Saving…") : Tr("استلم", "Receive"))
+                </button>
+            </div>
+        </div>
+    </section>
+}
+
+<section class="form-section">
+    <h2>@Tr("الدفعات الحالية", "Existing lots")</h2>
+    @if (_lots.Count == 0)
+    {
+        <p class="page-subtitle" style="font-size:13px;">
+            @Tr("مفيش دفعات بعد.", "No lots recorded yet.")
+        </p>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>@Tr("كود الدفعة", "Lot code")</th>
+                    <th>@Tr("الكمية", "Quantity")</th>
+                    <th>@Tr("الانتهاء", "Expiry")</th>
+                    <th>@Tr("استلم", "Received")</th>
+                    <th>@Tr("المورد", "Supplier")</th>
+                    <th>@Tr("الحالة", "Status")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var lot in _lots)
+                {
+                    var isExpired = lot.IsExpired(_today);
+                    var isExpiring = lot.IsExpiringWithin(30, _today);
+                    <tr style="@(isExpired ? "background:#fee;" : isExpiring ? "background:#fffbe6;" : "")">
+                        <td><code>@lot.LotCode</code></td>
+                        <td>@lot.QuantityOnHand.ToString("0.###")</td>
+                        <td>@(lot.ExpiryDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                        <td>@lot.ReceivedAtUtc.ToString("yyyy-MM-dd")</td>
+                        <td>@(lot.SupplierReference ?? "—")</td>
+                        <td>
+                            @if (isExpired)
+                            {
+                                <span style="color:var(--danger);">⚠ @Tr("منتهي", "Expired")</span>
+                            }
+                            else if (isExpiring && lot.ExpiryDate is { } e)
+                            {
+                                var days = e.DayNumber - _today.DayNumber;
+                                <span style="color:var(--warn);">@Tr($"خلال {days} يوم", $"in {days} days")</span>
+                            }
+                            else
+                            {
+                                <span style="color:var(--success);">✓</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private Item? _item;
+    private bool _tracksLots;
+    private List<ItemLot> _lots = new();
+    private FormModel _form = new();
+    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+    private sealed class FormModel
+    {
+        public string LotCode { get; set; } = "";
+        public decimal Quantity { get; set; } = 1m;
+        public DateTime? ExpiryDate { get; set; }
+        public string? SupplierReference { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _item = await Db.Set<Item>().FirstOrDefaultAsync(i => i.Id == Id);
+        if (_item is null) { _loading = false; return; }
+        _tracksLots = _item.TracksLots;
+        _lots = await Db.Set<ItemLot>().AsNoTracking()
+            .Where(l => l.ItemId == Id)
+            .OrderBy(l => l.ExpiryDate ?? DateOnly.MaxValue)
+            .ThenBy(l => l.LotCode)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private async Task OnToggleTracksAsync()
+    {
+        try
+        {
+            _item!.SetTracksLots(_tracksLots);
+            await Db.SaveChangesAsync();
+            _flash = _tracksLots
+                ? Tr("✓ تم تفعيل تتبع الدفعات", "✓ Lot tracking enabled")
+                : Tr("تم تعطيل تتبع الدفعات", "Lot tracking disabled");
+            _flashClass = "kpi-card kpi-info";
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    private async Task OnReceiveLotAsync()
+    {
+        _flash = null;
+        if (string.IsNullOrWhiteSpace(_form.LotCode) || _form.Quantity <= 0)
+        {
+            _flash = Tr("املأ كود الدفعة + كمية موجبة.", "Need lot code + positive quantity.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var trimmedCode = _form.LotCode.Trim();
+            var existing = await Db.Set<ItemLot>()
+                .FirstOrDefaultAsync(l => l.ItemId == Id && l.LotCode == trimmedCode);
+            if (existing is not null)
+            {
+                existing.IncreaseStock(_form.Quantity);
+            }
+            else
+            {
+                Db.Add(new ItemLot(
+                    itemId: Id,
+                    lotCode: trimmedCode,
+                    initialQuantity: _form.Quantity,
+                    expiryDate: _form.ExpiryDate.HasValue
+                        ? DateOnly.FromDateTime(_form.ExpiryDate.Value)
+                        : null,
+                    receivedAtUtc: DateTime.UtcNow,
+                    supplierReference: string.IsNullOrWhiteSpace(_form.SupplierReference)
+                        ? null
+                        : _form.SupplierReference));
+            }
+
+            // Mirror to global Item.QuantityOnHand so existing
+            // dashboards + low-stock alerts stay accurate. Same
+            // additive design as L4 phase 2 — global total stays
+            // authoritative; lots are a richer view.
+            _item!.IncreaseStock(_form.Quantity);
+
+            await Db.SaveChangesAsync();
+            _flash = Tr($"✓ تم استلام {_form.Quantity} في {trimmedCode}.",
+                       $"✓ Received {_form.Quantity} units to {trimmedCode}.");
+            _flashClass = "kpi-card kpi-success";
+            _form = new FormModel();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _busy = false; }
+    }
+}

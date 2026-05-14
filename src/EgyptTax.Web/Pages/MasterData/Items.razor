@@ -106,6 +106,13 @@
                         </td>
                         <td>@item.Status</td>
                         <td>
+                            <a href="/items/@item.Id/lots" style="margin-inline-end:8px;font-size:12px;">
+                                🧪 @(IsArabic ? "الدفعات" : "Lots")
+                                @if (item.TracksLots)
+                                {
+                                    <span style="color:var(--success);" title="@(IsArabic ? "تتبع مفعّل" : "Tracking on")"> ✓</span>
+                                }
+                            </a>
                             @if (item.EtaCodeStatus == EtaItemCodeStatus.None
                                  || item.EtaCodeStatus == EtaItemCodeStatus.Failed)
                             {

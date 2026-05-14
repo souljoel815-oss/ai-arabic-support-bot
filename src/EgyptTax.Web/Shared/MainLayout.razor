@@ -226,7 +226,7 @@
         </details>
 
         @* Gux.1 — Customers & Suppliers (was "Master data") *@
-        <details class="sidebar-group" @attributes="@OpenAttr("customers", "suppliers", "items", "data-import", "quotations", "leads", "stock-locations", "stock-transfer", "cost-centers", "scan-receipt", "scan-history")">
+        <details class="sidebar-group" @attributes="@OpenAttr("customers", "suppliers", "items", "data-import", "quotations", "leads", "stock-locations", "stock-transfer", "cost-centers", "expiring-lots", "scan-receipt", "scan-history")">
             <summary>
                 <Icon Name="users" Class="nav-icon" />
                 <span>@Tr("العملاء والموردون", "Customers & suppliers")</span>
@@ -243,6 +243,7 @@
                     <a href="stock-locations" class="@ActiveLink("stock-locations")" @onclick="CloseSidebar">@Tr("🏬 المخازن والفروع", "🏬 Stock locations")</a>
                     <a href="stock-transfer" class="@ActiveLink("stock-transfer")" @onclick="CloseSidebar">@Tr("🔄 نقل مخزون", "🔄 Stock transfer")</a>
                     <a href="cost-centers" class="@ActiveLink("cost-centers")" @onclick="CloseSidebar">@Tr("🏷️ مراكز التكلفة", "🏷️ Cost centers")</a>
+                    <a href="expiring-lots" class="@ActiveLink("expiring-lots")" @onclick="CloseSidebar">@Tr("🧪 دفعات قاربت تنتهي", "🧪 Expiring lots")</a>
                 }
                 @if (!_isRepOnly)
                 {

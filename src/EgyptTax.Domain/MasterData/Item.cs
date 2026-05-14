@@ -34,6 +34,15 @@ public sealed class Item
     /// </summary>
     public decimal? LowStockThreshold { get; private set; }
 
+    /// <summary>v3 §11 #5 (lot tracking) — opt-in flag. When true,
+    /// stock receipts must specify a lot code + optional expiry
+    /// date; per-lot stock is tracked in <see cref="ItemLot"/>
+    /// rows alongside the item-total <see cref="QuantityOnHand"/>.
+    /// Default false; flipping to true does not retroactively split
+    /// existing stock — operator backfills via the lots page if
+    /// they want historical batches recorded.</summary>
+    public bool TracksLots { get; private set; }
+
     /// <summary>
     /// FR-035 / Differentiator 1 — ETA's GS1-style item code from
     /// the regulator's master commodity list (assigned per item by
@@ -139,6 +148,12 @@ public sealed class Item
 
     public void SetEtaItemCode(string? etaItemCode) =>
         EtaItemCode = string.IsNullOrWhiteSpace(etaItemCode) ? null : etaItemCode;
+
+    /// <summary>v3 §11 #5 — opt the item into per-lot tracking.
+    /// Operator can flip back to false if they decide it's not
+    /// worth the extra data entry; existing ItemLot rows stay
+    /// (they're informational once tracking is off).</summary>
+    public void SetTracksLots(bool tracks) => TracksLots = tracks;
 
     /// <summary>
     /// P1.6 — record that the operator submitted a code request to

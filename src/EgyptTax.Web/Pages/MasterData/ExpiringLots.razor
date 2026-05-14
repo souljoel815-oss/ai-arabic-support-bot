@@ -1,0 +1,139 @@
+@page "/expiring-lots"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v3 §11 #5 — flat list of every lot expiring within 30 days
+    or already expired. Replaces the per-item drill-down for the
+    "I have 200 lot-tracked items, what do I need to act on
+    today" question. Sorted soonest-first; expired rows top.
+*@
+
+<PageTitle>@Tr("الدفعات قاربت تنتهي | DaftarX", "Expiring Lots | DaftarX")</PageTitle>
+
+<h1>@Tr("الدفعات اللي قاربت تنتهي", "Expiring Lots")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "كل دفعة منتهية أو قاربت تنتهي خلال 30 يوم. ابدأ بالمنتهية فوراً (لا تبيعها) ثم اللي قاربت تنتهي.",
+        "Every lot already expired or expiring within 30 days. Address expired ones first (don't sell), then near-expiry.")
+</p>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+}
+else if (_rows.Count == 0)
+{
+    <div class="kpi-card kpi-success" style="padding:14px;">
+        ✓ @Tr("مفيش دفعات قاربت تنتهي. كله تمام.", "No lots expiring soon. All clear.")
+    </div>
+}
+else
+{
+    <div class="kpi-grid kpi-grid-3" style="margin-bottom:16px;">
+        <div class="kpi-card kpi-error">
+            <div class="kpi-label">@Tr("منتهية الصلاحية", "Already expired")</div>
+            <div class="kpi-value">@_expiredCount</div>
+        </div>
+        <div class="kpi-card kpi-warn">
+            <div class="kpi-label">@Tr("خلال 7 أيام", "Within 7 days")</div>
+            <div class="kpi-value">@_expiring7Count</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@Tr("خلال 30 يوم", "Within 30 days")</div>
+            <div class="kpi-value">@_expiring30Count</div>
+        </div>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>@Tr("الصنف", "Item")</th>
+                <th>@Tr("كود الدفعة", "Lot code")</th>
+                <th>@Tr("الكمية", "Quantity")</th>
+                <th>@Tr("الانتهاء", "Expiry")</th>
+                <th>@Tr("الحالة", "Status")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _rows)
+            {
+                var isExpired = r.Lot.IsExpired(_today);
+                <tr style="@(isExpired ? "background:#fee;" : "background:#fffbe6;")">
+                    <td>
+                        <strong>@r.Item.Code</strong>
+                        <div style="font-size:12px;color:var(--muted);">
+                            @r.Item.Name.Display(IsArabic ? Language.Ar : Language.En)
+                        </div>
+                    </td>
+                    <td><code>@r.Lot.LotCode</code></td>
+                    <td>@r.Lot.QuantityOnHand.ToString("0.###")</td>
+                    <td>@(r.Lot.ExpiryDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                    <td>
+                        @if (isExpired && r.Lot.ExpiryDate is { } e0)
+                        {
+                            var daysAgo = _today.DayNumber - e0.DayNumber;
+                            <span style="color:var(--danger);font-weight:600;">
+                                ⚠ @Tr($"منتهية من {daysAgo} يوم", $"Expired {daysAgo}d ago")
+                            </span>
+                        }
+                        else if (r.Lot.ExpiryDate is { } e1)
+                        {
+                            var days = e1.DayNumber - _today.DayNumber;
+                            <span style="color:var(--warn);">@Tr($"خلال {days} يوم", $"in {days} days")</span>
+                        }
+                    </td>
+                    <td>
+                        <a href="/items/@r.Item.Id/lots" style="font-size:12px;">@Tr("افتح", "Open")</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private List<Row> _rows = new();
+    private int _expiredCount;
+    private int _expiring7Count;
+    private int _expiring30Count;
+    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+    private sealed record Row(Item Item, ItemLot Lot);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load lots with non-zero stock + an expiry within 30 days
+        // (or already past). Index on expiry_date keeps this cheap.
+        var cutoff = _today.AddDays(30);
+        var lots = await Db.Set<ItemLot>().AsNoTracking()
+            .Where(l => l.QuantityOnHand > 0m
+                && l.ExpiryDate != null
+                && l.ExpiryDate <= cutoff)
+            .OrderBy(l => l.ExpiryDate)
+            .ToListAsync();
+
+        var itemIds = lots.Select(l => l.ItemId).Distinct().ToList();
+        var items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => itemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id);
+
+        _rows = lots
+            .Where(l => items.ContainsKey(l.ItemId))
+            .Select(l => new Row(items[l.ItemId], l))
+            .ToList();
+
+        _expiredCount = _rows.Count(r => r.Lot.IsExpired(_today));
+        _expiring7Count = _rows.Count(r => r.Lot.IsExpiringWithin(7, _today));
+        _expiring30Count = _rows.Count(r => r.Lot.IsExpiringWithin(30, _today));
+
+        _loading = false;
+    }
+}
