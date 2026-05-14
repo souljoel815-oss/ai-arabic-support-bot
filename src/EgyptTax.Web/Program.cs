@@ -462,6 +462,11 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Customers.CustomerPortalServi
 // tokens, scoped per-request via AppDbContext.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Api.ApiKeyService>();
 
+// v3 §11 #8 — eSignature service: request + verify + record
+// magic-link signatures on quotations / invoices.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Signatures.SignatureService>();
+builder.Services.AddHttpContextAccessor();
+
 // Gux.13 Tab 5 — SMTP password protector + test sender. Singleton
 // because IDataProtectionProvider keys are bound to the host's
 // keyring (no per-request state).

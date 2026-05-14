@@ -1,0 +1,170 @@
+@page "/sign/{Token}"
+@layout PortalLayout
+@using EgyptTax.Domain.Quotations
+@using EgyptTax.Domain.Signatures
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Signatures
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Components
+@using Microsoft.EntityFrameworkCore
+@inject SignatureService Signatures
+@inject AppDbContext Db
+@inject IHttpContextAccessor HttpAccessor
+
+@*
+    v3 §11 #8 — public signing surface. Customer follows a magic
+    link from operator's email/WhatsApp, opens this page, types
+    their full name, ticks the agreement, hits Sign. The
+    SignatureRequest entity stamps timestamp + signer + IP.
+
+    Acknowledgement-style only — NOT cryptographic e-signature.
+    Real DocuSign / qualified signature integration lands when a
+    deal explicitly requires it (v4 trigger).
+
+    Uses the L5 PortalLayout so the customer sees the same
+    sidebar-free chrome as the customer portal.
+*@
+
+<PageTitle>@Tr("توقيع | DaftarX", "Sign | DaftarX")</PageTitle>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+@if (_request is null)
+{
+    <div class="kpi-card kpi-error" style="padding:18px;text-align:center;">
+        <h2>@Tr("الرابط غير صالح", "Link not valid")</h2>
+        <p>@Tr(
+            "ممكن يكون انتهت صلاحية الرابط أو تم توقيعه بالفعل. تواصل مع اللي بعتلك الرابط.",
+            "The link may have expired or already been signed. Contact whoever sent you the link.")
+        </p>
+    </div>
+    return;
+}
+
+@if (_signed)
+{
+    <div class="kpi-card kpi-success" style="padding:18px;text-align:center;">
+        <h2>✓ @Tr("تم التوقيع", "Signed")</h2>
+        <p>
+            @Tr($"تم تسجيل توقيعك باسم: {_signerName}",
+                $"Your signature has been recorded as: {_signerName}")
+        </p>
+        <p style="font-size:13px;color:var(--muted);">
+            @Tr("الوقت:", "When:") @DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm") UTC
+        </p>
+    </div>
+    return;
+}
+
+<h1>@Tr("توقيع المستند", "Sign Document")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "اقرأ المستند أدناه واكتب اسمك الكامل لتسجيل موافقتك. التوقيع بيتسجل بالوقت والـ IP لتاريخ الموافقة.",
+        "Review the document below and type your full name to record your agreement. Signature is stamped with timestamp + IP for the audit trail.")
+</p>
+
+@* Document summary based on type *@
+@if (_request.DocumentType == SignatureDocumentType.Quotation && _quotation is not null)
+{
+    <section class="form-section">
+        <h2>@Tr("عرض السعر:", "Quotation:") @_quotation.QuotationNumber</h2>
+        <p>
+            @Tr("التاريخ:", "Date:") @_quotation.DocumentDate.ToString("yyyy-MM-dd")
+            · @Tr("صالح حتى:", "Valid until:") @_quotation.ValidUntilDate.ToString("yyyy-MM-dd")
+        </p>
+        <p>
+            <strong>@Tr("الإجمالي:", "Grand total:")</strong>
+            @_quotation.GrandTotal.Amount.ToString("N2") @Tr("ج.م", "EGP")
+        </p>
+        <p style="font-size:13px;color:var(--muted);">
+            @Tr("افتح ملف PDF الكامل من الزرار أدناه قبل التوقيع.",
+                "Open the full PDF from the button below before signing.")
+        </p>
+        <a href="/quotations/@_quotation.Id/pdf" target="_blank" rel="noopener" class="btn-secondary">
+            ⬇ @Tr("افتح PDF", "Open PDF")
+        </a>
+    </section>
+}
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:16px 0;">@_flash</div>
+}
+
+<section class="form-section">
+    <h2>@Tr("التوقيع", "Sign")</h2>
+    <div class="form-grid">
+        <label>
+            <span>@Tr("الاسم الكامل *", "Full name *")</span>
+            <input type="text" @bind="_signerName" @bind:event="oninput" maxlength="200" />
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;grid-column:1/-1;">
+            <input type="checkbox" @bind="_agreed" />
+            <span>
+                @Tr(
+                    "أوافق على شروط ومحتوى المستند المعروض أعلاه.",
+                    "I agree to the terms and content of the document shown above.")
+            </span>
+        </label>
+    </div>
+    <button type="button" class="btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_signerName) || !_agreed)"
+            @onclick="OnSignAsync" style="margin-top:12px;">
+        @(_busy ? Tr("جارٍ التوقيع…", "Signing…") : Tr("✓ سجّل التوقيع", "✓ Submit signature"))
+    </button>
+</section>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private bool _loading = true;
+    private bool _busy;
+    private bool _signed;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private SignatureRequest? _request;
+    private Quotation? _quotation;
+    private string _signerName = "";
+    private bool _agreed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _request = await Signatures.ValidateAsync(Token);
+        if (_request is null) { _loading = false; return; }
+
+        if (_request.DocumentType == SignatureDocumentType.Quotation)
+        {
+            _quotation = await Db.Set<Quotation>().AsNoTracking()
+                .FirstOrDefaultAsync(q => q.Id == _request.DocumentId);
+        }
+        _loading = false;
+    }
+
+    private async Task OnSignAsync()
+    {
+        _flash = null;
+        if (string.IsNullOrWhiteSpace(_signerName) || !_agreed) return;
+        _busy = true;
+        try
+        {
+            var ip = HttpAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
+            var result = await Signatures.SignAsync(Token, _signerName.Trim(), ip);
+            if (result is null)
+            {
+                _flash = Tr("فشل تسجيل التوقيع. حاول تاني أو اطلب رابط جديد.",
+                           "Failed to record signature. Retry or ask for a fresh link.");
+                _flashClass = "kpi-card kpi-error";
+            }
+            else
+            {
+                _signed = true;
+            }
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _busy = false; }
+    }
+}

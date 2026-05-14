@@ -14,6 +14,8 @@
 @inject AuthenticationStateProvider Auth
 @inject QuotationService QuotationSvc
 @inject IClock Clock
+@inject EgyptTax.Infrastructure.Signatures.SignatureService SignatureSvc
+@inject IJSRuntime Js
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <PageTitle>@Tr("عرض سعر | DaftarX", "Quotation | DaftarX")</PageTitle>
@@ -71,6 +73,9 @@
             <a href="/quotations/@Id/pdf" target="_blank" rel="noopener" class="btn-secondary">
                 @Tr("⬇ PDF", "⬇ PDF")
             </a>
+            <button type="button" class="btn-secondary" disabled="@_busy" @onclick="OnRequestSignatureAsync">
+                ✍ @Tr("اطلب توقيع", "Request signature")
+            </button>
         }
         <a href="/quotations" class="btn-secondary">@Tr("الرجوع للقائمة", "Back to list")</a>
     </div>
@@ -246,6 +251,26 @@
             _flash = ex.Message;
             _flashClass = "kpi-card kpi-error";
         }
+        finally { _busy = false; }
+    }
+
+    private async Task OnRequestSignatureAsync()
+    {
+        _busy = true;
+        _flash = null;
+        try
+        {
+            var token = await SignatureSvc.RequestAsync(
+                EgyptTax.Domain.Signatures.SignatureDocumentType.Quotation, Id, _userId == Guid.Empty ? null : _userId);
+            var baseUri = Nav.BaseUri.TrimEnd('/');
+            var url = $"{baseUri}/sign/{token}";
+            try { await Js.InvokeVoidAsync("navigator.clipboard.writeText", url); } catch { }
+            _flash = Tr(
+                $"✓ تم نسخ رابط التوقيع: {url}",
+                $"✓ Signing link copied to clipboard: {url}");
+            _flashClass = "kpi-card kpi-success";
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
         finally { _busy = false; }
     }
 
