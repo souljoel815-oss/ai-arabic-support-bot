@@ -1,0 +1,190 @@
+@page "/cost-centers"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v3 §11 #3 — cost-center master data. Flat list (no parent
+    hierarchy yet); operator creates one per project / department
+    / branch and tags expense documents to allocate spend.
+
+    v1 ships expense-only tagging. Sales / purchase invoice
+    tagging lands in a follow-on commit per the spec — touches
+    more code paths so deferred.
+*@
+
+<PageTitle>@Tr("مراكز التكلفة | DaftarX", "Cost Centers | DaftarX")</PageTitle>
+
+<h1>@Tr("مراكز التكلفة", "Cost Centers")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "ضيف مركز تكلفة لكل مشروع أو قسم أو فرع. بعد كده تقدر تربط المصاريف بمركز التكلفة وتشوف P&L لكل واحد منهم في تقرير «مراكز التكلفة».",
+        "Add a cost center per project / department / branch. Tag expenses to a cost center and the Cost Centers report will surface a per-CC P&L.")
+</p>
+
+<p class="kpi-card kpi-info" style="padding:12px;">
+    <strong>@Tr("ملاحظة v1:", "v1 note:")</strong>
+    @Tr(
+        "بنطبق الربط على المصروفات بس دلوقتي. الفواتير (مبيعات + مشتريات) هتنضاف في تحديث قريب.",
+        "v1 supports tagging on Expenses only. Sales + Purchase invoice tagging lands in a follow-on update.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+}
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+}
+else
+{
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>@Tr("الكود", "Code")</th>
+                <th>@Tr("الاسم (عربي)", "Name (Ar)")</th>
+                <th>@Tr("الاسم (إنجليزي)", "Name (En)")</th>
+                <th>@Tr("الحالة", "Status")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var cc in _ccs)
+            {
+                var local = cc;
+                <tr>
+                    <td><code>@cc.Code</code></td>
+                    <td>@cc.Name.Arabic</td>
+                    <td>@cc.Name.English</td>
+                    <td>
+                        @if (cc.Status == CostCenterStatus.Active)
+                        {
+                            <span style="color:var(--success);">@Tr("نشط", "Active")</span>
+                        }
+                        else
+                        {
+                            <span style="color:var(--muted);">@Tr("معطل", "Inactive")</span>
+                        }
+                    </td>
+                    <td>
+                        @if (cc.Status == CostCenterStatus.Active)
+                        {
+                            <button type="button" class="btn-secondary" style="font-size:12px;"
+                                    @onclick="() => DeactivateAsync(local.Id)">
+                                @Tr("تعطيل", "Deactivate")
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn-secondary" style="font-size:12px;"
+                                    @onclick="() => ReactivateAsync(local.Id)">
+                                @Tr("تفعيل", "Reactivate")
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <h2 style="margin-top:24px;">@Tr("+ إضافة مركز تكلفة", "+ Add a cost center")</h2>
+    <EditForm Model="_form" OnValidSubmit="OnCreateAsync" FormName="cc-create" class="form-grid">
+        <label>
+            <span>@Tr("الكود *", "Code *")</span>
+            <InputText @bind-Value="_form.Code" placeholder="PRJ-001" maxlength="32" />
+        </label>
+        <label>
+            <span>@Tr("الاسم (عربي) *", "Name (Arabic) *")</span>
+            <InputText @bind-Value="_form.NameAr" placeholder="@Tr("مشروع الإسكندرية", "مشروع الإسكندرية")" />
+        </label>
+        <label>
+            <span>@Tr("الاسم (إنجليزي) *", "Name (English) *")</span>
+            <InputText @bind-Value="_form.NameEn" placeholder="Alexandria Project" />
+        </label>
+        <div style="grid-column:1/-1;">
+            <button type="submit" class="btn-primary" disabled="@_busy">
+                @(_busy ? Tr("جارٍ الحفظ…", "Saving…") : Tr("إضافة", "Add"))
+            </button>
+        </div>
+    </EditForm>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private List<CostCenter> _ccs = new();
+    private FormModel _form = new();
+
+    private sealed class FormModel
+    {
+        public string Code { get; set; } = "";
+        public string NameAr { get; set; } = "";
+        public string NameEn { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _ccs = await Db.Set<CostCenter>()
+            .OrderBy(c => c.Code).ToListAsync();
+        _loading = false;
+    }
+
+    private async Task OnCreateAsync()
+    {
+        _flash = null;
+        if (string.IsNullOrWhiteSpace(_form.Code) ||
+            string.IsNullOrWhiteSpace(_form.NameAr) ||
+            string.IsNullOrWhiteSpace(_form.NameEn))
+        {
+            _flash = Tr("املأ الكود + الاسمين.", "Code + both names required.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var code = _form.Code.Trim().ToUpperInvariant();
+            if (await Db.Set<CostCenter>().AnyAsync(c => c.Code == code))
+            {
+                _flash = Tr($"الكود {code} موجود.", $"Code {code} already exists.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+            Db.Add(new CostCenter(code, new ArabicEnglishText(_form.NameAr, _form.NameEn)));
+            await Db.SaveChangesAsync();
+            _form = new FormModel();
+            _flash = Tr("✓ تمت الإضافة.", "✓ Added.");
+            _flashClass = "kpi-card kpi-success";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _busy = false; }
+    }
+
+    private async Task DeactivateAsync(Guid id)
+    {
+        var cc = await Db.Set<CostCenter>().FirstAsync(c => c.Id == id);
+        cc.Deactivate();
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReactivateAsync(Guid id)
+    {
+        var cc = await Db.Set<CostCenter>().FirstAsync(c => c.Id == id);
+        cc.Reactivate();
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+}

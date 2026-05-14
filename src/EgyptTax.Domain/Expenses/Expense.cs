@@ -36,6 +36,12 @@ public sealed class Expense
     public Guid? PostedByUserId { get; private set; }
     public DocumentPostingMode? PostingMode { get; private set; }
 
+    /// <summary>v3 §11 #3 (cost centers) — optional analytical-
+    /// accounting tag. Null = no project allocation. Editable on
+    /// Draft and Posted alike (operator may add the tag retroactively
+    /// for reports without re-opening the document).</summary>
+    public Guid? CostCenterId { get; private set; }
+
     private Expense() { }
 
     private Expense(
@@ -114,6 +120,15 @@ public sealed class Expense
     {
         ThrowIfNotDraft(nameof(UpdateDocumentDate));
         DocumentDate = documentDate;
+    }
+
+    /// <summary>v3 §11 #3 — set or clear the cost-center tag.
+    /// Allowed in any state (operator may add the tag retro for
+    /// posted documents to feed the analytical report).</summary>
+    public void SetCostCenter(Guid? costCenterId)
+    {
+        if (costCenterId == Guid.Empty) costCenterId = null;
+        CostCenterId = costCenterId;
     }
 
     /// <summary>FR-026 transitions for the approval workflow.</summary>

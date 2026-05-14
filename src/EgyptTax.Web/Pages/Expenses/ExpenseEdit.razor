@@ -115,6 +115,19 @@
             <span>@(IsArabic ? "الوصف (عربي)" : "Description (Arabic)")</span>
             <InputTextArea @bind-Value="_form.DescriptionArabic" rows="3" dir="rtl" />
         </label>
+        @if (_costCenters.Count > 0)
+        {
+            <label>
+                <span>@(IsArabic ? "مركز التكلفة (اختياري)" : "Cost center (optional)")</span>
+                <InputSelect @bind-Value="_form.CostCenterId">
+                    <option value="@Guid.Empty">— @(IsArabic ? "بدون" : "none") —</option>
+                    @foreach (var cc in _costCenters)
+                    {
+                        <option value="@cc.Id">@cc.Code — @(IsArabic ? cc.Name.Arabic : cc.Name.English)</option>
+                    }
+                </InputSelect>
+            </label>
+        }
     </fieldset>
 
     <button type="submit">@(_isNew ? (IsArabic ? "حفظ المسودة" : "Save draft") : (IsArabic ? "تحديث المسودة" : "Update draft"))</button>
@@ -155,6 +168,8 @@
     private Expense? _expense;
     private List<DeductibleExpenseCategory> _categories = new();
     private List<Attachment> _attachments = new();
+    // v3 §11 #3 — cost-center dropdown source. Active centers only.
+    private List<CostCenter> _costCenters = new();
     private FormModel _form = new();
     private string? _flash;
     private string _flashClass = "flash-success";
@@ -171,6 +186,9 @@
         _categories = await Db.Set<DeductibleExpenseCategory>().AsNoTracking()
             .Where(c => c.Status == DeductibleExpenseCategoryStatus.Active)
             .OrderBy(c => c.Code).ToListAsync();
+        _costCenters = await Db.Set<CostCenter>().AsNoTracking()
+            .Where(c => c.Status == CostCenterStatus.Active)
+            .OrderBy(c => c.Code).ToListAsync();
 
         if (!_isNew)
         {
@@ -184,6 +202,7 @@
                 _form.DeductibleFlag = _expense.DeductibleFlag;
                 _form.DescriptionEnglish = _expense.Description.English;
                 _form.DescriptionArabic = _expense.Description.Arabic;
+                _form.CostCenterId = _expense.CostCenterId ?? Guid.Empty;
 
                 _attachments = await Db.Set<Attachment>().AsNoTracking()
                     .Where(a => a.DocumentId == _expense.Id
@@ -307,6 +326,7 @@
         if (_isNew)
         {
             var draft = Expense.CreateDraft(date, _form.CategoryId, amount, _form.DeductibleFlag, description);
+            draft.SetCostCenter(_form.CostCenterId);
             Db.Add(draft);
             await Db.SaveChangesAsync();
             Nav.NavigateTo($"/expenses/{draft.Id}/edit", forceLoad: true);
@@ -319,6 +339,7 @@
         live.UpdateAmount(amount);
         live.UpdateDeductibleFlag(_form.DeductibleFlag);
         live.UpdateDescription(description);
+        live.SetCostCenter(_form.CostCenterId);
         await Db.SaveChangesAsync();
 
         _flash = IsArabic ? "تم حفظ المسودة." : "Draft saved.";
@@ -450,5 +471,8 @@
         public bool DeductibleFlag { get; set; }
         [Required, StringLength(2000)] public string DescriptionEnglish { get; set; } = "";
         [Required, StringLength(2000)] public string DescriptionArabic { get; set; } = "";
+        // v3 §11 #3 — Guid.Empty means "not tagged"; SetCostCenter
+        // normalises that to null when persisting.
+        public Guid CostCenterId { get; set; } = Guid.Empty;
     }
 }

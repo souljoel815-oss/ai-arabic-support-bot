@@ -1,0 +1,159 @@
+@page "/reports/cost-centers"
+@using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v3 §11 #3 — analytical report. Per cost center: total
+    expenses (posted only) in the selected period + count of
+    expense documents + count of unallocated expenses ("not
+    tagged") to surface the data-quality gap.
+
+    v1 covers expenses only. When invoice tagging lands, this
+    report adds revenue + net-margin columns.
+*@
+
+<PageTitle>@Tr("تقرير مراكز التكلفة | DaftarX", "Cost Centers Report | DaftarX")</PageTitle>
+
+<h1>@Tr("تقرير مراكز التكلفة", "Cost Centers Report")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "إجمالي المصروفات المرحّلة لكل مركز تكلفة في الفترة المحددة. لما الإيرادات تربط بمراكز التكلفة هتشوف هامش الربح كمان.",
+        "Total posted expenses per cost center in the chosen period. When revenue tagging lands, you'll see net margin too.")
+</p>
+
+<div class="invoice-toolbar" style="gap:12px;flex-wrap:wrap;">
+    <label>
+        @Tr("من", "From") <input type="date" @bind="_from" @bind:after="ReloadAsync" />
+    </label>
+    <label>
+        @Tr("إلى", "To") <input type="date" @bind="_to" @bind:after="ReloadAsync" />
+    </label>
+</div>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+}
+else if (_rows.Count == 0 && _untaggedAmount == 0m)
+{
+    <div class="kpi-card kpi-info" style="padding:14px;">
+        @Tr("مفيش مصاريف في الفترة دي.", "No posted expenses in this range.")
+    </div>
+}
+else
+{
+    <div class="kpi-grid kpi-grid-3" style="margin-bottom:16px;">
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@Tr("إجمالي المصاريف", "Total expenses")</div>
+            <div class="kpi-value">@_grandTotal.ToString("N2") @Tr("ج.م", "EGP")</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@Tr("عدد الوثائق", "Documents")</div>
+            <div class="kpi-value">@_grandCount</div>
+        </div>
+        <div class="kpi-card @(_untaggedAmount > 0 ? "kpi-warn" : "kpi-info")">
+            <div class="kpi-label">@Tr("غير مصنّفة", "Untagged")</div>
+            <div class="kpi-value">@_untaggedAmount.ToString("N2") @Tr("ج.م", "EGP")</div>
+        </div>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>@Tr("الكود", "Code")</th>
+                <th>@Tr("الاسم", "Name")</th>
+                <th class="num">@Tr("المبلغ", "Amount")</th>
+                <th class="num">@Tr("الوثائق", "Documents")</th>
+                <th class="num">@Tr("النسبة", "Share")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _rows)
+            {
+                <tr>
+                    <td><code>@r.Code</code></td>
+                    <td>@r.Name.Display(IsArabic ? Language.Ar : Language.En)</td>
+                    <td class="num">@r.Total.ToString("N2")</td>
+                    <td class="num">@r.Count</td>
+                    <td class="num">@(_grandTotal > 0 ? (r.Total / _grandTotal * 100).ToString("0.#") : "—")%</td>
+                </tr>
+            }
+            @if (_untaggedAmount > 0)
+            {
+                <tr style="background:var(--bg);">
+                    <td><em>—</em></td>
+                    <td><em>@Tr("(غير مصنّفة)", "(untagged)")</em></td>
+                    <td class="num">@_untaggedAmount.ToString("N2")</td>
+                    <td class="num">@_untaggedCount</td>
+                    <td class="num">@(_grandTotal > 0 ? (_untaggedAmount / _grandTotal * 100).ToString("0.#") : "—")%</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private DateTime _from = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+    private DateTime _to = DateTime.UtcNow.Date;
+
+    private List<Row> _rows = new();
+    private decimal _grandTotal;
+    private int _grandCount;
+    private decimal _untaggedAmount;
+    private int _untaggedCount;
+
+    private sealed record Row(string Code, ArabicEnglishText Name, decimal Total, int Count);
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        var fromDate = DateOnly.FromDateTime(_from);
+        var toDate = DateOnly.FromDateTime(_to);
+
+        // Materialise then aggregate in C# — SQLite can't sum
+        // decimal columns server-side (BUG-D-003 / BUG-COMP-001
+        // pattern repeated).
+        var expenses = await Db.Set<Expense>().AsNoTracking()
+            .Where(e => e.State == DocumentState.Posted
+                && e.DocumentDate >= fromDate && e.DocumentDate <= toDate)
+            .Select(e => new { e.CostCenterId, Amount = e.Amount.Amount })
+            .ToListAsync();
+
+        var ccLookup = await Db.Set<CostCenter>().AsNoTracking()
+            .ToDictionaryAsync(c => c.Id);
+
+        var tagged = expenses.Where(e => e.CostCenterId.HasValue).ToList();
+        var untagged = expenses.Where(e => !e.CostCenterId.HasValue).ToList();
+
+        _rows = tagged
+            .GroupBy(e => e.CostCenterId!.Value)
+            .Select(g =>
+            {
+                ccLookup.TryGetValue(g.Key, out var cc);
+                return new Row(
+                    Code: cc?.Code ?? "?",
+                    Name: cc?.Name ?? new ArabicEnglishText("(?)", "(?)"),
+                    Total: g.Sum(x => x.Amount),
+                    Count: g.Count());
+            })
+            .OrderByDescending(r => r.Total)
+            .ToList();
+
+        _grandCount = expenses.Count;
+        _grandTotal = expenses.Sum(e => e.Amount);
+        _untaggedAmount = untagged.Sum(e => e.Amount);
+        _untaggedCount = untagged.Count;
+
+        _loading = false;
+    }
+}
