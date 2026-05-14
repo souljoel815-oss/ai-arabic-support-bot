@@ -281,6 +281,14 @@ builder.Services.AddScoped<
     EgyptTax.Infrastructure.Reports.SqlTrialBalanceReportQuery
 >();
 
+// v4 A.1 — General Ledger (Trial Balance + per-account drilldown,
+// chronological with running balance). Same data source as Trial
+// Balance.
+builder.Services.AddScoped<
+    EgyptTax.Application.Reports.IGeneralLedgerReportQuery,
+    EgyptTax.Infrastructure.Reports.SqlGeneralLedgerReportQuery
+>();
+
 // P1.8 (Penalty Shield) — exposure projection. Reads EtaSubmission +
 // SalesInvoice to compute current tier + projected fines + the
 // prioritised work queue. See PenaltyRegime for the constants.

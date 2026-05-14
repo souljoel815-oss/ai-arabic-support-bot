@@ -1,0 +1,274 @@
+@page "/reports/general-ledger"
+@using EgyptTax.Application.Reports
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Web.Shared
+@using Microsoft.AspNetCore.Authorization
+@inject IGeneralLedgerReportQuery ReportQuery
+@inject IJSRuntime Js
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v4 A.1 — General Ledger. Trial Balance + per-account drilldown
+    in chronological order with running balance. Mirrors Trial
+    Balance's data source (JournalEntry only). Source-doc number
+    on each line drills back to the originating invoice / expense /
+    fixed-asset detail page.
+*@
+
+<h1>
+    @(IsArabic ? "دفتر الأستاذ العام" : "General Ledger")
+    @if (_report is { Sections.Count: > 0 })
+    {
+        <button type="button" class="btn-secondary"
+                style="font-size:13px;margin-inline-start:12px;"
+                @onclick="ExportCsvAsync">
+            ⬇ @(IsArabic ? "تصدير CSV" : "Export CSV")
+        </button>
+    }
+</h1>
+
+<form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
+    <label>
+        <span>@(IsArabic ? "بداية الفترة" : "Period start")</span>
+        <input type="date" @bind="_periodStart" />
+    </label>
+    <label>
+        <span>@(IsArabic ? "نهاية الفترة" : "Period end")</span>
+        <input type="date" @bind="_periodEnd" />
+    </label>
+    <button type="submit" class="btn-primary" disabled="@_loading">
+        @(_loading ? (IsArabic ? "جارٍ الحساب…" : "Computing…") : (IsArabic ? "تشغيل التقرير" : "Run report"))
+    </button>
+</form>
+
+@if (_knownAccounts.Count > 0)
+{
+    <details class="form-section" style="margin-top:8px;">
+        <summary style="cursor:pointer;">@AccountFilterSummary()</summary>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 16px;padding:8px 4px;font-size:13px;">
+            @foreach (var acctCode in _knownAccounts)
+            {
+                <label style="display:inline-flex;align-items:center;gap:4px;">
+                    <input type="checkbox"
+                           checked="@_selectedAccounts.Contains(acctCode)"
+                           @onchange="@(e => ToggleAccount(acctCode, (bool)e.Value!))" />
+                    <code>@acctCode</code>
+                </label>
+            }
+            @if (_selectedAccounts.Count > 0)
+            {
+                <button type="button" class="btn-secondary" style="font-size:12px;"
+                        @onclick="@(() => { _selectedAccounts.Clear(); })">
+                    @(IsArabic ? "مسح الاختيار" : "Clear selection")
+                </button>
+            }
+        </div>
+    </details>
+}
+
+@if (_report is null)
+{
+    @if (_loading)
+    {
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    }
+    else
+    {
+        <p><em>@(IsArabic ? "اختر الفترة بالأعلى ثم اضغط «تشغيل التقرير»." : "Pick a period above and click \"Run report\".")</em></p>
+    }
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>@(IsArabic ? "الفترة:" : "Period:")</strong> @_report.PeriodStart.ToString("yyyy-MM-dd") @(IsArabic ? "إلى" : "to") @_report.PeriodEnd.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "إجمالي المدين:" : "Total debits:")</strong> <span class="num">@_report.TotalDebits.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "إجمالي الدائن:" : "Total credits:")</strong> <span class="num">@_report.TotalCredits.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "حسابات نشطة:" : "Active accounts:")</strong> @_report.Sections.Count</div>
+</section>
+
+@if (_report.Sections.Count == 0)
+{
+    <p><em>@(IsArabic ? "لا توجد حركة قيود يومية في هذه الفترة." : "No journal-entry activity in this period.")</em></p>
+    return;
+}
+
+@foreach (var acct in _report.Sections)
+{
+    <div class="account-block" style="margin-top:24px;">
+        <h2 style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span><code>@acct.AccountCode</code></span>
+            <span style="font-size:13px;font-weight:normal;">
+                @(IsArabic ? "رصيد افتتاحي:" : "Opening:")
+                <span class="num">@acct.OpeningBalance.Amount.ToString("F2")</span> ·
+                @(IsArabic ? "رصيد ختامي:" : "Closing:")
+                <span class="num"><strong>@acct.ClosingBalance.Amount.ToString("F2")</strong></span>
+            </span>
+        </h2>
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                    <th>@(IsArabic ? "المستند" : "Source document")</th>
+                    <th>@(IsArabic ? "الوصف" : "Description")</th>
+                    <th class="num">@(IsArabic ? "مدين" : "Debit")</th>
+                    <th class="num">@(IsArabic ? "دائن" : "Credit")</th>
+                    <th class="num">@(IsArabic ? "الرصيد الجاري" : "Running balance")</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="5"><em>@(IsArabic ? "رصيد افتتاحي" : "Opening balance")</em></td>
+                    <td class="num">@acct.OpeningBalance.Amount.ToString("F2")</td>
+                </tr>
+                @foreach (var entry in acct.Entries)
+                {
+                    <tr>
+                        <td>@entry.PostedAtUtc.ToString("yyyy-MM-dd")</td>
+                        <td>
+                            @{ var url = SourceDocumentUrl(entry); }
+                            @if (url is not null)
+                            {
+                                <a href="@url"><code>@entry.SourceDocumentNumber</code></a>
+                            }
+                            else
+                            {
+                                <code>@entry.SourceDocumentNumber</code>
+                            }
+                            <small style="color:#888;">(@entry.SourceDocumentType)</small>
+                        </td>
+                        <td>@entry.Description</td>
+                        <td class="num">@(entry.Debit.Amount > 0m ? entry.Debit.Amount.ToString("F2") : "")</td>
+                        <td class="num">@(entry.Credit.Amount > 0m ? entry.Credit.Amount.ToString("F2") : "")</td>
+                        <td class="num">@entry.RunningBalance.Amount.ToString("F2")</td>
+                    </tr>
+                }
+                <tr style="font-weight:bold;border-top:2px solid currentColor;">
+                    <td colspan="3">@(IsArabic ? "إجمالي الفترة" : "Period totals")</td>
+                    <td class="num">@acct.PeriodDebitTotal.Amount.ToString("F2")</td>
+                    <td class="num">@acct.PeriodCreditTotal.Amount.ToString("F2")</td>
+                    <td class="num">@acct.ClosingBalance.Amount.ToString("F2")</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private DateTime _periodStart = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    private DateTime _periodEnd = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month,
+        DateTime.DaysInMonth(DateTime.UtcNow.Year, DateTime.UtcNow.Month));
+    private bool _loading;
+    private GeneralLedgerReport? _report;
+    private IReadOnlyList<string> _knownAccounts = Array.Empty<string>();
+    private readonly HashSet<string> _selectedAccounts = new(StringComparer.Ordinal);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _knownAccounts = await ReportQuery.GetKnownAccountCodesAsync();
+    }
+
+    private async Task OnRefresh()
+    {
+        _loading = true;
+        try
+        {
+            var filter = _selectedAccounts.Count == 0 ? null : _selectedAccounts.ToList();
+            _report = await ReportQuery.RunAsync(
+                DateOnly.FromDateTime(_periodStart),
+                DateOnly.FromDateTime(_periodEnd),
+                filter);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ToggleAccount(string code, bool isChecked)
+    {
+        if (isChecked) _selectedAccounts.Add(code);
+        else _selectedAccounts.Remove(code);
+    }
+
+    private string AccountFilterSummary()
+    {
+        if (_selectedAccounts.Count == 0)
+        {
+            return IsArabic ? "تصفية حسابات (الكل حالياً)" : "Filter accounts (all currently)";
+        }
+        return IsArabic
+            ? "حسابات مختارة (" + _selectedAccounts.Count + ")"
+            : "Selected accounts (" + _selectedAccounts.Count + ")";
+    }
+
+    private static string? SourceDocumentUrl(GeneralLedgerEntry entry) => entry.SourceDocumentType switch
+    {
+        DocumentType.SalesInvoice => $"/invoices/{entry.SourceDocumentId}",
+        DocumentType.CreditNote => $"/invoices/{entry.SourceDocumentId}",
+        DocumentType.PurchaseInvoice => $"/purchase-invoices/{entry.SourceDocumentId}",
+        DocumentType.Expense => $"/expenses/{entry.SourceDocumentId}",
+        DocumentType.FixedAsset => $"/fixed-assets/{entry.SourceDocumentId}/schedule",
+        _ => null,
+    };
+
+    private async Task ExportCsvAsync()
+    {
+        if (_report is null) return;
+        var rows = new List<CsvRow>();
+        foreach (var acct in _report.Sections)
+        {
+            rows.Add(new CsvRow(acct.AccountCode, "(opening)", "", "", "",
+                "", "", acct.OpeningBalance.Amount));
+            foreach (var entry in acct.Entries)
+            {
+                rows.Add(new CsvRow(
+                    acct.AccountCode,
+                    entry.PostedAtUtc.ToString("yyyy-MM-dd HH:mm:ss"),
+                    entry.SourceDocumentType.ToString(),
+                    entry.SourceDocumentNumber,
+                    entry.SourceDocumentId.ToString("D"),
+                    entry.Description,
+                    "",
+                    entry.RunningBalance.Amount)
+                {
+                    Debit = entry.Debit.Amount,
+                    Credit = entry.Credit.Amount,
+                });
+            }
+            rows.Add(new CsvRow(acct.AccountCode, "(period totals)", "", "", "",
+                "", "", acct.ClosingBalance.Amount)
+            {
+                Debit = acct.PeriodDebitTotal.Amount,
+                Credit = acct.PeriodCreditTotal.Amount,
+            });
+        }
+
+        var bytes = CsvExporter.Build(
+            headers: new[] { "Account", "Date", "DocType", "DocNumber", "DocId",
+                "Description", "Debit", "Credit", "RunningBalance" },
+            rows: rows,
+            rowSelector: r => new object?[]
+            {
+                r.AccountCode, r.Date, r.DocType, r.DocNumber, r.DocId,
+                r.Description, r.Debit, r.Credit, r.RunningBalance,
+            });
+        var b64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("daftarxDownloadBytes",
+            $"general-ledger-{_report.PeriodStart:yyyyMMdd}-{_report.PeriodEnd:yyyyMMdd}.csv",
+            b64, "text/csv");
+    }
+
+    private sealed record CsvRow(
+        string AccountCode,
+        string Date,
+        string DocType,
+        string DocNumber,
+        string DocId,
+        string Description,
+        object? Spare,
+        decimal RunningBalance)
+    {
+        public decimal Debit { get; init; }
+        public decimal Credit { get; init; }
+    }
+}

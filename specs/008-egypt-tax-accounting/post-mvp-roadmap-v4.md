@@ -82,7 +82,7 @@ The 5 features whose absence makes accountants say "this isn't a
 real accounting system." Each is small, well-scoped, and
 high-ROI per day of effort.
 
-### A.1 — General Ledger report
+### A.1 — General Ledger report ✅ SHIPPED
 
 - **Pain:** Every accountant pulls a GL at month-end to drill
   from a single account into every transaction that hit it. v3
