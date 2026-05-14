@@ -29,6 +29,7 @@ public static class AdminPanelTabs
         new("notifications",     "bell",      "الإشعارات",           "Notifications",       AdminTabRole.AnyAuthenticated),
         new("sales-reps",        "users",     "مناديب المبيعات",      "Sales Reps",          AdminTabRole.AdminOnly),
         new("ai",                "zap",       "الذكاء الاصطناعي",     "AI (Claude)",         AdminTabRole.AdminOnly),
+        new("api-keys",          "key",       "مفاتيح API",          "API Keys",            AdminTabRole.AdminOnly),
         new("about",             "info",      "حول ومساعدة",         "About & Support",     AdminTabRole.AnyAuthenticated),
     };
 

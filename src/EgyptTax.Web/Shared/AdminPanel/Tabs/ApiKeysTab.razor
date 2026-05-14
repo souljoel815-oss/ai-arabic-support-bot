@@ -1,0 +1,200 @@
+@using EgyptTax.Domain.Settings
+@using EgyptTax.Infrastructure.Api
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject ApiKeyService ApiKeys
+@inject IJSRuntime Js
+@inject AuthenticationStateProvider Auth
+
+@*
+    N.3 (v3 §11) — API key management. Operator mints a key
+    + names it (e.g. "Shopify integration"); the plaintext is
+    shown ONCE in a modal-style banner with a copy-to-clipboard
+    button, then unrecoverable. List below shows all keys with
+    prefix + last-used + revoke action.
+*@
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<section class="api-keys-tab">
+    <h2>@(IsArabic ? "مفاتيح API" : "API Keys")</h2>
+    <p class="page-subtitle">
+        @(IsArabic
+            ? "مفتاح واحد لكل تكامل (Shopify، Zapier، dashboard خارجي، …). المفتاح بيتعرض مرة واحدة بعد إنشائه — لو ضيعته اعمل واحد جديد. التحقق بـ Authorization: Bearer <مفتاح>."
+            : "One key per integration (Shopify, Zapier, external dashboard, …). The plaintext is shown ONCE on creation — if lost, mint a new one. Auth header: Authorization: Bearer <key>.")
+    </p>
+
+    @if (_freshlyMintedToken is not null)
+    {
+        <div class="kpi-card kpi-warn" style="margin:16px 0;padding:14px;">
+            <strong>
+                @(IsArabic
+                    ? "⚠ المفتاح ده هيتعرض مرة واحدة بس. انسخه دلوقتي."
+                    : "⚠ This key is shown ONCE. Copy it now.")
+            </strong>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+                <code style="flex:1;background:var(--bg);padding:8px;border-radius:4px;font-size:12px;overflow-x:auto;">@_freshlyMintedToken</code>
+                <button type="button" class="btn-secondary" @onclick="OnCopyTokenAsync">
+                    📋 @(IsArabic ? "نسخ" : "Copy")
+                </button>
+                <button type="button" class="btn-secondary" @onclick="() => _freshlyMintedToken = null">
+                    @(IsArabic ? "تم" : "Done")
+                </button>
+            </div>
+        </div>
+    }
+
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+    }
+
+    <h3 style="margin-top:24px;">@(IsArabic ? "+ إنشاء مفتاح جديد" : "+ Mint a new key")</h3>
+    <div class="form-grid" style="grid-template-columns:1fr auto;">
+        <input type="text" @bind="_newKeyName"
+               placeholder="@(IsArabic ? "مثال: تكامل Shopify" : "e.g. Shopify integration")"
+               maxlength="100" />
+        <button type="button" class="btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_newKeyName))"
+                @onclick="OnMintAsync">
+            @(_busy ? (IsArabic ? "جارٍ…" : "Minting…") : (IsArabic ? "إنشاء" : "Mint"))
+        </button>
+    </div>
+
+    @if (_keys.Count > 0)
+    {
+        <h3 style="margin-top:24px;">@(IsArabic ? "المفاتيح الحالية" : "Existing keys")</h3>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "الاسم" : "Name")</th>
+                    <th>@(IsArabic ? "البداية" : "Prefix")</th>
+                    <th>@(IsArabic ? "أُنشئ" : "Created")</th>
+                    <th>@(IsArabic ? "آخر استخدام" : "Last used")</th>
+                    <th>@(IsArabic ? "الحالة" : "Status")</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var k in _keys)
+                {
+                    var key = k;
+                    <tr>
+                        <td>@k.Name</td>
+                        <td><code style="font-size:11px;">@k.DisplayPrefix…</code></td>
+                        <td>@k.CreatedAtUtc.ToString("yyyy-MM-dd")</td>
+                        <td>@(k.LastUsedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                        <td>
+                            @if (k.Revoked)
+                            {
+                                <span style="color:var(--danger);">@(IsArabic ? "ملغي" : "Revoked")</span>
+                            }
+                            else
+                            {
+                                <span style="color:var(--success);">@(IsArabic ? "نشط" : "Active")</span>
+                            }
+                        </td>
+                        <td>
+                            @if (!k.Revoked)
+                            {
+                                <button type="button" class="btn-secondary" style="font-size:12px;"
+                                        @onclick="() => OnRevokeAsync(key.Id)">
+                                    @(IsArabic ? "إلغاء" : "Revoke")
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <h3 style="margin-top:24px;">@(IsArabic ? "نقاط النهاية المتاحة" : "Available endpoints")</h3>
+    <p class="page-subtitle" style="font-size:13px;">
+        @(IsArabic
+            ? "الإصدار الأول: قراءة فقط (read-only). الكتابة + الـ webhooks في إصدار قادم."
+            : "v1: read-only endpoints. Write endpoints + webhooks coming in a later release.")
+    </p>
+    <table class="data-table">
+        <thead>
+            <tr><th>Method</th><th>Path</th><th>@(IsArabic ? "الوصف" : "Description")</th></tr>
+        </thead>
+        <tbody>
+            <tr><td><code>GET</code></td><td><code>/api/v1/customers</code></td><td>@(IsArabic ? "قائمة العملاء" : "List customers")</td></tr>
+            <tr><td><code>GET</code></td><td><code>/api/v1/items</code></td><td>@(IsArabic ? "قائمة الأصناف" : "List items")</td></tr>
+            <tr><td><code>GET</code></td><td><code>/api/v1/invoices</code></td><td>@(IsArabic ? "قائمة فواتير المبيعات (Posted فقط)" : "List posted sales invoices")</td></tr>
+        </tbody>
+    </table>
+    <p class="page-subtitle" style="font-size:12px;margin-top:8px;">
+        Header: <code>Authorization: Bearer dx_xxxxxxxxx…</code>
+    </p>
+</section>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private List<ApiKey> _keys = new();
+    private string _newKeyName = "";
+    private string? _freshlyMintedToken;
+    private Guid _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        var auth = await Auth.GetAuthenticationStateAsync();
+        _userId = auth.User.UserId() ?? Guid.Empty;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _keys = await Db.Set<ApiKey>().AsNoTracking()
+            .OrderByDescending(k => k.CreatedAtUtc)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private async Task OnMintAsync()
+    {
+        _busy = true;
+        _flash = null;
+        try
+        {
+            var minted = await ApiKeys.MintAsync(_newKeyName, _userId == Guid.Empty ? null : _userId);
+            _freshlyMintedToken = minted.Token;
+            _newKeyName = "";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnRevokeAsync(Guid id)
+    {
+        try
+        {
+            var k = await Db.Set<ApiKey>().FirstAsync(x => x.Id == id);
+            k.Revoke(DateTime.UtcNow);
+            await Db.SaveChangesAsync();
+            _flash = IsArabic ? "✓ تم الإلغاء" : "✓ Revoked";
+            _flashClass = "kpi-card kpi-info";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    private async Task OnCopyTokenAsync()
+    {
+        if (_freshlyMintedToken is null) return;
+        try { await Js.InvokeVoidAsync("navigator.clipboard.writeText", _freshlyMintedToken); }
+        catch { /* clipboard blocked; operator can select-all manually */ }
+    }
+}

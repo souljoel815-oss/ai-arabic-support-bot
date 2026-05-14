@@ -458,6 +458,10 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.NlQueryHandler>();
 // L5 (v3 roadmap) — customer-portal magic-link issuance + validation.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Customers.CustomerPortalService>();
 
+// N.3 (v3 §11) — REST API keys: mint + verify SHA-256 hashed
+// tokens, scoped per-request via AppDbContext.
+builder.Services.AddScoped<EgyptTax.Infrastructure.Api.ApiKeyService>();
+
 // Gux.13 Tab 5 — SMTP password protector + test sender. Singleton
 // because IDataProtectionProvider keys are bound to the host's
 // keyring (no per-request state).
@@ -1017,6 +1021,99 @@ app.UseSerilogRequestLogging();
         cronExpression: "30 2 * * *"
     );
 }
+
+// N.3 (v3 §11) — public REST API surface. Bearer-token auth via
+// ApiKeyService; v1 ships read-only endpoints for the 3 most-
+// integrated entity types (customers, items, invoices). Write
+// endpoints + webhooks land in a follow-on once a real
+// integration partner asks. Pagination via ?skip=&take= with a
+// hard cap of 200 per request to keep responses bounded.
+static async Task<IResult> AuthGate(
+    HttpContext ctx,
+    EgyptTax.Infrastructure.Api.ApiKeyService apiKeys)
+{
+    var header = ctx.Request.Headers["Authorization"].ToString();
+    if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        return Results.Json(new { error = "Missing Bearer token." }, statusCode: 401);
+    var token = header["Bearer ".Length..].Trim();
+    var key = await apiKeys.ValidateAsync(token);
+    if (key is null)
+        return Results.Json(new { error = "Invalid or revoked API key." }, statusCode: 401);
+    return Results.Ok();
+}
+
+app.MapGet("/api/v1/customers", async (
+    HttpContext ctx,
+    EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
+    EgyptTax.Infrastructure.Persistence.AppDbContext db,
+    int skip = 0, int take = 50) =>
+{
+    var auth = await AuthGate(ctx, apiKeys);
+    if (auth is not Microsoft.AspNetCore.Http.HttpResults.Ok) return auth;
+    take = Math.Clamp(take, 1, 200);
+    var rows = await db.Set<EgyptTax.Domain.MasterData.Customer>().AsNoTracking()
+        .OrderBy(c => c.Code).Skip(skip).Take(take)
+        .Select(c => new {
+            id = c.Id, code = c.Code,
+            name = new { ar = c.Name.Arabic, en = c.Name.English },
+            tin = c.TaxProfile.TinValue, profile = c.TaxProfile.ProfileType.ToString(),
+            phone = c.Phone, email = c.Email, status = c.Status.ToString(),
+            credit_limit_egp = c.CreditLimitEgp,
+        })
+        .ToListAsync();
+    return Results.Ok(new { skip, take, count = rows.Count, data = rows });
+});
+
+app.MapGet("/api/v1/items", async (
+    HttpContext ctx,
+    EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
+    EgyptTax.Infrastructure.Persistence.AppDbContext db,
+    int skip = 0, int take = 50) =>
+{
+    var auth = await AuthGate(ctx, apiKeys);
+    if (auth is not Microsoft.AspNetCore.Http.HttpResults.Ok) return auth;
+    take = Math.Clamp(take, 1, 200);
+    var rows = await db.Set<EgyptTax.Domain.MasterData.Item>().AsNoTracking()
+        .OrderBy(i => i.Code).Skip(skip).Take(take)
+        .Select(i => new {
+            id = i.Id, code = i.Code,
+            name = new { ar = i.Name.Arabic, en = i.Name.English },
+            default_vat_category_id = i.DefaultVatCategoryId,
+            quantity_on_hand = i.QuantityOnHand,
+            low_stock_threshold = i.LowStockThreshold,
+            eta_item_code = i.EtaItemCode,
+            status = i.Status.ToString(),
+        })
+        .ToListAsync();
+    return Results.Ok(new { skip, take, count = rows.Count, data = rows });
+});
+
+app.MapGet("/api/v1/invoices", async (
+    HttpContext ctx,
+    EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
+    EgyptTax.Infrastructure.Persistence.AppDbContext db,
+    int skip = 0, int take = 50) =>
+{
+    var auth = await AuthGate(ctx, apiKeys);
+    if (auth is not Microsoft.AspNetCore.Http.HttpResults.Ok) return auth;
+    take = Math.Clamp(take, 1, 200);
+    var rows = await db.Set<EgyptTax.Domain.Invoices.SalesInvoice>().AsNoTracking()
+        .Where(i => i.State == EgyptTax.Domain.Workflow.DocumentState.Posted)
+        .OrderByDescending(i => i.DocumentDate).Skip(skip).Take(take)
+        .Select(i => new {
+            id = i.Id,
+            document_number = i.DocumentNumber,
+            document_date = i.DocumentDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            customer_id = i.CustomerId,
+            posted_at_utc = i.PostedAtUtc,
+            subtotal = i.Subtotal.Amount,
+            vat_total = i.VatTotal.Amount,
+            grand_total = i.GrandTotal.Amount,
+            is_credit_note = i.CreditNoteOfInvoiceId != null,
+        })
+        .ToListAsync();
+    return Results.Ok(new { skip, take, count = rows.Count, data = rows });
+});
 
 // T058 — Blazor + Razor Pages routing. The Blazor hub serves the
 // SignalR pipe; MapFallbackToPage routes any unmatched HTTP request
