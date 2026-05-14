@@ -118,7 +118,14 @@
             <option value="@LeadActivityKind.Email">@Tr("بريد", "Email")</option>
             <option value="@LeadActivityKind.WhatsApp">@Tr("واتساب", "WhatsApp")</option>
         </select>
-        <input type="text" @bind="_newActivityNote" placeholder="@Tr("اكتب نص النشاط…", "Note text…")" maxlength="1000" />
+        @* @bind:event="oninput" pushes to the model on every
+           keystroke instead of waiting for blur — so clicking the
+           Log button right after typing always reads the current
+           value (the default onchange fires on blur and races
+           with onclick, leaving _newActivityNote empty when the
+           user clicks before tabbing away). *@
+        <input type="text" @bind="_newActivityNote" @bind:event="oninput"
+               placeholder="@Tr("اكتب نص النشاط…", "Note text…")" maxlength="1000" />
         <button type="button" class="btn-secondary" @onclick="OnAddActivityAsync"
                 disabled="@(string.IsNullOrWhiteSpace(_newActivityNote))">
             @Tr("سجّل", "Log")
