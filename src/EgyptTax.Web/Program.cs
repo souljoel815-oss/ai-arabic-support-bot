@@ -485,6 +485,14 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Customers.CustomerPortalServi
 // tokens, scoped per-request via AppDbContext.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Api.ApiKeyService>();
 
+// v4 B.3 — REST API rate limiter (60 rpm per key, in-memory fixed
+// window) + outbound webhook dispatcher (best-effort POSTs with
+// HMAC-SHA256 signing). Singleton because both wrap process-wide
+// state (counter dictionary / IHttpClientFactory pool).
+builder.Services.AddSingleton<EgyptTax.Infrastructure.Api.ApiKeyRateLimiter>();
+builder.Services.AddHttpClient("WebhookDispatcher");
+builder.Services.AddSingleton<EgyptTax.Infrastructure.Api.WebhookDispatcher>();
+
 // v3 §11 #8 — eSignature service: request + verify + record
 // magic-link signatures on quotations / invoices.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Signatures.SignatureService>();
@@ -1050,15 +1058,16 @@ app.UseSerilogRequestLogging();
     );
 }
 
-// N.3 (v3 §11) — public REST API surface. Bearer-token auth via
-// ApiKeyService; v1 ships read-only endpoints for the 3 most-
-// integrated entity types (customers, items, invoices). Write
-// endpoints + webhooks land in a follow-on once a real
-// integration partner asks. Pagination via ?skip=&take= with a
-// hard cap of 200 per request to keep responses bounded.
+// N.3 (v3 §11) + v4 B.3 — public REST API surface. Bearer-token
+// auth via ApiKeyService, gated by a per-key rate limiter
+// (60 rpm). v4 adds a write endpoint (POST invoice draft) +
+// outbound webhooks for invoice.posted / payment.received.
+// Pagination via ?skip=&take= with a hard cap of 200 per request
+// to keep responses bounded.
 static async Task<IResult> AuthGate(
     HttpContext ctx,
-    EgyptTax.Infrastructure.Api.ApiKeyService apiKeys)
+    EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
+    EgyptTax.Infrastructure.Api.ApiKeyRateLimiter rateLimiter)
 {
     var header = ctx.Request.Headers["Authorization"].ToString();
     if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
@@ -1067,16 +1076,34 @@ static async Task<IResult> AuthGate(
     var key = await apiKeys.ValidateAsync(token);
     if (key is null)
         return Results.Json(new { error = "Invalid or revoked API key." }, statusCode: 401);
+
+    // v4 B.3 — per-key rate limit. Surface remaining + reset via
+    // the standard X-RateLimit-* response headers so an integrator
+    // can pace themselves; on overflow return 429 with Retry-After.
+    var outcome = rateLimiter.TryConsume(key.Id);
+    ctx.Response.Headers["X-RateLimit-Limit"] =
+        rateLimiter.Limit.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    ctx.Response.Headers["X-RateLimit-Remaining"] =
+        outcome.RemainingInWindow.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    if (!outcome.Allowed)
+    {
+        ctx.Response.Headers["Retry-After"] =
+            outcome.RetryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return Results.Json(
+            new { error = "Rate limit exceeded.", retry_after_seconds = outcome.RetryAfterSeconds },
+            statusCode: 429);
+    }
     return Results.Ok();
 }
 
 app.MapGet("/api/v1/customers", async (
     HttpContext ctx,
     EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
+    EgyptTax.Infrastructure.Api.ApiKeyRateLimiter rateLimiter,
     EgyptTax.Infrastructure.Persistence.AppDbContext db,
     int skip = 0, int take = 50) =>
 {
-    var auth = await AuthGate(ctx, apiKeys);
+    var auth = await AuthGate(ctx, apiKeys, rateLimiter);
     if (auth is not Microsoft.AspNetCore.Http.HttpResults.Ok) return auth;
     take = Math.Clamp(take, 1, 200);
     var rows = await db.Set<EgyptTax.Domain.MasterData.Customer>().AsNoTracking()
@@ -1095,10 +1122,11 @@ app.MapGet("/api/v1/customers", async (
 app.MapGet("/api/v1/items", async (
     HttpContext ctx,
     EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
+    EgyptTax.Infrastructure.Api.ApiKeyRateLimiter rateLimiter,
     EgyptTax.Infrastructure.Persistence.AppDbContext db,
     int skip = 0, int take = 50) =>
 {
-    var auth = await AuthGate(ctx, apiKeys);
+    var auth = await AuthGate(ctx, apiKeys, rateLimiter);
     if (auth is not Microsoft.AspNetCore.Http.HttpResults.Ok) return auth;
     take = Math.Clamp(take, 1, 200);
     var rows = await db.Set<EgyptTax.Domain.MasterData.Item>().AsNoTracking()
@@ -1119,10 +1147,11 @@ app.MapGet("/api/v1/items", async (
 app.MapGet("/api/v1/invoices", async (
     HttpContext ctx,
     EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
+    EgyptTax.Infrastructure.Api.ApiKeyRateLimiter rateLimiter,
     EgyptTax.Infrastructure.Persistence.AppDbContext db,
     int skip = 0, int take = 50) =>
 {
-    var auth = await AuthGate(ctx, apiKeys);
+    var auth = await AuthGate(ctx, apiKeys, rateLimiter);
     if (auth is not Microsoft.AspNetCore.Http.HttpResults.Ok) return auth;
     take = Math.Clamp(take, 1, 200);
     var rows = await db.Set<EgyptTax.Domain.Invoices.SalesInvoice>().AsNoTracking()
@@ -1141,6 +1170,128 @@ app.MapGet("/api/v1/invoices", async (
         })
         .ToListAsync();
     return Results.Ok(new { skip, take, count = rows.Count, data = rows });
+});
+
+// v4 B.3 — POST /api/v1/invoices/draft. Creates a SalesInvoice in
+// Draft state for an integration partner (Shopify-style push). The
+// operator reviews + posts via the regular page; we intentionally
+// do NOT auto-post because the JE emit + sequence allocation are
+// scoped to interactive operator confirmation (FR-027).
+app.MapPost("/api/v1/invoices/draft", async (
+    HttpContext ctx,
+    EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
+    EgyptTax.Infrastructure.Api.ApiKeyRateLimiter rateLimiter,
+    EgyptTax.Infrastructure.Persistence.AppDbContext db,
+    System.Text.Json.JsonElement body) =>
+{
+    var auth = await AuthGate(ctx, apiKeys, rateLimiter);
+    if (auth is not Microsoft.AspNetCore.Http.HttpResults.Ok) return auth;
+
+    try
+    {
+        if (!body.TryGetProperty("customer_id", out var custEl)
+            || !Guid.TryParse(custEl.GetString(), out var customerId))
+        {
+            return Results.BadRequest(new { error = "customer_id (Guid) is required." });
+        }
+        if (!body.TryGetProperty("document_date", out var dateEl)
+            || !DateOnly.TryParse(dateEl.GetString(),
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var documentDate))
+        {
+            return Results.BadRequest(new { error = "document_date (yyyy-MM-dd) is required." });
+        }
+        if (!body.TryGetProperty("lines", out var linesEl)
+            || linesEl.ValueKind != System.Text.Json.JsonValueKind.Array
+            || linesEl.GetArrayLength() == 0)
+        {
+            return Results.BadRequest(new { error = "lines array (>=1) is required." });
+        }
+
+        var customer = await db.Set<EgyptTax.Domain.MasterData.Customer>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == customerId);
+        if (customer is null)
+        {
+            return Results.NotFound(new { error = $"customer_id {customerId} not found." });
+        }
+
+        var draft = EgyptTax.Domain.Invoices.SalesInvoice.CreateDraft(
+            customerId: customerId,
+            customerTaxProfileSnapshot: customer.TaxProfile,
+            documentDate: documentDate);
+
+        foreach (var lineEl in linesEl.EnumerateArray())
+        {
+            if (!lineEl.TryGetProperty("item_id", out var itemEl)
+                || !Guid.TryParse(itemEl.GetString(), out var itemId))
+            {
+                return Results.BadRequest(new { error = "Each line needs item_id (Guid)." });
+            }
+            if (!lineEl.TryGetProperty("quantity", out var qtyEl)
+                || !qtyEl.TryGetDecimal(out var qty)
+                || qty <= 0m)
+            {
+                return Results.BadRequest(new { error = "Each line needs quantity > 0." });
+            }
+            if (!lineEl.TryGetProperty("unit_price_egp", out var priceEl)
+                || !priceEl.TryGetDecimal(out var unitPrice)
+                || unitPrice < 0m)
+            {
+                return Results.BadRequest(new { error = "Each line needs unit_price_egp >= 0." });
+            }
+
+            var item = await db.Set<EgyptTax.Domain.MasterData.Item>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.Id == itemId);
+            if (item is null)
+            {
+                return Results.NotFound(new { error = $"item_id {itemId} not found." });
+            }
+            // Optional explicit vat_category_id; otherwise use the
+            // item's default — same defaulting the UI applies.
+            Guid vatCategoryId = item.DefaultVatCategoryId;
+            if (lineEl.TryGetProperty("vat_category_id", out var vatEl)
+                && Guid.TryParse(vatEl.GetString(), out var vatId))
+            {
+                vatCategoryId = vatId;
+            }
+            var vatCategory = await db.Set<EgyptTax.Domain.MasterData.VatCategory>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(v => v.Id == vatCategoryId);
+            if (vatCategory is null)
+            {
+                return Results.NotFound(new { error = $"vat_category_id {vatCategoryId} not found." });
+            }
+
+            draft.AddLine(
+                itemId: itemId,
+                quantity: qty,
+                unitPrice: EgyptTax.SharedKernel.MoneyEgp.From(unitPrice),
+                vatCategoryId: vatCategoryId,
+                vatRatePercent: vatCategory.RatePercent);
+        }
+
+        db.Add(draft);
+        await db.SaveChangesAsync();
+
+        return Results.Created($"/invoices/{draft.Id}", new
+        {
+            id = draft.Id,
+            state = draft.State.ToString(),
+            customer_id = draft.CustomerId,
+            document_date = draft.DocumentDate.ToString("yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture),
+            line_count = draft.Lines.Count,
+            subtotal = draft.Subtotal.Amount,
+            vat_total = draft.VatTotal.Amount,
+            grand_total = draft.GrandTotal.Amount,
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
 });
 
 // T058 — Blazor + Razor Pages routing. The Blazor hub serves the

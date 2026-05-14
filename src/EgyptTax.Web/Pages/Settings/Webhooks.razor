@@ -1,0 +1,204 @@
+@page "/settings/webhooks"
+@using System.Security.Cryptography
+@using EgyptTax.Domain.Settings
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v4 B.3 — outbound webhook subscriptions. Operator gives a name
+    + URL + (optional) comma-separated event mask; system auto-
+    generates a random 256-bit shared secret. Each registered
+    webhook receives a POST per matched event with an
+    X-Daftarx-Signature header for HMAC verification.
+*@
+
+<PageTitle>@Tr("Webhooks | DaftarX", "Webhooks | DaftarX")</PageTitle>
+
+<h1>@Tr("Webhooks (الإشعارات الخارجية)", "Webhooks")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "سجّل URL خارجي عشان النظام يبعت له POST مع كل حدث (invoice.posted أو payment.received). كل request بيحمل X-Daftarx-Signature بحساب HMAC-SHA256 على body باستخدام السر اللي بيظهر مرة واحدة بعد الإنشاء.",
+        "Register an external URL and the system POSTs to it for every matching event (invoice.posted / payment.received). Each request carries X-Daftarx-Signature = HMAC-SHA256(secret, body); the secret is shown once on create.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:12px 0;padding:14px;">@_flash</div>
+}
+
+<section class="form-section">
+    <h2>@Tr("سجّل webhook جديد", "Register new webhook")</h2>
+    <div class="form-grid">
+        <label>
+            <span>@Tr("اسم *", "Name *")</span>
+            <input type="text" maxlength="120" @bind="_newName"
+                   placeholder="e.g. Slack #orders" />
+        </label>
+        <label>
+            <span>@Tr("URL *", "URL *")</span>
+            <input type="url" maxlength="2000" @bind="_newUrl"
+                   placeholder="https://hooks.example.com/daftarx" />
+        </label>
+        <label>
+            <span>@Tr("الأحداث (فاضي = الكل)", "Events (empty = all)")</span>
+            <input type="text" maxlength="500" @bind="_newEventMask"
+                   placeholder="invoice.posted,payment.received" />
+        </label>
+    </div>
+    <div class="invoice-actions">
+        <button type="button" class="btn-primary" @onclick="CreateAsync"
+                disabled="@(_busy || string.IsNullOrWhiteSpace(_newName) || string.IsNullOrWhiteSpace(_newUrl))">
+            @Tr("➕ سجّل وشوف السر", "➕ Register & reveal secret")
+        </button>
+    </div>
+</section>
+
+@if (_revealedSecret is not null)
+{
+    <div class="kpi-card kpi-warn" style="padding:14px;margin-top:12px;">
+        <strong>@Tr("⚠ احفظ السر دلوقتي:", "⚠ Save this secret now:")</strong>
+        <pre style="margin:8px 0;background:#000;color:#0f0;padding:8px;border-radius:4px;">@_revealedSecret</pre>
+        <em>@Tr("مش هتشوفه مرة تانية. الـ webhook هيستخدمه عشان يعمل HMAC-SHA256 على كل request.",
+            "You won't see it again. The webhook will use it to HMAC-SHA256 every payload.")</em>
+    </div>
+}
+
+<h2 style="margin-top:24px;">@Tr("الـ Webhooks المسجّلة", "Registered webhooks")</h2>
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+}
+else if (_hooks.Count == 0)
+{
+    <p><em>@Tr("ما فيش webhook مسجّل لسه.", "No webhooks registered yet.")</em></p>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>@Tr("الاسم", "Name")</th>
+                <th>URL</th>
+                <th>@Tr("الأحداث", "Events")</th>
+                <th>@Tr("مفعّل", "Enabled")</th>
+                <th>@Tr("آخر استدعاء", "Last call")</th>
+                <th>@Tr("إجراءات", "Actions")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var hook in _hooks)
+            {
+                <tr>
+                    <td>@hook.Name</td>
+                    <td><code style="font-size:11px;">@hook.Url</code></td>
+                    <td><small>@(string.IsNullOrWhiteSpace(hook.EventMask) ? "(all)" : hook.EventMask)</small></td>
+                    <td>@(hook.Enabled ? "✓" : "✗")</td>
+                    <td><small>@(hook.LastDispatchAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "—") @(hook.LastDispatchStatus)</small></td>
+                    <td>
+                        <button type="button" class="btn-secondary" style="font-size:12px;"
+                                @onclick="() => ToggleAsync(hook.Id)">
+                            @(hook.Enabled ? Tr("إيقاف", "Disable") : Tr("تفعيل", "Enable"))
+                        </button>
+                        <button type="button" class="btn-secondary" style="font-size:12px;"
+                                @onclick="() => DeleteAsync(hook.Id)">
+                            @Tr("حذف", "Delete")
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+    private List<Webhook> _hooks = new();
+
+    private string _newName = "";
+    private string _newUrl = "";
+    private string _newEventMask = "";
+    private string? _revealedSecret;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _hooks = await Db.Set<Webhook>().AsNoTracking()
+            .OrderBy(w => w.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newName) || string.IsNullOrWhiteSpace(_newUrl)) return;
+        _busy = true;
+        _flash = null;
+        try
+        {
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId();
+            // 256-bit secret, base64url-encoded for header-safe
+            // copy/paste. Shown to operator once + then only stored.
+            var secret = GenerateSecret();
+            var hook = new Webhook(
+                name: _newName,
+                url: _newUrl,
+                secret: secret,
+                eventMask: _newEventMask,
+                createdAtUtc: DateTime.UtcNow,
+                createdByUserId: userId);
+            Db.Add(hook);
+            await Db.SaveChangesAsync();
+            _revealedSecret = secret;
+            _newName = _newUrl = _newEventMask = "";
+            _flash = IsArabic ? "✓ تم تسجيل الـ webhook." : "✓ Webhook registered.";
+            _flashClass = "kpi-card kpi-info";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ToggleAsync(Guid id)
+    {
+        var live = await Db.Set<Webhook>().FirstAsync(w => w.Id == id);
+        if (live.Enabled) live.Disable(); else live.Enable();
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        var live = await Db.Set<Webhook>().FirstAsync(w => w.Id == id);
+        Db.Remove(live);
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private static string GenerateSecret()
+    {
+        Span<byte> bytes = stackalloc byte[32];
+        RandomNumberGenerator.Fill(bytes);
+        return Convert.ToBase64String(bytes)
+            .Replace('+', '-')
+            .Replace('/', '_')
+            .TrimEnd('=');
+    }
+}

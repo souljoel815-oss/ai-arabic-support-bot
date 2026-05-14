@@ -258,7 +258,7 @@ without spinning up a new entity family.
   "send this tier now" override (operator can email manually
   using the existing L1 send). Phone-call reminders.
 
-### B.3 — REST API: rate limiting + webhooks + write endpoints
+### B.3 — REST API: rate limiting + webhooks + write endpoints ✅ SHIPPED
 
 - **Pain:** N.3 shipped read-only GET endpoints + Bearer auth.
   The Manus AI v4 spec rightly flags rate-limiting as a security

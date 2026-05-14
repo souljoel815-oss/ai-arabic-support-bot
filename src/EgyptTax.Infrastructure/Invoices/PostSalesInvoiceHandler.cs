@@ -38,6 +38,7 @@ public sealed class PostSalesInvoiceHandler
     private readonly IAuditLogStore _auditLog;
     private readonly IJournalEntryEmitter? _journalEmitter;
     private readonly ITaxPeriodLockGuard? _periodLockGuard;
+    private readonly EgyptTax.Infrastructure.Api.WebhookDispatcher? _webhooks;
 
     public PostSalesInvoiceHandler(
         AppDbContext db,
@@ -45,7 +46,8 @@ public sealed class PostSalesInvoiceHandler
         IClock clock,
         IAuditLogStore auditLog,
         IJournalEntryEmitter? journalEmitter = null,
-        ITaxPeriodLockGuard? periodLockGuard = null
+        ITaxPeriodLockGuard? periodLockGuard = null,
+        EgyptTax.Infrastructure.Api.WebhookDispatcher? webhooks = null
     )
     {
         _db = db;
@@ -54,6 +56,7 @@ public sealed class PostSalesInvoiceHandler
         _auditLog = auditLog;
         _journalEmitter = journalEmitter;
         _periodLockGuard = periodLockGuard;
+        _webhooks = webhooks;
     }
 
     public async Task<SalesInvoice> HandleAsync(
@@ -342,6 +345,22 @@ public sealed class PostSalesInvoiceHandler
             ),
             cancellationToken
         );
+
+        // v4 B.3 — fan out the invoice.posted webhook event. Fire-
+        // and-forget; the dispatcher swallows + logs failures so a
+        // misconfigured receiver never blocks the post path.
+        _webhooks?.Enqueue("invoice.posted", new
+        {
+            invoice_id = invoice.Id,
+            customer_id = invoice.CustomerId,
+            document_number = invoice.DocumentNumber,
+            document_date = invoice.DocumentDate.ToString(
+                "yyyy-MM-dd", CultureInfo.InvariantCulture),
+            posted_at_utc = invoice.PostedAtUtc?.ToString(
+                "o", CultureInfo.InvariantCulture),
+            grand_total_egp = invoice.GrandTotal.Amount,
+            is_credit_note = invoice.IsCreditNote,
+        });
 
         return invoice;
     }

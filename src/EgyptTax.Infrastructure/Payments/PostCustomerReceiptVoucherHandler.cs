@@ -32,6 +32,7 @@ public sealed class PostCustomerReceiptVoucherHandler
     private readonly IAuditLogStore _auditLog;
     private readonly ICustomerReceiptVoucherJournalEmitter? _journalEmitter;
     private readonly IWhtComputeService? _whtCompute;
+    private readonly EgyptTax.Infrastructure.Api.WebhookDispatcher? _webhooks;
 
     public PostCustomerReceiptVoucherHandler(
         AppDbContext db,
@@ -39,7 +40,8 @@ public sealed class PostCustomerReceiptVoucherHandler
         IClock clock,
         IAuditLogStore auditLog,
         ICustomerReceiptVoucherJournalEmitter? journalEmitter = null,
-        IWhtComputeService? whtCompute = null
+        IWhtComputeService? whtCompute = null,
+        EgyptTax.Infrastructure.Api.WebhookDispatcher? webhooks = null
     )
     {
         _db = db;
@@ -48,6 +50,7 @@ public sealed class PostCustomerReceiptVoucherHandler
         _auditLog = auditLog;
         _journalEmitter = journalEmitter;
         _whtCompute = whtCompute;
+        _webhooks = webhooks;
     }
 
     public async Task<CustomerReceiptVoucher> HandleAsync(
@@ -145,6 +148,21 @@ public sealed class PostCustomerReceiptVoucherHandler
             ),
             cancellationToken
         );
+
+        // v4 B.3 — fire payment.received for integrators that want
+        // real-time receipt notifications (e.g., to mark a Shopify
+        // order paid).
+        _webhooks?.Enqueue("payment.received", new
+        {
+            voucher_id = voucher.Id,
+            customer_id = voucher.CustomerId,
+            document_number = voucher.DocumentNumber,
+            receipt_date = voucher.ReceiptDate.ToString(
+                "yyyy-MM-dd", CultureInfo.InvariantCulture),
+            payment_method = voucher.PaymentMethod.ToString(),
+            gross_egp = voucher.GrossReceiptAmount.Amount,
+            net_cash_received_egp = voucher.NetCashReceived.Amount,
+        });
 
         return voucher;
     }
