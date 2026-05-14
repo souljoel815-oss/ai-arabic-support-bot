@@ -76,6 +76,19 @@
                     : "Reminder: simplified regime is only for enterprises under EGP 15M annual revenue. See /reports/turnover-tax for an estimate.")
             </p>
         }
+        <label>
+            <span>@(IsArabic ? "قالب فاتورة الـ PDF" : "Invoice PDF template")</span>
+            <InputSelect @bind-Value="_form.DefaultPdfTemplate">
+                <option value="@InvoicePdfTemplate.Classic">@(IsArabic ? "كلاسيك (أبيض وأسود تقليدي)" : "Classic (plain black-on-white)")</option>
+                <option value="@InvoicePdfTemplate.Modern">@(IsArabic ? "حديث (شريط أزرق + إجمالي مظلَّل)" : "Modern (slate accent band + tinted totals)")</option>
+                <option value="@InvoicePdfTemplate.Minimal">@(IsArabic ? "بسيط (رصاصي خفيف ومسافات مريحة)" : "Minimal (gray accents + generous whitespace)")</option>
+            </InputSelect>
+            <small style="color:var(--text-muted);font-size:12px;">
+                @(IsArabic
+                    ? "التغيير يؤثر على كل فواتير الـ PDF الجديدة المولّدة من النظام."
+                    : "Applies to every PDF the system renders from now on.")
+            </small>
+        </label>
     </fieldset>
 
     <fieldset>
@@ -155,6 +168,7 @@
             _existing.UpdateAddress(address);
             _existing.UpdateTaxpayerActivityCode(_form.TaxpayerActivityCode);
             _existing.UpdateTaxRegime(_form.TaxRegime);
+            _existing.UpdateDefaultPdfTemplate(_form.DefaultPdfTemplate);
         }
 
         await Db.SaveChangesAsync();
@@ -172,6 +186,7 @@
         [Range(1, 12)] public int FiscalYearStartMonth { get; set; } = 1;
         public Language DefaultLanguage { get; set; } = Language.Ar;
         public TaxRegime TaxRegime { get; set; } = TaxRegime.Standard;
+        public InvoicePdfTemplate DefaultPdfTemplate { get; set; } = InvoicePdfTemplate.Classic;
 
         [Required, StringLength(500)] public string AddressDisplayEnglish { get; set; } = "";
         [Required, StringLength(500)] public string AddressDisplayArabic  { get; set; } = "";
@@ -191,6 +206,7 @@
             FiscalYearStartMonth = c.FiscalYearStartMonth,
             DefaultLanguage = c.DefaultLanguage,
             TaxRegime = c.TaxRegime,
+            DefaultPdfTemplate = c.DefaultPdfTemplate,
             AddressDisplayEnglish = c.Address.DisplayEnglish,
             AddressDisplayArabic  = c.Address.DisplayArabic,
             AddressGovernorate    = c.Address.Governorate,

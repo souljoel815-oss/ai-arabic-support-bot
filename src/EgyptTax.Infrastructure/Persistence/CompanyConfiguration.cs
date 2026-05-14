@@ -106,5 +106,16 @@ internal sealed class CompanyConfiguration : IEntityTypeConfiguration<Company>
             .HasMaxLength(24)
             .IsUnicode(false)
             .IsRequired();
+
+        // v4 C.9 — default invoice PDF template variant. Stored as
+        // string for human-readable diagnostics (same convention as
+        // the other enums in this project).
+        b.Property(c => c.DefaultPdfTemplate)
+            .HasColumnName("default_pdf_template")
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .IsUnicode(false)
+            .IsRequired()
+            .HasDefaultValue(InvoicePdfTemplate.Classic);
     }
 }

@@ -142,7 +142,12 @@ public static class InvoiceRenderingPipeline
             PostedByUserDisplayName: "(unknown)",
             SealQrPayload: sealPayload,
             OriginalInvoiceReference: originalRef,
-            PortalUrl: portalUrl
+            PortalUrl: portalUrl,
+            // v4 C.9 — pull the operator-chosen template variant
+            // (Classic / Modern / Minimal) from the company row so
+            // every PDF rendered through this pipeline uses the
+            // same look without callers having to know.
+            Template: issuer.DefaultPdfTemplate
         );
 
         var eInvoiceRequest = new EInvoiceRenderRequest(

@@ -324,7 +324,7 @@ still waits for a real customer ask before any code is written:
 | Consulting firm with timesheets + project P&L | Timesheet entry + project profitability via invoice tagging | XL ~3w |
 | Deal blocked on cryptographic e-signature | DocuSign / qualified-signature integration | L ~2w |
 | Bank-feed auto-import (CIB/NBE/QNB) | OFX/CAMT import from bank export portal | M ~1w |
-| Multiple invoice PDF templates | Template designer or 3 hard-coded variants | M ~5d |
+| Multiple invoice PDF templates ✅ SHIPPED (3 hard-coded variants: Classic/Modern/Minimal) | Template designer or 3 hard-coded variants | M ~5d |
 | Purchase Orders (full PO → Receive → Bill flow) | PO entity + RfQ + receive workflow + 3-way matching | XL ~3w |
 
 The discipline: **don't pre-build any of these**. The Manus AI

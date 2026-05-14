@@ -34,6 +34,13 @@ public sealed class Company
     /// </summary>
     public TaxRegime TaxRegime { get; private set; } = TaxRegime.Standard;
 
+    /// <summary>v4 C.9 — visual template the invoice PDF renderer
+    /// applies. Three hard-coded variants ship in v4 (Classic /
+    /// Modern / Minimal); a full template designer is intentionally
+    /// out-of-scope until a customer asks. Defaults to Classic so
+    /// pre-v4 installs render unchanged.</summary>
+    public InvoicePdfTemplate DefaultPdfTemplate { get; private set; } = InvoicePdfTemplate.Classic;
+
     private Company() { }
 
     public Company(
@@ -77,6 +84,28 @@ public sealed class Company
 
     /// <summary>Day 8 — switch the company between Standard and the Law 6 simplified regime.</summary>
     public void UpdateTaxRegime(TaxRegime regime) => TaxRegime = regime;
+
+    /// <summary>v4 C.9 — switch the default invoice PDF template.</summary>
+    public void UpdateDefaultPdfTemplate(InvoicePdfTemplate template) =>
+        DefaultPdfTemplate = template;
+}
+
+/// <summary>v4 C.9 — visual variants of the sales-invoice PDF.
+/// Three hard-coded styles ship in v4; a designer mode lands when
+/// a customer asks for it.</summary>
+public enum InvoicePdfTemplate
+{
+    /// <summary>Pre-v4 look. Black-on-white, plain headers, simple
+    /// bordered tables — the most-conservative option.</summary>
+    Classic,
+    /// <summary>Slate-blue accent band on the header + colored
+    /// totals row. Used by SMBs that want to look professional
+    /// without going corporate.</summary>
+    Modern,
+    /// <summary>Generous whitespace, gray accent rules, minimal
+    /// bordering. Reads as "boutique consulting firm" rather than
+    /// "tax invoice."</summary>
+    Minimal,
 }
 
 /// <summary>

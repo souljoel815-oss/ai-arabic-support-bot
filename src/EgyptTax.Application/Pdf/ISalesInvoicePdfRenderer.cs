@@ -38,7 +38,12 @@ public sealed record InvoicePdfRequest(
     /// the printed invoice to land on their statement page.
     /// Null when the operator hasn't generated a portal link for
     /// the customer yet.</summary>
-    string? PortalUrl = null
+    string? PortalUrl = null,
+    /// <summary>v4 C.9 — visual variant the renderer applies.
+    /// Defaults to <see cref="EgyptTax.Domain.MasterData.InvoicePdfTemplate.Classic"/>;
+    /// the rendering pipeline overrides with the value from
+    /// <see cref="Company.DefaultPdfTemplate"/>.</summary>
+    EgyptTax.Domain.MasterData.InvoicePdfTemplate Template = EgyptTax.Domain.MasterData.InvoicePdfTemplate.Classic
 );
 
 /// <summary>

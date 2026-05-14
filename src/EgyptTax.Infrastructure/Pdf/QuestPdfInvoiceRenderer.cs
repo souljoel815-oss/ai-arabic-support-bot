@@ -31,6 +31,30 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
 
     static QuestPdfInvoiceRenderer() => QuestPdfFontInitializer.EnsureRegistered();
 
+    /// <summary>v4 C.9 — palette + ornament settings derived from
+    /// <see cref="InvoicePdfRequest.Template"/>. Hard-coded for the
+    /// three v4 variants; a designer mode would replace this with a
+    /// settings-driven palette.</summary>
+    private readonly record struct TemplateStyle(
+        string AccentHex,
+        string MutedAccentHex,
+        bool HasHeaderBand,
+        bool HasTotalsHighlight,
+        bool DenseLayout);
+
+    private static TemplateStyle StyleFor(EgyptTax.Domain.MasterData.InvoicePdfTemplate template) =>
+        template switch
+        {
+            // Modern — slate-blue accent + colored header band + tinted totals row.
+            EgyptTax.Domain.MasterData.InvoicePdfTemplate.Modern =>
+                new TemplateStyle("#1E3A8A", "#DBE2F1", true, true, false),
+            // Minimal — soft gray, no ornament, generous whitespace.
+            EgyptTax.Domain.MasterData.InvoicePdfTemplate.Minimal =>
+                new TemplateStyle("#374151", "#F3F4F6", false, false, false),
+            // Classic (default) — black-on-white, no accents.
+            _ => new TemplateStyle("#000000", "#FFFFFF", false, false, false),
+        };
+
     public byte[] Render(InvoicePdfRequest request)
     {
         // Scattered honeypot — block PDF generation on unlicensed installs.
@@ -46,6 +70,7 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
 
         var labelEn = DocumentTypeLabelEnglish(invoice, request.Receiver);
         var labelAr = DocumentTypeLabelArabic(invoice, request.Receiver);
+        var style = StyleFor(request.Template);
         var qrPng = RenderQrPng(request.SealQrPayload);
         // v4 A.5 — second QR for the customer-portal magic link,
         // rendered only when a portal URL was supplied. Operator
@@ -77,7 +102,27 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
                 page.Header()
                     .Column(col =>
                     {
+                        // v4 C.9 — Modern variant lays a thin accent
+                        // band above the issuer block. Classic +
+                        // Minimal skip it (the Container is invisible
+                        // when no background is applied).
+                        if (style.HasHeaderBand)
+                        {
+                            col.Item()
+                                .Background(style.AccentHex)
+                                .Padding(6)
+                                .Row(band =>
+                                {
+                                    band.RelativeItem()
+                                        .Text(request.Issuer.LegalName.English)
+                                        .FontColor("#FFFFFF").Bold().FontSize(11);
+                                    band.RelativeItem().AlignRight()
+                                        .Text(labelEn)
+                                        .FontColor("#FFFFFF").Bold().FontSize(11);
+                                });
+                        }
                         col.Item()
+                            .PaddingTop(style.HasHeaderBand ? 6 : 0)
                             .Row(row =>
                             {
                                 row.RelativeItem()
@@ -86,6 +131,7 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
                                         left.Item()
                                             .Text(request.Issuer.LegalName.English)
                                             .Bold()
+                                            .FontColor(style.AccentHex)
                                             .FontSize(14);
                                         left.Item()
                                             .Text(request.Issuer.LegalName.Arabic)
@@ -103,7 +149,8 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
                                     .AlignRight()
                                     .Column(right =>
                                     {
-                                        right.Item().AlignRight().Text(labelEn).Bold().FontSize(14);
+                                        right.Item().AlignRight().Text(labelEn).Bold()
+                                            .FontColor(style.AccentHex).FontSize(14);
                                         right.Item().AlignRight().Text(labelAr).FontSize(12);
                                         right
                                             .Item()
@@ -164,7 +211,7 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
                             }
                         }
 
-                        col.Item().PaddingTop(10).Element(c => RenderLines(c, request));
+                        col.Item().PaddingTop(10).Element(c => RenderLines(c, request, style));
 
                         col.Item()
                             .PaddingTop(10)
@@ -183,13 +230,23 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
                                     .Text(
                                         $"VAT total: {invoice.VatTotal.Amount.ToString("F2", CultureInfo.InvariantCulture)} EGP"
                                     );
-                                totals
-                                    .Item()
+                                // v4 C.9 — Modern variant tints the
+                                // grand-total line to draw the eye.
+                                var grandItem = totals.Item();
+                                if (style.HasTotalsHighlight)
+                                {
+                                    grandItem = grandItem
+                                        .Background(style.MutedAccentHex)
+                                        .PaddingHorizontal(8)
+                                        .PaddingVertical(4);
+                                }
+                                grandItem
                                     .AlignRight()
                                     .Text(
                                         $"Grand total: {invoice.GrandTotal.Amount.ToString("F2", CultureInfo.InvariantCulture)} EGP"
                                     )
                                     .Bold()
+                                    .FontColor(style.AccentHex)
                                     .FontSize(12);
                             });
 
@@ -260,7 +317,7 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
         return doc.GeneratePdf();
     }
 
-    private static void RenderLines(IContainer container, InvoicePdfRequest request)
+    private static void RenderLines(IContainer container, InvoicePdfRequest request, TemplateStyle style)
     {
         container.Table(table =>
         {
@@ -277,17 +334,38 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
                 c.ConstantColumn(60); // line total
             });
 
+            // v4 C.9 — Modern paints the header row in the muted
+            // accent for visual rhythm. Classic + Minimal leave it
+            // bare so the SC-008 contract test still finds plain
+            // header text.
+            void HeaderCell(IContainer c, string text, bool alignRight = false)
+            {
+                var cell = c;
+                if (style.HasTotalsHighlight)
+                {
+                    cell = cell.Background(style.MutedAccentHex).Padding(2);
+                }
+                if (alignRight)
+                {
+                    cell.AlignRight().Text(text).Bold().FontColor(style.AccentHex);
+                }
+                else
+                {
+                    cell.Text(text).Bold().FontColor(style.AccentHex);
+                }
+            }
+
             table.Header(header =>
             {
-                header.Cell().Text("#").Bold();
-                header.Cell().Text("Item code").Bold();
-                header.Cell().Text("Description / الوصف").Bold();
-                header.Cell().AlignRight().Text("Qty").Bold();
-                header.Cell().AlignRight().Text("Unit price").Bold();
-                header.Cell().AlignRight().Text("Subtotal").Bold();
-                header.Cell().AlignRight().Text("VAT %").Bold();
-                header.Cell().AlignRight().Text("VAT").Bold();
-                header.Cell().AlignRight().Text("Total").Bold();
+                HeaderCell(header.Cell(), "#");
+                HeaderCell(header.Cell(), "Item code");
+                HeaderCell(header.Cell(), "Description / الوصف");
+                HeaderCell(header.Cell(), "Qty", alignRight: true);
+                HeaderCell(header.Cell(), "Unit price", alignRight: true);
+                HeaderCell(header.Cell(), "Subtotal", alignRight: true);
+                HeaderCell(header.Cell(), "VAT %", alignRight: true);
+                HeaderCell(header.Cell(), "VAT", alignRight: true);
+                HeaderCell(header.Cell(), "Total", alignRight: true);
             });
 
             var index = 1;
