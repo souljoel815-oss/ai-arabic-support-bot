@@ -1,0 +1,113 @@
+@page "/reorder-suggestions"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v3 §11 #6 — Suggestions view: list every item where stock
+    has dropped to its rule's MinQuantity or below. Auto-PO
+    generation deferred — operator clicks through to /purchase-
+    invoices/new manually for v1.
+*@
+
+<PageTitle>@Tr("اقتراحات إعادة الطلب | DaftarX", "Reorder Suggestions | DaftarX")</PageTitle>
+
+<h1>📋 @Tr("اقتراحات إعادة الطلب", "Reorder Suggestions")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "الأصناف اللي رصيدها وصل لحد التنبيه أو تحت. اضغط «اطلب» لتفتح فاتورة شراء جديدة بالمورد المفضل.",
+        "Items at or below their reorder threshold. Click \"Order\" to open a new purchase invoice for the preferred supplier.")
+</p>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+@if (_rows.Count == 0)
+{
+    <div class="kpi-card kpi-success" style="padding:14px;">
+        ✓ @Tr("مفيش أصناف محتاجة إعادة طلب دلوقتي.", "Nothing needs reordering right now.")
+    </div>
+    return;
+}
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>@Tr("الصنف", "Item")</th>
+            <th>@Tr("الحالي", "Current")</th>
+            <th>@Tr("الحد الأدنى", "Min")</th>
+            <th>@Tr("اطلب", "Suggest order")</th>
+            <th>@Tr("المورد", "Supplier")</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var r in _rows)
+        {
+            <tr>
+                <td>
+                    <strong>@r.Item.Code</strong>
+                    <div style="font-size:12px;color:var(--muted);">
+                        @r.Item.Name.Display(IsArabic ? Language.Ar : Language.En)
+                    </div>
+                </td>
+                <td style="color:@(r.Item.QuantityOnHand == 0 ? "var(--danger)" : "var(--warn)");font-weight:600;">
+                    @r.Item.QuantityOnHand.ToString("0.###")
+                </td>
+                <td>@r.Rule.MinQuantity.ToString("0.###")</td>
+                <td><strong>@r.OrderQty.ToString("0.###")</strong></td>
+                <td>@(r.SupplierCode ?? "—")</td>
+                <td>
+                    <a href="/purchase-invoices/new" class="btn-secondary" style="font-size:12px;">
+                        @Tr("افتح فاتورة شراء", "Create purchase invoice")
+                    </a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private bool _loading = true;
+    private List<Row> _rows = new();
+
+    private sealed record Row(ReorderRule Rule, Item Item, decimal OrderQty, string? SupplierCode);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var rules = await Db.Set<ReorderRule>().AsNoTracking()
+            .Where(r => r.IsActive).ToListAsync();
+        if (rules.Count == 0) { _loading = false; return; }
+
+        var itemIds = rules.Select(r => r.ItemId).Distinct().ToList();
+        var items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => itemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id);
+
+        var supplierIds = rules.Where(r => r.PreferredSupplierId.HasValue)
+            .Select(r => r.PreferredSupplierId!.Value).Distinct().ToList();
+        var suppliers = await Db.Set<Supplier>().AsNoTracking()
+            .Where(s => supplierIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id);
+
+        _rows = rules
+            .Where(r => items.ContainsKey(r.ItemId))
+            .Where(r => items[r.ItemId].QuantityOnHand <= r.MinQuantity)
+            .Select(r => new Row(
+                r,
+                items[r.ItemId],
+                r.RecommendedOrderQty(items[r.ItemId].QuantityOnHand),
+                r.PreferredSupplierId.HasValue && suppliers.TryGetValue(r.PreferredSupplierId.Value, out var s)
+                    ? s.Code : null))
+            .OrderBy(r => r.Item.QuantityOnHand)
+            .ToList();
+        _loading = false;
+    }
+}

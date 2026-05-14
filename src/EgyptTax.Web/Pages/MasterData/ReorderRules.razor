@@ -1,0 +1,208 @@
+@page "/reorder-rules"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v3 §11 #6 — Reorder rules. Per-item alert thresholds. v1
+    is alert-only (no auto-PO generation); operator sees the
+    "needs reorder now" list + acts manually. Auto-PO lands
+    when a real distribution customer asks (v4 trigger).
+*@
+
+<PageTitle>@Tr("قواعد إعادة الطلب | DaftarX", "Reorder Rules | DaftarX")</PageTitle>
+
+<h1>@Tr("قواعد إعادة الطلب", "Reorder Rules")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "حدد لكل صنف حد أدنى وكمية مستهدفة. لما الرصيد ينزل تحت الحد الأدنى، الصنف هيظهر في الـ «اقتراحات إعادة الطلب» بكمية = المستهدف − الحالي.",
+        "Set a minimum + target quantity per item. When stock drops below the minimum, the item surfaces in Reorder Suggestions with order qty = target − current.")
+</p>
+
+<div class="invoice-toolbar">
+    <a href="/reorder-suggestions" class="btn-primary">@Tr("📋 اقتراحات إعادة الطلب", "📋 Reorder suggestions")</a>
+</div>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+}
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>@Tr("الصنف", "Item")</th>
+            <th>@Tr("الرصيد الحالي", "Current stock")</th>
+            <th>@Tr("الحد الأدنى", "Min")</th>
+            <th>@Tr("الكمية المستهدفة", "Target")</th>
+            <th>@Tr("المورد المفضّل", "Preferred supplier")</th>
+            <th>@Tr("الحالة", "Status")</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var r in _rules)
+        {
+            var rule = r;
+            var item = _items.GetValueOrDefault(r.ItemId);
+            <tr>
+                <td>
+                    <strong>@(item?.Code ?? "?")</strong>
+                    <div style="font-size:12px;color:var(--muted);">
+                        @(item?.Name.Display(IsArabic ? Language.Ar : Language.En) ?? "—")
+                    </div>
+                </td>
+                <td>@(item?.QuantityOnHand.ToString("0.###") ?? "?")</td>
+                <td>@r.MinQuantity.ToString("0.###")</td>
+                <td>@r.TargetQuantity.ToString("0.###")</td>
+                <td>@(r.PreferredSupplierId.HasValue && _suppliers.TryGetValue(r.PreferredSupplierId.Value, out var s) ? s.Code : "—")</td>
+                <td>
+                    @if (r.IsActive)
+                    {
+                        <span style="color:var(--success);">@Tr("نشط", "Active")</span>
+                    }
+                    else
+                    {
+                        <span style="color:var(--muted);">@Tr("معطل", "Inactive")</span>
+                    }
+                </td>
+                <td>
+                    @if (r.IsActive)
+                    {
+                        <button type="button" class="btn-secondary" style="font-size:12px;"
+                                @onclick="() => DeactivateAsync(rule.Id)">
+                            @Tr("تعطيل", "Off")
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn-secondary" style="font-size:12px;"
+                                @onclick="() => ReactivateAsync(rule.Id)">
+                            @Tr("تفعيل", "On")
+                        </button>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2 style="margin-top:24px;">@Tr("+ قاعدة جديدة", "+ Add a rule")</h2>
+<div class="form-grid">
+    <label>
+        <span>@Tr("الصنف *", "Item *")</span>
+        <select @bind="_form.ItemId">
+            <option value="@Guid.Empty">— @Tr("اختر", "select") —</option>
+            @foreach (var i in _items.Values.Where(i => !_rules.Any(r => r.ItemId == i.Id)).OrderBy(i => i.Code))
+            {
+                <option value="@i.Id">@i.Code — @i.Name.Display(IsArabic ? Language.Ar : Language.En)</option>
+            }
+        </select>
+    </label>
+    <label>
+        <span>@Tr("الحد الأدنى", "Min quantity")</span>
+        <input type="number" min="0" step="0.01" @bind="_form.Min" />
+    </label>
+    <label>
+        <span>@Tr("الكمية المستهدفة", "Target quantity")</span>
+        <input type="number" min="0.01" step="0.01" @bind="_form.Target" />
+    </label>
+    <label>
+        <span>@Tr("المورد المفضّل (اختياري)", "Preferred supplier (optional)")</span>
+        <select @bind="_form.SupplierId">
+            <option value="@Guid.Empty">— @Tr("بدون", "none") —</option>
+            @foreach (var s in _suppliers.Values.OrderBy(s => s.Code))
+            {
+                <option value="@s.Id">@s.Code — @s.Name.Display(IsArabic ? Language.Ar : Language.En)</option>
+            }
+        </select>
+    </label>
+    <div style="grid-column:1/-1;">
+        <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnCreateAsync">
+            @(_busy ? Tr("جارٍ…", "Saving…") : Tr("إضافة", "Add"))
+        </button>
+    </div>
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private List<ReorderRule> _rules = new();
+    private Dictionary<Guid, Item> _items = new();
+    private Dictionary<Guid, Supplier> _suppliers = new();
+    private FormModel _form = new();
+
+    private sealed class FormModel
+    {
+        public Guid ItemId { get; set; } = Guid.Empty;
+        public decimal Min { get; set; }
+        public decimal Target { get; set; } = 1m;
+        public Guid SupplierId { get; set; } = Guid.Empty;
+    }
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _rules = await Db.Set<ReorderRule>().AsNoTracking().ToListAsync();
+        _items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => i.Status == ItemStatus.Active)
+            .ToDictionaryAsync(i => i.Id);
+        _suppliers = await Db.Set<Supplier>().AsNoTracking()
+            .Where(s => s.Status == SupplierStatus.Active)
+            .ToDictionaryAsync(s => s.Id);
+        _loading = false;
+    }
+
+    private async Task OnCreateAsync()
+    {
+        _flash = null;
+        if (_form.ItemId == Guid.Empty || _form.Target <= _form.Min)
+        {
+            _flash = Tr("اختر صنف + المستهدف لازم يبقى أكبر من الحد الأدنى.",
+                       "Pick an item; target must exceed minimum.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var sup = _form.SupplierId == Guid.Empty ? (Guid?)null : _form.SupplierId;
+            Db.Add(new ReorderRule(_form.ItemId, _form.Min, _form.Target, sup));
+            await Db.SaveChangesAsync();
+            _form = new FormModel();
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _busy = false; }
+    }
+
+    private async Task DeactivateAsync(Guid id)
+    {
+        var r = await Db.Set<ReorderRule>().FirstAsync(x => x.Id == id);
+        r.Deactivate();
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReactivateAsync(Guid id)
+    {
+        var r = await Db.Set<ReorderRule>().FirstAsync(x => x.Id == id);
+        r.Reactivate();
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+}
