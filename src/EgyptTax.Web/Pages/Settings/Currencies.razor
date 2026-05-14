@@ -145,16 +145,24 @@
     </label>
     <label>
         <span>@Tr("سعر الصرف", "Rate to base")</span>
-        <input type="number" step="0.000001" min="0" @bind="_rateForm.Rate" />
+        <input type="number" step="0.000001" min="0" @bind="_rateForm.Rate" @bind:event="oninput" />
     </label>
     <label>
         <span>@Tr("المصدر (اختياري)", "Source (optional)")</span>
         <input type="text" @bind="_rateForm.Source" maxlength="100" placeholder="CIB / CBE" />
     </label>
     <div style="grid-column:1/-1;">
-        <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnAddRateAsync">
+        <button type="button" class="btn-primary"
+                disabled="@(_busy || string.IsNullOrEmpty(_rateForm.CurrencyCode) || _rateForm.Rate <= 0)"
+                @onclick="OnAddRateAsync">
             @Tr("حفظ السعر", "Save rate")
         </button>
+        @if (string.IsNullOrEmpty(_rateForm.CurrencyCode) || _rateForm.Rate <= 0)
+        {
+            <span style="margin-inline-start:8px;font-size:12px;color:var(--muted);">
+                @Tr("اختار عملة + اكتب سعر موجب", "Pick a currency + a positive rate")
+            </span>
+        }
     </div>
 </div>
 

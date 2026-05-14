@@ -234,8 +234,8 @@
         Recalc();
     }
 
-    private void Remove(CartLine line) { _cart.Remove(line); Recalc(); }
-    private void ClearCart() { _cart.Clear(); Recalc(); }
+    private void Remove(CartLine line) { _cart.Remove(line); _flash = null; Recalc(); }
+    private void ClearCart() { _cart.Clear(); _flash = null; Recalc(); }
 
     private void Recalc()
     {
@@ -251,6 +251,16 @@
         {
             _flash = Tr("مفيش فئة ضريبة 14% معرّفة. ادخل /settings/tax-periods أولاً.",
                        "No 14% VAT category. Configure /settings/tax-periods first.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        var zeroLines = _cart.Where(l => l.UnitPrice <= 0).ToList();
+        if (zeroLines.Count > 0)
+        {
+            var codes = string.Join(", ", zeroLines.Select(l => l.ItemCode));
+            _flash = Tr(
+                $"الأصناف دي ليها سعر = 0: {codes}. عدّل السعر في الـ cart قبل الدفع.",
+                $"These items have a zero price: {codes}. Set the unit price in the cart before charging.");
             _flashClass = "kpi-card kpi-error";
             return;
         }
