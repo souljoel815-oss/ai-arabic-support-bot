@@ -285,7 +285,7 @@ without spinning up a new entity family.
 - **Avoid:** Full CRUD on all entities (build per integration-
   partner ask). OAuth flow. Streaming endpoints. GraphQL.
 
-### B.4 — Cash Flow statement
+### B.4 — Cash Flow statement ✅ SHIPPED
 
 - **Pain:** Medium-size companies need a Cash Flow report (cash
   in / cash out / net change) for board reporting. v3 has the

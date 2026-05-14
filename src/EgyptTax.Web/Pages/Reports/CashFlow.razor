@@ -1,0 +1,197 @@
+@page "/reports/cash-flow"
+@using EgyptTax.Application.Reports
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Web.Shared
+@using Microsoft.AspNetCore.Authorization
+@inject ICashFlowReportQuery ReportQuery
+@inject IJSRuntime Js
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v4 B.4 — Cash Flow statement, direct method. Three buckets
+    (Customer Receipts / Supplier Payments / Other) all under
+    the Operating section per the v4 scope; Investing / Financing
+    split lands when a customer asks for it. Opening + closing
+    cash balances come from cumulative cash-account JE activity.
+*@
+
+<h1>
+    @(IsArabic ? "قائمة التدفقات النقدية" : "Cash Flow Statement")
+    @if (_report is not null)
+    {
+        <button type="button" class="btn-secondary"
+                style="font-size:13px;margin-inline-start:12px;"
+                @onclick="ExportCsvAsync">
+            ⬇ @(IsArabic ? "تصدير CSV" : "Export CSV")
+        </button>
+    }
+</h1>
+
+<form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
+    <label>
+        <span>@(IsArabic ? "بداية الفترة" : "Period start")</span>
+        <input type="date" @bind="_periodStart" />
+    </label>
+    <label>
+        <span>@(IsArabic ? "نهاية الفترة" : "Period end")</span>
+        <input type="date" @bind="_periodEnd" />
+    </label>
+    <button type="submit" class="btn-primary" disabled="@_loading">
+        @(_loading ? (IsArabic ? "جارٍ الحساب…" : "Computing…") : (IsArabic ? "تشغيل التقرير" : "Run report"))
+    </button>
+</form>
+
+@if (_report is null)
+{
+    @if (_loading)
+    {
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    }
+    else
+    {
+        <p><em>@(IsArabic ? "اختر الفترة بالأعلى ثم اضغط «تشغيل التقرير»." : "Pick a period above and click \"Run report\".")</em></p>
+    }
+    return;
+}
+
+<section class="invoice-totals" style="margin-top:16px;">
+    <div><strong>@(IsArabic ? "الفترة:" : "Period:")</strong> @_report.PeriodStart.ToString("yyyy-MM-dd") @(IsArabic ? "إلى" : "to") @_report.PeriodEnd.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "نقدية افتتاحية:" : "Opening cash:")</strong>
+        <span class="num">@_report.OpeningCash.Amount.ToString("N2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "صافي تغير النقدية:" : "Net cash change:")</strong>
+        <span class="num">@_report.NetCashChange.Amount.ToString("N2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "نقدية ختامية:" : "Closing cash:")</strong>
+        <span class="num"><strong>@_report.ClosingCash.Amount.ToString("N2") @(IsArabic ? "ج.م." : "EGP")</strong></span></div>
+</section>
+
+<h2 style="margin-top:24px;">@(IsArabic ? "النشاط التشغيلي" : "Operating Activities")</h2>
+<p class="page-subtitle" style="font-size:12px;">
+    @(IsArabic
+        ? "الإصدار الحالي يجمع كل تحركات النقدية تحت بند «تشغيلي». تقسيم استثماري/تمويلي يُضاف عند طلب أول عميل."
+        : "Current release lumps every cash movement under Operating; the Investing / Financing split lands when a customer asks for it.")
+</p>
+
+@RenderSection(IsArabic ? "متحصلات من العملاء" : "Customer receipts", _report.CustomerReceipts)
+@RenderSection(IsArabic ? "مدفوعات للموردين" : "Supplier payments", _report.SupplierPayments)
+@RenderSection(IsArabic ? "تحركات نقدية أخرى" : "Other cash movements", _report.OtherMovements)
+
+@code {
+    private DateTime _periodStart = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    private DateTime _periodEnd = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month,
+        DateTime.DaysInMonth(DateTime.UtcNow.Year, DateTime.UtcNow.Month));
+    private bool _loading;
+    private CashFlowReport? _report;
+
+    private async Task OnRefresh()
+    {
+        _loading = true;
+        try
+        {
+            _report = await ReportQuery.RunAsync(
+                DateOnly.FromDateTime(_periodStart),
+                DateOnly.FromDateTime(_periodEnd));
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private RenderFragment RenderSection(string title, IReadOnlyList<CashFlowLine> lines) => __builder =>
+    {
+        var subtotal = lines.Sum(l => l.Amount.Amount);
+        <h3 style="margin-top:16px;">@title <small style="font-weight:normal;color:#888;">(@lines.Count)</small></h3>
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                    <th>@(IsArabic ? "المستند" : "Source document")</th>
+                    <th>@(IsArabic ? "الوصف" : "Description")</th>
+                    <th class="num">@(IsArabic ? "المبلغ" : "Amount")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (lines.Count == 0)
+                {
+                    <tr><td colspan="4"><em>@(IsArabic ? "لا توجد حركات في هذه الفترة." : "No activity in this period.")</em></td></tr>
+                }
+                else
+                {
+                    @foreach (var line in lines)
+                    {
+                        var url = SourceDocumentUrl(line);
+                        <tr>
+                            <td>@line.PostedAtUtc.ToString("yyyy-MM-dd")</td>
+                            <td>
+                                @if (url is not null)
+                                {
+                                    <a href="@url"><code>@line.SourceDocumentNumber</code></a>
+                                }
+                                else
+                                {
+                                    <code>@line.SourceDocumentNumber</code>
+                                }
+                                <small style="color:#888;">(@line.SourceDocumentType)</small>
+                            </td>
+                            <td>@line.Description</td>
+                            <td class="num">@line.Amount.Amount.ToString("N2")</td>
+                        </tr>
+                    }
+                    <tr style="font-weight:bold;border-top:2px solid currentColor;">
+                        <td colspan="3">@(IsArabic ? "الإجمالي" : "Subtotal")</td>
+                        <td class="num">@subtotal.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    };
+
+    private static string? SourceDocumentUrl(CashFlowLine line) => line.SourceDocumentType switch
+    {
+        DocumentType.SalesInvoice => $"/invoices/{line.SourceDocumentId}",
+        DocumentType.CreditNote => $"/invoices/{line.SourceDocumentId}",
+        DocumentType.PurchaseInvoice => $"/purchase-invoices/{line.SourceDocumentId}",
+        DocumentType.Expense => $"/expenses/{line.SourceDocumentId}",
+        DocumentType.FixedAsset => $"/fixed-assets/{line.SourceDocumentId}/schedule",
+        _ => null,
+    };
+
+    private async Task ExportCsvAsync()
+    {
+        if (_report is null) return;
+        var rows = new List<CsvRow>();
+        foreach (var line in _report.CustomerReceipts)
+        {
+            rows.Add(MakeRow("Customer receipts", line));
+        }
+        foreach (var line in _report.SupplierPayments)
+        {
+            rows.Add(MakeRow("Supplier payments", line));
+        }
+        foreach (var line in _report.OtherMovements)
+        {
+            rows.Add(MakeRow("Other cash movements", line));
+        }
+
+        var bytes = CsvExporter.Build(
+            headers: new[] { "Section", "Date", "DocType", "DocNumber", "DocId", "Description", "Amount" },
+            rows: rows,
+            rowSelector: r => new object?[]
+            {
+                r.Section, r.Date, r.DocType, r.DocNumber, r.DocId, r.Description, r.Amount,
+            });
+        var b64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("daftarxDownloadBytes",
+            $"cash-flow-{_report.PeriodStart:yyyyMMdd}-{_report.PeriodEnd:yyyyMMdd}.csv",
+            b64, "text/csv");
+    }
+
+    private static CsvRow MakeRow(string section, CashFlowLine line) =>
+        new(section, line.PostedAtUtc.ToString("yyyy-MM-dd"),
+            line.SourceDocumentType.ToString(), line.SourceDocumentNumber,
+            line.SourceDocumentId.ToString("D"), line.Description, line.Amount.Amount);
+
+    private sealed record CsvRow(
+        string Section, string Date, string DocType, string DocNumber,
+        string DocId, string Description, decimal Amount);
+}

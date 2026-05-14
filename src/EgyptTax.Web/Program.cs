@@ -289,6 +289,14 @@ builder.Services.AddScoped<
     EgyptTax.Infrastructure.Reports.SqlGeneralLedgerReportQuery
 >();
 
+// v4 B.4 — Cash Flow statement (direct method, single Operating
+// section per spec scope). Sums journal-entry-line activity hitting
+// the registered cash-account codes.
+builder.Services.AddScoped<
+    EgyptTax.Application.Reports.ICashFlowReportQuery,
+    EgyptTax.Infrastructure.Reports.SqlCashFlowReportQuery
+>();
+
 // P1.8 (Penalty Shield) — exposure projection. Reads EtaSubmission +
 // SalesInvoice to compute current tier + projected fines + the
 // prioritised work queue. See PenaltyRegime for the constants.
