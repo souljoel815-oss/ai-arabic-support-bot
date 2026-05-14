@@ -305,8 +305,46 @@ Phase A but ships in well-scoped MVPs.
 - **Avoid:** Mileage / per-diem auto-fill. Manager hierarchy
   routing. Reimbursement payment generation.
 
-**Phase B total: ~5 weeks. Order: B.4 (cheapest) → B.1 → B.2 →
-B.3.**
+### B.5 — REST API write endpoints (customers / leads / expenses)
+
+- **Pain:** v4 B.3 shipped `POST /api/v1/invoices/draft` —
+  enough to demo the integration story but a single endpoint
+  blocks any real partner ship. Shopify integrators want
+  `POST /api/v1/customers` to push a new buyer; Mailchimp /
+  marketing tools want `POST /api/v1/leads`; mobile receipt-
+  capture apps want `POST /api/v1/expenses`. Each is a 401-
+  closing demo for that integration partner.
+- **Competitor parity:** Odoo XML-RPC / REST has full CRUD on
+  every model out of the box (different ergonomics; same surface
+  area).
+- **Complexity:** M (~1 week)
+- **Dependencies:** Existing `ApiKeyService`,
+  `ApiKeyRateLimiter`, `WebhookDispatcher` (so creates fan out
+  to webhooks too — `customer.created`, `lead.created`,
+  `expense.created`).
+- **MVP slice:**
+  - `POST /api/v1/customers` — JSON body
+    (`code`, `name_ar`, `name_en`, `tin?`, `phone?`,
+    `email?`, address fields). Returns 201 + the created row.
+    Reuses `CustomerImportHandler`'s validation.
+  - `POST /api/v1/leads` — JSON body (`name`, `phone` OR
+    `email`, optional `company`, `source`, `expected_value_egp`,
+    `expected_close_date`). Reuses `LeadImportHandler`'s
+    validation.
+  - `POST /api/v1/expenses` — JSON body (`document_date`,
+    `category_id`, `amount_egp`, `deductible_flag?`,
+    `description_ar`, `description_en`). Creates Draft only;
+    operator posts via the regular page (FR-027 keeps the post
+    path interactive).
+  - All three obey the existing rate-limit + auth gate.
+  - Each emits the matching webhook event on success.
+- **Avoid:** Update endpoints (PUT/PATCH) — the integration
+  patterns we know about today are all create-only. Bulk
+  endpoints (Shopify pushes one customer per webhook). Validation
+  config (use the import handlers' rules verbatim).
+
+**Phase B total: ~6 weeks. Order: B.4 (cheapest) → B.5 → B.1 →
+B.2 → B.3.**
 
 ---
 
@@ -366,23 +404,114 @@ Odoo**"):
 
 ---
 
-## 6. Sequencing — 3-week v5 plan
+## 6. Sequencing — 4-week v5 plan with explicit testing buffer
 
-Realistic schedule for one developer (operator + AI-paired):
+Realistic schedule for one developer (operator + AI-paired). The
+**½-day testing buffer** after each phase is non-negotiable: it's
+where the operator drives the new pages in a real browser,
+catches the cosmetic / UX issues that build-time + smoke tests
+miss, and signs off before the next phase starts.
 
 | Week | Focus | Deliverable |
 |---|---|---|
 | 1 | A.1, A.5, A.4, A.3 | Supplier statement + POS split payment + quotation templates + task priority/sub-tasks |
-| 2 | A.2, A.6, B.4 | Stock valuation + POS sessions + expense reports |
-| 3 | B.1, B.2 | Sales Teams + Pricelists |
-| 4 (slip) | B.3 | CRM send-email |
+| 1 (½d) | **Phase A1 test pass** | Operator drives the four pages above; reports any cosmetic / UX gaps; I fix on the spot |
+| 2 | A.2, A.6 | Stock valuation + POS sessions / cash control |
+| 2 (½d) | **Phase A2 test pass** | Same — focus on POS-session lifecycle + variance math |
+| 3 | B.4, B.5 | Expense reports + API write endpoints (customers/leads/expenses) |
+| 3 (½d) | **Phase B1 test pass** | curl + Postman against the new endpoints; verify rate-limit + webhook fan-out |
+| 4 | B.1, B.2 | Sales Teams + Pricelists |
+| 4 (½d) | **Phase B2 test pass** | Verify per-team revenue rollups + pricelist resolution on a real invoice |
+| 5 (slip) | B.3 | CRM send-email composer |
+| 5 (½d) | **Phase B3 test pass** | Send a real email; confirm thread shows in lead activity log |
 
-**Done state (week 4):** every Manus AI Phase 1 + Phase 2 item
-either shipped (the genuine ones) or struck through (the stale
-ones). v5 release notes can lead with: *"Closed every gap our
-Odoo-comparison auditor flagged. POS sessions, supplier ledger,
-sales teams, customer-specific pricing — all the demo-blockers
-now answered with a 'yes, here it is'."*
+**Total calendar time:** ~5 weeks (4 dev weeks + 5 × ½-day
+test passes).
+
+**What "test pass" looks like:**
+1. Operator boots the server fresh from the latest commit
+2. Walks the new pages with at least 2 customers / 2 items in the
+   data set (not the empty state)
+3. Files a single dated message: ✅ what works, ⚠️ what's
+   cosmetic, ❌ what's broken
+4. I fix the ❌ list inline; the ⚠️ list goes into a follow-up
+   commit at the end of the next phase (don't rabbit-hole on
+   polish during the test pass)
+
+**Done state (end of week 5):** every Manus AI Phase 1 + Phase 2
+item either shipped (the genuine ones) or struck through (the
+stale ones), each with a recorded operator sign-off. v5 release
+notes can lead with: *"Closed every gap our Odoo-comparison
+auditor flagged. POS sessions, supplier ledger, sales teams,
+customer-specific pricing, write API — all demo-blockers
+answered with a 'yes, here it is'."*
+
+---
+
+## 6.5. Rollback strategy
+
+Every v5 ship should be reversible without an emergency
+deploy. Three layers of protection:
+
+### 6.5.1 Branch-per-phase development
+
+Each Phase A / Phase B item lands on a short-lived feature
+branch named `v5/<item-id>-<short-slug>` (e.g.
+`v5/a1-supplier-statement`, `v5/b5-api-write-endpoints`).
+Phase boundaries become obvious merge points; if the operator's
+test pass surfaces a blocker, the branch can be closed without
+polluting `main`.
+
+The PR for each phase merges into a `v5-staging` integration
+branch first (so the operator can test the cumulative effect),
+then `v5-staging` rolls into `main` after the test pass signs
+off. Any single feature can be reverted via `git revert <phase-
+merge-sha>` without unwinding the rest of the phase.
+
+### 6.5.2 Runtime feature flags for risky items
+
+Three v5 items are risky enough to need a runtime opt-out (a
+single boolean on `Company` or in `appsettings`) so the operator
+can disable the new behaviour without redeploying:
+
+| Item | Flag | Why |
+|---|---|---|
+| A.6 POS sessions / cash control | `RequirePosSession` (default true) | A retail store opening Saturday morning to a broken session-open modal would lose the day's sales — flag lets the operator fall back to v4-style direct sales |
+| B.2 Pricelists | `PricelistsEnabled` (default true) | If the resolution rule produces wrong prices on a live invoice, the operator can flip the flag back off and lines fall back to `Item.UnitPrice` |
+| B.5 API write endpoints | `ApiWritesEnabled` (default true) | A leaked key + bad integration could create thousands of garbage rows; the flag is the panic button before key revocation kicks in |
+
+The other v5 items (A.1 supplier statement, A.2 stock valuation,
+A.3 priorities + sub-tasks, A.4 quotation templates, A.5 split
+payment, B.1 Sales Teams, B.3 CRM email send, B.4 expense
+reports) are read-side or additive enough that a feature flag
+adds more confusion than safety — branch revert covers them.
+
+### 6.5.3 Migration rollback
+
+Every v5 phase that touches the schema gets:
+1. A fresh EF migration (one per shipped item; never mixed)
+2. The migration's `Down()` method left intact (don't `--idempotent`
+   strip it) so `dotnet ef database update <previous-id> -p
+   src/EgyptTax.Infrastructure -s src/EgyptTax.Web` reverses
+   cleanly
+3. A note in the commit message naming the previous migration
+   id, e.g.: *"reverts via `dotnet ef database update
+   20260514085513_LineCostCenterTags`"*
+
+Reversing a migration is the **last-resort** rollback (for
+production it loses any data the new column captured). Branch
+revert + feature flag handle the common cases; migration
+rollback is reserved for "the schema change itself caused the
+bug" scenarios.
+
+### 6.5.4 Backup discipline (already shipped, reaffirmed)
+
+The backup-reminder banner (Gux notifications tab,
+`BackupReminderEnabled`) keeps the operator nudged. Before
+merging any v5 phase into `main`, the operator confirms a fresh
+backup of `daftarx.db` exists. This is the absolute floor — if
+all three rollback layers above fail, restoring the backup is
+the get-out-of-jail-free card.
 
 ---
 
