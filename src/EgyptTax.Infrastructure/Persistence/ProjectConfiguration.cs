@@ -50,6 +50,17 @@ internal sealed class ProjectTaskConfiguration : IEntityTypeConfiguration<Projec
             .HasColumnType("datetime2(3)").IsRequired();
         b.Property(t => t.CompletedAtUtc).HasColumnName("completed_at_utc")
             .HasColumnType("datetime2(3)");
+
+        // v5 A.3 — task priority + sub-tasks. NB: no HasDefaultValue
+        // here — TaskPriority.Urgent is enum value 0 which EF would
+        // treat as "use the DB default" (silently demoting Urgent to
+        // Normal at insert). The C# constructor defaults to Normal;
+        // the migration backfills existing rows to 'Normal'.
+        b.Property(t => t.Priority).HasColumnName("priority")
+            .HasConversion<string>().HasMaxLength(16).IsRequired();
+        b.Property(t => t.ParentTaskId).HasColumnName("parent_task_id");
+        b.HasIndex(t => t.ParentTaskId).HasDatabaseName("ix_project_tasks_parent");
+
         b.HasIndex(t => t.ProjectId).HasDatabaseName("ix_project_tasks_project_id");
     }
 }

@@ -57,7 +57,7 @@
 <section class="form-section" style="margin-top:16px;">
     <h2>@Tr("المهام", "Tasks")</h2>
 
-    <div class="form-grid" style="grid-template-columns:1fr auto auto auto;">
+    <div class="form-grid" style="grid-template-columns:1fr auto auto auto auto auto;">
         <input type="text" @bind="_newTaskTitle" @bind:event="oninput"
                placeholder="@Tr("عنوان المهمة", "Task title")" maxlength="300" />
         <select @bind="_newTaskAssignee">
@@ -68,6 +68,20 @@
             }
         </select>
         <input type="date" @bind="_newTaskDue" />
+        @* v5 A.3 — priority + optional parent (one-level sub-tasks) *@
+        <select @bind="_newTaskPriority" title="@Tr("الأولوية", "Priority")">
+            @foreach (var p in Enum.GetValues<TaskPriority>())
+            {
+                <option value="@p">@PriorityLabel(p)</option>
+            }
+        </select>
+        <select @bind="_newTaskParent" title="@Tr("مهمة أم (اختياري)", "Parent task (optional)")">
+            <option value="@Guid.Empty">— @Tr("بلا أب", "no parent") —</option>
+            @foreach (var t in _project.Tasks.Where(x => x.ParentTaskId is null))
+            {
+                <option value="@t.Id">↳ @t.Title</option>
+            }
+        </select>
         <button type="button" class="btn-secondary" disabled="@(string.IsNullOrWhiteSpace(_newTaskTitle))"
                 @onclick="OnAddTaskAsync">+ @Tr("ضيف", "Add")</button>
     </div>
@@ -84,6 +98,7 @@
             <thead>
                 <tr>
                     <th>@Tr("الحالة", "Status")</th>
+                    <th>@Tr("الأولوية", "Priority")</th>
                     <th>@Tr("العنوان", "Title")</th>
                     <th>@Tr("المسؤول", "Assignee")</th>
                     <th>@Tr("الاستحقاق", "Due")</th>
@@ -91,13 +106,19 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach (var t in _project.Tasks.OrderBy(t => t.Status).ThenBy(t => t.DueDate ?? DateOnly.MaxValue))
+                @* v5 A.3 — render parents first (priority desc, due asc),
+                   then their sub-tasks immediately after each parent
+                   indented by ↳, then any orphan sub-tasks at the end. *@
+                @foreach (var parent in _project.Tasks.Where(t => t.ParentTaskId is null)
+                    .OrderBy(t => t.Status)
+                    .ThenBy(t => (int)t.Priority)
+                    .ThenBy(t => t.DueDate ?? DateOnly.MaxValue))
                 {
-                    var task = t;
+                    var pTask = parent;
                     <tr>
                         <td>
-                            <select value="@task.Status"
-                                    @onchange="@(e => OnTaskStatusChangedAsync(task.Id, Enum.Parse<TaskStatus_>((string)e.Value!)))"
+                            <select value="@pTask.Status"
+                                    @onchange="@(e => OnTaskStatusChangedAsync(pTask.Id, Enum.Parse<TaskStatus_>((string)e.Value!)))"
                                     style="font-size:12px;">
                                 @foreach (var s in Enum.GetValues<TaskStatus_>())
                                 {
@@ -105,11 +126,36 @@
                                 }
                             </select>
                         </td>
-                        <td>@t.Title</td>
-                        <td>@(t.AssignedToUserId.HasValue && _userLookup.TryGetValue(t.AssignedToUserId.Value, out var u) ? u.DisplayName.Display(IsArabic ? Language.Ar : Language.En) : "—")</td>
-                        <td>@(t.DueDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                        <td><span class="badge badge-@PriorityBadge(pTask.Priority)">@PriorityLabel(pTask.Priority)</span></td>
+                        <td>@parent.Title</td>
+                        <td>@(parent.AssignedToUserId.HasValue && _userLookup.TryGetValue(parent.AssignedToUserId.Value, out var pu) ? pu.DisplayName.Display(IsArabic ? Language.Ar : Language.En) : "—")</td>
+                        <td>@(parent.DueDate?.ToString("yyyy-MM-dd") ?? "—")</td>
                         <td></td>
                     </tr>
+                    @foreach (var sub in _project.Tasks
+                        .Where(t => t.ParentTaskId == parent.Id)
+                        .OrderBy(t => t.Status)
+                        .ThenBy(t => (int)t.Priority))
+                    {
+                        var sTask = sub;
+                        <tr style="background:var(--bg);">
+                            <td>
+                                <select value="@sTask.Status"
+                                        @onchange="@(e => OnTaskStatusChangedAsync(sTask.Id, Enum.Parse<TaskStatus_>((string)e.Value!)))"
+                                        style="font-size:12px;">
+                                    @foreach (var s in Enum.GetValues<TaskStatus_>())
+                                    {
+                                        <option value="@s">@TaskStatusLabel(s)</option>
+                                    }
+                                </select>
+                            </td>
+                            <td><span class="badge badge-@PriorityBadge(sub.Priority)">@PriorityLabel(sub.Priority)</span></td>
+                            <td style="padding-inline-start:24px;">↳ @sub.Title</td>
+                            <td>@(sub.AssignedToUserId.HasValue && _userLookup.TryGetValue(sub.AssignedToUserId.Value, out var su) ? su.DisplayName.Display(IsArabic ? Language.Ar : Language.En) : "—")</td>
+                            <td>@(sub.DueDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                            <td></td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
@@ -130,6 +176,8 @@
     private string _newTaskTitle = "";
     private Guid _newTaskAssignee = Guid.Empty;
     private DateTime? _newTaskDue;
+    private TaskPriority _newTaskPriority = TaskPriority.Normal;
+    private Guid _newTaskParent = Guid.Empty;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -150,11 +198,15 @@
         {
             _project!.AddTask(_newTaskTitle.Trim(),
                 _newTaskAssignee == Guid.Empty ? null : _newTaskAssignee,
-                _newTaskDue.HasValue ? DateOnly.FromDateTime(_newTaskDue.Value) : null);
+                _newTaskDue.HasValue ? DateOnly.FromDateTime(_newTaskDue.Value) : null,
+                priority: _newTaskPriority,
+                parentTaskId: _newTaskParent == Guid.Empty ? null : _newTaskParent);
             await Db.SaveChangesAsync();
             _newTaskTitle = "";
             _newTaskDue = null;
             _newTaskAssignee = Guid.Empty;
+            _newTaskPriority = TaskPriority.Normal;
+            _newTaskParent = Guid.Empty;
             await LoadAsync();
         }
         catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
@@ -214,5 +266,24 @@
         TaskStatus_.Blocked => Tr("معطّلة", "Blocked"),
         TaskStatus_.Done => Tr("✓ تمت", "✓ Done"),
         _ => s.ToString(),
+    };
+
+    // v5 A.3 — priority labels + badge color buckets.
+    private string PriorityLabel(TaskPriority p) => p switch
+    {
+        TaskPriority.Urgent => Tr("عاجلة 🔥", "🔥 Urgent"),
+        TaskPriority.High => Tr("عالية", "High"),
+        TaskPriority.Normal => Tr("عادية", "Normal"),
+        TaskPriority.Low => Tr("منخفضة", "Low"),
+        _ => p.ToString(),
+    };
+
+    private static string PriorityBadge(TaskPriority p) => p switch
+    {
+        TaskPriority.Urgent => "danger",
+        TaskPriority.High => "warn",
+        TaskPriority.Normal => "muted",
+        TaskPriority.Low => "info",
+        _ => "muted",
     };
 }

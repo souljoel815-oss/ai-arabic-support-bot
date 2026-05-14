@@ -61,9 +61,14 @@ public sealed class Project
     public void Complete() => Status = ProjectStatus.Completed;
     public void Cancel() => Status = ProjectStatus.Cancelled;
 
-    public ProjectTask AddTask(string title, Guid? assignedToUserId, DateOnly? dueDate)
+    public ProjectTask AddTask(
+        string title,
+        Guid? assignedToUserId,
+        DateOnly? dueDate,
+        TaskPriority priority = TaskPriority.Normal,
+        Guid? parentTaskId = null)
     {
-        var task = new ProjectTask(Id, title, assignedToUserId, dueDate);
+        var task = new ProjectTask(Id, title, assignedToUserId, dueDate, priority, parentTaskId);
         _tasks.Add(task);
         return task;
     }
