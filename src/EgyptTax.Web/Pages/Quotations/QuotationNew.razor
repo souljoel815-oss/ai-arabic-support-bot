@@ -57,6 +57,28 @@
 
     <section class="form-section">
         <h2>@Tr("الأصناف", "Line items")</h2>
+
+        @* v5 A.4 — apply a saved template (prepends its lines) *@
+        @if (_templates.Count > 0)
+        {
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:8px;
+                        background:var(--bg);border-radius:6px;font-size:13px;">
+                <span>@Tr("📋 طبّق قالب:", "📋 Apply template:")</span>
+                <select @bind="_pickedTemplateId" style="flex:1;">
+                    <option value="@Guid.Empty">@Tr("— اختر قالب —", "— pick a template —")</option>
+                    @foreach (var t in _templates)
+                    {
+                        <option value="@t.Id">@t.Name (@t.Lines.Count @Tr("صنف", "lines"))</option>
+                    }
+                </select>
+                <button type="button" class="btn-secondary" style="font-size:12px;"
+                        disabled="@(_pickedTemplateId == Guid.Empty)"
+                        @onclick="ApplyTemplate">
+                    @Tr("طبّق", "Apply")
+                </button>
+            </div>
+        }
+
         @if (_lines.Count == 0)
         {
             <p class="page-subtitle" style="font-size:13px;">
@@ -126,6 +148,10 @@
     private List<LineRow> _lines = new();
     private Guid _userId;
 
+    // v5 A.4 — quotation-template apply support
+    private List<EgyptTax.Domain.Quotations.QuotationTemplate> _templates = new();
+    private Guid _pickedTemplateId = Guid.Empty;
+
     private sealed class FormModel
     {
         public Guid CustomerId { get; set; } = Guid.Empty;
@@ -152,6 +178,12 @@
             .Where(i => i.Status == ItemStatus.Active)
             .OrderBy(i => i.Code).ToListAsync();
         _vats = await Db.Set<VatCategory>().AsNoTracking().ToListAsync();
+        _templates = await Db.Set<EgyptTax.Domain.Quotations.QuotationTemplate>()
+            .Include(t => t.Lines)
+            .AsNoTracking()
+            .Where(t => t.IsActive)
+            .OrderBy(t => t.Name)
+            .ToListAsync();
 
         var authState = await Auth.GetAuthenticationStateAsync();
         var idClaim = authState.User.FindFirst("user_id")?.Value
@@ -160,6 +192,26 @@
     }
 
     private void AddLine() => _lines.Add(new LineRow());
+
+    private void ApplyTemplate()
+    {
+        if (_pickedTemplateId == Guid.Empty) return;
+        var template = _templates.FirstOrDefault(t => t.Id == _pickedTemplateId);
+        if (template is null) return;
+        // Prepend so the operator sees their template lines first.
+        // Use a fresh copy of each template line into a LineRow so
+        // editing here doesn't mutate the cached template.
+        var prepended = template.Lines.Select(tl => new LineRow
+        {
+            ItemId = tl.ItemId,
+            Quantity = tl.Quantity,
+            UnitPrice = tl.UnitPrice.Amount,
+            VatCategoryId = tl.VatCategoryId,
+            VatRatePercent = tl.VatRatePercent,
+        }).ToList();
+        _lines = prepended.Concat(_lines).ToList();
+        _pickedTemplateId = Guid.Empty;
+    }
 
     private void OnItemChanged(int idx)
     {

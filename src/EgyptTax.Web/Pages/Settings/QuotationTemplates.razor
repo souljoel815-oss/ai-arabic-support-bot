@@ -1,0 +1,272 @@
+@page "/settings/quotation-templates"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Quotations
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 A.4 — quotation templates management. Operators save the
+    common line sets (e.g. "logo design + 3 revisions + brand
+    guide") once and apply them with one click on /quotations/new.
+    Lines are COPIED at apply time, so editing a template never
+    retro-mutates a quotation already created from it.
+*@
+
+<PageTitle>@Tr("قوالب عروض الأسعار | DaftarX", "Quotation Templates | DaftarX")</PageTitle>
+
+<h1>@Tr("قوالب عروض الأسعار", "Quotation Templates")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "احفظ مجموعات الأصناف المتكرّرة (مثلاً «خدمات التصميم الأساسية» أو «حزمة الصيانة الشهرية») وطبّقها على عرض جديد بضغطة واحدة.",
+        "Save recurring line sets (e.g. \"Standard design services\" or \"Monthly maintenance bundle\") and apply them to a new quotation in one click.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:8px 0;padding:14px;">@_flash</div>
+}
+
+<section class="form-section">
+    <h2>@Tr("إنشاء قالب جديد", "Create new template")</h2>
+    <div class="form-grid">
+        <label>
+            <span>@Tr("الاسم *", "Name *")</span>
+            <input type="text" maxlength="200" @bind="_newName"
+                   placeholder="@Tr("مثال: حزمة تصميم هوية تجارية", "e.g. Brand identity package")" />
+        </label>
+        <label>
+            <span>@Tr("الوصف (اختياري)", "Description (optional)")</span>
+            <input type="text" maxlength="2000" @bind="_newDescription" />
+        </label>
+    </div>
+
+    <h3 style="margin-top:12px;">@Tr("الأصناف", "Lines")</h3>
+    @for (var idx = 0; idx < _newLines.Count; idx++)
+    {
+        var i = idx;
+        var line = _newLines[i];
+        <div class="form-grid" style="border:1px solid var(--border);padding:8px;margin-bottom:6px;border-radius:6px;">
+            <label>
+                <span>@Tr("الصنف", "Item")</span>
+                <select @bind="line.ItemId" @bind:after="() => OnNewLineItemChanged(i)">
+                    <option value="@Guid.Empty">@Tr("— اختر —", "— pick —")</option>
+                    @foreach (var it in _items)
+                    {
+                        <option value="@it.Id">@it.Code · @it.Name.Display(IsArabic ? Language.Ar : Language.En)</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>@Tr("الكمية", "Quantity")</span>
+                <input type="number" step="0.01" min="0.01" @bind="line.Quantity" />
+            </label>
+            <label>
+                <span>@Tr("السعر (ج.م)", "Unit price (EGP)")</span>
+                <input type="number" step="0.01" min="0" @bind="line.UnitPrice" />
+            </label>
+            <button type="button" class="btn-secondary" style="font-size:12px;"
+                    @onclick="() => _newLines.RemoveAt(i)">
+                @Tr("حذف", "Remove")
+            </button>
+        </div>
+    }
+    <button type="button" class="btn-secondary" @onclick="AddNewLine">
+        + @Tr("إضافة صنف للقالب", "Add line")
+    </button>
+
+    <div class="invoice-actions" style="margin-top:12px;">
+        <button type="button" class="btn-primary"
+                disabled="@(_busy || string.IsNullOrWhiteSpace(_newName) || _newLines.Count == 0)"
+                @onclick="CreateAsync">
+            💾 @Tr("احفظ القالب", "Save template")
+        </button>
+    </div>
+</section>
+
+<h2 style="margin-top:24px;">@Tr("القوالب المحفوظة", "Saved templates")</h2>
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+}
+else if (_templates.Count == 0)
+{
+    <p><em>@Tr("ما فيش قوالب محفوظة لسه.", "No templates saved yet.")</em></p>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>@Tr("الاسم", "Name")</th>
+                <th>@Tr("الوصف", "Description")</th>
+                <th class="num">@Tr("عدد الأصناف", "Line count")</th>
+                <th>@Tr("الحالة", "Status")</th>
+                <th>@Tr("إجراءات", "Actions")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in _templates)
+            {
+                <tr class="@(t.IsActive ? "" : "row-muted")">
+                    <td><strong>@t.Name</strong></td>
+                    <td>@(t.Description ?? "—")</td>
+                    <td class="num">@t.Lines.Count</td>
+                    <td>@(t.IsActive ? Tr("نشط", "Active") : Tr("معطّل", "Inactive"))</td>
+                    <td>
+                        @if (t.IsActive)
+                        {
+                            <button type="button" class="btn-secondary" style="font-size:12px;"
+                                    @onclick="() => DeactivateAsync(t.Id)">
+                                @Tr("تعطيل", "Deactivate")
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn-secondary" style="font-size:12px;"
+                                    @onclick="() => ReactivateAsync(t.Id)">
+                                @Tr("تفعيل", "Reactivate")
+                            </button>
+                        }
+                        <button type="button" class="btn-secondary" style="font-size:12px;"
+                                @onclick="() => DeleteAsync(t.Id)">
+                            @Tr("حذف", "Delete")
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+    private List<QuotationTemplate> _templates = new();
+    private List<Item> _items = new();
+    private VatCategory? _standardVat;
+
+    private string _newName = "";
+    private string _newDescription = "";
+    private List<NewLine> _newLines = new();
+
+    private sealed class NewLine
+    {
+        public Guid ItemId { get; set; } = Guid.Empty;
+        public decimal Quantity { get; set; } = 1m;
+        public decimal UnitPrice { get; set; }
+        public decimal VatRatePercent { get; set; } = 14m;
+        public Guid VatCategoryId { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => i.Status == ItemStatus.Active)
+            .OrderBy(i => i.Code).ToListAsync();
+        _standardVat = await Db.Set<VatCategory>().AsNoTracking()
+            .Where(v => v.RatePercent == 14m)
+            .OrderBy(v => v.EffectiveFromDate)
+            .FirstOrDefaultAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _templates = await Db.Set<QuotationTemplate>()
+            .Include(t => t.Lines)
+            .AsNoTracking()
+            .OrderBy(t => t.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void AddNewLine() => _newLines.Add(new NewLine { VatCategoryId = _standardVat?.Id ?? Guid.Empty });
+
+    private void OnNewLineItemChanged(int i)
+    {
+        var line = _newLines[i];
+        var item = _items.FirstOrDefault(it => it.Id == line.ItemId);
+        if (item is not null && line.VatCategoryId == Guid.Empty)
+        {
+            line.VatCategoryId = item.DefaultVatCategoryId;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newName) || _newLines.Count == 0) return;
+        _busy = true;
+        _flash = null;
+        try
+        {
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId();
+            var template = new QuotationTemplate(
+                name: _newName,
+                description: string.IsNullOrWhiteSpace(_newDescription) ? null : _newDescription,
+                createdAtUtc: DateTime.UtcNow,
+                createdByUserId: userId);
+            foreach (var line in _newLines)
+            {
+                if (line.ItemId == Guid.Empty) continue;
+                template.AddLine(
+                    itemId: line.ItemId,
+                    quantity: line.Quantity,
+                    unitPrice: MoneyEgp.From(line.UnitPrice),
+                    vatCategoryId: line.VatCategoryId,
+                    vatRatePercent: line.VatRatePercent);
+            }
+            if (template.Lines.Count == 0)
+            {
+                throw new InvalidOperationException("Template needs at least one line with an item picked.");
+            }
+            Db.Add(template);
+            await Db.SaveChangesAsync();
+            _newName = "";
+            _newDescription = "";
+            _newLines = new();
+            _flash = IsArabic ? "✓ تم حفظ القالب." : "✓ Template saved.";
+            _flashClass = "kpi-card kpi-info";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeactivateAsync(Guid id)
+    {
+        var live = await Db.Set<QuotationTemplate>().FirstAsync(t => t.Id == id);
+        live.Deactivate();
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReactivateAsync(Guid id)
+    {
+        var live = await Db.Set<QuotationTemplate>().FirstAsync(t => t.Id == id);
+        live.Reactivate();
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        var live = await Db.Set<QuotationTemplate>().Include(t => t.Lines).FirstAsync(t => t.Id == id);
+        Db.Remove(live);
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+}
