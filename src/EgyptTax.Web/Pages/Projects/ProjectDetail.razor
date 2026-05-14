@@ -1,0 +1,218 @@
+@page "/projects/{Id:guid}"
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Projects
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@Tr("مشروع | DaftarX", "Project | DaftarX")</PageTitle>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+@if (_project is null)
+{
+    <p>@Tr("المشروع مش موجود.", "Project not found.")</p>
+    return;
+}
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+        <h1 style="margin-bottom:4px;">@_project.Name.Display(IsArabic ? Language.Ar : Language.En)</h1>
+        <p class="page-subtitle" style="margin:0;">
+            <code>@_project.Code</code> ·
+            <span class="badge badge-@StatusBadge(_project.Status)">@StatusLabel(_project.Status)</span>
+            · @_project.StartDate.ToString("yyyy-MM-dd")
+            → @(_project.EndDate?.ToString("yyyy-MM-dd") ?? Tr("بلا انتهاء", "open"))
+        </p>
+    </div>
+    <div class="invoice-actions" style="margin:0;">
+        @if (_project.Status != ProjectStatus.Active)
+        {
+            <button type="button" class="btn-primary" @onclick="@(() => ChangeStatusAsync(ProjectStatus.Active))">@Tr("تنشيط", "Activate")</button>
+        }
+        @if (_project.Status == ProjectStatus.Active)
+        {
+            <button type="button" class="btn-secondary" @onclick="@(() => ChangeStatusAsync(ProjectStatus.OnHold))">@Tr("تعليق", "Hold")</button>
+            <button type="button" class="btn-secondary" @onclick="@(() => ChangeStatusAsync(ProjectStatus.Completed))">@Tr("إكمال", "Complete")</button>
+        }
+        <a href="/projects" class="btn-secondary">@Tr("الرجوع", "Back")</a>
+    </div>
+</div>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:12px 0;">@_flash</div>
+}
+
+<section class="form-section" style="margin-top:16px;">
+    <h2>@Tr("المهام", "Tasks")</h2>
+
+    <div class="form-grid" style="grid-template-columns:1fr auto auto auto;">
+        <input type="text" @bind="_newTaskTitle" @bind:event="oninput"
+               placeholder="@Tr("عنوان المهمة", "Task title")" maxlength="300" />
+        <select @bind="_newTaskAssignee">
+            <option value="@Guid.Empty">— @Tr("بدون", "unassigned") —</option>
+            @foreach (var u in _users)
+            {
+                <option value="@u.Id">@u.DisplayName.Display(IsArabic ? Language.Ar : Language.En)</option>
+            }
+        </select>
+        <input type="date" @bind="_newTaskDue" />
+        <button type="button" class="btn-secondary" disabled="@(string.IsNullOrWhiteSpace(_newTaskTitle))"
+                @onclick="OnAddTaskAsync">+ @Tr("ضيف", "Add")</button>
+    </div>
+
+    @if (_project.Tasks.Count == 0)
+    {
+        <p class="page-subtitle" style="font-size:13px;margin-top:8px;">
+            @Tr("مفيش مهام بعد.", "No tasks yet.")
+        </p>
+    }
+    else
+    {
+        <table class="data-table" style="margin-top:12px;">
+            <thead>
+                <tr>
+                    <th>@Tr("الحالة", "Status")</th>
+                    <th>@Tr("العنوان", "Title")</th>
+                    <th>@Tr("المسؤول", "Assignee")</th>
+                    <th>@Tr("الاستحقاق", "Due")</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var t in _project.Tasks.OrderBy(t => t.Status).ThenBy(t => t.DueDate ?? DateOnly.MaxValue))
+                {
+                    var task = t;
+                    <tr>
+                        <td>
+                            <select value="@task.Status"
+                                    @onchange="@(e => OnTaskStatusChangedAsync(task.Id, Enum.Parse<TaskStatus_>((string)e.Value!)))"
+                                    style="font-size:12px;">
+                                @foreach (var s in Enum.GetValues<TaskStatus_>())
+                                {
+                                    <option value="@s">@TaskStatusLabel(s)</option>
+                                }
+                            </select>
+                        </td>
+                        <td>@t.Title</td>
+                        <td>@(t.AssignedToUserId.HasValue && _userLookup.TryGetValue(t.AssignedToUserId.Value, out var u) ? u.DisplayName.Display(IsArabic ? Language.Ar : Language.En) : "—")</td>
+                        <td>@(t.DueDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                        <td></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private Project? _project;
+    private List<User> _users = new();
+    private Dictionary<Guid, User> _userLookup = new();
+
+    private string _newTaskTitle = "";
+    private Guid _newTaskAssignee = Guid.Empty;
+    private DateTime? _newTaskDue;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _project = await Db.Set<Project>().Include(p => p.Tasks).FirstOrDefaultAsync(p => p.Id == Id);
+        _users = await Db.Set<User>().AsNoTracking()
+            .Where(u => u.Status == UserStatus.Active)
+            .OrderBy(u => u.DisplayName.English).ToListAsync();
+        _userLookup = _users.ToDictionary(u => u.Id);
+        _loading = false;
+    }
+
+    private async Task OnAddTaskAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newTaskTitle)) return;
+        try
+        {
+            _project!.AddTask(_newTaskTitle.Trim(),
+                _newTaskAssignee == Guid.Empty ? null : _newTaskAssignee,
+                _newTaskDue.HasValue ? DateOnly.FromDateTime(_newTaskDue.Value) : null);
+            await Db.SaveChangesAsync();
+            _newTaskTitle = "";
+            _newTaskDue = null;
+            _newTaskAssignee = Guid.Empty;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    private async Task OnTaskStatusChangedAsync(Guid taskId, TaskStatus_ newStatus)
+    {
+        try
+        {
+            var task = _project!.Tasks.FirstOrDefault(t => t.Id == taskId);
+            if (task is null) return;
+            task.MoveTo(newStatus);
+            await Db.SaveChangesAsync();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    private async Task ChangeStatusAsync(ProjectStatus s)
+    {
+        try
+        {
+            switch (s)
+            {
+                case ProjectStatus.Active: _project!.Activate(); break;
+                case ProjectStatus.OnHold: _project!.PutOnHold(); break;
+                case ProjectStatus.Completed: _project!.Complete(); break;
+            }
+            await Db.SaveChangesAsync();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    private string StatusLabel(ProjectStatus s) => s switch
+    {
+        ProjectStatus.Planning => Tr("تخطيط", "Planning"),
+        ProjectStatus.Active => Tr("نشط", "Active"),
+        ProjectStatus.OnHold => Tr("معلّق", "On hold"),
+        ProjectStatus.Completed => Tr("مكتمل", "Completed"),
+        ProjectStatus.Cancelled => Tr("ملغي", "Cancelled"),
+        _ => s.ToString(),
+    };
+    private static string StatusBadge(ProjectStatus s) => s switch
+    {
+        ProjectStatus.Active => "info",
+        ProjectStatus.Completed => "success",
+        ProjectStatus.Cancelled => "danger",
+        ProjectStatus.OnHold => "warn",
+        _ => "muted",
+    };
+
+    private string TaskStatusLabel(TaskStatus_ s) => s switch
+    {
+        TaskStatus_.Todo => Tr("للعمل", "Todo"),
+        TaskStatus_.InProgress => Tr("قيد التنفيذ", "In progress"),
+        TaskStatus_.Blocked => Tr("معطّلة", "Blocked"),
+        TaskStatus_.Done => Tr("✓ تمت", "✓ Done"),
+        _ => s.ToString(),
+    };
+}

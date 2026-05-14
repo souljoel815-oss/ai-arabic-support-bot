@@ -1,0 +1,193 @@
+@page "/projects"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Projects
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@Tr("المشروعات | DaftarX", "Projects | DaftarX")</PageTitle>
+
+<h1>@Tr("المشروعات", "Projects")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "إدارة المشروعات والمهام لمكاتب الاستشارات والـ agencies. v1: عرض + مهام بسيطة. الـ timesheets + الـ P&L جاية لما الفواتير تربط بالمشاريع.",
+        "Manage projects + tasks for consulting offices and agencies. v1: projects + tasks. Timesheets + project P&L land when invoice tagging is added.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+}
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>@Tr("الكود", "Code")</th>
+            <th>@Tr("الاسم", "Name")</th>
+            <th>@Tr("العميل", "Customer")</th>
+            <th>@Tr("الفترة", "Period")</th>
+            <th>@Tr("الميزانية", "Budget")</th>
+            <th>@Tr("الحالة", "Status")</th>
+            <th>@Tr("المهام", "Tasks")</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var p in _projects)
+        {
+            var tasks = _taskCounts.TryGetValue(p.Id, out var tc) ? tc : (Total: 0, Done: 0);
+            <tr>
+                <td><code>@p.Code</code></td>
+                <td>@p.Name.Display(IsArabic ? Language.Ar : Language.En)</td>
+                <td>@(p.CustomerId.HasValue && _customers.TryGetValue(p.CustomerId.Value, out var c) ? c.Code : "—")</td>
+                <td>@p.StartDate.ToString("yyyy-MM-dd") → @(p.EndDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                <td>@(p.BudgetEgp?.ToString("N0") ?? "—")</td>
+                <td><span class="badge badge-@StatusBadge(p.Status)">@StatusLabel(p.Status)</span></td>
+                <td>@tasks.Done / @tasks.Total</td>
+                <td><a href="/projects/@p.Id">@Tr("افتح", "Open")</a></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2 style="margin-top:24px;">@Tr("+ مشروع جديد", "+ New project")</h2>
+<div class="form-grid">
+    <label>
+        <span>@Tr("الكود *", "Code *")</span>
+        <input type="text" maxlength="32" @bind="_form.Code" @bind:event="oninput" placeholder="PRJ-001" />
+    </label>
+    <label>
+        <span>@Tr("الاسم (عربي) *", "Name (Ar) *")</span>
+        <input type="text" maxlength="200" @bind="_form.NameAr" />
+    </label>
+    <label>
+        <span>@Tr("الاسم (إنجليزي) *", "Name (En) *")</span>
+        <input type="text" maxlength="200" @bind="_form.NameEn" />
+    </label>
+    <label>
+        <span>@Tr("العميل (اختياري)", "Customer (optional)")</span>
+        <select @bind="_form.CustomerId">
+            <option value="@Guid.Empty">— @Tr("بدون", "none") —</option>
+            @foreach (var c in _customers.Values.OrderBy(c => c.Code))
+            {
+                <option value="@c.Id">@c.Code — @c.Name.Display(IsArabic ? Language.Ar : Language.En)</option>
+            }
+        </select>
+    </label>
+    <label>
+        <span>@Tr("بداية *", "Start *")</span>
+        <input type="date" @bind="_form.Start" />
+    </label>
+    <label>
+        <span>@Tr("نهاية متوقعة", "End (expected)")</span>
+        <input type="date" @bind="_form.End" />
+    </label>
+    <label>
+        <span>@Tr("الميزانية (ج.م)", "Budget (EGP)")</span>
+        <input type="number" min="0" step="100" @bind="_form.Budget" />
+    </label>
+    <div style="grid-column:1/-1;">
+        <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnCreateAsync">
+            @(_busy ? Tr("جارٍ…", "Saving…") : Tr("إنشاء", "Create"))
+        </button>
+    </div>
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private List<Project> _projects = new();
+    private Dictionary<Guid, (int Total, int Done)> _taskCounts = new();
+    private Dictionary<Guid, Customer> _customers = new();
+    private FormModel _form = new();
+
+    private sealed class FormModel
+    {
+        public string Code { get; set; } = "";
+        public string NameAr { get; set; } = "";
+        public string NameEn { get; set; } = "";
+        public Guid CustomerId { get; set; } = Guid.Empty;
+        public DateTime Start { get; set; } = DateTime.UtcNow.Date;
+        public DateTime? End { get; set; }
+        public decimal? Budget { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _projects = await Db.Set<Project>().AsNoTracking().OrderByDescending(p => p.StartDate).ToListAsync();
+        var ids = _projects.Select(p => p.Id).ToList();
+        var taskRows = await Db.Set<ProjectTask>().AsNoTracking()
+            .Where(t => ids.Contains(t.ProjectId))
+            .Select(t => new { t.ProjectId, IsDone = t.Status == TaskStatus_.Done })
+            .ToListAsync();
+        _taskCounts = taskRows.GroupBy(t => t.ProjectId)
+            .ToDictionary(g => g.Key, g => (Total: g.Count(), Done: g.Count(x => x.IsDone)));
+        _customers = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => c.Status == CustomerStatus.Active).ToDictionaryAsync(c => c.Id);
+        _loading = false;
+    }
+
+    private async Task OnCreateAsync()
+    {
+        _flash = null;
+        if (string.IsNullOrWhiteSpace(_form.Code) || string.IsNullOrWhiteSpace(_form.NameEn))
+        {
+            _flash = Tr("الكود والاسم مطلوبين.", "Code + name required.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var name = new ArabicEnglishText(
+                string.IsNullOrWhiteSpace(_form.NameAr) ? _form.NameEn : _form.NameAr,
+                _form.NameEn);
+            var p = new Project(
+                code: _form.Code.Trim().ToUpperInvariant(),
+                name: name,
+                startDate: DateOnly.FromDateTime(_form.Start),
+                customerId: _form.CustomerId == Guid.Empty ? null : _form.CustomerId,
+                endDate: _form.End.HasValue ? DateOnly.FromDateTime(_form.End.Value) : null,
+                budgetEgp: _form.Budget);
+            Db.Add(p);
+            await Db.SaveChangesAsync();
+            _form = new FormModel();
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _busy = false; }
+    }
+
+    private string StatusLabel(ProjectStatus s) => s switch
+    {
+        ProjectStatus.Planning => Tr("تخطيط", "Planning"),
+        ProjectStatus.Active => Tr("نشط", "Active"),
+        ProjectStatus.OnHold => Tr("معلّق", "On hold"),
+        ProjectStatus.Completed => Tr("مكتمل", "Completed"),
+        ProjectStatus.Cancelled => Tr("ملغي", "Cancelled"),
+        _ => s.ToString(),
+    };
+
+    private static string StatusBadge(ProjectStatus s) => s switch
+    {
+        ProjectStatus.Active => "info",
+        ProjectStatus.Completed => "success",
+        ProjectStatus.Cancelled => "danger",
+        ProjectStatus.OnHold => "warn",
+        _ => "muted",
+    };
+}
