@@ -32,8 +32,11 @@ These are NOT real gaps — Manus was working from incomplete data:
 | "Recurring billing missing" | Recurring invoice templates ship via `RecurringInvoiceTemplate` + `/recurring-invoices` | Migration `20260513155404_RecurringInvoiceTemplates` |
 | "Lot tracking missing" | `ItemLot` aggregate + `/items/{id}/lots` page | v3 §11 #5 |
 | "ETA item codes missing" | Full lifecycle (`None → PendingGs1/PendingEgs → Active/Failed`) on `Item` | P1.6 |
+| "Asset depreciation deferred" | Full `FixedAsset` aggregate (Draft → InService → Disposed/WrittenOff), `MonthlyDepreciationJob`, `JournalVoucher.CreateAutoDepreciation`, pages at `/fixed-assets`, `/fixed-assets/new`, `/fixed-assets/{id}/schedule` | Phase 8 / FR-017, migration `20260508040250_FixedAssets` |
 
-**Action: do NOT re-build any of these.** Time saved: ~3 weeks.
+**Action: do NOT re-build any of these.** Time saved: ~5 weeks
+(was ~3 — the Asset depreciation correction added 2 more weeks
+that would otherwise have been re-built).
 
 ### 1.2 Half-shipped (some scope remaining)
 
@@ -348,25 +351,148 @@ B.2 → B.3.**
 
 ---
 
-## 4. v5 Phase C — Carryover from v4 §C (unchanged)
+## 3.5. v5 Phase D — Promoted from §C (operator request 2026-05-15)
 
-These wait for a real customer ask. Manus reaffirmed each in
-their "Phase 3 — Strategic" list, which matches v4's discipline:
+The operator explicitly promoted three Phase C items into the
+active build queue, overriding the v4 / v5 default discipline of
+"wait for customer pull." One of the three (asset depreciation)
+turned out to already be shipped — corrected in §1.1 above. The
+remaining two are real new work:
+
+### D.1 — Serial number tracking (L ~2w)
+
+- **Pain:** Lots cover the common case (a batch of 100 paracetamol
+  packs share one expiry + one supplier). But pharmacies with
+  dispense-tracking and electronics retailers selling laptops with
+  warranty coverage need per-unit identity — "which exact serial
+  did customer X buy on date Y?" — and that's beyond what `ItemLot`
+  models.
+- **Competitor parity:** Odoo Inventory's "Track by Serial Number"
+  product flag.
+- **Complexity:** L (~2 weeks)
+- **Dependencies:** `Item.TracksLots` (mirror flag pattern),
+  `ItemLot` (parent if serial belongs to a lot), `StockMovement`
+  audit trail.
+- **MVP slice:**
+  - New `ItemSerial` entity per (item_id, serial_number,
+    lot_id?, status, current_location_id?, current_customer_id?)
+  - `ItemSerialStatus` enum: InStock / Reserved / Sold /
+    Returned / Damaged / WrittenOff
+  - `Item.TracksSerials` opt-in flag (sibling to TracksLots)
+  - `/items/{id}/serials` management page — CRUD + status filter
+  - On `SalesInvoiceEdit`: when line's item has TracksSerials,
+    surface a "Serials" sub-grid below the line — operator types
+    or pastes serial numbers (one per line); validation rejects
+    serials not InStock or quantity-mismatched
+  - `SalesInvoiceLine.SerialIds` (JSON column on the line); on
+    post, each listed serial transitions to Sold + records the
+    customer + invoice id
+  - On stock receive: when receiving an item with TracksSerials,
+    operator must list the new serials being received (one
+    `ItemSerial` row created per serial, all InStock)
+- **Avoid:** Barcode-scanner integration (waits for hardware
+  spec — Phase C carryover). Bulk serial generation (e.g., "give
+  me 1000 sequential serials"). Serial range entry. Cross-item
+  serial uniqueness (we scope to per-item; same serial on two
+  different SKUs is a valid distinction in practice). Mobile
+  capture flow.
+- **Risk + flag:** Wraps the sales-post path for the affected
+  items — feature flag `SerialTrackingEnabled` (default false on
+  fresh installs; opt-in per item via `Item.TracksSerials`)
+  ensures shops not using serials see zero behaviour change.
+
+### D.2 — Timesheets + Project P&L + Gantt (XL ~4w, three sub-items)
+
+- **Pain:** v3 §11 #9 shipped a basic project task board.
+  Consulting firms — the segment most likely to push hard on
+  project features — need three things on top of that: log hours
+  per task per day (timesheets), see the per-project bottom line
+  (revenue from tagged invoices minus labor cost minus tagged
+  expenses + purchases = P&L), and visualise the schedule
+  (Gantt). Without these, "we use DaftarX for projects" doesn't
+  hold up against any consultancy ERP.
+- **Competitor parity:** Odoo Project + Timesheets + Gantt view
+  combined.
+- **Complexity:** XL (~4 weeks total)
+- **Dependencies:** Existing `Project` + `ProjectTask` aggregates;
+  C.2 per-line cost-center tagging (a59b996) for the financial
+  rollup; A.3 sub-tasks (Phase A) for the Gantt nesting.
+
+#### D.2.1 — Timesheets (~1.5w)
+
+- New `TimesheetEntry` per (user_id, date, project_id, task_id?,
+  hours, billable_flag, hourly_rate_egp, note)
+- `/timesheets/me` weekly entry page: 7-day grid with project
+  rows; user types hours per cell, marks billable, picks rate
+- `/timesheets/team` manager view: filter by user / project /
+  week; total hours + total billable amount per row
+- Validation: hours per day per user ≤ 16 (catch typos);
+  hourly_rate inherits from `User` profile field (new col)
+- Skip: timer mode (start/stop on a task), approval workflow on
+  timesheets (defer to v6), per-customer rate cards
+
+#### D.2.2 — Project P&L (~1w)
+
+- `/projects/{id}/pnl` page: rolls up
+  - **Revenue:** sales-invoice lines tagged to the project's
+    cost-center (`Project.LinkedCostCenterId` → new nullable
+    column linking project to cost-center)
+  - **Labor cost:** sum of TimesheetEntry (hours × rate) for the
+    project, regardless of cost-center tag
+  - **Direct costs:** purchase-invoice lines + expenses tagged
+    to the project's cost-center
+  - **Net margin:** revenue − labor − direct costs
+- Same per-period filter as `/reports/cost-centers`
+- CSV export
+- Skip: WIP accounting (defer to v6 if a customer asks); per-
+  task drill-down (project-level only); recovery rate (% of
+  hours billed)
+
+#### D.2.3 — Gantt chart (~1.5w)
+
+- `/projects/{id}/gantt` page: read-only timeline view
+- New `ProjectTask.StartDate` + `ProjectTask.DueDate` columns
+  (both nullable; tasks without dates skipped from the chart)
+- Layout: x-axis = day columns (zoom levels: week / month /
+  quarter); y-axis = tasks (one row per task), sub-tasks (from
+  A.3) indent under their parent
+- Each task renders as a colored bar spanning start → due, color
+  by status (Todo gray / InProgress blue / Done green)
+- Pure HTML/CSS via positioned divs — no heavy chart library; we
+  trade interactivity for zero new JS dependency
+- Skip: drag-to-reschedule (defer); inter-task dependencies
+  (defer); critical-path highlighting; baseline tracking
+
+- **Risk + flag:** Project P&L wires into the cost-centers report
+  data path; if the linkage produces wrong margins on a live
+  project, operator wants escape hatch. Feature flag
+  `ProjectPnlEnabled` (default true) lets the operator hide the
+  P&L tab without removing the timesheet data. Timesheets +
+  Gantt are additive (no behaviour change to existing flows) so
+  no flag needed.
+
+**Phase D total: ~6 weeks. Order: D.1 → D.2.1 → D.2.3 → D.2.2.**
+
+---
+
+## 4. v5 Phase C — Carryover from v4 §C
+
+These wait for a real customer ask. Three items previously on
+this list have been promoted to **Phase D** (operator override,
+2026-05-15) — see §3.5 above. One item (asset depreciation) was
+removed because it turned out to already be shipped — see §1.1.
+The remainder hold the v4 / v5 discipline:
 
 | Trigger | What lands | Effort |
 |---|---|---|
 | Customer with foreign suppliers | Per-invoice currency + FX snapshot at post + revaluation | XL ~3w |
 | Retail customer with bad internet | POS offline mode (PWA service worker + sync queue) | L ~2w |
-| Pharmacy/electronics customer | Per-serial tracking layer on top of lots | L ~2w |
 | Distribution customer with procurement | Full Purchase Orders (RFQ → PO → Receive → Bill, 3-way matching) | XL ~3w |
-| Consulting firm | Timesheets + project P&L + Gantt | XL ~4w |
-| Customer with significant fixed assets | Asset depreciation schedules | M ~2w |
 | Marketing-heavy customer | UTM / campaign / source attribution on Lead | S ~3d |
 | Customer with high lead volume | AI lead scoring / probability | XL ~2w |
 
-The v4 anti-roadmap discipline holds: **don't pre-build any of
-these**. The Manus v5 report ranks Purchase Orders as #13 in
-Phase 3 (deferred), which finally aligns with the v4 read.
+The v4 anti-roadmap discipline holds for everything left:
+**don't pre-build any of these.**
 
 ---
 
@@ -404,13 +530,14 @@ Odoo**"):
 
 ---
 
-## 6. Sequencing — 4-week v5 plan with explicit testing buffer
+## 6. Sequencing — 11-week v5 plan with explicit testing buffer
 
 Realistic schedule for one developer (operator + AI-paired). The
 **½-day testing buffer** after each phase is non-negotiable: it's
 where the operator drives the new pages in a real browser,
 catches the cosmetic / UX issues that build-time + smoke tests
-miss, and signs off before the next phase starts.
+miss, and signs off before the next phase starts. Phase D adds
+~6 weeks of dev time on top of the original 5-week plan.
 
 | Week | Focus | Deliverable |
 |---|---|---|
@@ -422,11 +549,20 @@ miss, and signs off before the next phase starts.
 | 3 (½d) | **Phase B1 test pass** | curl + Postman against the new endpoints; verify rate-limit + webhook fan-out |
 | 4 | B.1, B.2 | Sales Teams + Pricelists |
 | 4 (½d) | **Phase B2 test pass** | Verify per-team revenue rollups + pricelist resolution on a real invoice |
-| 5 (slip) | B.3 | CRM send-email composer |
+| 5 | B.3 | CRM send-email composer |
 | 5 (½d) | **Phase B3 test pass** | Send a real email; confirm thread shows in lead activity log |
+| 6-7 | D.1 | Serial number tracking (entity, /items/{id}/serials, sales-line sub-grid, opt-in flag) |
+| 7 (½d) | **Phase D1 test pass** | Toggle TracksSerials on one item; receive 5 serials; sell 2; verify status transitions + statement |
+| 8-9 | D.2.1 + D.2.3 | Timesheets weekly grid + Gantt read-only chart |
+| 9 (½d) | **Phase D2a test pass** | Log a week of hours for two users; visually verify Gantt against task dates |
+| 10 | D.2.2 | Project P&L page + Project.LinkedCostCenterId migration |
+| 10 (½d) | **Phase D2b test pass** | Tag a project to a cost-center; verify revenue + labor + direct cost rollup |
+| 11 (slip buffer) | catchup | Reserved for spillover from any of the above |
 
-**Total calendar time:** ~5 weeks (4 dev weeks + 5 × ½-day
-test passes).
+**Total calendar time:** ~11 weeks (10 dev weeks + 8 × ½-day
+test passes + 1 slip-buffer week). Phase D nearly doubled the
+plan; if any of those test passes surface architectural rework,
+budget for an extra 2 weeks.
 
 **What "test pass" looks like:**
 1. Operator boots the server fresh from the latest commit
@@ -470,7 +606,7 @@ merge-sha>` without unwinding the rest of the phase.
 
 ### 6.5.2 Runtime feature flags for risky items
 
-Three v5 items are risky enough to need a runtime opt-out (a
+Five v5 items are risky enough to need a runtime opt-out (a
 single boolean on `Company` or in `appsettings`) so the operator
 can disable the new behaviour without redeploying:
 
@@ -479,12 +615,15 @@ can disable the new behaviour without redeploying:
 | A.6 POS sessions / cash control | `RequirePosSession` (default true) | A retail store opening Saturday morning to a broken session-open modal would lose the day's sales — flag lets the operator fall back to v4-style direct sales |
 | B.2 Pricelists | `PricelistsEnabled` (default true) | If the resolution rule produces wrong prices on a live invoice, the operator can flip the flag back off and lines fall back to `Item.UnitPrice` |
 | B.5 API write endpoints | `ApiWritesEnabled` (default true) | A leaked key + bad integration could create thousands of garbage rows; the flag is the panic button before key revocation kicks in |
+| D.1 Serial tracking | `SerialTrackingEnabled` (default false) | New tracking layer on top of stock movements; opt-in per-item via `Item.TracksSerials` so shops not using serials see zero behaviour change |
+| D.2.2 Project P&L | `ProjectPnlEnabled` (default true) | Hides the P&L tab without removing timesheet data if margin numbers come out wrong on a real project |
 
 The other v5 items (A.1 supplier statement, A.2 stock valuation,
 A.3 priorities + sub-tasks, A.4 quotation templates, A.5 split
 payment, B.1 Sales Teams, B.3 CRM email send, B.4 expense
-reports) are read-side or additive enough that a feature flag
-adds more confusion than safety — branch revert covers them.
+reports, D.2.1 timesheets, D.2.3 Gantt) are read-side or
+additive enough that a feature flag adds more confusion than
+safety — branch revert covers them.
 
 ### 6.5.3 Migration rollback
 
