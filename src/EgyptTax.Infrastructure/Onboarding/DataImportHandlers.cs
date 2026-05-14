@@ -1,6 +1,9 @@
+using System.Globalization;
+using EgyptTax.Domain.Crm;
 using EgyptTax.Domain.MasterData;
 using EgyptTax.Infrastructure.Persistence;
 using EgyptTax.SharedKernel;
+using EgyptTax.SharedKernel.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace EgyptTax.Infrastructure.Onboarding;
@@ -234,6 +237,152 @@ public sealed class ItemImportHandler
             catch (Exception ex)
             {
                 errors.Add(new ImportRowError(rowNumber, code, ex.Message));
+            }
+        }
+
+        if (inserted > 0)
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+
+        return new ImportResult(
+            TotalRowsRead: rows.Count,
+            InsertedCount: inserted,
+            SkippedCount: skipped,
+            Errors: errors);
+    }
+}
+
+/// <summary>
+/// v4 B.1 — Lead CSV import. Sales reps coming from a spreadsheet
+/// of leads need to bulk-load them into the kanban without typing
+/// 50 rows by hand. Required columns: Name, Phone OR Email
+/// (at least one). Optional: Company, Source, Stage,
+/// ExpectedValueEgp, ExpectedCloseDate.
+///
+/// De-duplication: existing leads matched by Phone OR Email are
+/// SKIPPED (re-import is safe).
+/// </summary>
+public sealed class LeadImportHandler
+{
+    private readonly AppDbContext _db;
+    private readonly IClock _clock;
+
+    public LeadImportHandler(AppDbContext db, IClock clock)
+    {
+        _db = db;
+        _clock = clock;
+    }
+
+    public async Task<ImportResult> ImportAsync(
+        IReadOnlyList<Dictionary<string, string>> rows,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+
+        var existingContacts = await _db.Set<Lead>()
+            .AsNoTracking()
+            .Select(l => new { l.Phone, l.Email })
+            .ToListAsync(ct);
+        var existingPhones = existingContacts
+            .Where(c => !string.IsNullOrWhiteSpace(c.Phone))
+            .Select(c => c.Phone!.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var existingEmails = existingContacts
+            .Where(c => !string.IsNullOrWhiteSpace(c.Email))
+            .Select(c => c.Email!.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var errors = new List<ImportRowError>();
+        var inserted = 0;
+        var skipped = 0;
+
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var rowNumber = i + 2;
+            string nameLabel = "";
+            try
+            {
+                var name = CsvImporter.Required(row, "Name",
+                    "Name", "الاسم", "FullName", "Lead Name");
+                nameLabel = name;
+
+                var phone = CsvImporter.Get(row, "Phone", "الهاتف", "phone", "Mobile");
+                var email = CsvImporter.Get(row, "Email", "البريد", "email");
+
+                if (string.IsNullOrWhiteSpace(phone) && string.IsNullOrWhiteSpace(email))
+                {
+                    throw new InvalidOperationException(
+                        "Lead requires at least one of Phone or Email.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(phone) && existingPhones.Contains(phone.Trim()))
+                {
+                    skipped++;
+                    errors.Add(new ImportRowError(rowNumber, name,
+                        "Skipped: a lead with this phone already exists."));
+                    continue;
+                }
+                if (!string.IsNullOrWhiteSpace(email) && existingEmails.Contains(email.Trim()))
+                {
+                    skipped++;
+                    errors.Add(new ImportRowError(rowNumber, name,
+                        "Skipped: a lead with this email already exists."));
+                    continue;
+                }
+
+                var company = CsvImporter.Get(row, "Company", "CompanyName", "الشركة");
+                var source = CsvImporter.Get(row, "Source", "المصدر", "Lead Source");
+
+                var lead = Lead.Create(
+                    name: new ArabicEnglishText(name, name),
+                    companyName: company,
+                    phone: phone,
+                    email: email,
+                    source: source,
+                    assignedToUserId: null,
+                    createdAtUtc: _clock.UtcNow,
+                    createdByUserId: null);
+
+                var stageRaw = CsvImporter.Get(row, "Stage", "Status", "المرحلة");
+                if (!string.IsNullOrWhiteSpace(stageRaw)
+                    && Enum.TryParse<LeadStage>(stageRaw.Trim(), ignoreCase: true, out var stage)
+                    && stage is not LeadStage.New)
+                {
+                    if (stage == LeadStage.Lost)
+                    {
+                        lead.MarkLost(reason: "Imported as Lost.", nowUtc: _clock.UtcNow);
+                    }
+                    else
+                    {
+                        lead.MoveToStage(stage);
+                    }
+                }
+
+                var valueRaw = CsvImporter.Get(row, "ExpectedValueEgp", "Value", "Deal Value", "قيمة الصفقة");
+                var dateRaw = CsvImporter.Get(row, "ExpectedCloseDate", "Close Date", "تاريخ الإغلاق المتوقع");
+                var value = CsvImporter.TryParseDecimal(valueRaw);
+                DateOnly? closeDate = null;
+                if (!string.IsNullOrWhiteSpace(dateRaw)
+                    && DateOnly.TryParse(dateRaw, CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out var d))
+                {
+                    closeDate = d;
+                }
+                if (value is not null || closeDate is not null)
+                {
+                    lead.SetForecast(closeDate, value);
+                }
+
+                _db.Add(lead);
+                if (!string.IsNullOrWhiteSpace(phone)) existingPhones.Add(phone.Trim());
+                if (!string.IsNullOrWhiteSpace(email)) existingEmails.Add(email.Trim());
+                inserted++;
+            }
+            catch (Exception ex)
+            {
+                errors.Add(new ImportRowError(rowNumber, nameLabel, ex.Message));
             }
         }
 

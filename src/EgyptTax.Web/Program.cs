@@ -448,6 +448,7 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.SampleDataSeeder>(
 // Scoped because they write via AppDbContext per-request.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.CustomerImportHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.ItemImportHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Onboarding.LeadImportHandler>();
 
 // L1.5 (v3 roadmap) — quotation orchestration: send (allocate
 // per-year sequence), convert (create SalesInvoice draft), expire

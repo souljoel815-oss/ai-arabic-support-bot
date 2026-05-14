@@ -211,7 +211,7 @@ quick win) → A.4 → A.1 → A.3.**
 Things that exist but feel half-finished. Each closes a real ask
 without spinning up a new entity family.
 
-### B.1 — CRM CSV import + pipeline value report
+### B.1 — CRM CSV import + pipeline value report ✅ SHIPPED
 
 - **Pain:** Sales reps with 50+ legacy leads in Excel can't
   bulk-import (D2.5 import handles customers + items only). And

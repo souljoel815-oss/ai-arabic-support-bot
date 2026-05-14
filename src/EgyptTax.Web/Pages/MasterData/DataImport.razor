@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Authorization
 @inject CustomerImportHandler CustomerImporter
 @inject ItemImportHandler ItemImporter
+@inject LeadImportHandler LeadImporter
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 @*
@@ -97,6 +98,31 @@
     }
 </section>
 
+@* ----- v4 B.1: Leads import ----- *@
+
+<section class="form-section" style="margin-top:24px;">
+    <h2>@Tr("٣. استيراد العملاء المحتملين (Leads)", "3. Import Leads")</h2>
+    <p class="page-subtitle" style="font-size:13px;">
+        @Tr(
+            "الأعمدة المطلوبة: Name و(Phone أو Email على الأقل واحد). الاختيارية: Company, Source, Stage, ExpectedValueEgp, ExpectedCloseDate. الـ Stage بيقبل: New, Qualified, ProposalSent, Negotiation, Won, Lost.",
+            "Required columns: Name and (Phone OR Email — at least one). Optional: Company, Source, Stage, ExpectedValueEgp, ExpectedCloseDate. Stage accepts: New, Qualified, ProposalSent, Negotiation, Won, Lost.")
+    </p>
+
+    <div class="invoice-actions" style="margin:8px 0;">
+        <a href="/data-import/sample-leads.csv" class="btn-secondary"
+           style="text-decoration:none;" download="leads-template.csv">
+            <Icon Name="download" Class="ic" />
+            @Tr("حمّل القالب", "Download template")
+        </a>
+        <InputFile OnChange="OnLeadFileAsync" accept=".csv,text/csv" disabled="@_busy" />
+    </div>
+
+    @if (_leadResult is { } lr)
+    {
+        <ImportResultPanel Result="lr" />
+    }
+</section>
+
 @if (_flash is not null)
 {
     <div class="kpi-card kpi-error" style="margin-top:16px;">@_flash</div>
@@ -109,14 +135,20 @@
     private string? _flash;
     private ImportResult? _customerResult;
     private ImportResult? _itemResult;
+    private ImportResult? _leadResult;
+
+    private enum ImportTarget { Customer, Item, Lead }
 
     private async Task OnCustomerFileAsync(InputFileChangeEventArgs e) =>
-        await ImportAsync(e, isCustomer: true);
+        await ImportAsync(e, ImportTarget.Customer);
 
     private async Task OnItemFileAsync(InputFileChangeEventArgs e) =>
-        await ImportAsync(e, isCustomer: false);
+        await ImportAsync(e, ImportTarget.Item);
 
-    private async Task ImportAsync(InputFileChangeEventArgs e, bool isCustomer)
+    private async Task OnLeadFileAsync(InputFileChangeEventArgs e) =>
+        await ImportAsync(e, ImportTarget.Lead);
+
+    private async Task ImportAsync(InputFileChangeEventArgs e, ImportTarget target)
     {
         _flash = null;
         var file = e.File;
@@ -149,13 +181,17 @@
                 return;
             }
 
-            if (isCustomer)
+            switch (target)
             {
-                _customerResult = await CustomerImporter.ImportAsync(rows);
-            }
-            else
-            {
-                _itemResult = await ItemImporter.ImportAsync(rows);
+                case ImportTarget.Customer:
+                    _customerResult = await CustomerImporter.ImportAsync(rows);
+                    break;
+                case ImportTarget.Item:
+                    _itemResult = await ItemImporter.ImportAsync(rows);
+                    break;
+                case ImportTarget.Lead:
+                    _leadResult = await LeadImporter.ImportAsync(rows);
+                    break;
             }
         }
         catch (Exception ex)

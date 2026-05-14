@@ -1,0 +1,155 @@
+@page "/reports/sales-pipeline"
+@using EgyptTax.Domain.Crm
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Web.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject IJSRuntime Js
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v4 B.1 — Sales pipeline report. Per-stage rollup of open
+    leads with raw deal value + weighted-by-probability value.
+    Default probabilities are hard-coded per the v4 spec
+    (New 10%, Qualified 30%, ProposalSent 60%, Negotiation 80%,
+    Won 100%); probability customisation per pipeline is
+    explicitly out of scope.
+
+    Won / Lost are excluded from the open-pipeline totals so the
+    report shows the *forecast*, not historical activity.
+*@
+
+<h1>
+    @(IsArabic ? "تقرير قمع المبيعات" : "Sales Pipeline Report")
+    @if (_rows.Count > 0)
+    {
+        <button type="button" class="btn-secondary"
+                style="font-size:13px;margin-inline-start:12px;"
+                @onclick="ExportCsvAsync">
+            ⬇ @(IsArabic ? "تصدير CSV" : "Export CSV")
+        </button>
+    }
+</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "قيمة الـ pipeline موزّعة على المراحل: القيمة الخام = مجموع ExpectedValueEgp، والقيمة الموزونة = مجموع (القيمة × احتمالية الإغلاق لكل مرحلة)."
+        : "Pipeline value broken down by stage: raw = sum of ExpectedValueEgp, weighted = sum of (value × per-stage close probability).")
+</p>
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>@(IsArabic ? "إجمالي العدد:" : "Total open leads:")</strong> @_rows.Sum(r => r.LeadCount)</div>
+    <div><strong>@(IsArabic ? "إجمالي القيمة الخام:" : "Total raw value:")</strong>
+        <span class="num">@_rows.Sum(r => r.RawValueEgp).ToString("N2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "إجمالي القيمة الموزونة:" : "Total weighted value:")</strong>
+        <span class="num">@_rows.Sum(r => r.WeightedValueEgp).ToString("N2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+</section>
+
+<table class="data-grid" style="margin-top:16px;">
+    <thead>
+        <tr>
+            <th>@(IsArabic ? "المرحلة" : "Stage")</th>
+            <th class="num">@(IsArabic ? "احتمالية الإغلاق" : "Close probability")</th>
+            <th class="num">@(IsArabic ? "عدد العملاء المحتملين" : "Lead count")</th>
+            <th class="num">@(IsArabic ? "القيمة الخام" : "Raw value")</th>
+            <th class="num">@(IsArabic ? "القيمة الموزونة" : "Weighted value")</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var row in _rows)
+        {
+            <tr>
+                <td>@StageLabel(row.Stage)</td>
+                <td class="num">@(row.Probability * 100m)%</td>
+                <td class="num">@row.LeadCount</td>
+                <td class="num">@row.RawValueEgp.ToString("N2")</td>
+                <td class="num">@row.WeightedValueEgp.ToString("N2")</td>
+            </tr>
+        }
+        @if (_rows.Count == 0)
+        {
+            <tr><td colspan="5"><em>@(IsArabic ? "لا توجد leads في pipeline حالياً." : "No leads in the pipeline currently.")</em></td></tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private bool _loading = true;
+    private List<PipelineRow> _rows = new();
+
+    private static readonly Dictionary<LeadStage, decimal> StageProbability = new()
+    {
+        [LeadStage.New] = 0.10m,
+        [LeadStage.Qualified] = 0.30m,
+        [LeadStage.ProposalSent] = 0.60m,
+        [LeadStage.Negotiation] = 0.80m,
+        [LeadStage.Won] = 1.00m,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Open pipeline only (Lost excluded) — the report is a
+        // forecast, not a post-mortem. Won is included so closed
+        // deals contribute to total committed value.
+        var raw = await Db.Set<Lead>().AsNoTracking()
+            .Where(l => l.Stage != LeadStage.Lost)
+            .Select(l => new { l.Stage, l.ExpectedValueEgp })
+            .ToListAsync();
+
+        _rows = raw
+            .GroupBy(x => x.Stage)
+            .Select(g =>
+            {
+                var rawVal = g.Sum(x => x.ExpectedValueEgp ?? 0m);
+                var prob = StageProbability.TryGetValue(g.Key, out var p) ? p : 0m;
+                return new PipelineRow(
+                    Stage: g.Key,
+                    Probability: prob,
+                    LeadCount: g.Count(),
+                    RawValueEgp: decimal.Round(rawVal, 2, MidpointRounding.ToEven),
+                    WeightedValueEgp: decimal.Round(rawVal * prob, 2, MidpointRounding.ToEven));
+            })
+            .OrderBy(r => (int)r.Stage)
+            .ToList();
+
+        _loading = false;
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        var bytes = CsvExporter.Build(
+            headers: new[] { "Stage", "Probability", "LeadCount", "RawValueEgp", "WeightedValueEgp" },
+            rows: _rows,
+            rowSelector: r => new object?[]
+            {
+                r.Stage.ToString(), r.Probability, r.LeadCount, r.RawValueEgp, r.WeightedValueEgp,
+            });
+        var b64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("daftarxDownloadBytes",
+            $"sales-pipeline-{DateTime.UtcNow:yyyyMMdd}.csv", b64, "text/csv");
+    }
+
+    private string StageLabel(LeadStage s) => s switch
+    {
+        LeadStage.New => IsArabic ? "جديد" : "New",
+        LeadStage.Qualified => IsArabic ? "مؤهَّل" : "Qualified",
+        LeadStage.ProposalSent => IsArabic ? "تم إرسال العرض" : "Proposal sent",
+        LeadStage.Negotiation => IsArabic ? "تفاوض" : "Negotiation",
+        LeadStage.Won => IsArabic ? "تم الفوز" : "Won",
+        LeadStage.Lost => IsArabic ? "خسارة" : "Lost",
+        _ => s.ToString(),
+    };
+
+    private sealed record PipelineRow(
+        LeadStage Stage,
+        decimal Probability,
+        int LeadCount,
+        decimal RawValueEgp,
+        decimal WeightedValueEgp);
+}
