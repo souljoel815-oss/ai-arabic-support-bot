@@ -1,0 +1,298 @@
+@page "/currencies"
+@using EgyptTax.Domain.Settings
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v3 §11 #7 (multi-currency) — currency master + exchange-rate
+    history. v1 ships master-data + rate management only;
+    per-document FX override on invoices + period-close
+    revaluation are deferred (XL — touch every monetary field).
+    Customers who only deal in EGP see no behaviour change.
+*@
+
+<PageTitle>@Tr("العملات | DaftarX", "Currencies | DaftarX")</PageTitle>
+
+<h1>@Tr("العملات", "Currencies")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "ضيف العملات الأجنبية اللي بتتعامل بيها (USD، EUR، إلخ) وحدث سعر الصرف يومياً. v1: العرض فقط — تعديل الفواتير بعملة أجنبية في تحديث قريب.",
+        "Add foreign currencies + maintain daily exchange rates. v1 is master-data only — per-invoice currency override lands in a follow-on update.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+}
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+<h2>@Tr("العملات المعرّفة", "Defined currencies")</h2>
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>@Tr("الكود", "Code")</th>
+            <th>@Tr("الرمز", "Symbol")</th>
+            <th>@Tr("الاسم", "Name")</th>
+            <th>@Tr("النوع", "Kind")</th>
+            <th>@Tr("الحالة", "Status")</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var c in _currencies)
+        {
+            var ccy = c;
+            <tr>
+                <td><strong>@c.Code</strong></td>
+                <td>@c.Symbol</td>
+                <td>@(IsArabic ? c.NameAr : c.NameEn)</td>
+                <td>
+                    @if (c.IsBase)
+                    {
+                        <span style="color:var(--accent);font-weight:600;">@Tr("قاعدة", "Base")</span>
+                    }
+                    else
+                    {
+                        <span>@Tr("أجنبية", "Foreign")</span>
+                    }
+                </td>
+                <td>
+                    @if (c.IsActive)
+                    {
+                        <span style="color:var(--success);">@Tr("نشطة", "Active")</span>
+                    }
+                    else
+                    {
+                        <span style="color:var(--muted);">@Tr("معطلة", "Inactive")</span>
+                    }
+                </td>
+                <td>
+                    @if (!c.IsBase)
+                    {
+                        if (c.IsActive)
+                        {
+                            <button type="button" class="btn-secondary" style="font-size:12px;"
+                                    @onclick="() => DeactivateAsync(ccy.Code)">
+                                @Tr("تعطيل", "Off")
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn-secondary" style="font-size:12px;"
+                                    @onclick="() => ReactivateAsync(ccy.Code)">
+                                @Tr("تفعيل", "On")
+                            </button>
+                        }
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2 style="margin-top:24px;">@Tr("+ إضافة عملة", "+ Add currency")</h2>
+<div class="form-grid">
+    <label>
+        <span>@Tr("الكود (3 حروف ISO 4217) *", "Code (3-letter ISO 4217) *")</span>
+        <input type="text" maxlength="3" @bind="_form.Code" @bind:event="oninput" placeholder="USD" />
+    </label>
+    <label>
+        <span>@Tr("الرمز", "Symbol")</span>
+        <input type="text" maxlength="8" @bind="_form.Symbol" placeholder="$" />
+    </label>
+    <label>
+        <span>@Tr("الاسم (إنجليزي) *", "Name (English) *")</span>
+        <input type="text" @bind="_form.NameEn" placeholder="US Dollar" />
+    </label>
+    <label>
+        <span>@Tr("الاسم (عربي)", "Name (Arabic)")</span>
+        <input type="text" @bind="_form.NameAr" placeholder="@Tr("الدولار الأمريكي", "الدولار الأمريكي")" />
+    </label>
+    <div style="grid-column:1/-1;">
+        <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnCreateAsync">
+            @(_busy ? Tr("جارٍ…", "Saving…") : Tr("إضافة", "Add"))
+        </button>
+    </div>
+</div>
+
+<h2 style="margin-top:32px;">@Tr("أسعار الصرف", "Exchange rates")</h2>
+<p class="page-subtitle" style="font-size:13px;">
+    @Tr("سعر صرف يومي. اختار العملة + التاريخ + 1 وحدة منها = كم EGP.",
+        "Daily rate. Pick currency + date + 1 unit = X EGP.")
+</p>
+<div class="form-grid">
+    <label>
+        <span>@Tr("العملة", "Currency")</span>
+        <select @bind="_rateForm.CurrencyCode">
+            <option value="">— @Tr("اختر", "select") —</option>
+            @foreach (var c in _currencies.Where(c => !c.IsBase && c.IsActive))
+            {
+                <option value="@c.Code">@c.Code</option>
+            }
+        </select>
+    </label>
+    <label>
+        <span>@Tr("التاريخ", "Date")</span>
+        <input type="date" @bind="_rateForm.Date" />
+    </label>
+    <label>
+        <span>@Tr("سعر الصرف", "Rate to base")</span>
+        <input type="number" step="0.000001" min="0" @bind="_rateForm.Rate" />
+    </label>
+    <label>
+        <span>@Tr("المصدر (اختياري)", "Source (optional)")</span>
+        <input type="text" @bind="_rateForm.Source" maxlength="100" placeholder="CIB / CBE" />
+    </label>
+    <div style="grid-column:1/-1;">
+        <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnAddRateAsync">
+            @Tr("حفظ السعر", "Save rate")
+        </button>
+    </div>
+</div>
+
+@if (_rates.Count > 0)
+{
+    <table class="data-table" style="margin-top:12px;">
+        <thead>
+            <tr>
+                <th>@Tr("التاريخ", "Date")</th>
+                <th>@Tr("العملة", "Currency")</th>
+                <th>@Tr("1 وحدة = ؟ EGP", "1 unit = ? EGP")</th>
+                <th>@Tr("المصدر", "Source")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _rates.OrderByDescending(r => r.EffectiveDate).Take(50))
+            {
+                <tr>
+                    <td>@r.EffectiveDate.ToString("yyyy-MM-dd")</td>
+                    <td><strong>@r.CurrencyCode</strong></td>
+                    <td>@r.RateToBase.ToString("0.######")</td>
+                    <td>@(r.Source ?? "—")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private List<Currency> _currencies = new();
+    private List<ExchangeRate> _rates = new();
+    private FormModel _form = new();
+    private RateFormModel _rateForm = new();
+
+    private sealed class FormModel
+    {
+        public string Code { get; set; } = "";
+        public string Symbol { get; set; } = "";
+        public string NameEn { get; set; } = "";
+        public string NameAr { get; set; } = "";
+    }
+
+    private sealed class RateFormModel
+    {
+        public string CurrencyCode { get; set; } = "";
+        public DateTime Date { get; set; } = DateTime.UtcNow.Date;
+        public decimal Rate { get; set; }
+        public string? Source { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _currencies = await Db.Set<Currency>().OrderByDescending(c => c.IsBase).ThenBy(c => c.Code).ToListAsync();
+        _rates = await Db.Set<ExchangeRate>().AsNoTracking()
+            .OrderByDescending(r => r.EffectiveDate).Take(50).ToListAsync();
+        _loading = false;
+    }
+
+    private async Task OnCreateAsync()
+    {
+        _flash = null;
+        if (_form.Code.Length != 3 || string.IsNullOrWhiteSpace(_form.NameEn))
+        {
+            _flash = Tr("أدخل كود من 3 حروف + الاسم.", "Need a 3-letter code + name.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var code = _form.Code.ToUpperInvariant();
+            if (await Db.Set<Currency>().AnyAsync(c => c.Code == code))
+            {
+                _flash = Tr($"العملة {code} موجودة.", $"{code} already exists.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+            Db.Add(new Currency(code, _form.Symbol, _form.NameEn,
+                string.IsNullOrWhiteSpace(_form.NameAr) ? _form.NameEn : _form.NameAr));
+            await Db.SaveChangesAsync();
+            _form = new FormModel();
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnAddRateAsync()
+    {
+        _flash = null;
+        if (string.IsNullOrEmpty(_rateForm.CurrencyCode) || _rateForm.Rate <= 0)
+        {
+            _flash = Tr("اختر عملة + سعر موجب.", "Pick a currency + positive rate.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var date = DateOnly.FromDateTime(_rateForm.Date);
+            var existing = await Db.Set<ExchangeRate>()
+                .FirstOrDefaultAsync(r => r.CurrencyCode == _rateForm.CurrencyCode && r.EffectiveDate == date);
+            if (existing is not null)
+            {
+                existing.UpdateRate(_rateForm.Rate);
+            }
+            else
+            {
+                Db.Add(new ExchangeRate(_rateForm.CurrencyCode, date, _rateForm.Rate, _rateForm.Source));
+            }
+            await Db.SaveChangesAsync();
+            _rateForm = new RateFormModel();
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _busy = false; }
+    }
+
+    private async Task DeactivateAsync(string code)
+    {
+        var c = await Db.Set<Currency>().FirstAsync(x => x.Code == code);
+        c.Deactivate();
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReactivateAsync(string code)
+    {
+        var c = await Db.Set<Currency>().FirstAsync(x => x.Code == code);
+        c.Reactivate();
+        await Db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+}

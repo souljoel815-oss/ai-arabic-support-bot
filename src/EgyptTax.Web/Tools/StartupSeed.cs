@@ -170,6 +170,18 @@ internal static class StartupSeed
             added++;
         }
 
+        // v3 §11 #7 (multi-currency) — ensure EGP exists as the
+        // base currency. Other currencies are operator-added.
+        if (!await db.Set<EgyptTax.Domain.Settings.Currency>().AnyAsync(ct))
+        {
+            db.Add(new EgyptTax.Domain.Settings.Currency(
+                code: "EGP", symbol: "ج.م",
+                nameEn: "Egyptian Pound", nameAr: "الجنيه المصري",
+                isBase: true));
+            await db.SaveChangesAsync(ct);
+            added++;
+        }
+
         return added;
     }
 }

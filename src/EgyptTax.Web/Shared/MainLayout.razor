@@ -308,7 +308,7 @@
         @* Gux.1 + Gux.2 — Settings (absorbs setup-only items from Compliance + Master Data) *@
         @if (!_isRepOnly)
         {
-        <details class="sidebar-group" @attributes="@OpenAttr("settings", "eta-wizard", "certificates", "expense-categories", "audit-log", "inspection-bundle", "cockpit")">
+        <details class="sidebar-group" @attributes="@OpenAttr("settings", "eta-wizard", "certificates", "expense-categories", "audit-log", "inspection-bundle", "cockpit", "currencies")">
             <summary>
                 <Icon Name="building" Class="nav-icon" />
                 <span>@Tr("الإعدادات", "Settings")</span>
@@ -323,6 +323,7 @@
                 @* Gux.3 — Payment methods + Cash accounts + Opening balances share a tab strip. *@
                 <a href="settings/cash-accounts" class="@(ActiveLink("settings/cash-accounts", "settings/payment-methods", "settings/opening-balances"))" @onclick="CloseSidebar">@Tr("نقدية وبنوك", "Money & banks")</a>
                 <a href="expense-categories" class="@ActiveLink("expense-categories")" @onclick="CloseSidebar">@Tr("فئات المصروفات", "Expense categories")</a>
+                <a href="currencies" class="@ActiveLink("currencies")" @onclick="CloseSidebar">@Tr("💱 العملات", "💱 Currencies")</a>
                 <a href="settings/referrals" class="@ActiveLink("settings/referrals")" @onclick="CloseSidebar">@Tr("ادعُ صديق", "Refer a friend")</a>
                 @* Setup-only ETA items moved here per Gux.2 *@
                 <a href="eta-wizard" class="@ActiveLink("eta-wizard")" @onclick="CloseSidebar">@Tr("معالج إعداد ETA", "ETA setup wizard")</a>
