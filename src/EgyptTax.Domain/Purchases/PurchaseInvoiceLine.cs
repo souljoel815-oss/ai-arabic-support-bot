@@ -29,6 +29,12 @@ public sealed class PurchaseInvoiceLine
     public decimal VatRatePercent { get; init; }
     public bool DeductibleFlag { get; init; }
 
+    /// <summary>v4 C.2 — optional per-line cost-center tag.
+    /// Mirrors the SalesInvoiceLine column; when set, the
+    /// cost-centers report attributes this line's cost
+    /// (LineSubtotal) to the matching center.</summary>
+    public Guid? CostCenterId { get; init; }
+
     public MoneyEgp LineSubtotal { get; private set; } = MoneyEgp.Zero;
     public MoneyEgp LineVat { get; private set; } = MoneyEgp.Zero;
     public MoneyEgp LineTotal { get; private set; } = MoneyEgp.Zero;
@@ -43,7 +49,8 @@ public sealed class PurchaseInvoiceLine
         MoneyEgp unitPrice,
         Guid vatCategoryId,
         decimal vatRatePercent,
-        bool deductibleFlag
+        bool deductibleFlag,
+        Guid? costCenterId = null
     )
     {
         // Exactly one of ItemId / ExpenseCategoryId — enforces the
@@ -82,6 +89,7 @@ public sealed class PurchaseInvoiceLine
         VatCategoryId = vatCategoryId;
         VatRatePercent = vatRatePercent;
         DeductibleFlag = deductibleFlag;
+        CostCenterId = costCenterId == Guid.Empty ? null : costCenterId;
 
         Recompute();
     }

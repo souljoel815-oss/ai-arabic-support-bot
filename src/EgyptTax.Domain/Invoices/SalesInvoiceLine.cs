@@ -19,6 +19,14 @@ public sealed class SalesInvoiceLine
     public MoneyEgp UnitPrice { get; init; }
     public Guid VatCategoryId { get; init; }
 
+    /// <summary>v4 C.2 — optional per-line cost-center tag.
+    /// When set, the cost-centers report attributes this line's
+    /// revenue (LineSubtotal) to the matching center on top of
+    /// the document-level tagging that exists for expenses.
+    /// Null = "untagged" (the report buckets these separately so
+    /// the operator sees the data-quality gap).</summary>
+    public Guid? CostCenterId { get; init; }
+
     /// <summary>
     /// VAT rate active on the document_date — captured here at line
     /// creation so the recompute on post is deterministic against the
@@ -57,7 +65,8 @@ public sealed class SalesInvoiceLine
         decimal quantity,
         MoneyEgp unitPrice,
         Guid vatCategoryId,
-        decimal vatRatePercent
+        decimal vatRatePercent,
+        Guid? costCenterId = null
     )
     {
         if (quantity == 0m)
@@ -92,6 +101,7 @@ public sealed class SalesInvoiceLine
         UnitPrice = unitPrice;
         VatCategoryId = vatCategoryId;
         VatRatePercent = vatRatePercent;
+        CostCenterId = costCenterId == Guid.Empty ? null : costCenterId;
         Recompute();
     }
 

@@ -317,7 +317,7 @@ still waits for a real customer ask before any code is written:
 | Trigger | What lands | Effort |
 |---|---|---|
 | Customer asks for **multi-currency on invoices** | Per-invoice currency picker + revaluation | XL ~3w |
-| Customer asks for **per-line cost center tagging** | Tag column on JE lines + sales/purchase invoice lines | L ~2w |
+| Customer asks for **per-line cost center tagging** ✅ SHIPPED (data path + report; in-editor UI deferred) | Tag column on JE lines + sales/purchase invoice lines | L ~2w |
 | Retail customer with cash register + offline need | POS extensions: offline mode, receipt printer, barcode | XL ~4w |
 | Pharmacy/electronics with serial-tracked units | Per-serial tracking layer on top of lots | L ~2w |
 | Distribution customer asks for auto-PO | Hangfire job: convert reorder suggestions to draft POs | M ~1w |

@@ -137,7 +137,8 @@ public sealed class SalesInvoice
         decimal quantity,
         MoneyEgp unitPrice,
         Guid vatCategoryId,
-        decimal vatRatePercent
+        decimal vatRatePercent,
+        Guid? costCenterId = null
     )
     {
         if (State != DocumentState.Draft)
@@ -152,7 +153,8 @@ public sealed class SalesInvoice
             quantity,
             unitPrice,
             vatCategoryId,
-            vatRatePercent
+            vatRatePercent,
+            costCenterId
         );
         _lines.Add(line);
         Recompute();

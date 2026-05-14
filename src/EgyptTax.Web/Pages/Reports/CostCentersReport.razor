@@ -1,6 +1,8 @@
 @page "/reports/cost-centers"
 @using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.Invoices
 @using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Purchases
 @using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.SharedKernel
@@ -10,13 +12,12 @@
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 @*
-    v3 §11 #3 — analytical report. Per cost center: total
-    expenses (posted only) in the selected period + count of
-    expense documents + count of unallocated expenses ("not
-    tagged") to surface the data-quality gap.
-
-    v1 covers expenses only. When invoice tagging lands, this
-    report adds revenue + net-margin columns.
+    v3 §11 #3 + v4 C.2 — analytical report. Per cost center:
+    revenue (sales-invoice lines tagged with this center) +
+    purchase cost (purchase-invoice lines tagged) + expenses
+    (Expense.CostCenterId, document-level tagging, pre-existing).
+    Net margin = revenue − (purchase cost + expense). Untagged
+    bucket surfaces the data-quality gap.
 *@
 
 <PageTitle>@Tr("تقرير مراكز التكلفة | DaftarX", "Cost Centers Report | DaftarX")</PageTitle>
@@ -41,26 +42,26 @@
 {
     <p>@Tr("جارٍ التحميل…", "Loading…")</p>
 }
-else if (_rows.Count == 0 && _untaggedAmount == 0m)
+else if (_rows.Count == 0 && _untaggedRevenue == 0m && _untaggedCost == 0m && _untaggedExpense == 0m)
 {
     <div class="kpi-card kpi-info" style="padding:14px;">
-        @Tr("مفيش مصاريف في الفترة دي.", "No posted expenses in this range.")
+        @Tr("مفيش حركة في الفترة دي.", "No posted activity in this range.")
     </div>
 }
 else
 {
     <div class="kpi-grid kpi-grid-3" style="margin-bottom:16px;">
         <div class="kpi-card kpi-info">
-            <div class="kpi-label">@Tr("إجمالي المصاريف", "Total expenses")</div>
-            <div class="kpi-value">@_grandTotal.ToString("N2") @Tr("ج.م", "EGP")</div>
+            <div class="kpi-label">@Tr("إجمالي الإيرادات (Revenue)", "Total revenue")</div>
+            <div class="kpi-value">@_totalRevenue.ToString("N2") @Tr("ج.م", "EGP")</div>
         </div>
         <div class="kpi-card kpi-info">
-            <div class="kpi-label">@Tr("عدد الوثائق", "Documents")</div>
-            <div class="kpi-value">@_grandCount</div>
+            <div class="kpi-label">@Tr("إجمالي المشتريات + المصاريف", "Total cost (purchases + expenses)")</div>
+            <div class="kpi-value">@((_totalCost + _totalExpense).ToString("N2")) @Tr("ج.م", "EGP")</div>
         </div>
-        <div class="kpi-card @(_untaggedAmount > 0 ? "kpi-warn" : "kpi-info")">
-            <div class="kpi-label">@Tr("غير مصنّفة", "Untagged")</div>
-            <div class="kpi-value">@_untaggedAmount.ToString("N2") @Tr("ج.م", "EGP")</div>
+        <div class="kpi-card @(_totalRevenue - _totalCost - _totalExpense >= 0 ? "kpi-info" : "kpi-warn")">
+            <div class="kpi-label">@Tr("صافي الهامش", "Net margin")</div>
+            <div class="kpi-value">@((_totalRevenue - _totalCost - _totalExpense).ToString("N2")) @Tr("ج.م", "EGP")</div>
         </div>
     </div>
 
@@ -69,30 +70,34 @@ else
             <tr>
                 <th>@Tr("الكود", "Code")</th>
                 <th>@Tr("الاسم", "Name")</th>
-                <th class="num">@Tr("المبلغ", "Amount")</th>
-                <th class="num">@Tr("الوثائق", "Documents")</th>
-                <th class="num">@Tr("النسبة", "Share")</th>
+                <th class="num">@Tr("الإيرادات", "Revenue")</th>
+                <th class="num">@Tr("المشتريات", "Purchases")</th>
+                <th class="num">@Tr("المصاريف", "Expenses")</th>
+                <th class="num">@Tr("الهامش", "Margin")</th>
             </tr>
         </thead>
         <tbody>
             @foreach (var r in _rows)
             {
+                var margin = r.Revenue - r.Cost - r.Expense;
                 <tr>
                     <td><code>@r.Code</code></td>
                     <td>@r.Name.Display(IsArabic ? Language.Ar : Language.En)</td>
-                    <td class="num">@r.Total.ToString("N2")</td>
-                    <td class="num">@r.Count</td>
-                    <td class="num">@(_grandTotal > 0 ? (r.Total / _grandTotal * 100).ToString("0.#") : "—")%</td>
+                    <td class="num">@r.Revenue.ToString("N2")</td>
+                    <td class="num">@r.Cost.ToString("N2")</td>
+                    <td class="num">@r.Expense.ToString("N2")</td>
+                    <td class="num"><strong>@margin.ToString("N2")</strong></td>
                 </tr>
             }
-            @if (_untaggedAmount > 0)
+            @if (_untaggedRevenue > 0 || _untaggedCost > 0 || _untaggedExpense > 0)
             {
                 <tr style="background:var(--bg);">
                     <td><em>—</em></td>
                     <td><em>@Tr("(غير مصنّفة)", "(untagged)")</em></td>
-                    <td class="num">@_untaggedAmount.ToString("N2")</td>
-                    <td class="num">@_untaggedCount</td>
-                    <td class="num">@(_grandTotal > 0 ? (_untaggedAmount / _grandTotal * 100).ToString("0.#") : "—")%</td>
+                    <td class="num">@_untaggedRevenue.ToString("N2")</td>
+                    <td class="num">@_untaggedCost.ToString("N2")</td>
+                    <td class="num">@_untaggedExpense.ToString("N2")</td>
+                    <td class="num">@((_untaggedRevenue - _untaggedCost - _untaggedExpense).ToString("N2"))</td>
                 </tr>
             }
         </tbody>
@@ -105,12 +110,14 @@ else
     private DateTime _to = DateTime.UtcNow.Date;
 
     private List<Row> _rows = new();
-    private decimal _grandTotal;
-    private int _grandCount;
-    private decimal _untaggedAmount;
-    private int _untaggedCount;
+    private decimal _totalRevenue;
+    private decimal _totalCost;
+    private decimal _totalExpense;
+    private decimal _untaggedRevenue;
+    private decimal _untaggedCost;
+    private decimal _untaggedExpense;
 
-    private sealed record Row(string Code, ArabicEnglishText Name, decimal Total, int Count);
+    private sealed record Row(string Code, ArabicEnglishText Name, decimal Revenue, decimal Cost, decimal Expense);
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
@@ -121,8 +128,31 @@ else
         var toDate = DateOnly.FromDateTime(_to);
 
         // Materialise then aggregate in C# — SQLite can't sum
-        // decimal columns server-side (BUG-D-003 / BUG-COMP-001
-        // pattern repeated).
+        // decimal columns server-side. v4 C.2 expands the report
+        // from "expenses only" to three streams: revenue (sales
+        // invoice lines), purchase cost (purchase invoice lines),
+        // and expenses (document-level Expense.CostCenterId, the
+        // only one that pre-dates v4).
+
+        // Revenue per cost-center from sales invoice lines.
+        var revenueRows = await (
+            from i in Db.Set<SalesInvoice>().AsNoTracking()
+            from l in i.Lines
+            where i.State == DocumentState.Posted
+                && i.DocumentDate >= fromDate && i.DocumentDate <= toDate
+            select new { l.CostCenterId, Amount = l.LineSubtotal.Amount }
+        ).ToListAsync();
+
+        // Purchase cost per cost-center from purchase invoice lines.
+        // PurchaseInvoice uses DateReceived (no DocumentDate field).
+        var purchaseRows = await (
+            from p in Db.Set<PurchaseInvoice>().AsNoTracking()
+            from l in p.Lines
+            where p.State == DocumentState.Posted
+                && p.DateReceived >= fromDate && p.DateReceived <= toDate
+            select new { l.CostCenterId, Amount = l.LineSubtotal.Amount }
+        ).ToListAsync();
+
         var expenses = await Db.Set<Expense>().AsNoTracking()
             .Where(e => e.State == DocumentState.Posted
                 && e.DocumentDate >= fromDate && e.DocumentDate <= toDate)
@@ -132,27 +162,49 @@ else
         var ccLookup = await Db.Set<CostCenter>().AsNoTracking()
             .ToDictionaryAsync(c => c.Id);
 
-        var tagged = expenses.Where(e => e.CostCenterId.HasValue).ToList();
-        var untagged = expenses.Where(e => !e.CostCenterId.HasValue).ToList();
+        var revenueByCc = revenueRows
+            .Where(r => r.CostCenterId.HasValue)
+            .GroupBy(r => r.CostCenterId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+        var purchaseByCc = purchaseRows
+            .Where(r => r.CostCenterId.HasValue)
+            .GroupBy(r => r.CostCenterId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+        var expenseByCc = expenses
+            .Where(r => r.CostCenterId.HasValue)
+            .GroupBy(r => r.CostCenterId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
 
-        _rows = tagged
-            .GroupBy(e => e.CostCenterId!.Value)
-            .Select(g =>
+        var allCcIds = revenueByCc.Keys
+            .Union(purchaseByCc.Keys)
+            .Union(expenseByCc.Keys)
+            .Distinct()
+            .ToList();
+
+        _rows = allCcIds
+            .Select(id =>
             {
-                ccLookup.TryGetValue(g.Key, out var cc);
+                ccLookup.TryGetValue(id, out var cc);
+                var rev = revenueByCc.TryGetValue(id, out var r) ? r : 0m;
+                var cost = purchaseByCc.TryGetValue(id, out var c) ? c : 0m;
+                var exp = expenseByCc.TryGetValue(id, out var e) ? e : 0m;
                 return new Row(
                     Code: cc?.Code ?? "?",
                     Name: cc?.Name ?? new ArabicEnglishText("(?)", "(?)"),
-                    Total: g.Sum(x => x.Amount),
-                    Count: g.Count());
+                    Revenue: rev,
+                    Cost: cost,
+                    Expense: exp);
             })
-            .OrderByDescending(r => r.Total)
+            .OrderByDescending(r => r.Revenue - r.Cost - r.Expense)
             .ToList();
 
-        _grandCount = expenses.Count;
-        _grandTotal = expenses.Sum(e => e.Amount);
-        _untaggedAmount = untagged.Sum(e => e.Amount);
-        _untaggedCount = untagged.Count;
+        _totalRevenue = revenueRows.Sum(r => r.Amount);
+        _totalCost = purchaseRows.Sum(r => r.Amount);
+        _totalExpense = expenses.Sum(e => e.Amount);
+
+        _untaggedRevenue = revenueRows.Where(r => !r.CostCenterId.HasValue).Sum(r => r.Amount);
+        _untaggedCost = purchaseRows.Where(r => !r.CostCenterId.HasValue).Sum(r => r.Amount);
+        _untaggedExpense = expenses.Where(e => !e.CostCenterId.HasValue).Sum(e => e.Amount);
 
         _loading = false;
     }

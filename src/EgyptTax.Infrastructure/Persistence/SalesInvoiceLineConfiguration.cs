@@ -34,6 +34,11 @@ internal sealed class SalesInvoiceLineConfiguration : IEntityTypeConfiguration<S
             .HasColumnType("decimal(5,2)")
             .IsRequired();
 
+        // v4 C.2 — optional per-line cost-center tag (nullable FK).
+        b.Property(l => l.CostCenterId).HasColumnName("cost_center_id");
+        b.HasIndex(l => l.CostCenterId)
+            .HasDatabaseName("ix_sales_invoice_lines_cost_center");
+
         b.ComplexProperty(
             l => l.LineSubtotal,
             p =>

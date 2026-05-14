@@ -47,6 +47,11 @@ internal sealed class PurchaseInvoiceLineConfiguration
             .IsRequired();
         b.Property(l => l.DeductibleFlag).HasColumnName("deductible_flag").IsRequired();
 
+        // v4 C.2 — optional per-line cost-center tag (nullable FK).
+        b.Property(l => l.CostCenterId).HasColumnName("cost_center_id");
+        b.HasIndex(l => l.CostCenterId)
+            .HasDatabaseName("ix_purchase_invoice_lines_cost_center");
+
         b.ComplexProperty(
             l => l.LineSubtotal,
             p =>

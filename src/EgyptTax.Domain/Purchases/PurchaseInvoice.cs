@@ -90,7 +90,8 @@ public sealed class PurchaseInvoice
         MoneyEgp unitPrice,
         Guid vatCategoryId,
         decimal vatRatePercent,
-        bool deductibleFlag
+        bool deductibleFlag,
+        Guid? costCenterId = null
     )
     {
         if (State != DocumentState.Draft)
@@ -107,7 +108,8 @@ public sealed class PurchaseInvoice
             unitPrice,
             vatCategoryId,
             vatRatePercent,
-            deductibleFlag
+            deductibleFlag,
+            costCenterId
         );
         _lines.Add(line);
         Recompute();
