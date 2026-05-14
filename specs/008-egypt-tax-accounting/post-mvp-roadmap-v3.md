@@ -845,3 +845,184 @@ Two things changed structurally vs §7:
 
 §4 and §7 are kept above as the audit trail for what changed and
 why; §10 is the operational plan.
+
+---
+
+## 11. Odoo Gap Analysis (May 2026, post-v3)
+
+After v3 §10 shipped end-to-end (commits 3e3a047 → 88b59d8) and the
+Manus AI verification report came back at 20/22 PASS, the natural
+next question is: *what does Odoo still have that we don't, and
+which of those gaps actually close deals in our segment?*
+
+### 11.1 Real gaps that close deals — ranked by ROI for Egyptian SMB
+
+The 10 missing modules below are present in Odoo (and in most
+cases in Daftra / Wafeq / Edara too). Each is scored on whether
+it currently blocks a real deal in the SMB segment.
+
+| # | Module | Odoo | DaftarX | Why it matters in Egypt | Phase |
+|---|---|---|---|---|---|
+| 1 | **Bank reconciliation auto-match** | Full + AI suggestions | Skeleton (`/payments/bank-statements` UI exists, matching engine is empty) | Every accountant burns ~4 hrs/month on CIB/NBE/QNB statement matching. Top mentioned pain in customer-development calls. | **N.1** |
+| 2 | **Multi-currency** | Full + daily exchange rates | EGP-only | Every import/export business needs it. Wafeq + Edara ship it. Hard segment exclusion today. | N.5 (v4 trigger) |
+| 3 | **Cost centers / analytical accounting** | Full | ❌ | Construction + consulting firms tag every JE to a project. Hard segment exclusion. | N.5 (v4 trigger) |
+| 4 | **POS (Point of Sale)** | Full module + offline mode | ❌ | Every retail shop with a register. Huge segment in Egypt — but a different sales motion. | N.4 (separate vertical) |
+| 5 | **CRM leads/opportunities pipeline** | Full pipeline + activities | Quotations only (no top-of-funnel) | B2B sales teams need lead → opportunity → quote → invoice. Quotations alone are missing 50% of the funnel. | **N.2** |
+| 6 | **REST API + Webhooks** | XML-RPC + REST + 800+ marketplace | ❌ | Any integration story (Shopify, Zapier, external CRM, custom dashboards) blocked without it. | N.3 |
+| 7 | **Lot / Serial number tracking** | Full + expiry date | ❌ | Pharmacies + electronics + food. Legally required for some sub-segments (pharma traceability). | v4 trigger |
+| 8 | **Reorder rules** (auto-PO when stock low) | Full | Low-stock alert only | Retail shops that auto-replenish from suppliers. Saves data entry; medium volume. | v4 trigger |
+| 9 | **Project / Task management** | Full module + timesheets | ❌ | Consulting offices + agencies. Different sales motion (project-billed work). | v4 trigger |
+| 10 | **eSignature** | Odoo Sign | ❌ | Contract + quotation signing. Nice to have, not blocking. | v4 trigger |
+
+### 11.2 What Odoo has that we deliberately skip
+
+Reinforces §2's anti-roadmap. These are NOT gaps — they're
+intentional choices for the segment + the AI-paired build clock:
+
+| Feature | Why we skip |
+|---|---|
+| Full MRP / Manufacturing | Odoo's sweet spot, 6+ months of depth, segment doesn't need it |
+| Dashboard Designer (Studio) | Took Odoo a decade to make usable; ship more pre-built variants instead |
+| Native iOS/Android apps | PWA covers 99% of mobile use cases (Phase E shipped) |
+| Egyptian Payroll core | 8-12 weeks of regulatory work; only build if a customer prepays 100K EGP |
+| eCommerce site builder | Shopify exists; integrate via API (item 6 above), don't build |
+| Subscriptions module | Recurring invoices (L3) cover 80%; full subscriptions adds proration + dunning + customer-self-service plan changes — defer until 5 paying customers ask |
+| Document management | Google Drive exists; integrate, don't replicate |
+| Helpdesk / ticketing | Out of accounting-app scope |
+| Field service management | Out of scope |
+| Email marketing | Mailchimp exists |
+| Inter-company / consolidation | 6+ weeks; only matters at multi-company firm scale |
+
+### 11.3 Recommendation
+
+Three of the gaps above are top-of-funnel-blocking enough to
+warrant a focused N-phase before any v4 work:
+
+🥇 **N.1 Bank reconciliation auto-match** — highest ROI, every
+   accountant feels the pain monthly
+🥈 **N.2 CRM leads/opportunities** — converts DaftarX from
+   "accounting tool" to "business OS"; raises ARPU
+🥉 **N.3 Open REST API + webhooks** — unblocks every integration
+   story including a future POS adapter
+
+The other 7 items move to v4 trigger conditions (§5/§8) — build
+them when a real customer asks, not on speculation.
+
+---
+
+## N — Next-tier modules (post-v3, pre-v4)
+
+**Goal:** ship the 3 highest-ROI Odoo-parity items so the next 6
+months of demos don't keep losing on these specific points.
+Sequencing: N.1 → N.2 → N.3 in priority order. Total estimated
+effort: ~6 weeks (N.1: 3w, N.2: 1.5w, N.3: 1.5w).
+
+### N.1 — Bank reconciliation auto-match engine
+
+- **Pain:** Every accountant manually matches CIB/NBE/QNB
+  statement lines to invoices/receipts/SPVs once a month, ~4 hrs
+  per session. The page skeleton exists (`/payments/bank-
+  statements` import + `/payments/unmatched` queue) but the
+  matching engine is empty — every line lands in the manual queue.
+- **Competitor parity / differentiator:** Odoo + Daftra + Wafeq
+  + Edara all ship auto-match. We're the only Egyptian-tax tool
+  that surfaces a bank-statement page WITHOUT a matching engine
+  behind it. Closing this is parity, not differentiation.
+- **Complexity:** L (~3 weeks)
+- **Dependencies:** existing `BankStatementParserRegistry` (CIB
+  / NBE / QNB parsers shipped). `CustomerReceiptVoucher` +
+  `SupplierPaymentVoucher` entities exist. `Expense` exists.
+- **MVP slice:**
+  - Match-rule engine: amount-exact + date-window-7d + reference-
+    text-fuzzy. Per-line confidence score 0-100.
+  - For confidence ≥ 85 → auto-allocate; for 50-85 → "suggested"
+    queue; <50 → manual queue (existing flow)
+  - One-click accept/reject on the suggested queue
+  - Learn-from-corrections: if operator overrides a rule, store
+    the (pattern → target) mapping for next month's run
+- **Avoid:** ML-based matcher in v1 — rule-based is good enough
+  for 80%+ accuracy and debuggable. Multi-currency
+  reconciliation. Foreign bank statement formats.
+
+### N.2 — CRM leads + opportunities pipeline
+
+- **Pain:** Sales reps managing prospects in Excel / WhatsApp
+  groups before they become customers. The quotation flow (L1.5)
+  starts from "I have a customer record" — there's no top-of-
+  funnel for "I met someone at a conference, need to follow up
+  in 2 weeks". Reps ask "where do I track leads?" — answer is
+  "you don't, sorry".
+- **Competitor parity / differentiator:** Odoo CRM is full-
+  featured. Daftra has it. Wafeq doesn't (their gap). Edara has
+  partial. Building this puts us at parity with Odoo on the B2B
+  sales motion + ahead of Wafeq.
+- **Complexity:** L (~1.5 weeks)
+- **Dependencies:** existing `Customer` + `Quotation` entities.
+  Sales-rep workflow + commissions (Phase J/K).
+- **MVP slice:**
+  - New entities: `Lead` (name, contact, source, stage,
+    assigned-to, expected-close-date, expected-value,
+    next-action) + `LeadActivity` (note/call/meeting log)
+  - Stages: New → Qualified → Proposal Sent → Negotiation →
+    Won / Lost (5 fixed; Studio-style customisation deferred)
+  - `/leads` kanban board grouped by stage (drag to move)
+  - "Convert to customer + quotation" action on Won leads —
+    creates Customer + new Quotation pre-filled
+  - Lead activities surface on the rep's My Dashboard
+- **Avoid:** email integration (Outlook plugin etc) — operator
+  pastes manually for v1. Custom stages. Lead scoring. Multiple
+  pipelines. Permission rules beyond admin/rep visibility.
+
+### N.3 — Open REST API + webhooks
+
+- **Pain:** Any integration story (Shopify orders sync, Zapier
+  automation, external dashboards, future POS adapter) blocked
+  without an API. Customers asking "can you push invoices to my
+  Shopify?" today — answer is "no, sorry".
+- **Competitor parity / differentiator:** Odoo has XML-RPC + REST
+  + 800+ marketplace integrations. QuickBooks ships 650+. Xero
+  ships 600+. We have zero. Even minimal API + webhook surface
+  unblocks the long tail.
+- **Complexity:** L (~1.5 weeks)
+- **Dependencies:** existing entities. Need a token-auth scheme
+  separate from cookie auth.
+- **MVP slice:**
+  - `ApiKey` entity (name, hashed key prefix, scopes, created-by,
+    last-used)
+  - `/settings/api-keys` admin page to mint + revoke
+  - `Authorization: Bearer dx_xxx` header validation middleware
+  - Read-only endpoints first: GET /api/v1/customers,
+    /api/v1/items, /api/v1/invoices (with pagination + filters)
+  - Write endpoints: POST /api/v1/customers, POST /api/v1/items,
+    POST /api/v1/invoices/draft (no posting from API in v1)
+  - Webhooks: outbound POST when invoice.posted, payment.received
+    — operator configures URL + selects events on
+    `/settings/webhooks`
+  - OpenAPI spec auto-generated from minimal-API metadata
+- **Avoid:** full GraphQL. OAuth flow (just API keys for v1).
+  Rate limiting beyond a per-key counter. Streaming endpoints.
+  Bulk-import endpoints — keep operators on the CSV import (D2.5)
+  for now.
+
+---
+
+## 12. Updated v4 trigger list (replaces §8 add-ons)
+
+§8 already lists the original v4 triggers. The Odoo gap analysis
+in §11 adds 7 more — each promoted to a v4 trigger condition
+when the matching customer ask materialises:
+
+| Trigger | What lands | Effort |
+|---|---|---|
+| First customer asks for **multi-currency** | Schema migration + exchange-rate table + per-document currency override + revaluation reports | XL (~3 weeks) |
+| First customer asks for **cost centers** | Tag column on JE lines + cost-center master data + analytical reports | L (~1.5 weeks) |
+| First **retail customer** with cash register | Full POS module — separate route family + offline-first PWA + receipt printer integration | XL (~4 weeks) |
+| First **pharmacy / electronics** customer | Lot/serial tracking on items + per-lot stock movements + expiry alerts | L (~2 weeks) |
+| First **retail / distribution** asks for auto-PO | Reorder rules + PO generation job + supplier price lists | M (~1 week) |
+| First **consulting / agency** customer | Project + task entities + timesheet entry + project P&L | XL (~3 weeks) |
+| First **deal blocked on signature workflow** | eSignature (integrate with DocuSign or build minimal sign UI) | L (~2 weeks) |
+
+Same rule as §5/§8: don't pre-build any of these. Wait for the
+first paying customer to ask, then build with their actual data
+in front of you.
+
