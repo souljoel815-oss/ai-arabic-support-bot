@@ -1181,11 +1181,24 @@ app.MapPost("/api/v1/invoices/draft", async (
     HttpContext ctx,
     EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
     EgyptTax.Infrastructure.Api.ApiKeyRateLimiter rateLimiter,
-    EgyptTax.Infrastructure.Persistence.AppDbContext db,
-    System.Text.Json.JsonElement body) =>
+    EgyptTax.Infrastructure.Persistence.AppDbContext db) =>
 {
+    // Auth runs FIRST so a missing/bad token returns 401 (not the
+    // 400 the JSON model binder would emit for an unparseable body).
+    // Bind the body manually after the gate has passed.
     var auth = await AuthGate(ctx, apiKeys, rateLimiter);
     if (auth is not Microsoft.AspNetCore.Http.HttpResults.Ok) return auth;
+
+    System.Text.Json.JsonElement body;
+    try
+    {
+        body = await System.Text.Json.JsonSerializer.DeserializeAsync<System.Text.Json.JsonElement>(
+            ctx.Request.Body);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = $"Body must be valid JSON: {ex.Message}" });
+    }
 
     try
     {

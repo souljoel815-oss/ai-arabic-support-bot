@@ -145,3 +145,7 @@ scratch/
 # Agent / spec-kit scaffolding (per-machine, not source-of-truth).
 .claude/
 .specify/
+
+# Local dev-server boot logs (per-session, never committed).
+boot.log
+boot-err.log
