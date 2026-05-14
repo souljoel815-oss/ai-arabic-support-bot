@@ -33,7 +33,8 @@ public static class InvoiceRenderingPipeline
     public static async Task<Bundle?> LoadAsync(
         AppDbContext db,
         Guid invoiceId,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        string? portalBaseUrl = null
     )
     {
         var invoice = await db.Set<SalesInvoice>()
@@ -110,6 +111,28 @@ public static class InvoiceRenderingPipeline
             }
         }
 
+        // v4 A.5 — look up the most-recent valid customer-portal
+        // token to embed in a second QR. If the operator hasn't
+        // generated a portal link for this customer, the QR is
+        // skipped entirely (no fallback URL — pointing at /portal
+        // without a token would dead-end the customer).
+        string? portalUrl = null;
+        if (!string.IsNullOrWhiteSpace(portalBaseUrl))
+        {
+            var nowUtc = DateTime.UtcNow;
+            var token = await db.Set<EgyptTax.Domain.Customers.CustomerPortalAccess>()
+                .AsNoTracking()
+                .Where(a => a.CustomerId == receiver.Id
+                    && !a.Revoked && a.ExpiresAtUtc > nowUtc)
+                .OrderByDescending(a => a.CreatedAtUtc)
+                .Select(a => a.Token)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (!string.IsNullOrEmpty(token))
+            {
+                portalUrl = $"{portalBaseUrl.TrimEnd('/')}/portal/{token}";
+            }
+        }
+
         var pdfRequest = new InvoicePdfRequest(
             Invoice: invoice,
             Issuer: issuer,
@@ -118,7 +141,8 @@ public static class InvoiceRenderingPipeline
             VatCategories: vatRender,
             PostedByUserDisplayName: "(unknown)",
             SealQrPayload: sealPayload,
-            OriginalInvoiceReference: originalRef
+            OriginalInvoiceReference: originalRef,
+            PortalUrl: portalUrl
         );
 
         var eInvoiceRequest = new EInvoiceRenderRequest(

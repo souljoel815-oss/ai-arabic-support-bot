@@ -47,6 +47,12 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
         var labelEn = DocumentTypeLabelEnglish(invoice, request.Receiver);
         var labelAr = DocumentTypeLabelArabic(invoice, request.Receiver);
         var qrPng = RenderQrPng(request.SealQrPayload);
+        // v4 A.5 — second QR for the customer-portal magic link,
+        // rendered only when a portal URL was supplied. Operator
+        // may not have generated a link for this customer yet.
+        var portalQrPng = string.IsNullOrWhiteSpace(request.PortalUrl)
+            ? null
+            : RenderQrPng(request.PortalUrl);
         // FR-014 Arabic-words converter is non-negative-only by spec;
         // for credit notes (which carry negative totals) we render the
         // absolute value with a "(credit)" prefix so the PDF reads
@@ -224,6 +230,20 @@ public sealed class QuestPdfInvoiceRenderer : ISalesInvoicePdfRenderer
                                             .Text("Verification seal")
                                             .FontSize(8);
                                     });
+                                if (portalQrPng is not null)
+                                {
+                                    row.ConstantItem(120)
+                                        .AlignRight()
+                                        .Column(right =>
+                                        {
+                                            right.Item().AlignRight().Image(portalQrPng).FitArea();
+                                            right
+                                                .Item()
+                                                .AlignRight()
+                                                .Text("امسح للوصول لكشفك / Scan for your statement")
+                                                .FontSize(7);
+                                        });
+                                }
                             });
                     });
 

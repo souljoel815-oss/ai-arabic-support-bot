@@ -1325,16 +1325,21 @@ app.MapGet(
 app.MapGet(
         "/invoices/{id:guid}/pdf",
         async (
+            HttpContext ctx,
             Guid id,
             EgyptTax.Infrastructure.Persistence.AppDbContext db,
             EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer renderer,
             CancellationToken cancellationToken
         ) =>
         {
+            // v4 A.5 — pass the request's base URL so the rendering
+            // pipeline can build the customer-portal QR URL.
+            var baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
             var bundle = await EgyptTax.Infrastructure.Invoices.InvoiceRenderingPipeline.LoadAsync(
                 db,
                 id,
-                cancellationToken
+                cancellationToken,
+                portalBaseUrl: baseUrl
             );
             if (bundle is null)
                 return Results.NotFound();
@@ -1402,6 +1407,7 @@ app.MapGet(
 app.MapGet(
     "/portal/{token}/invoices/{id:guid}/pdf",
     async (
+        HttpContext ctx,
         string token,
         Guid id,
         EgyptTax.Infrastructure.Customers.CustomerPortalService portal,
@@ -1423,8 +1429,11 @@ app.MapGet(
             .FirstOrDefaultAsync(cancellationToken);
         if (invoiceCustomerId != access.CustomerId) return Results.NotFound();
 
+        // v4 A.5 — pass base URL so the embedded portal QR also
+        // appears on PDFs viewed via the portal route.
+        var baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
         var bundle = await EgyptTax.Infrastructure.Invoices.InvoiceRenderingPipeline.LoadAsync(
-            db, id, cancellationToken);
+            db, id, cancellationToken, portalBaseUrl: baseUrl);
         if (bundle is null) return Results.NotFound();
         var pdf = renderer.Render(bundle.PdfRequest);
         return Results.File(pdf, "application/pdf", $"{bundle.Invoice.DocumentNumber}.pdf");

@@ -31,7 +31,14 @@ public sealed record InvoicePdfRequest(
     IReadOnlyDictionary<Guid, VatCategoryRenderInfo> VatCategories,
     string PostedByUserDisplayName,
     string SealQrPayload,
-    OriginalInvoiceReference? OriginalInvoiceReference = null
+    OriginalInvoiceReference? OriginalInvoiceReference = null,
+    /// <summary>v4 A.5 — optional customer-portal magic-link URL.
+    /// When populated, a second QR is rendered next to the FR-044
+    /// seal QR encoding this URL so the customer can scan it from
+    /// the printed invoice to land on their statement page.
+    /// Null when the operator hasn't generated a portal link for
+    /// the customer yet.</summary>
+    string? PortalUrl = null
 );
 
 /// <summary>
