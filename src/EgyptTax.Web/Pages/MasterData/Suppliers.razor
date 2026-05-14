@@ -54,6 +54,7 @@
                         <td>@(s.LastTinRevalidatedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? (IsArabic ? "(لا يوجد)" : "(never)"))</td>
                         <td>@s.Status</td>
                         <td>
+                            <a href="/suppliers/@s.Id/statement" style="margin-inline-end:8px;">@(IsArabic ? "كشف حساب" : "Statement")</a>
                             @if (s.Status == SupplierStatus.Active)
                             {
                                 <button type="button" @onclick="() => DeactivateAsync(s.Id)">@(IsArabic ? "تعطيل" : "Deactivate")</button>

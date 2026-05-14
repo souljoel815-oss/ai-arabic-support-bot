@@ -1,0 +1,289 @@
+@page "/suppliers/{Id:guid}/statement"
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Purchases
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 A.1 — Supplier Statement (كشف حساب المورّد). Mirror of the
+    Customer Statement on the AP side: aggregates posted
+    PurchaseInvoices + SupplierPaymentVouchers for one supplier
+    into a chronological ledger with running balance, plus aging
+    buckets so the operator knows which bills are slipping.
+    Sign convention: invoice raises the payable (debit on this
+    page = "we owe more"), payment reduces it (credit on this
+    page = "we paid"). The headline "Outstanding payable" is
+    what we still owe.
+*@
+
+<h1>@(IsArabic ? "كشف حساب المورّد" : "Supplier Statement")</h1>
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+@if (_supplier is null)
+{
+    <div class="flash-error">@(IsArabic ? "المورّد غير موجود." : "Supplier not found.")</div>
+    <a href="/suppliers">@(IsArabic ? "← قائمة الموردين" : "← Supplier list")</a>
+    return;
+}
+
+<section class="customer-statement-head">
+    <div>
+        <strong>@(IsArabic ? _supplier.Name.Arabic : _supplier.Name.English)</strong>
+        <span class="page-subtitle">— @_supplier.Code</span>
+    </div>
+    <div class="page-subtitle" style="font-size:13px;">
+        @(IsArabic ? "كشف حساب حتى:" : "Statement as of:") @DateTime.UtcNow.ToString("yyyy-MM-dd")
+    </div>
+    <div style="display:flex;gap:8px;">
+        @if (_rows.Count > 0)
+        {
+            <button type="button" class="btn-secondary" style="font-size:13px;" @onclick="ExportCsvAsync">
+                ⬇ @(IsArabic ? "تصدير CSV" : "Export CSV")
+            </button>
+        }
+    </div>
+</section>
+
+<section class="kpi-grid kpi-grid-3" style="margin-top:12px;">
+    <div class="kpi-card @(_outstanding > 0 ? "kpi-card-warn" : "kpi-card-ok")">
+        <div class="kpi-card-h">@(IsArabic ? "الرصيد المستحق علينا" : "Outstanding payable")</div>
+        <div class="kpi-card-value">@_outstanding.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">
+            @(IsArabic ? "ما زلنا مدينين به للمورّد" : "Still owed to this supplier")
+        </div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-card-h">@(IsArabic ? "إجمالي المشتريات" : "Total purchases")</div>
+        <div class="kpi-card-value">@_totalPurchases.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">@(_invoiceCount) @(IsArabic ? "فاتورة" : "invoices")</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-card-h">@(IsArabic ? "إجمالي المدفوع" : "Total paid")</div>
+        <div class="kpi-card-value">@_totalPaid.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
+        <div class="kpi-card-foot">@(_paymentCount) @(IsArabic ? "إذن صرف" : "payment vouchers")</div>
+    </div>
+</section>
+
+@if (_outstanding > 0)
+{
+    <section style="margin-top:16px;">
+        <h2>@(IsArabic ? "تقادم الفواتير غير المسددة" : "Aging buckets (unpaid bills)")</h2>
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "0-30 يوم" : "0-30 days")</th>
+                    <th>@(IsArabic ? "31-60 يوم" : "31-60 days")</th>
+                    <th>@(IsArabic ? "61-90 يوم" : "61-90 days")</th>
+                    <th>@(IsArabic ? "أكثر من 90 يوم" : "Over 90 days")</th>
+                    <th>@(IsArabic ? "الإجمالي" : "Total")</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="num">@_aging0_30.ToString("F2")</td>
+                    <td class="num">@_aging31_60.ToString("F2")</td>
+                    <td class="num">@_aging61_90.ToString("F2")</td>
+                    <td class="num" style="color:@(_agingOver90 > 0 ? "var(--color-danger)" : "inherit");">
+                        <strong>@_agingOver90.ToString("F2")</strong>
+                    </td>
+                    <td class="num"><strong>@_outstanding.ToString("F2")</strong></td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+}
+
+<section style="margin-top:16px;">
+    <h2>@(IsArabic ? "حركة الحساب" : "Ledger")</h2>
+    @if (_rows.Count == 0)
+    {
+        <p><em>@(IsArabic ? "لا توجد حركات لهذا المورّد بعد." : "No activity for this supplier yet.")</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                    <th>@(IsArabic ? "النوع" : "Type")</th>
+                    <th>@(IsArabic ? "المرجع" : "Reference")</th>
+                    <th class="num">@(IsArabic ? "مدين (مستحق علينا)" : "Debit (we owe)")</th>
+                    <th class="num">@(IsArabic ? "دائن (مدفوع)" : "Credit (we paid)")</th>
+                    <th class="num">@(IsArabic ? "الرصيد" : "Balance")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _rows)
+                {
+                    <tr>
+                        <td>@r.Date.ToString("yyyy-MM-dd")</td>
+                        <td>@r.TypeLabel</td>
+                        <td>
+                            @if (r.LinkUrl is not null)
+                            {
+                                <a href="@r.LinkUrl">@r.Reference</a>
+                            }
+                            else
+                            {
+                                @r.Reference
+                            }
+                        </td>
+                        <td class="num">@(r.Debit > 0 ? r.Debit.ToString("F2") : "")</td>
+                        <td class="num">@(r.Credit > 0 ? r.Credit.ToString("F2") : "")</td>
+                        <td class="num"><strong>@r.RunningBalance.ToString("F2")</strong></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private Supplier? _supplier;
+    private readonly List<LedgerRow> _rows = new();
+    private decimal _outstanding;
+    private decimal _totalPurchases;
+    private decimal _totalPaid;
+    private int _invoiceCount;
+    private int _paymentCount;
+    private decimal _aging0_30;
+    private decimal _aging31_60;
+    private decimal _aging61_90;
+    private decimal _agingOver90;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _supplier = await Db.Set<Supplier>().AsNoTracking().FirstOrDefaultAsync(s => s.Id == Id);
+        if (_supplier is null) { _loading = false; return; }
+
+        // Posted purchase invoices for this supplier.
+        var invoices = await Db.Set<PurchaseInvoice>().AsNoTracking()
+            .Where(i => i.SupplierId == Id && i.State == DocumentState.Posted)
+            .OrderBy(i => i.DateReceived)
+            .ToListAsync();
+
+        // Posted supplier payments.
+        var payments = await Db.Set<SupplierPaymentVoucher>().AsNoTracking()
+            .Where(p => p.SupplierId == Id && p.State == DocumentState.Posted)
+            .OrderBy(p => p.PaymentDate)
+            .ToListAsync();
+
+        // Build the unified ledger. Invoices INCREASE the payable
+        // (debit on this page); payments REDUCE it (credit). We sort
+        // by date then put payments after invoices on the same day so
+        // the running balance reads "first I owed, then I paid."
+        var entries = new List<LedgerRow>();
+        foreach (var inv in invoices)
+        {
+            var amount = inv.GrandTotal.Amount;
+            entries.Add(new LedgerRow(
+                Date: inv.DateReceived,
+                TypeLabel: IsArabic ? "فاتورة مشتريات" : "Purchase invoice",
+                Reference: inv.DocumentNumber ?? inv.Id.ToString("D"),
+                LinkUrl: $"/purchase-invoices/{inv.Id}",
+                Debit: amount,
+                Credit: 0m,
+                RunningBalance: 0m,
+                SortKey: 0));
+            _totalPurchases += amount;
+            _invoiceCount++;
+        }
+        foreach (var p in payments)
+        {
+            entries.Add(new LedgerRow(
+                Date: p.PaymentDate,
+                TypeLabel: IsArabic ? "إذن صرف" : "Payment voucher",
+                Reference: p.DocumentNumber ?? p.Id.ToString("D"),
+                LinkUrl: null,
+                Debit: 0m,
+                Credit: p.GrossPaymentAmount.Amount,
+                RunningBalance: 0m,
+                SortKey: 1));
+            _totalPaid += p.GrossPaymentAmount.Amount;
+            _paymentCount++;
+        }
+
+        // Sort + compute running balance.
+        var ordered = entries
+            .OrderBy(e => e.Date)
+            .ThenBy(e => e.SortKey)
+            .ToList();
+        var running = 0m;
+        foreach (var e in ordered)
+        {
+            running += e.Debit - e.Credit;
+            _rows.Add(e with { RunningBalance = running });
+        }
+        _outstanding = running;
+
+        // Aging — FIFO-pay the oldest invoices from the payment
+        // pool, then bucket whatever remains by document age.
+        var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+        var paidPool = _totalPaid;
+        foreach (var inv in invoices)
+        {
+            var amt = inv.GrandTotal.Amount;
+            if (paidPool >= amt)
+            {
+                paidPool -= amt;
+                continue;
+            }
+            var unpaid = amt - paidPool;
+            paidPool = 0m;
+            var ageDays = todayUtc.DayNumber - inv.DateReceived.DayNumber;
+            if (ageDays <= 30) _aging0_30 += unpaid;
+            else if (ageDays <= 60) _aging31_60 += unpaid;
+            else if (ageDays <= 90) _aging61_90 += unpaid;
+            else _agingOver90 += unpaid;
+        }
+
+        _loading = false;
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (_supplier is null) return;
+        var bytes = CsvExporter.Build(
+            headers: new[] { "Date", "Type", "Reference", "Debit (EGP)", "Credit (EGP)", "Running balance (EGP)" },
+            rows: _rows,
+            rowSelector: r => new object?[]
+            {
+                r.Date,
+                r.TypeLabel,
+                r.Reference,
+                r.Debit > 0 ? (object)r.Debit : "",
+                r.Credit > 0 ? (object)r.Credit : "",
+                r.RunningBalance,
+            });
+        var b64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("daftarxDownloadBytes",
+            $"supplier-statement-{_supplier.Code}-{DateTime.UtcNow:yyyyMMdd}.csv", b64, "text/csv");
+    }
+
+    private sealed record LedgerRow(
+        DateOnly Date,
+        string TypeLabel,
+        string Reference,
+        string? LinkUrl,
+        decimal Debit,
+        decimal Credit,
+        decimal RunningBalance,
+        int SortKey);
+}
