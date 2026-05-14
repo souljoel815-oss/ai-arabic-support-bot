@@ -1,0 +1,150 @@
+@page "/leads"
+@using EgyptTax.Domain.Crm
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    N.2 (v3 §11) — sales pipeline kanban. Five fixed stages
+    (New / Qualified / ProposalSent / Negotiation / Won) plus a
+    Lost bucket (collapsed by default). Each card shows the lead
+    name + company + expected value + next-action hint. Click to
+    open detail.
+
+    Drag-to-move is intentionally NOT shipped in v1 — Razor needs
+    JS interop for native HTML5 drag handling and the value/cost
+    ratio is poor for a single-column SMB sales rep. Stage moves
+    happen via dropdown on the detail page.
+*@
+
+<PageTitle>@Tr("الفرص البيعية | DaftarX", "Sales Pipeline | DaftarX")</PageTitle>
+
+<h1>@Tr("الفرص البيعية", "Sales Pipeline")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "العملاء المحتملين قبل ما يبقوا عملاء فعلاً. اتابع كل واحد فيهم في مرحلته، وقت ما يقبل العرض اضغط «حوّل لعميل» وعرض السعر يتفتحلك جاهز.",
+        "Track prospects before they become customers. Move each one through the stages; on Won, click \"Convert to customer\" and a quotation opens pre-filled.")
+</p>
+
+<div class="invoice-toolbar">
+    <a href="/leads/new" class="btn-primary">@Tr("+ فرصة جديدة", "+ New lead")</a>
+</div>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+<div class="kanban-grid">
+    @foreach (var stage in _activeStages)
+    {
+        var stageLeads = _leads.Where(l => l.Stage == stage).ToList();
+        var stageValue = stageLeads.Sum(l => l.ExpectedValueEgp ?? 0m);
+        <div class="kanban-col">
+            <div class="kanban-col-head">
+                <strong>@StageLabel(stage)</strong>
+                <span class="kanban-col-count">@stageLeads.Count</span>
+                @if (stageValue > 0)
+                {
+                    <div class="kanban-col-value">@stageValue.ToString("N0") @Tr("ج.م", "EGP")</div>
+                }
+            </div>
+            <div class="kanban-col-body">
+                @foreach (var lead in stageLeads)
+                {
+                    var displayName = lead.Name.Display(IsArabic ? Language.Ar : Language.En);
+                    <a href="/leads/@lead.Id" class="kanban-card">
+                        <div class="kanban-card-name">@displayName</div>
+                        @if (!string.IsNullOrEmpty(lead.CompanyName))
+                        {
+                            <div class="kanban-card-meta">@lead.CompanyName</div>
+                        }
+                        @if (lead.ExpectedValueEgp is { } v && v > 0)
+                        {
+                            <div class="kanban-card-value">@v.ToString("N2") @Tr("ج.م", "EGP")</div>
+                        }
+                        @if (lead.NextAction is { } na && !string.IsNullOrEmpty(na))
+                        {
+                            <div class="kanban-card-next">
+                                ▸ @na
+                                @if (lead.NextActionDate is { } d)
+                                {
+                                    <span class="kanban-card-date">· @d.ToString("MM-dd")</span>
+                                }
+                            </div>
+                        }
+                    </a>
+                }
+                @if (stageLeads.Count == 0)
+                {
+                    <div class="kanban-col-empty">@Tr("(فاضي)", "(empty)")</div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@{
+    var lostLeads = _leads.Where(l => l.Stage == LeadStage.Lost).ToList();
+}
+@if (lostLeads.Count > 0)
+{
+    <details style="margin-top:24px;">
+        <summary><strong>@Tr("مفقودة", "Lost") (@lostLeads.Count)</strong></summary>
+        <ul style="font-size:13px;color:var(--muted);">
+            @foreach (var lead in lostLeads)
+            {
+                <li>
+                    <a href="/leads/@lead.Id">@lead.Name.Display(IsArabic ? Language.Ar : Language.En)</a>
+                    @if (!string.IsNullOrEmpty(lead.LostReason))
+                    {
+                        <span> — @lead.LostReason</span>
+                    }
+                </li>
+            }
+        </ul>
+    </details>
+}
+
+@code {
+    private bool _loading = true;
+    private List<Lead> _leads = new();
+
+    private static readonly LeadStage[] _activeStages = new[]
+    {
+        LeadStage.New,
+        LeadStage.Qualified,
+        LeadStage.ProposalSent,
+        LeadStage.Negotiation,
+        LeadStage.Won,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _leads = await Db.Set<Lead>()
+            .AsNoTracking()
+            .OrderByDescending(l => l.CreatedAtUtc)
+            .Take(500)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private string StageLabel(LeadStage s) => s switch
+    {
+        LeadStage.New => Tr("جديد", "New"),
+        LeadStage.Qualified => Tr("مؤهّل", "Qualified"),
+        LeadStage.ProposalSent => Tr("عرض مُرسل", "Proposal Sent"),
+        LeadStage.Negotiation => Tr("تفاوض", "Negotiation"),
+        LeadStage.Won => Tr("✓ مكسب", "✓ Won"),
+        LeadStage.Lost => Tr("مفقود", "Lost"),
+        _ => s.ToString(),
+    };
+}

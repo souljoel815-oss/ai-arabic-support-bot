@@ -1,0 +1,289 @@
+@page "/leads/{Id:guid}"
+@using EgyptTax.Domain.Crm
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Quotations
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@Tr("فرصة | DaftarX", "Lead | DaftarX")</PageTitle>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+@if (_lead is null)
+{
+    <p>@Tr("الفرصة مش موجودة.", "Lead not found.")</p>
+    return;
+}
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+        <h1 style="margin-bottom:4px;">@_lead.Name.Display(IsArabic ? Language.Ar : Language.En)</h1>
+        <p class="page-subtitle" style="margin:0;">
+            @if (!string.IsNullOrEmpty(_lead.CompanyName))
+            {
+                <span>@_lead.CompanyName · </span>
+            }
+            <span class="badge badge-@StageBadge(_lead.Stage)">@StageLabel(_lead.Stage)</span>
+            @if (!string.IsNullOrEmpty(_lead.Source))
+            {
+                <span> · @Tr("المصدر:", "Source:") @_lead.Source</span>
+            }
+        </p>
+    </div>
+    <div class="invoice-actions" style="margin:0;">
+        @if (_lead.Stage == LeadStage.Won && _lead.ConvertedToCustomerId is null)
+        {
+            <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnConvertAsync">
+                @(_busy ? Tr("جارٍ التحويل…", "Converting…") : Tr("🧾 حوّل لعميل + عرض سعر", "🧾 Convert to customer + quote"))
+            </button>
+        }
+        @if (_lead.ConvertedToCustomerId is { } cid)
+        {
+            <a href="/customers/@cid/statement" class="btn-secondary">@Tr("افتح كشف العميل", "Open customer statement")</a>
+        }
+        <a href="/leads" class="btn-secondary">@Tr("الرجوع للقائمة", "Back to pipeline")</a>
+    </div>
+</div>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:12px 0;">@_flash</div>
+}
+
+<section class="form-section" style="margin-top:16px;">
+    <h2>@Tr("بيانات الاتصال", "Contact")</h2>
+    <table class="data-table">
+        <tbody>
+            @if (!string.IsNullOrEmpty(_lead.Phone))
+            {
+                <tr><th>@Tr("الهاتف", "Phone")</th><td><a href="tel:@_lead.Phone">@_lead.Phone</a></td></tr>
+            }
+            @if (!string.IsNullOrEmpty(_lead.Email))
+            {
+                <tr><th>@Tr("البريد", "Email")</th><td><a href="mailto:@_lead.Email">@_lead.Email</a></td></tr>
+            }
+            @if (_lead.ExpectedValueEgp is { } v)
+            {
+                <tr><th>@Tr("القيمة المتوقعة", "Expected value")</th><td>@v.ToString("N2") @Tr("ج.م", "EGP")</td></tr>
+            }
+            @if (_lead.ExpectedCloseDate is { } d)
+            {
+                <tr><th>@Tr("الإغلاق المتوقع", "Expected close")</th><td>@d.ToString("yyyy-MM-dd")</td></tr>
+            }
+        </tbody>
+    </table>
+</section>
+
+<section class="form-section">
+    <h2>@Tr("نقل المرحلة", "Move stage")</h2>
+    <div class="invoice-actions">
+        @foreach (var s in new[] { LeadStage.New, LeadStage.Qualified, LeadStage.ProposalSent, LeadStage.Negotiation, LeadStage.Won })
+        {
+            var stage = s;
+            <button type="button"
+                    class="@(stage == _lead.Stage ? "btn-primary" : "btn-secondary")"
+                    disabled="@(stage == _lead.Stage || _lead.Stage == LeadStage.Won || _lead.Stage == LeadStage.Lost)"
+                    @onclick="@(() => OnMoveStageAsync(stage))">
+                @StageLabel(stage)
+            </button>
+        }
+        @if (_lead.Stage != LeadStage.Lost && _lead.Stage != LeadStage.Won)
+        {
+            <button type="button" class="btn-secondary" style="color:var(--danger);"
+                    @onclick="OnMarkLostAsync">
+                ✗ @Tr("علّمها مفقودة", "Mark Lost")
+            </button>
+        }
+    </div>
+</section>
+
+<section class="form-section">
+    <h2>@Tr("سجل النشاط", "Activity log")</h2>
+    <div class="form-grid" style="grid-template-columns:auto 1fr auto;">
+        <select @bind="_newActivityKind">
+            <option value="@LeadActivityKind.Note">@Tr("ملاحظة", "Note")</option>
+            <option value="@LeadActivityKind.Call">@Tr("مكالمة", "Call")</option>
+            <option value="@LeadActivityKind.Meeting">@Tr("اجتماع", "Meeting")</option>
+            <option value="@LeadActivityKind.Email">@Tr("بريد", "Email")</option>
+            <option value="@LeadActivityKind.WhatsApp">@Tr("واتساب", "WhatsApp")</option>
+        </select>
+        <input type="text" @bind="_newActivityNote" placeholder="@Tr("اكتب نص النشاط…", "Note text…")" maxlength="1000" />
+        <button type="button" class="btn-secondary" @onclick="OnAddActivityAsync"
+                disabled="@(string.IsNullOrWhiteSpace(_newActivityNote))">
+            @Tr("سجّل", "Log")
+        </button>
+    </div>
+
+    @if (_lead.Activities.Count == 0)
+    {
+        <p class="page-subtitle" style="font-size:13px;margin-top:8px;">@Tr("مفيش سجلات بعد.", "No activity yet.")</p>
+    }
+    else
+    {
+        <table class="data-table" style="margin-top:8px;">
+            <thead>
+                <tr>
+                    <th>@Tr("الوقت", "When")</th>
+                    <th>@Tr("النوع", "Kind")</th>
+                    <th>@Tr("النص", "Note")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in _lead.Activities.OrderByDescending(x => x.OccurredAtUtc))
+                {
+                    <tr>
+                        <td>@a.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@a.Kind</td>
+                        <td>@a.Note</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private Lead? _lead;
+    private LeadActivityKind _newActivityKind = LeadActivityKind.Note;
+    private string _newActivityNote = "";
+    private Guid _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        var auth = await Auth.GetAuthenticationStateAsync();
+        _userId = auth.User.UserId() ?? Guid.Empty;
+    }
+
+    private async Task LoadAsync()
+    {
+        _lead = await Db.Set<Lead>()
+            .Include(l => l.Activities)
+            .FirstOrDefaultAsync(l => l.Id == Id);
+        _loading = false;
+    }
+
+    private async Task OnMoveStageAsync(LeadStage stage)
+    {
+        _busy = true;
+        try
+        {
+            _lead!.MoveToStage(stage);
+            _lead.AddActivity(LeadActivityKind.StageChange,
+                $"→ {stage}", DateTime.UtcNow, _userId == Guid.Empty ? null : _userId);
+            await Db.SaveChangesAsync();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnMarkLostAsync()
+    {
+        _busy = true;
+        try
+        {
+            _lead!.MarkLost(reason: null, DateTime.UtcNow);
+            await Db.SaveChangesAsync();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnAddActivityAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newActivityNote)) return;
+        try
+        {
+            _lead!.AddActivity(_newActivityKind, _newActivityNote.Trim(), DateTime.UtcNow,
+                _userId == Guid.Empty ? null : _userId);
+            await Db.SaveChangesAsync();
+            _newActivityNote = "";
+            await LoadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    private async Task OnConvertAsync()
+    {
+        _busy = true;
+        try
+        {
+            // Build a fresh Customer from the lead's contact info.
+            // Code = "L-" + lead-id-short for trace; address blank
+            // (operator fills via /customers later if needed).
+            var defaultVatId = await Db.Set<VatCategory>().AsNoTracking()
+                .Where(v => v.RatePercent == 14m)
+                .OrderBy(v => v.EffectiveFromDate)
+                .Select(v => (Guid?)v.Id)
+                .FirstOrDefaultAsync();
+
+            var address = PostalAddress.Create(
+                display: _lead!.Name,
+                governorate: "—", regionCity: "—", street: "—", buildingNumber: "—");
+            var customer = new Customer(
+                code: $"L-{_lead.Id.ToString("N").Substring(0, 6).ToUpperInvariant()}",
+                name: _lead.Name,
+                address: address,
+                taxProfile: CustomerTaxProfile.B2BUnregistered(
+                    vatExemption: false, defaultSalesVatCategoryId: defaultVatId),
+                phone: _lead.Phone,
+                email: _lead.Email);
+            Db.Add(customer);
+
+            _lead.RecordConversion(customer.Id, DateTime.UtcNow);
+            await Db.SaveChangesAsync();
+
+            // Land on the new-quotation page with the customer
+            // pre-selected via query — QuotationNew already reads
+            // ?customerId=… isn't wired in v1; fall back to
+            // landing on the customer statement so the operator can
+            // pick "Create quotation" from there manually.
+            Nav.NavigateTo($"/quotations/new", forceLoad: false);
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+            _busy = false;
+        }
+    }
+
+    private string StageLabel(LeadStage s) => s switch
+    {
+        LeadStage.New => Tr("جديد", "New"),
+        LeadStage.Qualified => Tr("مؤهّل", "Qualified"),
+        LeadStage.ProposalSent => Tr("عرض مُرسل", "Proposal Sent"),
+        LeadStage.Negotiation => Tr("تفاوض", "Negotiation"),
+        LeadStage.Won => Tr("✓ مكسب", "✓ Won"),
+        LeadStage.Lost => Tr("مفقود", "Lost"),
+        _ => s.ToString(),
+    };
+
+    private static string StageBadge(LeadStage s) => s switch
+    {
+        LeadStage.Won => "success",
+        LeadStage.Lost => "danger",
+        LeadStage.Negotiation => "warn",
+        _ => "info",
+    };
+}

@@ -3643,3 +3643,86 @@ a.btn-secondary .ic {
     color: var(--muted, #6b7280);
     background: var(--surface, #fff);
 }
+
+/* N.2 (v3 §11) — sales-pipeline kanban. Five columns side-by-side
+   on desktop, single-column scroll on mobile. */
+.kanban-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+}
+@media (max-width: 1024px) {
+    .kanban-grid { grid-template-columns: 1fr; }
+}
+.kanban-col {
+    background: var(--bg, #f6f8fb);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 8px;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+}
+.kanban-col-head {
+    padding: 10px 12px;
+    border-block-end: 1px solid var(--border, #e5e7eb);
+    background: var(--surface, #fff);
+    border-radius: 8px 8px 0 0;
+}
+.kanban-col-head strong { font-size: 13px; }
+.kanban-col-count {
+    display: inline-block;
+    background: var(--border, #e5e7eb);
+    color: var(--text, #111);
+    border-radius: 999px;
+    padding: 2px 8px;
+    margin-inline-start: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.kanban-col-value {
+    font-size: 11px;
+    color: var(--muted, #6b7280);
+    margin-top: 2px;
+}
+.kanban-col-body {
+    flex: 1;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.kanban-col-empty {
+    color: var(--muted, #6b7280);
+    font-size: 12px;
+    font-style: italic;
+    text-align: center;
+    padding: 16px 8px;
+}
+.kanban-card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 6px;
+    padding: 10px;
+    text-decoration: none;
+    color: var(--text, #111);
+    font-size: 13px;
+    transition: box-shadow 0.12s ease, transform 0.12s ease;
+    display: block;
+}
+.kanban-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transform: translateY(-1px);
+}
+.kanban-card-name { font-weight: 600; }
+.kanban-card-meta { font-size: 12px; color: var(--muted, #6b7280); margin-top: 2px; }
+.kanban-card-value { font-size: 12px; color: var(--accent, #3b82f6); margin-top: 4px; font-weight: 600; }
+.kanban-card-next {
+    font-size: 11px;
+    color: var(--muted, #6b7280);
+    margin-top: 6px;
+    border-block-start: 1px dashed var(--border, #e5e7eb);
+    padding-block-start: 4px;
+}
+.kanban-card-date { font-style: italic; }
+

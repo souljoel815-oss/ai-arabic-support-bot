@@ -1,0 +1,180 @@
+@page "/leads/new"
+@using EgyptTax.Domain.Crm
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@Tr("فرصة جديدة | DaftarX", "New Lead | DaftarX")</PageTitle>
+
+<h1>@Tr("فرصة جديدة", "New Lead")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "ضيف عميل محتمل قبل ما يبقى عميل فعلي. على الأقل اسم + (تليفون أو إيميل).",
+        "Add a prospect before they become a customer. Need at least a name + (phone or email).")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+}
+
+<EditForm Model="_form" OnValidSubmit="OnSubmitAsync" FormName="lead-create">
+    <section class="form-section">
+        <div class="form-grid">
+            <label>
+                <span>@Tr("الاسم (عربي) *", "Name (Arabic) *")</span>
+                <InputText @bind-Value="_form.NameAr" />
+            </label>
+            <label>
+                <span>@Tr("الاسم (إنجليزي) *", "Name (English) *")</span>
+                <InputText @bind-Value="_form.NameEn" />
+            </label>
+            <label>
+                <span>@Tr("الشركة", "Company")</span>
+                <InputText @bind-Value="_form.Company" />
+            </label>
+            <label>
+                <span>@Tr("الهاتف", "Phone")</span>
+                <InputText @bind-Value="_form.Phone" />
+            </label>
+            <label>
+                <span>@Tr("البريد الإلكتروني", "Email")</span>
+                <InputText @bind-Value="_form.Email" />
+            </label>
+            <label>
+                <span>@Tr("المصدر", "Source")</span>
+                <select @bind="_form.Source">
+                    <option value=""></option>
+                    <option value="Facebook">Facebook</option>
+                    <option value="LinkedIn">LinkedIn</option>
+                    <option value="Referral">@Tr("إحالة", "Referral")</option>
+                    <option value="Cold-call">@Tr("اتصال بارد", "Cold call")</option>
+                    <option value="Conference">@Tr("معرض / مؤتمر", "Conference")</option>
+                    <option value="Website">@Tr("الموقع", "Website")</option>
+                    <option value="Other">@Tr("أخرى", "Other")</option>
+                </select>
+            </label>
+            <label>
+                <span>@Tr("المسؤول عن المتابعة", "Assigned to")</span>
+                <select @bind="_form.AssignedToUserId">
+                    <option value="@Guid.Empty">@Tr("— أنا —", "— me —")</option>
+                    @foreach (var u in _reps)
+                    {
+                        <option value="@u.Id">@u.DisplayName.Display(IsArabic ? Language.Ar : Language.En)</option>
+                    }
+                </select>
+            </label>
+            <label>
+                <span>@Tr("القيمة المتوقعة (ج.م)", "Expected value (EGP)")</span>
+                <input type="number" min="0" step="100" @bind="_form.ExpectedValue" />
+            </label>
+            <label>
+                <span>@Tr("تاريخ الإغلاق المتوقع", "Expected close date")</span>
+                <input type="date" @bind="_form.ExpectedClose" />
+            </label>
+        </div>
+    </section>
+
+    <div class="invoice-actions" style="margin-top:16px;">
+        <button type="submit" class="btn-primary" disabled="@_busy">
+            @(_busy ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ", "Save"))
+        </button>
+        <a href="/leads" class="btn-secondary">@Tr("إلغاء", "Cancel")</a>
+    </div>
+</EditForm>
+
+@code {
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    private FormModel _form = new();
+    private List<User> _reps = new();
+    private Guid _userId;
+
+    private sealed class FormModel
+    {
+        public string NameAr { get; set; } = "";
+        public string NameEn { get; set; } = "";
+        public string? Company { get; set; }
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+        public string? Source { get; set; }
+        public Guid AssignedToUserId { get; set; } = Guid.Empty;
+        public decimal? ExpectedValue { get; set; }
+        public DateTime? ExpectedClose { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _reps = await Db.Set<User>().AsNoTracking()
+            .Where(u => u.Status == UserStatus.Active)
+            .OrderBy(u => u.DisplayName.English)
+            .ToListAsync();
+        var auth = await Auth.GetAuthenticationStateAsync();
+        _userId = auth.User.UserId() ?? Guid.Empty;
+    }
+
+    private async Task OnSubmitAsync()
+    {
+        _flash = null;
+        if (string.IsNullOrWhiteSpace(_form.NameAr) && string.IsNullOrWhiteSpace(_form.NameEn))
+        {
+            _flash = Tr("الاسم بالعربي أو الإنجليزي مطلوب.", "Need a name (Ar or En).");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_form.Phone) && string.IsNullOrWhiteSpace(_form.Email))
+        {
+            _flash = Tr("لازم تليفون أو إيميل.", "Need phone or email.");
+            _flashClass = "kpi-card kpi-error";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var assignee = _form.AssignedToUserId == Guid.Empty
+                ? (_userId == Guid.Empty ? (Guid?)null : _userId)
+                : _form.AssignedToUserId;
+
+            var lead = Lead.Create(
+                name: new ArabicEnglishText(
+                    _form.NameAr ?? "",
+                    _form.NameEn ?? ""),
+                companyName: _form.Company,
+                phone: _form.Phone,
+                email: _form.Email,
+                source: _form.Source,
+                assignedToUserId: assignee,
+                createdAtUtc: DateTime.UtcNow,
+                createdByUserId: _userId == Guid.Empty ? null : _userId);
+
+            if (_form.ExpectedValue.HasValue || _form.ExpectedClose.HasValue)
+            {
+                lead.SetForecast(
+                    _form.ExpectedClose.HasValue
+                        ? DateOnly.FromDateTime(_form.ExpectedClose.Value)
+                        : null,
+                    _form.ExpectedValue);
+            }
+
+            Db.Add(lead);
+            await Db.SaveChangesAsync();
+            Nav.NavigateTo($"/leads/{lead.Id}");
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+}

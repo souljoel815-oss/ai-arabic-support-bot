@@ -863,7 +863,7 @@ it currently blocks a real deal in the SMB segment.
 
 | # | Module | Odoo | DaftarX | Why it matters in Egypt | Phase |
 |---|---|---|---|---|---|
-| 1 | **Bank reconciliation auto-match** | Full + AI suggestions | Skeleton (`/payments/bank-statements` UI exists, matching engine is empty) | Every accountant burns ~4 hrs/month on CIB/NBE/QNB statement matching. Top mentioned pain in customer-development calls. | **N.1** |
+| ~~1~~ | ~~**Bank reconciliation auto-match**~~ | Full + AI suggestions | **ALREADY SHIPPED** (P3.4 — `BankMatchScorer` engine + `BankAutoMatchJob` cron + `/payments/unmatched` Suggested+Manual queues with accept/reject) | Original claim "engine is empty" was wrong; demo tenant just has no statements imported yet. | ✅ Done pre-v3 |
 | 2 | **Multi-currency** | Full + daily exchange rates | EGP-only | Every import/export business needs it. Wafeq + Edara ship it. Hard segment exclusion today. | N.5 (v4 trigger) |
 | 3 | **Cost centers / analytical accounting** | Full | ❌ | Construction + consulting firms tag every JE to a project. Hard segment exclusion. | N.5 (v4 trigger) |
 | 4 | **POS (Point of Sale)** | Full module + offline mode | ❌ | Every retail shop with a register. Huge segment in Egypt — but a different sales motion. | N.4 (separate vertical) |
@@ -893,56 +893,44 @@ intentional choices for the segment + the AI-paired build clock:
 | Email marketing | Mailchimp exists |
 | Inter-company / consolidation | 6+ weeks; only matters at multi-company firm scale |
 
-### 11.3 Recommendation
+### 11.3 Recommendation (revised after audit)
 
-Three of the gaps above are top-of-funnel-blocking enough to
-warrant a focused N-phase before any v4 work:
+After investigating the codebase, **N.1 Bank reconciliation was
+already shipped in P3.4** (engine + job + queues). The original
+recommendation listed it as the top priority based on the empty
+demo-tenant UI; that was a misread. Removing it leaves:
 
-🥇 **N.1 Bank reconciliation auto-match** — highest ROI, every
-   accountant feels the pain monthly
-🥈 **N.2 CRM leads/opportunities** — converts DaftarX from
-   "accounting tool" to "business OS"; raises ARPU
-🥉 **N.3 Open REST API + webhooks** — unblocks every integration
+🥇 **N.2 CRM leads/opportunities** — converts DaftarX from
+   "accounting tool" to "business OS"; raises ARPU; closes the
+   B2B sales-funnel top-of-funnel gap
+🥈 **N.3 Open REST API + webhooks** — unblocks every integration
    story including a future POS adapter
+🥉 The 7 remaining items become v4 triggers (§12) — build when a
+   real customer asks, not on speculation
 
-The other 7 items move to v4 trigger conditions (§5/§8) — build
-them when a real customer asks, not on speculation.
+Per user instruction (May 2026), the operator wants ALL 10 modules
+shipped over time in ROI order. Sequencing now:
+N.2 → N.3 → cost centers → lot tracking → reorder rules →
+multi-currency → eSignature → project mgmt → POS. Each module
+gets its own commit + push cycle.
 
 ---
 
 ## N — Next-tier modules (post-v3, pre-v4)
 
-**Goal:** ship the 3 highest-ROI Odoo-parity items so the next 6
-months of demos don't keep losing on these specific points.
-Sequencing: N.1 → N.2 → N.3 in priority order. Total estimated
-effort: ~6 weeks (N.1: 3w, N.2: 1.5w, N.3: 1.5w).
+**Goal:** ship 9 Odoo-parity modules in ROI order (N.1 was already
+done — see §11.3 revision). Each module = own commit + push cycle.
+Total estimated effort: ~19 weeks of focused work; the operator
+green-lit them all (May 2026).
 
-### N.1 — Bank reconciliation auto-match engine
+### ~~N.1 — Bank reconciliation auto-match engine~~
 
-- **Pain:** Every accountant manually matches CIB/NBE/QNB
-  statement lines to invoices/receipts/SPVs once a month, ~4 hrs
-  per session. The page skeleton exists (`/payments/bank-
-  statements` import + `/payments/unmatched` queue) but the
-  matching engine is empty — every line lands in the manual queue.
-- **Competitor parity / differentiator:** Odoo + Daftra + Wafeq
-  + Edara all ship auto-match. We're the only Egyptian-tax tool
-  that surfaces a bank-statement page WITHOUT a matching engine
-  behind it. Closing this is parity, not differentiation.
-- **Complexity:** L (~3 weeks)
-- **Dependencies:** existing `BankStatementParserRegistry` (CIB
-  / NBE / QNB parsers shipped). `CustomerReceiptVoucher` +
-  `SupplierPaymentVoucher` entities exist. `Expense` exists.
-- **MVP slice:**
-  - Match-rule engine: amount-exact + date-window-7d + reference-
-    text-fuzzy. Per-line confidence score 0-100.
-  - For confidence ≥ 85 → auto-allocate; for 50-85 → "suggested"
-    queue; <50 → manual queue (existing flow)
-  - One-click accept/reject on the suggested queue
-  - Learn-from-corrections: if operator overrides a rule, store
-    the (pattern → target) mapping for next month's run
-- **Avoid:** ML-based matcher in v1 — rule-based is good enough
-  for 80%+ accuracy and debuggable. Multi-currency
-  reconciliation. Foreign bank statement formats.
+✅ **Already shipped in P3.4** (`BankMatchScorer` engine,
+`BankAutoMatchJob` cron, `/payments/unmatched` Suggested+Manual
+queues with accept/reject + ignore + learn-from-corrections via
+operator-applied overrides). The audit's "empty engine" claim was
+wrong. Reconciliation queue stays blank only because the demo
+tenant has no statements imported yet.
 
 ### N.2 — CRM leads + opportunities pipeline
 
