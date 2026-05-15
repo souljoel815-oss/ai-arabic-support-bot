@@ -23,6 +23,24 @@
 
 <h1>@(IsArabic ? "أوامر البيع" : "Sales orders")</h1>
 
+@if (!_loading && _orders.Count > 0)
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي الأوامر" : "Total")</span>
+            <span class="list-stat-value">@_orders.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "مؤكدة" : "Confirmed")</span>
+            <span class="list-stat-value is-success">@_orders.Count(o => o.Order.State == SalesOrderState.Confirmed)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "مسودات" : "Drafts")</span>
+            <span class="list-stat-value">@_orders.Count(o => o.Order.State == SalesOrderState.Draft)</span>
+        </div>
+    </div>
+}
+
 <div class="invoice-toolbar">
     <a class="btn-primary" href="/sales-orders/new">@(IsArabic ? "+ أمر جديد" : "+ New order")</a>
     <select @bind="_stateFilter">

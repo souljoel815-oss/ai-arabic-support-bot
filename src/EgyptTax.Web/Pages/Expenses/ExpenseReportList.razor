@@ -17,6 +17,24 @@
 
 <h1>@(IsArabic ? "تقارير المصروفات" : "Expense reports")</h1>
 
+@if (_rows is { Count: > 0 })
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي التقارير" : "Total")</span>
+            <span class="list-stat-value">@_rows.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "في الانتظار" : "Pending")</span>
+            <span class="list-stat-value is-warn">@_rows.Count(r => r.Report.State == DocumentState.Submitted)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "معتمدة" : "Approved")</span>
+            <span class="list-stat-value is-success">@_rows.Count(r => r.Report.State == DocumentState.Approved)</span>
+        </div>
+    </div>
+}
+
 <div class="invoice-toolbar">
     <a class="btn-primary" href="/expense-reports/new">
         + @(IsArabic ? "تقرير جديد" : "New report")

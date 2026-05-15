@@ -25,6 +25,11 @@
     what we still owe.
 *@
 
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "الموردون" : "Suppliers", "/suppliers"),
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "كشف الحساب" : "Statement", null)
+})" />
+
 <h1>@(IsArabic ? "كشف حساب المورّد" : "Supplier Statement")</h1>
 
 @if (_loading)

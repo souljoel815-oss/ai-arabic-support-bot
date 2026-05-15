@@ -26,6 +26,11 @@
     scoped) so they can advise customers about their account standing.
 *@
 
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "العملاء" : "Customers", "/customers"),
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "كشف الحساب" : "Statement", null)
+})" />
+
 <h1>@(IsArabic ? "كشف حساب العميل" : "Customer Statement")</h1>
 
 @if (_loading)

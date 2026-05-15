@@ -37,6 +37,16 @@
     return;
 }
 
+@if (_rows is { Count: > 0 })
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "في الانتظار" : "Pending")</span>
+            <span class="list-stat-value is-warn">@_rows.Count</span>
+        </div>
+    </div>
+}
+
 @if (_rows.Count == 0)
 {
     <p><em>@(IsArabic ? "لا توجد مستندات بانتظار اعتمادك." : "No documents awaiting your approval.")</em></p>

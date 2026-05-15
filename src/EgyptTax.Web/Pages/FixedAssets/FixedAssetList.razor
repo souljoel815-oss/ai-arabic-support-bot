@@ -25,14 +25,24 @@
     return;
 }
 
-<section class="invoice-totals">
-    <div><strong>@(IsArabic ? "الأصول:" : "Assets:")</strong> @_rows.Count</div>
-    <div><strong>@(IsArabic ? "في الخدمة:" : "InService:")</strong> @_rows.Count(r => r.Status == FixedAssetStatus.InService)</div>
-    <div><strong>@(IsArabic ? "مسودة:" : "Draft:")</strong> @_rows.Count(r => r.Status == FixedAssetStatus.Draft)</div>
-    <div><strong>@(IsArabic ? "مستبعدة/مشطوبة:" : "Disposed/Written off:")</strong> @_rows.Count(r => r.Status is FixedAssetStatus.Disposed or FixedAssetStatus.WrittenOff)</div>
-    <div><strong>@(IsArabic ? "إجمالي التكلفة:" : "Total cost:")</strong> @_rows.Sum(r => r.Cost.Amount).ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
-    <div><strong>@(IsArabic ? "إجمالي صافي القيمة الدفترية (حتى التاريخ):" : "Total NBV (as-of):")</strong> @_rows.Sum(r => r.NetBookValue.Amount).ToString("F2") @(IsArabic ? "ج.م." : "EGP")</div>
-</section>
+<div class="list-stats">
+    <div class="list-stat">
+        <span class="list-stat-label">@(IsArabic ? "الأصول" : "Total")</span>
+        <span class="list-stat-value">@_rows.Count</span>
+    </div>
+    <div class="list-stat">
+        <span class="list-stat-label">@(IsArabic ? "في الخدمة" : "In service")</span>
+        <span class="list-stat-value is-success">@_rows.Count(r => r.Status == FixedAssetStatus.InService)</span>
+    </div>
+    <div class="list-stat">
+        <span class="list-stat-label">@(IsArabic ? "إجمالي التكلفة" : "Total cost")</span>
+        <span class="list-stat-value">@_rows.Sum(r => r.Cost.Amount).ToString("N0") <small>@(IsArabic ? "ج.م" : "EGP")</small></span>
+    </div>
+    <div class="list-stat">
+        <span class="list-stat-label">@(IsArabic ? "صافي القيمة الدفترية" : "Net book value")</span>
+        <span class="list-stat-value is-gold">@_rows.Sum(r => r.NetBookValue.Amount).ToString("N0") <small>@(IsArabic ? "ج.م" : "EGP")</small></span>
+    </div>
+</div>
 
 @if (_rows.Count == 0)
 {
