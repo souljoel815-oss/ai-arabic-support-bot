@@ -1,10 +1,13 @@
 @page "/reorder-suggestions"
 @using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Purchases
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.SharedKernel
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
 @inject AppDbContext Db
+@inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 @*
@@ -37,21 +40,60 @@
     return;
 }
 
+@if (_flash is not null)
+{
+    <div class="@_flashClass">@_flash</div>
+}
+
+@{
+    var withSupplier = _rows.Count(r => r.SupplierId.HasValue);
+    var selectableCount = _rows.Count(r => r.SupplierId.HasValue && _selected.Contains(r.Item.Id));
+    var supplierGroups = _rows.Where(r => r.SupplierId.HasValue && _selected.Contains(r.Item.Id))
+        .GroupBy(r => r.SupplierId!.Value).Count();
+}
+<section class="invoice-toolbar" style="margin-bottom:12px;">
+    <button type="button" class="btn-primary" disabled="@(_creating || _selected.Count == 0 || supplierGroups == 0)"
+            @onclick="CreateDraftPosAsync">
+        @(_creating
+            ? Tr("جارٍ الإنشاء…", "Creating…")
+            : Tr($"📦 إنشاء أوامر شراء مسودة ({supplierGroups})", $"📦 Create draft POs ({supplierGroups})"))
+    </button>
+    <button type="button" class="btn-secondary"
+            @onclick="@(() => { _selected.Clear(); foreach (var r in _rows.Where(r => r.SupplierId.HasValue)) _selected.Add(r.Item.Id); })">
+        @Tr("اختر الكل", "Select all (with supplier)")
+    </button>
+    <button type="button" class="btn-secondary" @onclick="@(() => _selected.Clear())">
+        @Tr("إلغاء التحديد", "Clear")
+    </button>
+    <span style="color:var(--text-muted);font-size:13px;">
+        @Tr($"{selectableCount} مختار من {withSupplier} مع مورد مفضّل (الأصناف بدون مورد ما تقدرش تتعمل لها أمر شراء أوتوماتيكي).",
+            $"{selectableCount} of {withSupplier} selected (rows without a preferred supplier can't auto-PO).")
+    </span>
+</section>
+
 <table class="data-table">
     <thead>
         <tr>
+            <th style="width:34px;"></th>
             <th>@Tr("الصنف", "Item")</th>
             <th>@Tr("الحالي", "Current")</th>
             <th>@Tr("الحد الأدنى", "Min")</th>
             <th>@Tr("اطلب", "Suggest order")</th>
             <th>@Tr("المورد", "Supplier")</th>
-            <th></th>
         </tr>
     </thead>
     <tbody>
         @foreach (var r in _rows)
         {
+            var canSelect = r.SupplierId.HasValue;
             <tr>
+                <td>
+                    @if (canSelect)
+                    {
+                        <input type="checkbox" checked="@_selected.Contains(r.Item.Id)"
+                               @onchange="@(e => Toggle(r.Item.Id, (bool)e.Value!))" />
+                    }
+                </td>
                 <td>
                     <strong>@r.Item.Code</strong>
                     <div style="font-size:12px;color:var(--muted);">
@@ -63,11 +105,15 @@
                 </td>
                 <td>@r.Rule.MinQuantity.ToString("0.###")</td>
                 <td><strong>@r.OrderQty.ToString("0.###")</strong></td>
-                <td>@(r.SupplierCode ?? "—")</td>
                 <td>
-                    <a href="/purchase-invoices/new" class="btn-secondary" style="font-size:12px;">
-                        @Tr("افتح فاتورة شراء", "Create purchase invoice")
-                    </a>
+                    @if (canSelect)
+                    {
+                        @r.SupplierCode
+                    }
+                    else
+                    {
+                        <span style="color:var(--text-muted);">—</span>
+                    }
                 </td>
             </tr>
         }
@@ -76,15 +122,21 @@
 
 @code {
     private bool _loading = true;
+    private bool _creating;
     private List<Row> _rows = new();
+    private HashSet<Guid> _selected = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
 
-    private sealed record Row(ReorderRule Rule, Item Item, decimal OrderQty, string? SupplierCode);
+    private sealed record Row(ReorderRule Rule, Item Item, decimal OrderQty, Guid? SupplierId, string? SupplierCode);
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
     {
         var rules = await Db.Set<ReorderRule>().AsNoTracking()
             .Where(r => r.IsActive).ToListAsync();
-        if (rules.Count == 0) { _loading = false; return; }
+        if (rules.Count == 0) { _rows = new(); _loading = false; return; }
 
         var itemIds = rules.Select(r => r.ItemId).Distinct().ToList();
         var items = await Db.Set<Item>().AsNoTracking()
@@ -104,10 +156,95 @@
                 r,
                 items[r.ItemId],
                 r.RecommendedOrderQty(items[r.ItemId].QuantityOnHand),
+                r.PreferredSupplierId,
                 r.PreferredSupplierId.HasValue && suppliers.TryGetValue(r.PreferredSupplierId.Value, out var s)
                     ? s.Code : null))
             .OrderBy(r => r.Item.QuantityOnHand)
             .ToList();
         _loading = false;
+    }
+
+    private void Toggle(Guid itemId, bool isChecked)
+    {
+        if (isChecked) _selected.Add(itemId);
+        else _selected.Remove(itemId);
+    }
+
+    private async Task CreateDraftPosAsync()
+    {
+        _flash = null;
+        var picked = _rows
+            .Where(r => r.SupplierId.HasValue && _selected.Contains(r.Item.Id))
+            .ToList();
+        if (picked.Count == 0)
+        {
+            _flash = Tr("اختر صنف واحد على الأقل مع مورد.", "Pick at least one item with a supplier.");
+            _flashClass = "flash-error";
+            return;
+        }
+
+        _creating = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var suppliers = await db.Set<Supplier>().AsNoTracking()
+                .Where(s => picked.Select(p => p.SupplierId!.Value).Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id);
+            var firstVatId = await db.Set<VatCategory>().AsNoTracking()
+                .OrderBy(v => v.RatePercent)
+                .Select(v => new { v.Id, v.RatePercent })
+                .FirstOrDefaultAsync();
+            if (firstVatId is null)
+            {
+                _flash = Tr("لازم تكون في فئة ضريبة واحدة على الأقل قبل ما تنشئ أوامر شراء.",
+                    "At least one VAT category required before auto-PO.");
+                _flashClass = "flash-error";
+                return;
+            }
+
+            var groups = picked.GroupBy(p => p.SupplierId!.Value).ToList();
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var draftCount = 0;
+            foreach (var g in groups)
+            {
+                if (!suppliers.TryGetValue(g.Key, out var supplier)) continue;
+                var placeholderInvNum = $"AUTO-{DateTime.UtcNow:yyMMddHHmmss}-{supplier.Code}";
+                var draft = PurchaseInvoice.CreateDraft(
+                    supplierId: supplier.Id,
+                    supplierTaxProfileSnapshot: supplier.TaxProfile,
+                    supplierInvoiceNumber: placeholderInvNum,
+                    dateReceived: today);
+                foreach (var row in g)
+                {
+                    draft.AddLine(
+                        itemId: row.Item.Id,
+                        expenseCategoryId: null,
+                        quantity: row.OrderQty,
+                        unitPrice: MoneyEgp.From(row.Item.DefaultUnitPriceEgp ?? 0m),
+                        vatCategoryId: firstVatId.Id,
+                        vatRatePercent: firstVatId.RatePercent,
+                        deductibleFlag: true);
+                }
+                db.Add(draft);
+                draftCount++;
+            }
+            await db.SaveChangesAsync();
+
+            _flash = Tr(
+                $"تم إنشاء {draftCount} أمر شراء مسودة. افتح كل واحد وعدّل الأسعار + رقم فاتورة المورد، ثم رحّل.",
+                $"Created {draftCount} draft purchase invoices. Open each one to fill real prices + the supplier's invoice number, then post.");
+            _flashClass = "flash-success";
+            _selected.Clear();
+            Nav.NavigateTo("/purchase-invoices");
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _creating = false;
+        }
     }
 }
