@@ -29,6 +29,28 @@
     <div class="flash-success" role="status">@_savedFlash</div>
 }
 
+@if (_items is { Count: > 0 })
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي الأصناف" : "Total")</span>
+            <span class="list-stat-value">@_items.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "نشطة" : "Active")</span>
+            <span class="list-stat-value is-success">@_items.Count(i => i.Status == ItemStatus.Active)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "عند حد التنبيه" : "Low stock")</span>
+            <span class="list-stat-value @(_items.Count(i => i.LowStockThreshold != null && i.QuantityOnHand <= i.LowStockThreshold!.Value) > 0 ? "is-warn" : "")">@_items.Count(i => i.LowStockThreshold != null && i.QuantityOnHand <= i.LowStockThreshold!.Value)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي الكمية" : "Total qty")</span>
+            <span class="list-stat-value">@_items.Sum(i => i.QuantityOnHand).ToString("N0")</span>
+        </div>
+    </div>
+}
+
 <section class="master-data-list">
     <h2>@(IsArabic ? "الأصناف الحالية" : "Existing items")</h2>
     @if (_items is null)

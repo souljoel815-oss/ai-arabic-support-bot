@@ -28,6 +28,28 @@
     <div class="flash-success" role="status">@_savedFlash</div>
 }
 
+@if (_customers is { Count: > 0 })
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي العملاء" : "Total")</span>
+            <span class="list-stat-value">@_customers.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "نشطين" : "Active")</span>
+            <span class="list-stat-value is-success">@_customers.Count(c => c.Status == CustomerStatus.Active)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "غير نشطين" : "Inactive")</span>
+            <span class="list-stat-value">@_customers.Count(c => c.Status == CustomerStatus.Inactive)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "بدون رقم ضريبي" : "Missing TIN")</span>
+            <span class="list-stat-value @(_customers.Count(c => string.IsNullOrEmpty(c.TaxProfile.TinValue)) > 0 ? "is-warn" : "")">@_customers.Count(c => string.IsNullOrEmpty(c.TaxProfile.TinValue))</span>
+        </div>
+    </div>
+}
+
 <section class="master-data-list">
     <h2>@(IsArabic ? "العملاء الحاليون" : "Existing customers")</h2>
     @if (_customers is null)

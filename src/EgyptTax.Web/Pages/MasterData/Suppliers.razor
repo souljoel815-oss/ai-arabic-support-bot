@@ -15,6 +15,20 @@
     <div class="flash-success" role="status">@_savedFlash</div>
 }
 
+@if (_suppliers is { Count: > 0 })
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي الموردين" : "Total")</span>
+            <span class="list-stat-value">@_suppliers.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "بدون رقم ضريبي" : "Missing TIN")</span>
+            <span class="list-stat-value @(_suppliers.Count(s => string.IsNullOrEmpty(s.TaxProfile.TinValue)) > 0 ? "is-warn" : "")">@_suppliers.Count(s => string.IsNullOrEmpty(s.TaxProfile.TinValue))</span>
+        </div>
+    </div>
+}
+
 <section class="master-data-list">
     <h2>@(IsArabic ? "الموردون الحاليون" : "Existing suppliers")</h2>
     @if (_suppliers is null)
