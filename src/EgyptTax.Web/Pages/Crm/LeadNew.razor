@@ -14,6 +14,11 @@
 
 <PageTitle>@Tr("فرصة جديدة | DaftarX", "New Lead | DaftarX")</PageTitle>
 
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(Tr("الفرص البيعية", "Sales Pipeline"), "/leads"),
+    new Breadcrumb.BreadcrumbItem(Tr("جديدة", "New"), null)
+})" />
+
 <h1>@Tr("فرصة جديدة", "New Lead")</h1>
 <p class="page-subtitle">
     @Tr(

@@ -13,6 +13,11 @@
 
 <PageTitle>@Tr("عرض سعر جديد | DaftarX", "New Quotation | DaftarX")</PageTitle>
 
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(Tr("عروض الأسعار", "Quotations"), "/quotations"),
+    new Breadcrumb.BreadcrumbItem(Tr("جديد", "New"), null)
+})" />
+
 <h1>@Tr("عرض سعر جديد", "New Quotation")</h1>
 <p class="page-subtitle">
     @Tr(

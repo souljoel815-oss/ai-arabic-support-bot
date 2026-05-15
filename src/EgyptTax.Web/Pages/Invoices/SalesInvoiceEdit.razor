@@ -26,6 +26,15 @@
 @inject AuthenticationStateProvider Auth
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "الفواتير" : "Invoices", "/invoices"),
+    new Breadcrumb.BreadcrumbItem(
+        _invoice is null
+            ? (IsArabic ? "فاتورة جديدة" : "New invoice")
+            : (IsArabic ? "تعديل" : "Edit"),
+        null)
+})" />
+
 <h1>@(IsArabic ? (_invoice is null ? "فاتورة مبيعات جديدة" : "تعديل فاتورة مبيعات") : (_invoice is null ? "New sales invoice" : "Edit sales invoice"))</h1>
 
 @if (_flash is not null)

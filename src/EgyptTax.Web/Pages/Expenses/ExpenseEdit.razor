@@ -22,6 +22,11 @@
 @inject EgyptTax.Infrastructure.Ai.ReceiptImageStash ReceiptStash
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "المصروفات" : "Expenses", "/expenses"),
+    new Breadcrumb.BreadcrumbItem(_isNew ? (IsArabic ? "جديد" : "New") : (IsArabic ? "تعديل" : "Edit"), null)
+})" />
+
 <h1>@(_isNew ? (IsArabic ? "مصروف جديد" : "New expense") : (IsArabic ? "تعديل مصروف" : "Edit expense"))</h1>
 
 @if (_loading)
