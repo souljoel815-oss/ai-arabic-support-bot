@@ -18,6 +18,11 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "فواتير الشراء" : "Purchase invoices", "/purchase-invoices"),
+    new Breadcrumb.BreadcrumbItem(_invoice?.DocumentNumber ?? (IsArabic ? "..." : "..."), null)
+})" />
+
 <h1>@(IsArabic ? $"فاتورة شراء {(_invoice?.DocumentNumber ?? "(جارٍ التحميل)")}" : $"Purchase invoice {(_invoice?.DocumentNumber ?? "(loading)")}")</h1>
 
 @if (_invoice is null)

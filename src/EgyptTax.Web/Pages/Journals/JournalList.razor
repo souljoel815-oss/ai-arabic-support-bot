@@ -34,13 +34,24 @@
     return;
 }
 
-<section class="invoice-totals">
-    <div><strong>@(IsArabic ? "الفترة:" : "Period:")</strong> @_periodStart.ToString("yyyy-MM-dd") @(IsArabic ? "إلى" : "to") @_periodEnd.ToString("yyyy-MM-dd")</div>
-    <div><strong>@(IsArabic ? "القيود:" : "Entries:")</strong> @_rows.Count</div>
-    <div><strong>@(IsArabic ? "أوتوماتيكية:" : "Auto-emitted:")</strong> @_rows.Count(r => r.Kind == JournalEntryKind.AutoEmitted)</div>
-    <div><strong>@(IsArabic ? "يدوية:" : "Manual:")</strong> @_rows.Count(r => r.Kind == JournalEntryKind.ManualAdjusting)</div>
-    <div><strong>@(IsArabic ? "عكسية:" : "Reversals:")</strong> @_rows.Count(r => r.Kind == JournalEntryKind.Reversal)</div>
-</section>
+<div class="list-stats">
+    <div class="list-stat">
+        <span class="list-stat-label">@(IsArabic ? "إجمالي القيود" : "Total entries")</span>
+        <span class="list-stat-value">@_rows.Count</span>
+    </div>
+    <div class="list-stat">
+        <span class="list-stat-label">@(IsArabic ? "أوتوماتيكية" : "Auto-emitted")</span>
+        <span class="list-stat-value is-success">@_rows.Count(r => r.Kind == JournalEntryKind.AutoEmitted)</span>
+    </div>
+    <div class="list-stat">
+        <span class="list-stat-label">@(IsArabic ? "يدوية" : "Manual")</span>
+        <span class="list-stat-value is-gold">@_rows.Count(r => r.Kind == JournalEntryKind.ManualAdjusting)</span>
+    </div>
+    <div class="list-stat">
+        <span class="list-stat-label">@(IsArabic ? "عكسية" : "Reversals")</span>
+        <span class="list-stat-value @(_rows.Count(r => r.Kind == JournalEntryKind.Reversal) > 0 ? "is-warn" : "")">@_rows.Count(r => r.Kind == JournalEntryKind.Reversal)</span>
+    </div>
+</div>
 
 @if (_rows.Count == 0)
 {

@@ -13,6 +13,28 @@
 
 <h1>@(IsArabic ? "المصروفات" : "Expenses")</h1>
 
+@if (_rows is { Count: > 0 })
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي المصروفات" : "Total")</span>
+            <span class="list-stat-value">@_rows.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "مرحّلة" : "Posted")</span>
+            <span class="list-stat-value is-success">@_rows.Count(r => r.Expense.State == DocumentState.Posted)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "بدون مرفق" : "Missing receipt")</span>
+            <span class="list-stat-value @(_rows.Count(r => r.Expense.DeductibleFlag && r.RiskFindings.Any()) > 0 ? "is-warn" : "")">@_rows.Count(r => r.Expense.DeductibleFlag && r.RiskFindings.Any())</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي المبلغ" : "Total amount")</span>
+            <span class="list-stat-value is-warn">@_rows.Where(r => r.Expense.State == DocumentState.Posted).Sum(r => r.Expense.Amount.Amount).ToString("N0") <small>@(IsArabic ? "ج.م" : "EGP")</small></span>
+        </div>
+    </div>
+}
+
 <div class="invoice-toolbar">
     <a class="btn-primary" href="/expenses/new">+ @(IsArabic ? "مصروف جديد" : "New expense")</a>
     <input type="search" placeholder="@(IsArabic ? "بحث برقم المستند أو الوصف…" : "Search by document number or description…")"

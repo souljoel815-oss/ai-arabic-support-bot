@@ -5,7 +5,10 @@
 @inject IJournalLedgerQuery Query
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
-<a href="/journals" class="btn-secondary">← @(IsArabic ? "العودة إلى الدفتر" : "Back to ledger")</a>
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "دفتر اليومية" : "Journal ledger", "/journals"),
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "قيد يومية" : "Journal entry", null)
+})" />
 
 <h1>@(IsArabic ? "قيد يومية" : "Journal entry")</h1>
 

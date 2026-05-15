@@ -15,6 +15,28 @@
 
 <h1>@(IsArabic ? "فواتير الشراء" : "Purchase invoices")</h1>
 
+@if (_rows is { Count: > 0 })
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي الفواتير" : "Total")</span>
+            <span class="list-stat-value">@_rows.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "مرحّلة" : "Posted")</span>
+            <span class="list-stat-value is-success">@_rows.Count(r => r.Invoice.State == DocumentState.Posted)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "مسودات" : "Drafts")</span>
+            <span class="list-stat-value">@_rows.Count(r => r.Invoice.State == DocumentState.Draft)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي المبلغ" : "Total amount")</span>
+            <span class="list-stat-value is-gold">@_rows.Where(r => r.Invoice.State == DocumentState.Posted).Sum(r => r.Invoice.GrandTotal.Amount).ToString("N0") <small>@(IsArabic ? "ج.م" : "EGP")</small></span>
+        </div>
+    </div>
+}
+
 <div class="invoice-toolbar">
     <a class="btn-primary" href="/purchase-invoices/new">+ @(IsArabic ? "فاتورة شراء جديدة" : "New purchase invoice")</a>
     <input type="search" placeholder="@(IsArabic ? "بحث برقم المستند أو رقم المورد…" : "Search by document or supplier number…")"
