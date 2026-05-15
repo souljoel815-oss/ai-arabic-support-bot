@@ -1,0 +1,223 @@
+@page "/reports/stock-valuation"
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Purchases
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject IJSRuntime Js
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 A.2 — Stock valuation report. Per active item: code, name,
+    on-hand qty, weighted-average cost (from posted purchase
+    invoice lines), value = qty × cost. Items with no cost data
+    surface in their own bucket so the operator knows the
+    Balance Sheet inventory line is incomplete.
+
+    Cost basis: weighted average across every PurchaseInvoiceLine
+    that referenced the item (sum of qty×price ÷ sum of qty). FIFO
+    + LIFO intentionally deferred per v5 §2 A.2 (weighted-avg is
+    the SME-standard in Egypt).
+*@
+
+<h1>
+    @(IsArabic ? "تقييم المخزون" : "Stock Valuation")
+    @if (_rows.Count > 0)
+    {
+        <button type="button" class="btn-secondary"
+                style="font-size:13px;margin-inline-start:12px;"
+                @onclick="ExportCsvAsync">
+            ⬇ @(IsArabic ? "تصدير CSV" : "Export CSV")
+        </button>
+    }
+</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "قيمة المخزون الحالية بطريقة المتوسط المرجَّح لتكلفة الشراء. لكل صنف: الكمية المتاحة × متوسط تكلفة الوحدة من فواتير الشراء المرحَّلة."
+        : "Current inventory value using weighted-average purchase cost. Per item: on-hand quantity × weighted-average unit cost from posted purchase invoices.")
+</p>
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<div class="kpi-grid kpi-grid-3" style="margin-bottom:16px;">
+    <div class="kpi-card kpi-info">
+        <div class="kpi-label">@(IsArabic ? "إجمالي قيمة المخزون" : "Total stock value")</div>
+        <div class="kpi-value">@_grandTotal.ToString("N2") @(IsArabic ? "ج.م" : "EGP")</div>
+    </div>
+    <div class="kpi-card kpi-info">
+        <div class="kpi-label">@(IsArabic ? "أصناف لها تكلفة" : "Costed items")</div>
+        <div class="kpi-value">@_costedCount</div>
+    </div>
+    <div class="kpi-card @(_uncostedCount > 0 ? "kpi-warn" : "kpi-info")">
+        <div class="kpi-label">@(IsArabic ? "أصناف بدون تكلفة" : "Items missing cost")</div>
+        <div class="kpi-value">@_uncostedCount</div>
+    </div>
+</div>
+
+@if (_rows.Count == 0)
+{
+    <p><em>@(IsArabic ? "لا توجد أصناف نشطة في المخزون." : "No active items in inventory.")</em></p>
+    return;
+}
+
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th>@(IsArabic ? "الكود" : "Code")</th>
+            <th>@(IsArabic ? "الصنف" : "Item")</th>
+            <th class="num">@(IsArabic ? "الكمية" : "On-hand qty")</th>
+            <th class="num">@(IsArabic ? "متوسط التكلفة (ج.م)" : "Avg cost (EGP)")</th>
+            <th class="num">@(IsArabic ? "قيمة المخزون (ج.م)" : "Stock value (EGP)")</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var row in _rows)
+        {
+            <tr class="@(row.HasCostData ? "" : "row-muted")">
+                <td><code>@row.Code</code></td>
+                <td>@row.Name</td>
+                <td class="num">@row.QuantityOnHand.ToString("F3")</td>
+                <td class="num">
+                    @if (row.HasCostData)
+                    {
+                        @row.AvgCost.ToString("F2")
+                    }
+                    else
+                    {
+                        <em style="color:var(--text-muted);">@(IsArabic ? "(لا يوجد)" : "(no data)")</em>
+                    }
+                </td>
+                <td class="num">
+                    @if (row.HasCostData)
+                    {
+                        <strong>@row.Value.ToString("N2")</strong>
+                    }
+                    else
+                    {
+                        <em style="color:var(--text-muted);">—</em>
+                    }
+                </td>
+            </tr>
+        }
+        <tr style="font-weight:bold;border-top:2px solid currentColor;">
+            <td colspan="4">@(IsArabic ? "الإجمالي" : "Grand total")</td>
+            <td class="num">@_grandTotal.ToString("N2")</td>
+        </tr>
+    </tbody>
+</table>
+
+@code {
+    private bool _loading = true;
+    private List<ValuationRow> _rows = new();
+    private decimal _grandTotal;
+    private int _costedCount;
+    private int _uncostedCount;
+
+    private sealed record ValuationRow(
+        string Code,
+        string Name,
+        decimal QuantityOnHand,
+        decimal AvgCost,
+        decimal Value,
+        bool HasCostData);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Pull every active item with non-zero on-hand qty (zero-
+        // qty items contribute zero value; surfacing them adds
+        // noise to the report).
+        var items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => i.Status == ItemStatus.Active && i.QuantityOnHand > 0m)
+            .OrderBy(i => i.Code)
+            .ToListAsync();
+
+        if (items.Count == 0) { _loading = false; return; }
+
+        // Pull every posted PurchaseInvoiceLine for these items.
+        // SQLite can't sum decimals server-side; project then
+        // aggregate in C# (same pattern as TB / GL / Cash Flow).
+        var itemIds = items.Select(i => i.Id).ToList();
+        var purchaseRows = await (
+            from p in Db.Set<PurchaseInvoice>().AsNoTracking()
+            from l in p.Lines
+            where p.State == DocumentState.Posted
+                && l.ItemId != null
+                && itemIds.Contains(l.ItemId.Value)
+            select new
+            {
+                ItemId = l.ItemId!.Value,
+                Quantity = l.Quantity,
+                UnitPrice = l.UnitPrice.Amount,
+            }
+        ).ToListAsync();
+
+        // Weighted-average cost per item: Σ(qty × price) ÷ Σ(qty).
+        // Items with no purchase history get HasCostData = false
+        // and contribute 0 to the grand total — but still render
+        // (so the operator can see what's missing).
+        var costByItem = purchaseRows
+            .GroupBy(x => x.ItemId)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var totalQty = g.Sum(x => x.Quantity);
+                    if (totalQty <= 0m) return (decimal?)null;
+                    var totalSpend = g.Sum(x => x.Quantity * x.UnitPrice);
+                    return (decimal?)decimal.Round(totalSpend / totalQty, 4, MidpointRounding.ToEven);
+                });
+
+        foreach (var item in items)
+        {
+            costByItem.TryGetValue(item.Id, out var cost);
+            var hasCost = cost.HasValue;
+            var avgCost = cost ?? 0m;
+            var value = decimal.Round(item.QuantityOnHand * avgCost, 2, MidpointRounding.ToEven);
+
+            _rows.Add(new ValuationRow(
+                Code: item.Code,
+                Name: item.Name.Display(IsArabic ? Language.Ar : Language.En),
+                QuantityOnHand: item.QuantityOnHand,
+                AvgCost: avgCost,
+                Value: value,
+                HasCostData: hasCost));
+
+            if (hasCost)
+            {
+                _costedCount++;
+                _grandTotal += value;
+            }
+            else
+            {
+                _uncostedCount++;
+            }
+        }
+
+        _loading = false;
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        var bytes = CsvExporter.Build(
+            headers: new[] { "Code", "Item", "OnHandQty", "AvgCostEgp", "ValueEgp", "HasCostData" },
+            rows: _rows,
+            rowSelector: r => new object?[]
+            {
+                r.Code, r.Name, r.QuantityOnHand,
+                r.HasCostData ? (object)r.AvgCost : "",
+                r.HasCostData ? (object)r.Value : "",
+                r.HasCostData,
+            });
+        var b64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("daftarxDownloadBytes",
+            $"stock-valuation-{DateTime.UtcNow:yyyyMMdd}.csv", b64, "text/csv");
+    }
+}
