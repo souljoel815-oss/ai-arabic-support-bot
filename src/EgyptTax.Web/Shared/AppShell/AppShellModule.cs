@@ -114,6 +114,7 @@ public static class AppShellModuleRegistry
                 new SubNavLink("المطابقة البنكية", "Bank reconciliation", "/payments/bank-statements", "bank statement كشف", "landmark"),
                 new SubNavLink("تحويل أموال", "Fund transfer", "/payments/unmatched", "fund transfer تحويل", "arrow-right"),
                 new SubNavLink("مراكز التكلفة", "Cost centers", "/cost-centers", "cost center مركز تكلفة", "tag"),
+                new SubNavLink("مسحوبات شخصية", "Owner drawings", "/owner-drawings", "drawings مسحوبات owner", "wallet"),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("الضرائب", "Taxes"),
                 new SubNavLink("ضريبة القيمة المضافة", "VAT return", "/tax/vat-return", "vat return إقرار", "percent"),

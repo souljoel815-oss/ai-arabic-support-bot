@@ -1,0 +1,241 @@
+@page "/owner-drawings"
+@using System.Globalization
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 E.9 — Owner withdrawals (Drawings). Owner-operated SMBs
+    routinely take cash out of the business for personal use; this
+    page records that as a balanced JV (DR 3210 Owner Drawings /
+    CR {selected cash account's code}) so the equity section of
+    the Balance Sheet stays accurate.
+
+    Account 3210 is conventional Egyptian COA — operator can map
+    to a different equity account by editing the constant below
+    (single source of truth = OwnerDrawingsAccountCode).
+*@
+
+<PageTitle>@(IsArabic ? "مسحوبات شخصية | DaftarX" : "Owner drawings | DaftarX")</PageTitle>
+
+<h1>@(IsArabic ? "مسحوبات شخصية" : "Owner drawings")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "سجّل سحب نقدي شخصي من المالك. النظام بيقيّد تلقائياً قيد متوازن (مدين: مسحوبات شخصية / دائن: الحساب النقدي)."
+        : "Record an owner-personal cash withdrawal. The system posts a balanced JV (DR Owner Drawings / CR cash account).")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status" style="margin:8px 0;">@_flash</div>
+}
+
+<section style="display:grid;grid-template-columns:minmax(0, 360px) 1fr;gap:24px;align-items:flex-start;margin-top:18px;">
+    <div class="form-grid">
+        <h2 style="margin-top:0;">@(IsArabic ? "سحب جديد" : "New withdrawal")</h2>
+        <label>
+            <span>@(IsArabic ? "من حساب نقدي *" : "From cash account *")</span>
+            <select @bind="_form.CashAccountId">
+                <option value="">— @(IsArabic ? "اختر —" : "Choose —")</option>
+                @foreach (var c in _cashAccounts)
+                {
+                    <option value="@c.Id">@c.AccountCode — @(IsArabic ? c.Name.Arabic : c.Name.English)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@(IsArabic ? "المبلغ (ج.م) *" : "Amount (EGP) *")</span>
+            <input type="number" min="0.01" step="0.01" @bind="_form.Amount" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "التاريخ *" : "Date *")</span>
+            <input type="date" @bind="_form.Date" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "ملاحظة (اختياري)" : "Memo (optional)")</span>
+            <input type="text" maxlength="200" @bind="_form.Memo" />
+        </label>
+        <button type="button" class="btn-primary" @onclick="OnPostAsync"
+                disabled="@(_busy || string.IsNullOrEmpty(_form.CashAccountId) || _form.Amount <= 0m)">
+            @(_busy ? (IsArabic ? "جارٍ الترحيل…" : "Posting…") : (IsArabic ? "تسجيل وترحيل" : "Record and post"))
+        </button>
+    </div>
+
+    <div>
+        <h2 style="margin-top:0;">@(IsArabic ? "آخر المسحوبات" : "Recent drawings") (@_recent.Count)</h2>
+        @if (_recent.Count == 0)
+        {
+            <p><em>@(IsArabic ? "ما فيش مسحوبات بعد." : "No drawings yet.")</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead>
+                    <tr>
+                        <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                        <th>@(IsArabic ? "الحساب النقدي" : "Cash account")</th>
+                        <th class="num">@(IsArabic ? "المبلغ" : "Amount")</th>
+                        <th>@(IsArabic ? "ملاحظة" : "Memo")</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in _recent)
+                    {
+                        <tr>
+                            <td>@d.Date.ToString("yyyy-MM-dd")</td>
+                            <td>@d.CashAccountLabel</td>
+                            <td class="num">@d.Amount.ToString("N2")</td>
+                            <td><small>@d.Memo</small></td>
+                            <td><a href="/journals/@d.JournalId">@(IsArabic ? "القيد" : "JV")</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</section>
+
+@code {
+    private const string OwnerDrawingsAccountCode = "3210";
+
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<CashAccount> _cashAccounts = new();
+    private FormModel _form = new();
+    private List<DrawingRow> _recent = new();
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _cashAccounts = await Db.Set<CashAccount>().AsNoTracking()
+            .OrderBy(c => c.AccountCode)
+            .ToListAsync();
+
+        // Find recent drawings — JVs where any line debits 3210.
+        // We pull the last 50 JVs that have an Owner Drawings DR
+        // line; SQLite-friendly (no decimal Sum on server).
+        var recentJvIds = await Db.Set<JournalVoucher>().AsNoTracking()
+            .Where(j => j.Lines.Any(l => l.AccountCode == OwnerDrawingsAccountCode && l.Debit.Amount > 0m))
+            .OrderByDescending(j => j.Date)
+            .Take(50)
+            .Select(j => j.Id)
+            .ToListAsync();
+
+        var jvs = await Db.Set<JournalVoucher>().AsNoTracking()
+            .Where(j => recentJvIds.Contains(j.Id))
+            .Include(j => j.Lines)
+            .ToListAsync();
+
+        var cashByCode = _cashAccounts.ToDictionary(c => c.AccountCode);
+
+        _recent = jvs
+            .OrderByDescending(j => j.Date)
+            .Select(j =>
+            {
+                var drLine = j.Lines.FirstOrDefault(l => l.AccountCode == OwnerDrawingsAccountCode);
+                var crLine = j.Lines.FirstOrDefault(l => l.AccountCode != OwnerDrawingsAccountCode);
+                var cashLabel = crLine is not null && cashByCode.TryGetValue(crLine.AccountCode, out var ca)
+                    ? $"{ca.AccountCode} — {(IsArabic ? ca.Name.Arabic : ca.Name.English)}"
+                    : crLine?.AccountCode ?? "—";
+                return new DrawingRow(
+                    JournalId: j.Id,
+                    Date: j.Date,
+                    Amount: drLine?.Debit.Amount ?? 0m,
+                    CashAccountLabel: cashLabel,
+                    Memo: IsArabic ? j.Narration.Arabic : j.Narration.English);
+            })
+            .ToList();
+    }
+
+    private async Task OnPostAsync()
+    {
+        _busy = true;
+        _flash = null;
+        try
+        {
+            if (!Guid.TryParse(_form.CashAccountId, out var cashId))
+            {
+                _flash = Tr("اختر حساب نقدي.", "Pick a cash account.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+            if (_form.Amount <= 0m)
+            {
+                _flash = Tr("المبلغ لازم يكون أكبر من صفر.", "Amount must be positive.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+            var cash = _cashAccounts.FirstOrDefault(c => c.Id == cashId);
+            if (cash is null) return;
+
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId() ?? Guid.Empty;
+            if (userId == Guid.Empty)
+            {
+                _flash = Tr("تعذّر تحديد المستخدم.", "Could not resolve current user.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+
+            var amount = MoneyEgp.From(_form.Amount);
+            var memo = string.IsNullOrWhiteSpace(_form.Memo)
+                ? (IsArabic ? "مسحوبات شخصية للمالك" : "Owner drawings")
+                : _form.Memo.Trim();
+
+            var jv = JournalVoucher.CreateManual(
+                date: _form.Date,
+                narration: new ArabicEnglishText(
+                    IsArabic ? memo : "مسحوبات شخصية للمالك",
+                    IsArabic ? "Owner drawings" : memo),
+                createdByUserId: userId,
+                createdAtUtc: DateTime.UtcNow,
+                lines: new[]
+                {
+                    (OwnerDrawingsAccountCode, amount, MoneyEgp.Zero, memo),
+                    (cash.AccountCode, MoneyEgp.Zero, amount, memo),
+                });
+            Db.Add(jv);
+            await Db.SaveChangesAsync();
+
+            _flash = Tr($"تم تسجيل سحب {_form.Amount:N2} ج.م.", $"Recorded drawing of {_form.Amount:N2} EGP.");
+            _flashClass = "kpi-card kpi-info";
+            _form = new FormModel();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private sealed class FormModel
+    {
+        public string CashAccountId { get; set; } = "";
+        public decimal Amount { get; set; }
+        public DateOnly Date { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
+        public string Memo { get; set; } = "";
+    }
+
+    private sealed record DrawingRow(
+        Guid JournalId,
+        DateOnly Date,
+        decimal Amount,
+        string CashAccountLabel,
+        string Memo);
+}
