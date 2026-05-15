@@ -72,4 +72,12 @@ public static class ChartOfAccountCodes
     /// Debited when the CustomerReceiptVoucher carries a customer-
     /// issued WHT certificate; cleared when ETA refunds / offsets.</summary>
     public const string WhtReceivable = "1120";
+
+    /// <summary>v5 E.1 — current liability holding down-payments a
+    /// customer has paid against a future / draft sales invoice
+    /// (construction, custom manufacturing, professional-services
+    /// engagements). Credited when a <c>CustomerAdvance</c> is
+    /// recorded; debited (and AR credited) when the final invoice
+    /// posts and the held advance is applied as an offset.</summary>
+    public const string CustomerAdvances = "2310";
 }

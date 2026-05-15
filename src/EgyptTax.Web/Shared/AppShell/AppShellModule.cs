@@ -70,6 +70,7 @@ public static class AppShellModuleRegistry
                 new SubNavLink("إنشاء فاتورة جماعية", "Bulk invoices", "/invoices/bulk", "bulk جماعي", "boxes"),
                 new SubNavLink("الفواتير المتكررة", "Recurring invoices", "/recurring-invoices", "recurring متكرر", "calendar-range"),
                 new SubNavLink("تسجيل دفعة عميل", "Customer receipt", "/payments/customer-receipts/new", "receipt دفعة", "wallet"),
+                new SubNavLink("الدفعات المقدمة", "Customer advances", "/customer-advances", "customer advance دفعة مقدمة", "wallet"),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("التقارير", "Reports"),
                 new SubNavLink("لوحة المبيعات", "Sales dashboard", "/dashboards/sales", "sales dashboard", "bar-chart"),

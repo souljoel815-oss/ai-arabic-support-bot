@@ -1,0 +1,309 @@
+@page "/customer-advances"
+@using System.Globalization
+@using EgyptTax.Domain.Accounting
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<PageTitle>@Tr("الدفعات المقدمة | DaftarX", "Customer Advances | DaftarX")</PageTitle>
+
+<h1>@Tr("💰 الدفعات المقدمة من العملاء", "💰 Customer advances (E.1)")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "للعملاء اللي بيدفعوا مقدّماً قبل الفاتورة النهائية (مقاولات، تصنيع خاص، استشارات). الدفعة هنا بتترحّل لحساب «دفعات مقدمة من عملاء» (2310) كالتزام، وبتطرح من الذمم لما الفاتورة النهائية تتعمل.",
+        "For customers who pay in advance of a final invoice (construction, custom mfg, professional services). Each advance is held as a liability in account 2310 Customer Advances and offsets AR when the final invoice posts.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass">@_flash</div>
+}
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+@if (_advances.Count > 0)
+{
+    var held = _advances.Where(a => a.Status == CustomerAdvanceStatus.Held).Sum(a => a.Amount.Amount);
+    var heldCount = _advances.Count(a => a.Status == CustomerAdvanceStatus.Held);
+    var appliedTotal = _advances.Where(a => a.Status == CustomerAdvanceStatus.Applied).Sum(a => a.Amount.Amount);
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("إجمالي الدفعات", "Total advances")</span>
+            <span class="list-stat-value">@_advances.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("محتجزة (لم تطبّق بعد)", "Held (not yet applied)")</span>
+            <span class="list-stat-value is-gold">@heldCount</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("الرصيد المحتجز", "Held balance")</span>
+            <span class="list-stat-value is-warn">@held.ToString("N0") <small>@Tr("ج.م", "EGP")</small></span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("المطبّق", "Applied to date")</span>
+            <span class="list-stat-value is-success">@appliedTotal.ToString("N0") <small>@Tr("ج.م", "EGP")</small></span>
+        </div>
+    </div>
+}
+
+<section class="invoice-toolbar">
+    <button type="button" class="btn-primary" @onclick="StartCreate" disabled="@_editing">
+        + @Tr("تسجيل دفعة مقدمة", "Record advance")
+    </button>
+</section>
+
+@if (_editing)
+{
+    <section class="form-grid" style="margin-top:16px;max-width:760px;">
+        <h2 style="margin:0 0 12px;">@Tr("تسجيل دفعة مقدمة", "Record customer advance")</h2>
+
+        <label>
+            <span>@Tr("العميل", "Customer")</span>
+            <select @bind="_form.CustomerId">
+                <option value="@Guid.Empty">@Tr("— اختر العميل —", "— Pick customer —")</option>
+                @foreach (var c in _customers)
+                {
+                    <option value="@c.Id">@c.Code — @(IsArabic ? c.Name.Arabic : c.Name.English)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@Tr("الحساب النقدي", "Cash account")</span>
+            <select @bind="_form.CashAccountId">
+                <option value="@Guid.Empty">@Tr("— اختر —", "— Pick —")</option>
+                @foreach (var a in _cashAccounts)
+                {
+                    <option value="@a.Id">@a.AccountCode — @(IsArabic ? a.Name.Arabic : a.Name.English)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@Tr("المبلغ", "Amount")</span>
+            <input type="number" step="0.01" min="0.01" @bind="_form.Amount" />
+        </label>
+        <label>
+            <span>@Tr("تاريخ الاستلام", "Received date")</span>
+            <input type="date" @bind="_form.ReceivedDate" />
+        </label>
+        <label>
+            <span>@Tr("ملاحظات (اختياري)", "Notes (optional)")</span>
+            <textarea rows="2" @bind="_form.Notes" placeholder="@Tr("مثال: دفعة مقدمة لعرض السعر Q-2026-0042", "e.g. Down payment for quotation Q-2026-0042")"></textarea>
+        </label>
+
+        <div class="kpi-card kpi-info" style="margin-top:8px;font-size:13px;">
+            @Tr("القيد اللي هيتعمل عند الحفظ:", "Journal entry on save:")<br />
+            <strong>DR 1100 Cash @_form.Amount.ToString("N2") / CR 2310 Customer Advances @_form.Amount.ToString("N2")</strong>
+        </div>
+
+        <div class="invoice-actions" style="margin-top:16px;">
+            <button type="button" class="btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ + ترحيل القيد", "Save + post JE"))
+            </button>
+            <button type="button" class="btn-secondary" @onclick="CancelEdit">
+                @Tr("إلغاء", "Cancel")
+            </button>
+        </div>
+    </section>
+}
+
+@if (!_editing && _advances.Count > 0)
+{
+    <table class="data-grid" style="margin-top:16px;">
+        <thead>
+            <tr>
+                <th>@Tr("التاريخ", "Date")</th>
+                <th>@Tr("العميل", "Customer")</th>
+                <th class="num">@Tr("المبلغ", "Amount")</th>
+                <th>@Tr("ملاحظات", "Notes")</th>
+                <th>@Tr("الحالة", "Status")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in _advances)
+            {
+                <tr>
+                    <td>@a.ReceivedDate.ToString("yyyy-MM-dd")</td>
+                    <td>@(_customerNames.GetValueOrDefault(a.CustomerId, "—"))</td>
+                    <td class="num"><strong>@a.Amount.Amount.ToString("N2")</strong> <small>@Tr("ج.م", "EGP")</small></td>
+                    <td>@(a.Notes ?? "—")</td>
+                    <td>
+                        @switch (a.Status)
+                        {
+                            case CustomerAdvanceStatus.Held:
+                                <span class="state-badge state-submitted">@Tr("محتجزة", "Held")</span>
+                                break;
+                            case CustomerAdvanceStatus.Applied:
+                                <span class="state-badge state-approved">@Tr("مطبّقة", "Applied")</span>
+                                break;
+                            case CustomerAdvanceStatus.Refunded:
+                                <span class="state-badge state-voided">@Tr("مستردّة", "Refunded")</span>
+                                break;
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else if (!_editing)
+{
+    <p style="padding:32px 0;text-align:center;color:var(--text-muted);">
+        <em>@Tr("لا توجد دفعات مقدمة بعد. اضغط «تسجيل دفعة مقدمة» لإدخال أول دفعة.",
+            "No advances yet. Click \"Record advance\" to enter the first one.")</em>
+    </p>
+}
+
+@code {
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private bool _loading = true;
+    private bool _editing;
+    private bool _saving;
+    private FormModel _form = new();
+    private List<CustomerAdvance> _advances = new();
+    private List<Customer> _customers = new();
+    private List<CashAccount> _cashAccounts = new();
+    private Dictionary<Guid, string> _customerNames = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    private const string CustomerAdvanceVoucherPrefix = "CADV";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _advances = await db.Set<CustomerAdvance>().AsNoTracking()
+            .OrderByDescending(a => a.ReceivedDate)
+            .ThenByDescending(a => a.CreatedAtUtc)
+            .ToListAsync();
+        _customers = await db.Set<Customer>().AsNoTracking()
+            .Where(c => c.Status == CustomerStatus.Active)
+            .OrderBy(c => c.Code).ToListAsync();
+        _cashAccounts = await db.Set<CashAccount>().AsNoTracking()
+            .Where(c => c.Status == CashAccountStatus.Active)
+            .OrderBy(c => c.AccountCode).ToListAsync();
+        _customerNames = _customers.ToDictionary(c => c.Id,
+            c => IsArabic ? c.Name.Arabic : c.Name.English);
+        _loading = false;
+    }
+
+    private void StartCreate()
+    {
+        _form = new FormModel
+        {
+            ReceivedDate = DateTime.UtcNow.Date,
+            CashAccountId = _cashAccounts.FirstOrDefault()?.Id ?? Guid.Empty,
+        };
+        _editing = true;
+        _flash = null;
+    }
+
+    private void CancelEdit() => _editing = false;
+
+    private async Task SaveAsync()
+    {
+        _flash = null;
+        if (_form.CustomerId == Guid.Empty)
+        {
+            _flash = Tr("اختر العميل.", "Pick a customer.");
+            _flashClass = "flash-error";
+            return;
+        }
+        if (_form.CashAccountId == Guid.Empty)
+        {
+            _flash = Tr("اختر الحساب النقدي.", "Pick a cash account.");
+            _flashClass = "flash-error";
+            return;
+        }
+        if (_form.Amount <= 0m)
+        {
+            _flash = Tr("المبلغ لازم يكون أكبر من صفر.", "Amount must be positive.");
+            _flashClass = "flash-error";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId();
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var cashAccount = _cashAccounts.First(c => c.Id == _form.CashAccountId);
+            var advance = new CustomerAdvance(
+                customerId: _form.CustomerId,
+                cashAccountId: _form.CashAccountId,
+                amount: MoneyEgp.From(_form.Amount),
+                receivedDate: DateOnly.FromDateTime(_form.ReceivedDate),
+                quotationId: null,
+                notes: _form.Notes,
+                createdAtUtc: DateTime.UtcNow,
+                createdByUserId: userId);
+            db.Add(advance);
+
+            // Post the JE: DR Cash {cashAccount.Code} / CR Customer Advances 2310.
+            var jeNumber = $"{CustomerAdvanceVoucherPrefix}-{advance.Id:N}".Substring(0, 16);
+            var jeLines = new[]
+            {
+                (cashAccount.AccountCode, MoneyEgp.From(_form.Amount), MoneyEgp.Zero,
+                    $"Customer advance from {_customerNames.GetValueOrDefault(_form.CustomerId, "?")}"),
+                (ChartOfAccountCodes.CustomerAdvances, MoneyEgp.Zero, MoneyEgp.From(_form.Amount),
+                    $"Customer advance (held — to be applied to final invoice)"),
+            };
+            var entry = JournalEntry.Create(
+                sourceDocumentId: advance.Id,
+                sourceDocumentNumber: jeNumber,
+                sourceDocumentType: DocumentType.JournalVoucher,
+                postedAtUtc: DateTime.UtcNow,
+                lines: jeLines);
+            db.Add(entry);
+
+            await db.SaveChangesAsync();
+
+            _flash = Tr(
+                $"تم تسجيل دفعة مقدمة {advance.Amount.Amount:N2} ج.م + ترحيل القيد.",
+                $"Advance of {advance.Amount.Amount:N2} EGP recorded + JE posted.");
+            _flashClass = "flash-success";
+            _editing = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private sealed class FormModel
+    {
+        public Guid CustomerId { get; set; }
+        public Guid CashAccountId { get; set; }
+        public decimal Amount { get; set; }
+        public DateTime ReceivedDate { get; set; } = DateTime.UtcNow.Date;
+        public string Notes { get; set; } = "";
+    }
+}
