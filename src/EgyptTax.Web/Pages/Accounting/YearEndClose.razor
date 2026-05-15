@@ -1,0 +1,249 @@
+@page "/year-end-close"
+@using System.Globalization
+@using EgyptTax.Application.Reports
+@using EgyptTax.Domain.Accounting
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ITrialBalanceReportQuery TrialBalanceQuery
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<PageTitle>@Tr("إقفال السنة المالية | DaftarX", "Year-End Close | DaftarX")</PageTitle>
+
+<h1>@Tr("🏁 إقفال السنة المالية", "🏁 Year-end close (F.8)")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "في نهاية السنة المالية، لازم كل حسابات الإيرادات (4xxx) والمصروفات (5xxx) تتصفّر وصافي الربح/الخسارة ينتقل لـ «الأرباح المُحتجزة» (3100). الصفحة دي بتبني القيد تلقائياً من ميزان المراجعة للسنة المختارة وبتعرض معاينة قبل الترحيل.",
+        "At fiscal year end, every revenue (4xxx) and expense (5xxx) account must be zeroed out and the net P&L rolled into Retained Earnings (3100). This page builds the closing JV automatically from the trial balance and shows a preview before posting.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass">@_flash</div>
+}
+
+<section class="form-grid" style="max-width:520px;">
+    <label>
+        <span>@Tr("السنة المالية المراد إقفالها", "Fiscal year to close")</span>
+        <input type="number" min="2020" max="2099" @bind="_year" />
+    </label>
+    <p style="font-size:13px;color:var(--text-muted);margin:0;">
+        @Tr($"الفترة: 1 يناير {_year} → 31 ديسمبر {_year}", $"Period: 1 Jan {_year} → 31 Dec {_year}")
+    </p>
+    <button type="button" class="btn-primary" @onclick="BuildPreviewAsync" disabled="@_loading">
+        @(_loading ? Tr("جارٍ الحساب…", "Computing…") : Tr("🔍 بناء قيد الإقفال", "🔍 Build closing JV"))
+    </button>
+</section>
+
+@if (_alreadyPosted)
+{
+    <div class="kpi-card kpi-info" style="margin-top:16px;">
+        @Tr(
+            $"قيد إقفال السنة {_year} مرحّل بالفعل ({YearEndVoucherNumber(_year)}). لإعادته، عدّل سند يومية يدوي.",
+            $"Year-end JV for {_year} already posted ({YearEndVoucherNumber(_year)}). For corrections, post a manual adjusting voucher.")
+    </div>
+}
+
+@if (_preview is not null && !_alreadyPosted)
+{
+    <section class="form-grid" style="margin-top:24px;">
+        <h2 style="margin:0 0 8px;">@Tr("معاينة القيد", "JV preview")</h2>
+
+        <div class="list-stats">
+            <div class="list-stat">
+                <span class="list-stat-label">@Tr("إجمالي الإيرادات", "Total revenue")</span>
+                <span class="list-stat-value is-success">@_preview.TotalRevenue.ToString("N2") <small>@Tr("ج.م", "EGP")</small></span>
+            </div>
+            <div class="list-stat">
+                <span class="list-stat-label">@Tr("إجمالي المصروفات", "Total expense")</span>
+                <span class="list-stat-value is-warn">@_preview.TotalExpense.ToString("N2") <small>@Tr("ج.م", "EGP")</small></span>
+            </div>
+            <div class="list-stat">
+                <span class="list-stat-label">@(_preview.NetProfit >= 0 ? Tr("صافي الربح", "Net profit") : Tr("صافي الخسارة", "Net loss"))</span>
+                <span class="list-stat-value @(_preview.NetProfit >= 0 ? "is-success" : "is-danger")">
+                    @Math.Abs(_preview.NetProfit).ToString("N2") <small>@Tr("ج.م", "EGP")</small>
+                </span>
+            </div>
+        </div>
+
+        <table class="data-grid" style="margin-top:12px;">
+            <thead>
+                <tr>
+                    <th>@Tr("الحساب", "Account")</th>
+                    <th class="num">@Tr("مدين", "Debit")</th>
+                    <th class="num">@Tr("دائن", "Credit")</th>
+                    <th>@Tr("البيان", "Description")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var line in _preview.Lines)
+                {
+                    <tr>
+                        <td><code>@line.Code</code></td>
+                        <td class="num">@(line.Debit > 0 ? line.Debit.ToString("N2") : "")</td>
+                        <td class="num">@(line.Credit > 0 ? line.Credit.ToString("N2") : "")</td>
+                        <td>@line.Description</td>
+                    </tr>
+                }
+                <tr style="background:var(--dx-bg-hover);font-weight:700;">
+                    <td>@Tr("الإجمالي", "Total")</td>
+                    <td class="num">@_preview.Lines.Sum(l => l.Debit).ToString("N2")</td>
+                    <td class="num">@_preview.Lines.Sum(l => l.Credit).ToString("N2")</td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="invoice-actions" style="margin-top:16px;">
+            <button type="button" class="btn-primary" @onclick="PostAsync" disabled="@_posting || _preview.Lines.Count == 0">
+                @(_posting ? Tr("جارٍ الترحيل…", "Posting…") : Tr("✓ ترحيل قيد الإقفال", "✓ Post closing JV"))
+            </button>
+        </div>
+    </section>
+}
+
+@code {
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private int _year = DateTime.UtcNow.Year - 1;
+    private bool _loading;
+    private bool _posting;
+    private bool _alreadyPosted;
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private PreviewModel? _preview;
+
+    private static string YearEndVoucherNumber(int year) => $"YEC-{year}";
+
+    private async Task BuildPreviewAsync()
+    {
+        _flash = null;
+        _preview = null;
+        _loading = true;
+        try
+        {
+            var jeNumber = YearEndVoucherNumber(_year);
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _alreadyPosted = await db.Set<JournalEntry>().AsNoTracking()
+                .AnyAsync(je => je.SourceDocumentNumber == jeNumber);
+            if (_alreadyPosted) return;
+
+            var tb = await TrialBalanceQuery.RunAsync(
+                new DateOnly(_year, 1, 1),
+                new DateOnly(_year, 12, 31),
+                CancellationToken.None);
+
+            // Build closing lines: every revenue (4xxx) gets DEBITED for
+            // its net credit balance (zeroing it out); every expense
+            // (5xxx) gets CREDITED for its net debit balance. The
+            // balancing leg lands on 3100 Retained Earnings.
+            var lines = new List<PreviewLine>();
+            decimal totalRevenue = 0m, totalExpense = 0m;
+
+            foreach (var row in tb.Rows.Where(r => r.AccountCode.StartsWith("4")))
+            {
+                var net = row.TotalCredit.Amount - row.TotalDebit.Amount;
+                if (net <= 0m) continue;
+                lines.Add(new PreviewLine(row.AccountCode, net, 0m,
+                    $"Year-end close: zero out {row.AccountCode} revenue"));
+                totalRevenue += net;
+            }
+            foreach (var row in tb.Rows.Where(r => r.AccountCode.StartsWith("5")))
+            {
+                var net = row.TotalDebit.Amount - row.TotalCredit.Amount;
+                if (net <= 0m) continue;
+                lines.Add(new PreviewLine(row.AccountCode, 0m, net,
+                    $"Year-end close: zero out {row.AccountCode} expense"));
+                totalExpense += net;
+            }
+
+            var netProfit = totalRevenue - totalExpense;
+            if (netProfit > 0m)
+            {
+                lines.Add(new PreviewLine(ChartOfAccountCodes.RetainedEarnings, 0m, netProfit,
+                    $"Year-end {_year} — net profit to retained earnings"));
+            }
+            else if (netProfit < 0m)
+            {
+                lines.Add(new PreviewLine(ChartOfAccountCodes.RetainedEarnings, -netProfit, 0m,
+                    $"Year-end {_year} — net loss against retained earnings"));
+            }
+
+            _preview = new PreviewModel(lines, totalRevenue, totalExpense, netProfit);
+
+            if (lines.Count == 0)
+            {
+                _flash = Tr(
+                    $"السنة {_year} ما فيهاش حركة في حسابات الإيرادات/المصروفات — ما فيش حاجة تتقفل.",
+                    $"Year {_year} has no revenue/expense activity — nothing to close.");
+                _flashClass = "flash-warning";
+            }
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task PostAsync()
+    {
+        if (_preview is null || _preview.Lines.Count == 0) return;
+        _flash = null;
+        _posting = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var jeNumber = YearEndVoucherNumber(_year);
+            if (await db.Set<JournalEntry>().AsNoTracking().AnyAsync(je => je.SourceDocumentNumber == jeNumber))
+            {
+                _alreadyPosted = true;
+                _preview = null;
+                _flash = Tr("القيد مرحّل بالفعل.", "Already posted.");
+                _flashClass = "flash-warning";
+                return;
+            }
+
+            var jeLines = _preview.Lines
+                .Select(l => (l.Code, MoneyEgp.From(l.Debit), MoneyEgp.From(l.Credit), l.Description))
+                .ToList();
+            var entry = JournalEntry.Create(
+                sourceDocumentId: Guid.NewGuid(),
+                sourceDocumentNumber: jeNumber,
+                sourceDocumentType: DocumentType.JournalVoucher,
+                postedAtUtc: new DateTime(_year, 12, 31, 23, 59, 59, DateTimeKind.Utc),
+                lines: jeLines);
+            db.Add(entry);
+            await db.SaveChangesAsync();
+
+            _alreadyPosted = true;
+            _preview = null;
+            _flash = Tr(
+                $"تم ترحيل قيد إقفال السنة {_year} ({jeNumber}). كل حسابات 4xxx + 5xxx صفّرت + صافي الربح/الخسارة طلع على 3100.",
+                $"Year-end JV {jeNumber} posted. All 4xxx + 5xxx zeroed; net P&L rolled to 3100.");
+            _flashClass = "flash-success";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _posting = false;
+        }
+    }
+
+    private sealed record PreviewLine(string Code, decimal Debit, decimal Credit, string Description);
+    private sealed record PreviewModel(List<PreviewLine> Lines, decimal TotalRevenue, decimal TotalExpense, decimal NetProfit);
+}

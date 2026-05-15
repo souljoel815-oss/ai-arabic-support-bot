@@ -149,6 +149,7 @@ public static class AppShellModuleRegistry
                 new SubNavGroupHeader("الإقفال", "Closing"),
                 new SubNavLink("قيود التسوية", "Adjusting entries", "/journals", "adjusting entries تسوية", "scale"),
                 new SubNavLink("كشكول الإقفال", "Closing cockpit", "/cockpit", "closing cockpit إقفال", "calendar-range"),
+                new SubNavLink("إقفال السنة المالية", "Year-end close", "/year-end-close", "year-end close إقفال سنة retained", "calendar-range"),
                 new SubNavLink("قفل الفترة", "Period lock", "/approvals", "period lock قفل", "lock"),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("التقارير", "Reports"),

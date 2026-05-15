@@ -97,4 +97,12 @@ public static class ChartOfAccountCodes
     /// recognition JE that simultaneously credits the revenue account
     /// (typically 4000 Sales Revenue).</summary>
     public const string UnearnedRevenue = "2320";
+
+    /// <summary>v5 F.8 — equity account that captures cumulative
+    /// undistributed profit / loss. On year-end close, every revenue
+    /// (4xxx) and expense (5xxx) account is zeroed out and the net
+    /// rolls into this account (CR for net profit, DR for net loss).
+    /// The following fiscal year starts with revenue + expense
+    /// balances at zero — that's the entire purpose of the close.</summary>
+    public const string RetainedEarnings = "3100";
 }
