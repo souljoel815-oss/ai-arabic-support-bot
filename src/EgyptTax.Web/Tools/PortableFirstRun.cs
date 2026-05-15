@@ -119,6 +119,9 @@ internal static class PortableFirstRun
         await SelfHealMissingTableAsync(db,
             tableName: "route_visits",
             migrationIdSuffix: "_RouteVisits");
+        await SelfHealMissingTableAsync(db,
+            tableName: "pos_sessions",
+            migrationIdSuffix: "_PosSessions");
 
         // Always end with MigrateAsync. On a fresh DB it builds the
         // full schema. On a normal DB it applies any pending

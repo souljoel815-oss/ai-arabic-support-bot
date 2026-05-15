@@ -117,5 +117,12 @@ internal sealed class CompanyConfiguration : IEntityTypeConfiguration<Company>
             .IsUnicode(false)
             .IsRequired()
             .HasDefaultValue(InvoicePdfTemplate.Classic);
+
+        // v5 A.6 — POS sessions opt-in flag. Default false so
+        // pre-v5 installs render unchanged.
+        b.Property(c => c.RequirePosSession)
+            .HasColumnName("require_pos_session")
+            .IsRequired()
+            .HasDefaultValue(false);
     }
 }

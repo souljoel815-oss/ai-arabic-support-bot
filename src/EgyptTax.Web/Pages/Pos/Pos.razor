@@ -4,6 +4,8 @@
 @using EgyptTax.Domain.Documents
 @using EgyptTax.Domain.Invoices
 @using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Pos
+@using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.Infrastructure.Invoices
 @using EgyptTax.Infrastructure.Payments
@@ -47,6 +49,49 @@
 {
     <p>@Tr("جارٍ التحميل…", "Loading…")</p>
     return;
+}
+
+@* v5 A.6 — POS-session gate. When the company has opted into
+   RequirePosSession + no session is currently open, force the
+   operator to type opening cash before recording any sales. *@
+@if (_requireSession && _activeSession is null)
+{
+    <div class="kpi-card kpi-info" style="padding:24px;max-width:480px;margin:24px auto;">
+        <h2 style="margin-top:0;">🛒 @Tr("افتح جلسة الكاشير", "Open cashier session")</h2>
+        <p class="page-subtitle">
+            @Tr("اكتب المبلغ النقدي اللي بدأت به اليوم في الدرج. هتقفل الجلسة آخر اليوم وتعد الدرج عشان نعرف الفرق.",
+                "Enter the cash you're starting the day with in the drawer. You'll close the session at end of day by counting the drawer to surface any variance.")
+        </p>
+        <label style="display:block;margin-top:12px;">
+            <span style="display:block;font-weight:600;margin-bottom:4px;">@Tr("النقدية الافتتاحية (ج.م)", "Opening cash (EGP)")</span>
+            <input type="number" min="0" step="0.01" @bind="_openCashInput"
+                   style="width:100%;font-size:18px;padding:10px;" autofocus />
+        </label>
+        @if (_sessionFlash is not null)
+        {
+            <div class="kpi-card kpi-error" style="margin-top:12px;padding:10px;">@_sessionFlash</div>
+        }
+        <button type="button" class="btn-primary" style="width:100%;margin-top:16px;padding:14px;font-size:16px;"
+                @onclick="OpenSessionAsync" disabled="@_sessionBusy">
+            @(_sessionBusy ? Tr("جارٍ…", "Opening…") : Tr("✓ افتح الجلسة", "✓ Open session"))
+        </button>
+    </div>
+    return;
+}
+
+@if (_activeSession is not null)
+{
+    <div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg-2);
+                padding:8px 16px;margin-bottom:12px;border-radius:8px;font-size:13px;">
+        <span>
+            🛒 @Tr("جلسة مفتوحة منذ", "Session open since")
+            @_activeSession.OpenedAtUtc.ToString("HH:mm") —
+            @Tr("افتتاحي:", "Opening:") @_activeSession.OpeningCash.Amount.ToString("N2") @Tr("ج.م", "EGP")
+        </span>
+        <a href="/pos/session/close" class="btn-secondary" style="font-size:12px;">
+            @Tr("اقفل الجلسة", "Close session →")
+        </a>
+    </div>
 }
 
 @if (_postedInvoiceId is { } postedId)
@@ -207,6 +252,13 @@
     private string? _flash;
     private string _flashClass = "kpi-card kpi-info";
 
+    // v5 A.6 — POS-session gate state
+    private bool _requireSession;
+    private PosSession? _activeSession;
+    private decimal _openCashInput;
+    private bool _sessionBusy;
+    private string? _sessionFlash;
+
     private List<Item> _items = new();
     private List<Customer> _customers = new();
     private VatCategory? _standardVat;
@@ -275,7 +327,51 @@
 
         var auth = await Auth.GetAuthenticationStateAsync();
         _userId = auth.User.UserId() ?? Guid.Empty;
+
+        // v5 A.6 — read the company-level RequirePosSession flag,
+        // and find any currently-open session.
+        var company = await Db.Set<Company>().AsNoTracking().FirstOrDefaultAsync();
+        _requireSession = company?.RequirePosSession ?? false;
+        if (_requireSession)
+        {
+            _activeSession = await Db.Set<PosSession>().AsNoTracking()
+                .Where(s => s.ClosedAtUtc == null)
+                .OrderByDescending(s => s.OpenedAtUtc)
+                .FirstOrDefaultAsync();
+        }
+
         _loading = false;
+    }
+
+    /// <summary>v5 A.6 — open a new POS session with the operator's
+    /// typed opening cash. Refuses if a session is already open
+    /// (one cashier per drawer).</summary>
+    private async Task OpenSessionAsync()
+    {
+        if (_userId == Guid.Empty) { _sessionFlash = Tr("لازم تكون مسجّل دخول.", "Must be signed in."); return; }
+        if (_openCashInput < 0m) { _sessionFlash = Tr("القيمة لازم تكون موجبة.", "Value must be non-negative."); return; }
+        _sessionBusy = true;
+        _sessionFlash = null;
+        try
+        {
+            // Re-check no other open session exists (race guard)
+            var existing = await Db.Set<PosSession>().AsNoTracking()
+                .AnyAsync(s => s.ClosedAtUtc == null);
+            if (existing)
+            {
+                _sessionFlash = Tr("في جلسة مفتوحة بالفعل. اقفلها الأول.", "A session is already open. Close it first.");
+                return;
+            }
+            var session = new PosSession(
+                openedByUserId: _userId,
+                openedAtUtc: DateTime.UtcNow,
+                openingCash: MoneyEgp.From(_openCashInput));
+            Db.Add(session);
+            await Db.SaveChangesAsync();
+            _activeSession = session;
+        }
+        catch (Exception ex) { _sessionFlash = ex.Message; }
+        finally { _sessionBusy = false; }
     }
 
     private void AddToCart(Item item)

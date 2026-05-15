@@ -1,0 +1,144 @@
+@page "/reports/pos-sessions"
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Domain.Pos
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject IJSRuntime Js
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 A.6 — POS sessions report. Lists every session (open +
+    closed) with its variance so the operator can spot drawer
+    discrepancies. CSV export for owner reconciliation.
+*@
+
+<h1>
+    @(IsArabic ? "جلسات الكاشير" : "POS sessions")
+    @if (_rows.Count > 0)
+    {
+        <button type="button" class="btn-secondary"
+                style="font-size:13px;margin-inline-start:12px;"
+                @onclick="ExportCsvAsync">
+            ⬇ @(IsArabic ? "تصدير CSV" : "Export CSV")
+        </button>
+    }
+</h1>
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+@if (_rows.Count == 0)
+{
+    <p><em>@(IsArabic ? "ما فيش جلسات بعد. افتح أول جلسة من /pos." : "No sessions yet. Open one from /pos.")</em></p>
+    return;
+}
+
+<table class="data-grid">
+    <thead>
+        <tr>
+            <th>@(IsArabic ? "الفتح" : "Opened")</th>
+            <th>@(IsArabic ? "الإقفال" : "Closed")</th>
+            <th>@(IsArabic ? "الكاشير" : "Cashier")</th>
+            <th class="num">@(IsArabic ? "افتتاحي" : "Opening")</th>
+            <th class="num">@(IsArabic ? "متوقع" : "Expected")</th>
+            <th class="num">@(IsArabic ? "فعلي" : "Actual")</th>
+            <th class="num">@(IsArabic ? "الفرق" : "Variance")</th>
+            <th>@(IsArabic ? "ملاحظة" : "Note")</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var row in _rows)
+        {
+            <tr>
+                <td>@row.Session.OpenedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                <td>
+                    @if (row.Session.ClosedAtUtc is { } closed)
+                    {
+                        @closed.ToString("yyyy-MM-dd HH:mm")
+                    }
+                    else
+                    {
+                        <span class="badge" style="background:var(--success-soft);color:var(--success-text);padding:2px 8px;border-radius:6px;font-size:11px;">
+                            @(IsArabic ? "● مفتوحة" : "● Open")
+                        </span>
+                    }
+                </td>
+                <td>@(_users.TryGetValue(row.Session.OpenedByUserId, out var u) ? u : "—")</td>
+                <td class="num">@row.Session.OpeningCash.Amount.ToString("N2")</td>
+                <td class="num">
+                    @(row.Session.ExpectedClosingCashEgp?.ToString("N2") ?? "—")
+                </td>
+                <td class="num">
+                    @(row.Session.ActualClosingCashEgp?.ToString("N2") ?? "—")
+                </td>
+                <td class="num">
+                    @if (row.Session.VarianceEgp is { } v)
+                    {
+                        <strong style="color:@(v == 0 ? "inherit" : (v > 0 ? "var(--warning)" : "var(--danger)"));">
+                            @v.ToString("N2")
+                        </strong>
+                    }
+                    else
+                    {
+                        @("—")
+                    }
+                </td>
+                <td><small>@(row.Session.Notes ?? "")</small></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private bool _loading = true;
+    private List<Row> _rows = new();
+    private Dictionary<Guid, string> _users = new();
+
+    private sealed record Row(PosSession Session);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var sessions = await Db.Set<PosSession>().AsNoTracking()
+            .OrderByDescending(s => s.OpenedAtUtc)
+            .Take(200)
+            .ToListAsync();
+        _rows = sessions.Select(s => new Row(s)).ToList();
+
+        var userIds = sessions.Select(s => s.OpenedByUserId).Distinct().ToList();
+        _users = await Db.Set<User>().AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(
+                u => u.Id,
+                u => IsArabic ? u.DisplayName.Arabic : u.DisplayName.English);
+
+        _loading = false;
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        var bytes = CsvExporter.Build(
+            headers: new[] { "OpenedUtc", "ClosedUtc", "Cashier", "Opening", "Expected", "Actual", "Variance", "Note" },
+            rows: _rows,
+            rowSelector: r => new object?[]
+            {
+                r.Session.OpenedAtUtc,
+                r.Session.ClosedAtUtc,
+                _users.TryGetValue(r.Session.OpenedByUserId, out var u) ? u : "",
+                r.Session.OpeningCash.Amount,
+                r.Session.ExpectedClosingCashEgp,
+                r.Session.ActualClosingCashEgp,
+                r.Session.VarianceEgp,
+                r.Session.Notes ?? "",
+            });
+        var b64 = Convert.ToBase64String(bytes);
+        await Js.InvokeVoidAsync("daftarxDownloadBytes",
+            $"pos-sessions-{DateTime.UtcNow:yyyyMMdd}.csv", b64, "text/csv");
+    }
+}

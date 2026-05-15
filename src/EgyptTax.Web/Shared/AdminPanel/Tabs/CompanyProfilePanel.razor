@@ -89,6 +89,15 @@
                     : "Applies to every PDF the system renders from now on.")
             </small>
         </label>
+        <label>
+            <span>@(IsArabic ? "تفعيل جلسات الكاشير في POS" : "Require POS cashier sessions")</span>
+            <InputCheckbox @bind-Value="_form.RequirePosSession" />
+            <small style="color:var(--text-muted);font-size:12px;">
+                @(IsArabic
+                    ? "لما تفعّله، الكاشير يبدأ بفتح جلسة وإدخال نقدية الدرج، ويقفل آخر اليوم بعد العد عشان نظهر الفرق."
+                    : "When on, cashier opens a session with opening-cash before any sale + closes at end of day after counting; the variance surfaces on /reports/pos-sessions.")
+            </small>
+        </label>
     </fieldset>
 
     <fieldset>
@@ -169,6 +178,7 @@
             _existing.UpdateTaxpayerActivityCode(_form.TaxpayerActivityCode);
             _existing.UpdateTaxRegime(_form.TaxRegime);
             _existing.UpdateDefaultPdfTemplate(_form.DefaultPdfTemplate);
+            _existing.UpdateRequirePosSession(_form.RequirePosSession);
         }
 
         await Db.SaveChangesAsync();
@@ -187,6 +197,7 @@
         public Language DefaultLanguage { get; set; } = Language.Ar;
         public TaxRegime TaxRegime { get; set; } = TaxRegime.Standard;
         public InvoicePdfTemplate DefaultPdfTemplate { get; set; } = InvoicePdfTemplate.Classic;
+        public bool RequirePosSession { get; set; }
 
         [Required, StringLength(500)] public string AddressDisplayEnglish { get; set; } = "";
         [Required, StringLength(500)] public string AddressDisplayArabic  { get; set; } = "";
@@ -207,6 +218,7 @@
             DefaultLanguage = c.DefaultLanguage,
             TaxRegime = c.TaxRegime,
             DefaultPdfTemplate = c.DefaultPdfTemplate,
+            RequirePosSession = c.RequirePosSession,
             AddressDisplayEnglish = c.Address.DisplayEnglish,
             AddressDisplayArabic  = c.Address.DisplayArabic,
             AddressGovernorate    = c.Address.Governorate,

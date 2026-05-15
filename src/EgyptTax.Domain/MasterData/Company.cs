@@ -41,6 +41,13 @@ public sealed class Company
     /// pre-v4 installs render unchanged.</summary>
     public InvoicePdfTemplate DefaultPdfTemplate { get; private set; } = InvoicePdfTemplate.Classic;
 
+    /// <summary>v5 A.6 — when true, /pos refuses to record sales
+    /// without an open <c>PosSession</c>; first click of the day
+    /// shows the "Enter opening cash" modal. Default false so
+    /// pre-v5 installs continue to work direct-to-sale (the v4
+    /// behaviour). Operator opts in via /settings/company.</summary>
+    public bool RequirePosSession { get; private set; }
+
     private Company() { }
 
     public Company(
@@ -88,6 +95,9 @@ public sealed class Company
     /// <summary>v4 C.9 — switch the default invoice PDF template.</summary>
     public void UpdateDefaultPdfTemplate(InvoicePdfTemplate template) =>
         DefaultPdfTemplate = template;
+
+    /// <summary>v5 A.6 — toggle the POS-sessions requirement.</summary>
+    public void UpdateRequirePosSession(bool require) => RequirePosSession = require;
 }
 
 /// <summary>v4 C.9 — visual variants of the sales-invoice PDF.

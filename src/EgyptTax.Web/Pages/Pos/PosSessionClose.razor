@@ -1,0 +1,183 @@
+@page "/pos/session/close"
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Pos
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v5 A.6 — close-session page. Shows expected cash (opening +
+    sum of cash CRVs in the open window), operator types actual
+    counted cash, variance auto-computed, on confirm the session
+    transitions to Closed (terminal).
+*@
+
+<PageTitle>@Tr("اقفل جلسة الكاشير | DaftarX", "Close cashier session | DaftarX")</PageTitle>
+
+<h1>🔒 @Tr("إغلاق جلسة الكاشير", "Close cashier session")</h1>
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+    return;
+}
+
+@if (_session is null)
+{
+    <div class="kpi-card kpi-warn" style="padding:14px;">
+        @Tr("ما فيش جلسة مفتوحة. ارجع للـ POS وافتح واحدة الأول.",
+            "No open session. Open one from /pos first.")
+    </div>
+    <a href="/pos" class="btn-secondary">← @Tr("ارجع لنقطة البيع", "Back to POS")</a>
+    return;
+}
+
+<section class="form-section" style="max-width:560px;">
+    <div class="page-subtitle" style="font-size:13px;margin-bottom:12px;">
+        @Tr("جلسة مفتوحة منذ", "Open since")
+        @_session.OpenedAtUtc.ToString("yyyy-MM-dd HH:mm")
+        ·
+        @Tr("افتتاحي:", "Opening:") @_session.OpeningCash.Amount.ToString("N2") @Tr("ج.م", "EGP")
+    </div>
+
+    <div class="kpi-grid kpi-grid-3" style="margin-bottom:16px;">
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@Tr("افتتاحي", "Opening")</div>
+            <div class="kpi-value">@_session.OpeningCash.Amount.ToString("N2")</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@Tr("مبيعات نقدي", "Cash sales")</div>
+            <div class="kpi-value">@_cashSales.ToString("N2")</div>
+        </div>
+        <div class="kpi-card kpi-info">
+            <div class="kpi-label">@Tr("المتوقع في الدرج", "Expected in drawer")</div>
+            <div class="kpi-value"><strong>@_expectedClosing.ToString("N2")</strong></div>
+        </div>
+    </div>
+
+    <label style="display:block;margin-bottom:12px;">
+        <span style="display:block;font-weight:600;margin-bottom:4px;">
+            @Tr("المبلغ الفعلي اللي عددته في الدرج (ج.م)", "Actual cash counted in drawer (EGP)")
+        </span>
+        <input type="number" min="0" step="0.01" @bind="_actualClosingInput" @bind:event="oninput"
+               style="width:100%;font-size:18px;padding:10px;" autofocus />
+    </label>
+
+    @if (_actualClosingInput > 0m)
+    {
+        var variance = _actualClosingInput - _expectedClosing;
+        <div class="kpi-card @(variance == 0 ? "kpi-info" : (variance > 0 ? "kpi-warn" : "kpi-error"))"
+             style="padding:12px;margin-bottom:12px;">
+            <strong>@Tr("الفرق:", "Variance:")</strong>
+            <span class="num">@variance.ToString("N2") @Tr("ج.م", "EGP")</span>
+            @if (variance == 0)
+            {
+                <span> ✓ @Tr("الدرج موزون.", "Drawer balances.")</span>
+            }
+            else if (variance > 0)
+            {
+                <span> @Tr("(زيادة في الدرج — راجع لو فيه مبيعات مش متسجّلة)", "(over — check for unrecorded sales)")</span>
+            }
+            else
+            {
+                <span> @Tr("(نقص في الدرج — راجع التذاكر الملغية أو الإرجاعات)", "(short — check for voids or returns)")</span>
+            }
+        </div>
+    }
+
+    <label style="display:block;margin-bottom:12px;">
+        <span style="display:block;font-weight:600;margin-bottom:4px;">
+            @Tr("ملاحظة (اختياري)", "Note (optional)")
+        </span>
+        <textarea @bind="_notesInput" rows="2" maxlength="500" style="width:100%;"></textarea>
+    </label>
+
+    @if (_flash is not null)
+    {
+        <div class="kpi-card kpi-error" style="padding:10px;margin-bottom:12px;">@_flash</div>
+    }
+
+    <div class="invoice-actions">
+        <button type="button" class="btn-primary" @onclick="ConfirmCloseAsync"
+                disabled="@(_busy || _actualClosingInput < 0m)">
+            @(_busy ? Tr("جارٍ…", "Closing…") : Tr("✓ تأكيد إقفال الجلسة", "✓ Confirm close session"))
+        </button>
+        <a href="/pos" class="btn-secondary">@Tr("إلغاء", "Cancel")</a>
+    </div>
+</section>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _flash;
+    private PosSession? _session;
+    private decimal _cashSales;
+    private decimal _expectedClosing;
+    private decimal _actualClosingInput;
+    private string _notesInput = "";
+    private Guid _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await Auth.GetAuthenticationStateAsync();
+        _userId = auth.User.UserId() ?? Guid.Empty;
+
+        _session = await Db.Set<PosSession>()
+            .Where(s => s.ClosedAtUtc == null)
+            .OrderByDescending(s => s.OpenedAtUtc)
+            .FirstOrDefaultAsync();
+
+        if (_session is not null)
+        {
+            // Sum cash receipts posted between session open + now.
+            // SQLite can't sum decimals server-side; project + sum
+            // in C# (same pattern as the other reports).
+            var openedAt = _session.OpenedAtUtc;
+            var receipts = await Db.Set<CustomerReceiptVoucher>().AsNoTracking()
+                .Where(r => r.State == DocumentState.Posted
+                    && r.PaymentMethod == PaymentMethod.Cash
+                    && r.PostedAtUtc != null
+                    && r.PostedAtUtc >= openedAt)
+                .Select(r => r.NetCashReceived.Amount)
+                .ToListAsync();
+            _cashSales = receipts.Sum();
+            _expectedClosing = decimal.Round(_session.OpeningCash.Amount + _cashSales, 2,
+                MidpointRounding.ToEven);
+            // Pre-fill the input with the expected amount so the
+            // common no-variance case is one-click; operator
+            // overrides if they counted differently.
+            _actualClosingInput = _expectedClosing;
+        }
+        _loading = false;
+    }
+
+    private async Task ConfirmCloseAsync()
+    {
+        if (_session is null) return;
+        if (_userId == Guid.Empty) { _flash = Tr("لازم تكون مسجّل دخول.", "Must be signed in."); return; }
+        _busy = true;
+        _flash = null;
+        try
+        {
+            var live = await Db.Set<PosSession>().FirstAsync(s => s.Id == _session.Id);
+            live.Close(
+                closedByUserId: _userId,
+                closedAtUtc: DateTime.UtcNow,
+                expectedClosingCash: MoneyEgp.From(_expectedClosing),
+                actualClosingCash: MoneyEgp.From(_actualClosingInput),
+                notes: string.IsNullOrWhiteSpace(_notesInput) ? null : _notesInput);
+            await Db.SaveChangesAsync();
+            Nav.NavigateTo("/reports/pos-sessions", forceLoad: true);
+        }
+        catch (Exception ex) { _flash = ex.Message; }
+        finally { _busy = false; }
+    }
+}
