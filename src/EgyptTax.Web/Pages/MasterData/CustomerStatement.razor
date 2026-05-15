@@ -101,6 +101,44 @@
     </div>
 </section>
 
+@if (_heldAdvances.Count > 0)
+{
+    <section style="margin-top:16px;">
+        <h2>@(IsArabic ? "دفعات مقدمة محتجزة" : "Held customer advances")</h2>
+        <p style="font-size:13px;color:var(--text-muted);">
+            @(IsArabic
+                ? "دفعات استلمناها من العميل ولسه ما اتطبّقتش على فاتورة نهائية. الرصيد ده يقلّل من المستحقات لما يتطبّق."
+                : "Advances received from this customer not yet applied to a final invoice. These reduce outstanding AR once applied.")
+        </p>
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                    <th>@(IsArabic ? "ملاحظات" : "Notes")</th>
+                    <th class="num">@(IsArabic ? "المبلغ المحتجز" : "Held amount")</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in _heldAdvances)
+                {
+                    <tr>
+                        <td>@a.ReceivedDate.ToString("yyyy-MM-dd")</td>
+                        <td>@(a.Notes ?? "—")</td>
+                        <td class="num"><strong>@a.Amount.Amount.ToString("F2")</strong> <small>@(IsArabic ? "ج.م." : "EGP")</small></td>
+                        <td><a href="/customer-advances" class="btn-secondary">@(IsArabic ? "طبّق ←" : "Apply →")</a></td>
+                    </tr>
+                }
+                <tr style="background:var(--dx-bg-hover);">
+                    <td colspan="2"><strong>@(IsArabic ? "الإجمالي المحتجز" : "Total held")</strong></td>
+                    <td class="num"><strong>@_heldAdvancesTotal.ToString("F2")</strong> <small>@(IsArabic ? "ج.م." : "EGP")</small></td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+}
+
 @if (_outstanding > 0)
 {
     <section style="margin-top:16px;">
@@ -189,6 +227,8 @@
     private decimal _aging0_30;
     private decimal _aging31_60;
     private decimal _aging61_90;
+    private List<CustomerAdvance> _heldAdvances = new();
+    private decimal _heldAdvancesTotal;
     private decimal _agingOver90;
 
     protected override async Task OnInitializedAsync()
@@ -295,6 +335,15 @@
             else if (ageDays <= 90) _aging61_90 += unpaid;
             else _agingOver90 += unpaid;
         }
+
+        // v5 E.1 — held customer advances surface as a credit row on
+        // the statement so the operator sees what's been collected
+        // but not yet applied to a final invoice.
+        _heldAdvances = await Db.Set<CustomerAdvance>().AsNoTracking()
+            .Where(a => a.CustomerId == Id && a.Status == CustomerAdvanceStatus.Held)
+            .OrderByDescending(a => a.ReceivedDate)
+            .ToListAsync();
+        _heldAdvancesTotal = _heldAdvances.Sum(a => a.Amount.Amount);
 
         _loading = false;
     }
