@@ -5,6 +5,7 @@
 *@
 @inherits LayoutComponentBase
 @using System.Globalization
+@using System.Text.Json
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Domain.Periods
 @using EgyptTax.Domain.Workflow
@@ -53,6 +54,58 @@
         _currentTheme = _currentTheme == "leil" ? "nahar" : "leil";
         try { await Js.InvokeVoidAsync("daftarxSetTheme", _currentTheme); }
         catch { /* JS not loaded yet — ignore; next click will work */ }
+    }
+
+    /// <summary>v5 UI Sprint 1 — sidebar live search. The CSS uses
+    /// a parent attribute selector to hide nav links whose
+    /// data-search doesn't include the typed text (case-insensitive).
+    /// Empty value = show everything.</summary>
+    private string _navSearch = "";
+    private async Task OnNavSearchInput(ChangeEventArgs e)
+    {
+        _navSearch = (e.Value?.ToString() ?? "").Trim();
+        try { await Js.InvokeVoidAsync("daftarxFilterSidebar", _navSearch); }
+        catch { /* JS not loaded yet on first keystroke — ignore */ }
+    }
+
+    /// <summary>v5 UI Sprint 1 — operator-pinned favorite nav items
+    /// hydrated from localStorage on first render. Order is the order
+    /// the operator pinned them in.</summary>
+    public sealed record SidebarFavorite(string Url, string LabelAr, string LabelEn, string Search);
+    private List<SidebarFavorite> _favorites = new();
+
+    private async Task UnpinFavoriteAsync(SidebarFavorite fav)
+    {
+        try
+        {
+            var raw = new { url = fav.Url, labelAr = fav.LabelAr, labelEn = fav.LabelEn, search = fav.Search };
+            var updated = await Js.InvokeAsync<List<JsonElement>>("daftarxToggleFavorite", raw);
+            _favorites = ParseFavorites(updated);
+            StateHasChanged();
+        }
+        catch { /* JS interop failure — silent */ }
+    }
+
+    private static List<SidebarFavorite> ParseFavorites(IEnumerable<JsonElement> raw)
+    {
+        var list = new List<SidebarFavorite>();
+        foreach (var el in raw)
+        {
+            try
+            {
+                var url = el.TryGetProperty("url", out var u) ? u.GetString() : null;
+                var labelAr = el.TryGetProperty("labelAr", out var la) ? la.GetString() : null;
+                var labelEn = el.TryGetProperty("labelEn", out var le) ? le.GetString() : null;
+                var search = el.TryGetProperty("search", out var s) ? s.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(url))
+                {
+                    list.Add(new SidebarFavorite(
+                        url, labelAr ?? url, labelEn ?? url, search ?? ""));
+                }
+            }
+            catch { /* malformed entry — skip */ }
+        }
+        return list;
     }
 
     /// <summary>Gux.1 — auto-expand the sidebar group containing the
@@ -161,9 +214,10 @@
         }
     }
 
-    /// <summary>v5 DP.5 — read the current theme from JS so the
-    /// topbar toggle's icon (☀ / 🌙) matches what's actually
-    /// applied (might be from a cookie set in a previous session).</summary>
+    /// <summary>v5 DP.5 / Sprint 1 — on first render: read the
+    /// theme cookie + the favorites list from JS so the topbar
+    /// icon + the sidebar favorites section reflect what's
+    /// actually persisted.</summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -174,10 +228,18 @@
                 if (!string.IsNullOrEmpty(theme) && theme != _currentTheme)
                 {
                     _currentTheme = theme;
-                    StateHasChanged();
                 }
             }
             catch { /* JS not loaded yet */ }
+
+            try
+            {
+                var raw = await Js.InvokeAsync<List<JsonElement>>("daftarxGetFavorites");
+                _favorites = ParseFavorites(raw);
+            }
+            catch { /* JS not loaded yet */ }
+
+            StateHasChanged();
         }
     }
 
@@ -196,13 +258,54 @@
 
     <div class="sidebar-backdrop" @onclick="CloseSidebar"></div>
 
-    <aside class="app-sidebar">
+    <aside class="app-sidebar sidebar-v2">
         <a href="/" class="sidebar-brand" style="text-decoration:none;">
             <div class="sidebar-brand-mark">DX</div>
             <div class="sidebar-brand-name">Daftar<span class="brand-x">X</span></div>
         </a>
 
-        @* Gux.1 — quick-action launcher pinned at top, always visible *@
+        @* v5 UI Sprint 1 — search box at top of sidebar.
+           Filters visible nav items as the operator types. Pure
+           CSS-driven via attribute selectors on data-search keys
+           rendered on each link. *@
+        <div class="sidebar-search-box">
+            <Icon Name="search" Class="ic" />
+            <input type="search"
+                   placeholder="@Tr("ابحث في القائمة…", "Search menu…")"
+                   value="@_navSearch"
+                   @oninput="OnNavSearchInput" />
+        </div>
+
+        @* v5 UI Sprint 1 — favorites section. Pin/unpin from any
+           nav item's hover ⋮ menu; persisted in localStorage. *@
+        @if (_favorites.Count > 0)
+        {
+            <div class="sidebar-favs">
+                <div class="sidebar-section-label">
+                    <span>⭐ @Tr("المفضلة", "Favorites")</span>
+                </div>
+                <nav class="app-nav">
+                    @foreach (var fav in _favorites)
+                    {
+                        <a href="@fav.Url" class="@ActiveLink(fav.Url.TrimStart('/'))"
+                           @onclick="CloseSidebar" data-search="@fav.Search">
+                            <span class="fav-pin">📌</span>
+                            <span>@(IsArabic ? fav.LabelAr : fav.LabelEn)</span>
+                            <button type="button" class="fav-unpin"
+                                    @onclick:stopPropagation
+                                    @onclick:preventDefault
+                                    @onclick="() => UnpinFavoriteAsync(fav)"
+                                    title="@Tr("إلغاء التثبيت", "Unpin")">×</button>
+                        </a>
+                    }
+                </nav>
+                <div class="sidebar-divider"></div>
+            </div>
+        }
+
+        @* v5 UI Sprint 1 — quick-action launcher pinned at top.
+           Same content as before but visually integrated with the
+           new sidebar treatment. *@
         <div class="sidebar-quick-actions @(_quickActionsOpen ? "is-open" : "")">
             <button type="button" class="quick-action-btn" @onclick="ToggleQuickActions">
                 <Icon Name="plus" Class="ic" />
@@ -217,20 +320,18 @@
                     {
                         <a href="purchase-invoices/new" @onclick="CloseSidebar"><Icon Name="package" Class="ic" />@Tr("فاتورة مشتريات", "Purchase invoice")</a>
                         <a href="expenses/new" @onclick="CloseSidebar"><Icon Name="credit-card" Class="ic" />@Tr("مصروف", "Expense")</a>
-                        <a href="invoices/bulk" @onclick="CloseSidebar"><Icon Name="archive" Class="ic" />@Tr("رفع جماعي", "Bulk upload")</a>
                     }
                 </div>
             }
         </div>
 
-        @* Gux.1 — Home (no sub-items, just a link). Explicit "/" so
-           the link works from any nested route; an empty href reloads
-           the current URL on some browsers + dev hosts (BUG-D-002). *@
-        @* v5 DP.2 — sidebar consolidated from 6 groups (~83 links)
-           down to 8 top-level items: 2 always-visible direct links
-           (Home + POS) + 6 collapsible groups. URLs unchanged so
-           bookmarks keep working. Pages relocated only at the
-           navigation tree level. *@
+        @* v5 UI Rebuild Sprint 1 — sidebar v2.
+           8 top-level items per the operator-approved mockup:
+           2 direct links (Home + POS) + 6 collapsible groups
+           with 3-6 properly-organized sub-items each (NOT the
+           DP.2 dump-into-Settings approach). Active group gets
+           gold accent + chevron-up; inactive groups stay
+           collapsed with chevron-down. *@
 
         @* 1. Home — direct link, always visible *@
         <nav class="app-nav app-nav-toplevel">
@@ -246,33 +347,28 @@
             }
         </nav>
 
-        @* 3. المبيعات — Sales (visible to all; reps see the
-           full set since selling is their job) *@
-        <details class="sidebar-group" @attributes="@OpenAttr("invoices", "quotations", "leads", "sales-orders", "recurring-invoices", "routes", "payments/customer-receipts", "reports/sales-pipeline", "reports/sales-by-rep", "reports/commissions", "dashboards/sales")">
+        @* 3. المبيعات — Sales (5 core items + 2 admin extras) *@
+        <details class="sidebar-group" @attributes="@OpenAttr("invoices", "quotations", "leads", "sales-orders", "recurring-invoices", "routes", "payments/customer-receipts")">
             <summary>
                 <Icon Name="file-text" Class="nav-icon" />
                 <span>@Tr("المبيعات", "Sales")</span>
             </summary>
             <nav class="app-nav">
-                <a href="invoices" class="@ActiveLink("invoices")" @onclick="CloseSidebar">@Tr("فواتير المبيعات", "Sales invoices")</a>
-                <a href="sales-orders" class="@ActiveLink("sales-orders")" @onclick="CloseSidebar">@Tr("أوامر البيع", "Sales orders")</a>
-                <a href="quotations" class="@ActiveLink("quotations")" @onclick="CloseSidebar">@Tr("عروض الأسعار", "Quotations")</a>
-                <a href="leads" class="@ActiveLink("leads")" @onclick="CloseSidebar">@Tr("الفرص البيعية", "Sales pipeline / Leads")</a>
-                <a href="payments/customer-receipts/new" class="@ActiveLink("payments/customer-receipts/new")" @onclick="CloseSidebar">@Tr("إيصال قبض جديد", "Receive payment")</a>
-                <a href="routes" class="@ActiveLink("routes")" @onclick="CloseSidebar">@Tr("خط السير", "Route plan")</a>
+                <a href="invoices" class="@ActiveLink("invoices")" @onclick="CloseSidebar" data-search="فواتير invoices">@Tr("فواتير المبيعات", "Sales invoices")</a>
+                <a href="quotations" class="@ActiveLink("quotations")" @onclick="CloseSidebar" data-search="عروض quotations">@Tr("عروض الأسعار", "Quotations")</a>
+                <a href="leads" class="@ActiveLink("leads")" @onclick="CloseSidebar" data-search="فرص leads pipeline crm">@Tr("الفرص البيعية", "Leads / Pipeline")</a>
+                <a href="sales-orders" class="@ActiveLink("sales-orders")" @onclick="CloseSidebar" data-search="أوامر orders">@Tr("أوامر البيع", "Sales orders")</a>
+                <a href="payments/customer-receipts/new" class="@ActiveLink("payments/customer-receipts")" @onclick="CloseSidebar" data-search="قبض receipts payments">@Tr("إيصال قبض جديد", "Receive payment")</a>
                 @if (!_isRepOnly)
                 {
-                    <a href="recurring-invoices" class="@ActiveLink("recurring-invoices")" @onclick="CloseSidebar">@Tr("فواتير متكررة", "Recurring invoices")</a>
-                    <a href="invoices/bulk" class="@ActiveLink("invoices/bulk")" @onclick="CloseSidebar">@Tr("رفع جماعي للفواتير", "Bulk invoice upload")</a>
-                    <a href="reports/sales-pipeline" class="@ActiveLink("reports/sales-pipeline")" @onclick="CloseSidebar">@Tr("📊 تقرير قمع المبيعات", "📊 Pipeline report")</a>
-                    <a href="reports/sales-by-rep" class="@ActiveLink("reports/sales-by-rep")" @onclick="CloseSidebar">@Tr("📊 مبيعات المناديب", "📊 Sales by rep")</a>
-                    <a href="reports/commissions" class="@ActiveLink("reports/commissions")" @onclick="CloseSidebar">@Tr("📊 عمولات المناديب", "📊 Commissions")</a>
-                    <a href="dashboards/sales" class="@ActiveLink("dashboards/sales")" @onclick="CloseSidebar">@Tr("📊 لوحة المبيعات", "📊 Sales dashboard")</a>
+                    <a href="recurring-invoices" class="@ActiveLink("recurring-invoices")" @onclick="CloseSidebar" data-search="متكررة recurring">@Tr("فواتير متكررة", "Recurring invoices")</a>
+                    <a href="invoices/bulk" class="@ActiveLink("invoices/bulk")" @onclick="CloseSidebar" data-search="رفع bulk جماعي">@Tr("رفع جماعي", "Bulk upload")</a>
                 }
+                <a href="routes" class="@ActiveLink("routes")" @onclick="CloseSidebar" data-search="خط السير routes">@Tr("خط السير", "Route plan")</a>
             </nav>
         </details>
 
-        @* 4. المشتريات — Purchases (admin only) *@
+        @* 4. المشتريات — Purchases (admin only, 5 items) *@
         @if (!_isRepOnly)
         {
         <details class="sidebar-group" @attributes="@OpenAttr("purchase-invoices", "expenses", "scan-receipt", "payments/supplier-payments", "payments/unmatched", "payments/bank-statements")">
@@ -281,17 +377,16 @@
                 <span>@Tr("المشتريات", "Purchases")</span>
             </summary>
             <nav class="app-nav">
-                <a href="purchase-invoices" class="@ActiveLink("purchase-invoices")" @onclick="CloseSidebar">@Tr("فواتير المشتريات", "Purchase invoices")</a>
-                <a href="expenses" class="@ActiveLink("expenses")" @onclick="CloseSidebar">@Tr("المصروفات", "Expenses")</a>
-                <a href="payments/supplier-payments/new" class="@ActiveLink("payments/supplier-payments/new")" @onclick="CloseSidebar">@Tr("دفعة لمورد", "Pay a supplier")</a>
-                <a href="scan-receipt" class="@ActiveLink("scan-receipt")" @onclick="CloseSidebar">@Tr("🤖 مسح إيصال (AI)", "🤖 Scan receipt (AI)")</a>
-                <a href="payments/bank-statements" class="@ActiveLink("payments/bank-statements")" @onclick="CloseSidebar">@Tr("كشوف البنك", "Bank statements")</a>
-                <a href="payments/unmatched" class="@ActiveLink("payments/unmatched")" @onclick="CloseSidebar">@Tr("بنود بنكية غير مطابقة", "Unmatched bank lines")</a>
+                <a href="purchase-invoices" class="@ActiveLink("purchase-invoices")" @onclick="CloseSidebar" data-search="مشتريات purchases bills">@Tr("فواتير المشتريات", "Purchase invoices")</a>
+                <a href="expenses" class="@ActiveLink("expenses")" @onclick="CloseSidebar" data-search="مصروفات expenses">@Tr("المصروفات", "Expenses")</a>
+                <a href="payments/supplier-payments/new" class="@ActiveLink("payments/supplier-payments")" @onclick="CloseSidebar" data-search="دفعة مورد supplier payment">@Tr("دفعة لمورد", "Pay a supplier")</a>
+                <a href="scan-receipt" class="@ActiveLink("scan-receipt")" @onclick="CloseSidebar" data-search="مسح إيصال scan ai ocr">@Tr("🤖 مسح إيصال (AI)", "🤖 Scan receipt (AI)")</a>
+                <a href="payments/bank-statements" class="@ActiveLink("payments/bank-statements")" @onclick="CloseSidebar" data-search="بنك bank statements">@Tr("كشوف البنك", "Bank statements")</a>
             </nav>
         </details>
         }
 
-        @* 5. المخزون — Inventory (admin only) *@
+        @* 5. المخزون — Inventory (admin only, 5 core items) *@
         @if (!_isRepOnly)
         {
         <details class="sidebar-group" @attributes="@OpenAttr("items", "stock-locations", "stock-transfer", "stock-adjustments", "expiring-lots", "reorder-rules", "reorder-suggestions", "cost-centers")">
@@ -300,100 +395,138 @@
                 <span>@Tr("المخزون", "Inventory")</span>
             </summary>
             <nav class="app-nav">
-                <a href="items" class="@ActiveLink("items")" @onclick="CloseSidebar">@Tr("الأصناف", "Items")</a>
-                <a href="stock-adjustments" class="@ActiveLink("stock-adjustments")" @onclick="CloseSidebar">@Tr("📦 جرد مخزني", "📦 Stock count")</a>
-                <a href="reorder-suggestions" class="@ActiveLink("reorder-suggestions")" @onclick="CloseSidebar">@Tr("📋 اقتراحات إعادة الطلب", "📋 Reorder suggestions")</a>
-                <a href="stock-transfer" class="@ActiveLink("stock-transfer")" @onclick="CloseSidebar">@Tr("🔄 نقل مخزون", "🔄 Stock transfer")</a>
-                <a href="stock-locations" class="@ActiveLink("stock-locations")" @onclick="CloseSidebar">@Tr("🏬 المخازن والفروع", "🏬 Stock locations")</a>
-                <a href="expiring-lots" class="@ActiveLink("expiring-lots")" @onclick="CloseSidebar">@Tr("🧪 دفعات قاربت تنتهي", "🧪 Expiring lots")</a>
-                <a href="reorder-rules" class="@ActiveLink("reorder-rules")" @onclick="CloseSidebar">@Tr("🔁 قواعد إعادة الطلب", "🔁 Reorder rules")</a>
-                <a href="cost-centers" class="@ActiveLink("cost-centers")" @onclick="CloseSidebar">@Tr("🏷️ مراكز التكلفة", "🏷️ Cost centers")</a>
+                <a href="items" class="@ActiveLink("items")" @onclick="CloseSidebar" data-search="أصناف items products">@Tr("الأصناف", "Items")</a>
+                <a href="stock-adjustments" class="@ActiveLink("stock-adjustments")" @onclick="CloseSidebar" data-search="جرد stock count adjustments">@Tr("جرد مخزني", "Stock count")</a>
+                <a href="reorder-suggestions" class="@ActiveLink("reorder-suggestions")" @onclick="CloseSidebar" data-search="اقتراحات reorder">@Tr("اقتراحات إعادة الطلب", "Reorder suggestions")</a>
+                <a href="stock-transfer" class="@ActiveLink("stock-transfer")" @onclick="CloseSidebar" data-search="نقل transfer">@Tr("نقل مخزون", "Stock transfer")</a>
+                <a href="stock-locations" class="@ActiveLink("stock-locations")" @onclick="CloseSidebar" data-search="مخازن locations warehouses">@Tr("المخازن والفروع", "Stock locations")</a>
+                <a href="expiring-lots" class="@ActiveLink("expiring-lots")" @onclick="CloseSidebar" data-search="انتهاء expiring lots">@Tr("دفعات تقترب من الانتهاء", "Expiring lots")</a>
+                <a href="reorder-rules" class="@ActiveLink("reorder-rules")" @onclick="CloseSidebar" data-search="قواعد reorder rules">@Tr("قواعد إعادة الطلب", "Reorder rules")</a>
+                <a href="cost-centers" class="@ActiveLink("cost-centers")" @onclick="CloseSidebar" data-search="مراكز التكلفة cost centers">@Tr("مراكز التكلفة", "Cost centers")</a>
             </nav>
         </details>
         }
 
-        @* 6. جهات الاتصال — Contacts (customers visible to reps;
-           suppliers + bulk import admin only) *@
+        @* 6. جهات الاتصال — Contacts (3 items) *@
         <details class="sidebar-group" @attributes="@OpenAttr("customers", "suppliers", "data-import")">
             <summary>
                 <Icon Name="users" Class="nav-icon" />
                 <span>@Tr("جهات الاتصال", "Contacts")</span>
             </summary>
             <nav class="app-nav">
-                <a href="customers" class="@ActiveLink("customers")" @onclick="CloseSidebar">@Tr("العملاء", "Customers")</a>
+                <a href="customers" class="@ActiveLink("customers")" @onclick="CloseSidebar" data-search="عملاء customers">@Tr("العملاء", "Customers")</a>
                 @if (!_isRepOnly)
                 {
-                    <a href="suppliers" class="@ActiveLink("suppliers")" @onclick="CloseSidebar">@Tr("الموردون", "Suppliers")</a>
-                    <a href="data-import" class="@ActiveLink("data-import")" @onclick="CloseSidebar">@Tr("📥 استيراد بيانات", "📥 Import data")</a>
+                    <a href="suppliers" class="@ActiveLink("suppliers")" @onclick="CloseSidebar" data-search="موردون suppliers vendors">@Tr("الموردون", "Suppliers")</a>
+                    <a href="data-import" class="@ActiveLink("data-import")" @onclick="CloseSidebar" data-search="استيراد import csv">@Tr("استيراد من Excel/CSV", "Import data")</a>
                 }
             </nav>
         </details>
 
-        @* 7. التقارير والامتثال — Reports & Compliance (admin only;
-           combines financial reports + tax + ETA + WHT into one
-           "read-mostly" group) *@
+        @* 7. التقارير — Reports (admin only). Sub-headers split
+           the long list into 3 logical chunks (financial / sales /
+           projects) so it doesn't read as a 6-item dump. *@
         @if (!_isRepOnly)
         {
-        <details class="sidebar-group" @attributes="@OpenAttr("reports", "wht", "projects", "penalty-shield", "compliance", "eta-dashboard", "eta-inbox", "eta-export", "tax")">
+        <details class="sidebar-group" @attributes="@OpenAttr("reports", "projects", "dashboards/sales")">
             <summary>
                 <Icon Name="bar-chart" Class="nav-icon" />
-                <span>@Tr("التقارير والامتثال", "Reports & Compliance")</span>
+                <span>@Tr("التقارير", "Reports")</span>
             </summary>
             <nav class="app-nav">
-                <a href="reports/general-ledger" class="@ActiveLink("reports/general-ledger")" @onclick="CloseSidebar">@Tr("📚 دفتر الأستاذ", "📚 General Ledger")</a>
-                <a href="reports/trial-balance" class="@ActiveLink("reports/trial-balance")" @onclick="CloseSidebar">@Tr("ميزان المراجعة", "Trial balance")</a>
-                <a href="reports/cash-flow" class="@ActiveLink("reports/cash-flow")" @onclick="CloseSidebar">@Tr("💵 التدفقات النقدية", "💵 Cash flow")</a>
-                <a href="reports/cost-centers" class="@ActiveLink("reports/cost-centers")" @onclick="CloseSidebar">@Tr("📊 مراكز التكلفة", "📊 Cost centers")</a>
-                <a href="reports/taxable-income" class="@ActiveLink("reports/taxable-income")" @onclick="CloseSidebar">@Tr("الدخل الخاضع للضريبة", "Taxable income")</a>
-                <a href="reports/turnover-tax" class="@ActiveLink("reports/turnover-tax")" @onclick="CloseSidebar">@Tr("ضريبة معدل الدوران", "Turnover tax")</a>
-                <a href="reports/vat-monthly" class="@ActiveLink("reports/vat-monthly")" @onclick="CloseSidebar">@Tr("الضريبة الشهرية", "Monthly VAT")</a>
-                <a href="projects" class="@ActiveLink("projects")" @onclick="CloseSidebar">@Tr("📁 المشروعات", "📁 Projects")</a>
-                <a href="compliance/health" class="@ActiveLink("compliance/health")" @onclick="CloseSidebar">@Tr("🩺 صحة الامتثال", "🩺 Compliance health")</a>
-                <a href="penalty-shield" class="@ActiveLink("penalty-shield")" @onclick="CloseSidebar">@Tr("درع الغرامات", "Penalty Shield")</a>
-                <a href="compliance/calendar" class="@ActiveLink("compliance/calendar")" @onclick="CloseSidebar">@Tr("تقويم الالتزامات", "Compliance calendar")</a>
-                <a href="eta-dashboard" class="@ActiveLink("eta-dashboard")" @onclick="CloseSidebar">@Tr("لوحة ETA", "ETA dashboard")</a>
-                <a href="eta-inbox" class="@ActiveLink("eta-inbox")" @onclick="CloseSidebar">@Tr("صندوق ETA الوارد", "ETA inbox")</a>
-                <a href="eta-export" class="@ActiveLink("eta-export")" @onclick="CloseSidebar">@Tr("تصدير ETA", "ETA export")</a>
-                <a href="tax/vat-return" class="@ActiveLink("tax/vat-return")" @onclick="CloseSidebar">@Tr("إقرارات الضريبة", "VAT returns")</a>
-                <a href="tax/income-tax-return" class="@ActiveLink("tax/income-tax-return")" @onclick="CloseSidebar">@Tr("إقرارات ضريبة الدخل", "Income-tax returns")</a>
-                <a href="wht" class="@ActiveLink("wht")" @onclick="CloseSidebar">@Tr("دورة الخصم", "WHT lifecycle")</a>
-                <a href="wht/inbound" class="@ActiveLink("wht/inbound")" @onclick="CloseSidebar">@Tr("شهادات خصم واردة", "Inbound WHT")</a>
+                <div class="sidebar-subhead">@Tr("مالية", "Financial")</div>
+                <a href="reports/general-ledger" class="@ActiveLink("reports/general-ledger")" @onclick="CloseSidebar" data-search="دفتر الأستاذ general ledger gl">@Tr("دفتر الأستاذ", "General Ledger")</a>
+                <a href="reports/trial-balance" class="@ActiveLink("reports/trial-balance")" @onclick="CloseSidebar" data-search="ميزان trial balance tb">@Tr("ميزان المراجعة", "Trial balance")</a>
+                <a href="reports/cash-flow" class="@ActiveLink("reports/cash-flow")" @onclick="CloseSidebar" data-search="تدفقات cash flow">@Tr("التدفقات النقدية", "Cash flow")</a>
+                <a href="reports/cost-centers" class="@ActiveLink("reports/cost-centers")" @onclick="CloseSidebar" data-search="مراكز التكلفة cost centers">@Tr("مراكز التكلفة", "Cost centers")</a>
+                <div class="sidebar-subhead">@Tr("المبيعات", "Sales")</div>
+                <a href="reports/sales-pipeline" class="@ActiveLink("reports/sales-pipeline")" @onclick="CloseSidebar" data-search="قمع pipeline">@Tr("قمع المبيعات", "Sales pipeline")</a>
+                <a href="reports/sales-by-rep" class="@ActiveLink("reports/sales-by-rep")" @onclick="CloseSidebar" data-search="مناديب reps">@Tr("مبيعات المناديب", "Sales by rep")</a>
+                <a href="reports/commissions" class="@ActiveLink("reports/commissions")" @onclick="CloseSidebar" data-search="عمولات commissions">@Tr("عمولات المناديب", "Commissions")</a>
+                <a href="dashboards/sales" class="@ActiveLink("dashboards/sales")" @onclick="CloseSidebar" data-search="لوحة sales dashboard">@Tr("لوحة المبيعات", "Sales dashboard")</a>
+                <div class="sidebar-subhead">@Tr("المشاريع", "Projects")</div>
+                <a href="projects" class="@ActiveLink("projects")" @onclick="CloseSidebar" data-search="مشاريع projects">@Tr("المشاريع", "Projects")</a>
             </nav>
         </details>
         }
 
-        @* 8. الإعدادات — Settings (absorbs Firm Portal + AI scan
-           history + audit log + inspection bundle since they're all
-           setup-once / rarely-touched) *@
+        @* 7b. الامتثال — Compliance (admin only). Was merged into
+           Reports in DP.2; the operator review showed that was a
+           cognitive mistake — Compliance is its own daily-touched
+           workflow. Split back out as its own group with
+           sub-headers. *@
+        @if (!_isRepOnly)
+        {
+        <details class="sidebar-group" @attributes="@OpenAttr("compliance", "penalty-shield", "eta-dashboard", "eta-inbox", "eta-export", "tax", "wht")">
+            <summary>
+                <Icon Name="shield" Class="nav-icon" />
+                <span>@Tr("الامتثال والضرائب", "Compliance & Tax")</span>
+            </summary>
+            <nav class="app-nav">
+                <div class="sidebar-subhead">@Tr("الحالة", "Health")</div>
+                <a href="compliance/health" class="@ActiveLink("compliance/health")" @onclick="CloseSidebar" data-search="صحة الامتثال compliance health">@Tr("صحة الامتثال", "Compliance health")</a>
+                <a href="penalty-shield" class="@ActiveLink("penalty-shield")" @onclick="CloseSidebar" data-search="درع غرامات penalty shield">@Tr("درع الغرامات", "Penalty Shield")</a>
+                <a href="compliance/calendar" class="@ActiveLink("compliance/calendar")" @onclick="CloseSidebar" data-search="تقويم calendar">@Tr("تقويم الالتزامات", "Calendar")</a>
+                <div class="sidebar-subhead">ETA</div>
+                <a href="eta-dashboard" class="@ActiveLink("eta-dashboard")" @onclick="CloseSidebar" data-search="eta dashboard">@Tr("لوحة ETA", "ETA dashboard")</a>
+                <a href="eta-inbox" class="@ActiveLink("eta-inbox")" @onclick="CloseSidebar" data-search="eta inbox صندوق">@Tr("صندوق ETA الوارد", "ETA inbox")</a>
+                <a href="eta-export" class="@ActiveLink("eta-export")" @onclick="CloseSidebar" data-search="eta export تصدير">@Tr("تصدير ETA", "ETA export")</a>
+                <div class="sidebar-subhead">@Tr("إقرارات", "Returns")</div>
+                <a href="tax/vat-return" class="@ActiveLink("tax/vat-return")" @onclick="CloseSidebar" data-search="ضريبة vat return إقرار">@Tr("إقرارات الضريبة", "VAT returns")</a>
+                <a href="tax/income-tax-return" class="@ActiveLink("tax/income-tax-return")" @onclick="CloseSidebar" data-search="دخل income tax return">@Tr("إقرارات ضريبة الدخل", "Income-tax returns")</a>
+                <a href="reports/vat-monthly" class="@ActiveLink("reports/vat-monthly")" @onclick="CloseSidebar" data-search="شهرية monthly vat">@Tr("الضريبة الشهرية", "Monthly VAT")</a>
+                <a href="reports/taxable-income" class="@ActiveLink("reports/taxable-income")" @onclick="CloseSidebar" data-search="الدخل الخاضع taxable income">@Tr("الدخل الخاضع للضريبة", "Taxable income")</a>
+                <a href="reports/turnover-tax" class="@ActiveLink("reports/turnover-tax")" @onclick="CloseSidebar" data-search="معدل الدوران turnover">@Tr("ضريبة معدل الدوران", "Turnover tax")</a>
+                <div class="sidebar-subhead">WHT</div>
+                <a href="wht" class="@ActiveLink("wht")" @onclick="CloseSidebar" data-search="خصم wht">@Tr("دورة الخصم", "WHT lifecycle")</a>
+                <a href="wht/inbound" class="@ActiveLink("wht/inbound")" @onclick="CloseSidebar" data-search="شهادات خصم واردة inbound wht">@Tr("شهادات خصم واردة", "Inbound WHT")</a>
+            </nav>
+        </details>
+        }
+
+        @* 8. الإعدادات — Settings (admin only). Reorganized with
+           sub-headers into logical chunks (الشركة / المالية /
+           متقدم / المراجعة / المكتب) so it doesn't read as a
+           dump-everything bucket. The Admin Panel link stays at
+           the top as the canonical entry point. *@
         @if (!_isRepOnly)
         {
         <details class="sidebar-group" @attributes="@OpenAttr("settings", "eta-wizard", "certificates", "expense-categories", "audit-log", "inspection-bundle", "cockpit", "currencies", "firm-portal", "scan-history")">
             <summary>
-                <Icon Name="building" Class="nav-icon" />
+                <Icon Name="settings" Class="nav-icon" />
                 <span>@Tr("الإعدادات", "Settings")</span>
             </summary>
             <nav class="app-nav">
-                <a href="settings" class="@ActiveLink("settings")" @onclick="CloseSidebar"><strong>@Tr("⚙️ لوحة الإعدادات", "⚙️ Admin panel")</strong></a>
-                <a href="settings/company" class="@ActiveLink("settings/company")" @onclick="CloseSidebar">@Tr("بيانات الشركة", "Company profile")</a>
-                <a href="settings/tax-periods" class="@(ActiveLink("settings/tax-periods", "settings/vat-categories"))" @onclick="CloseSidebar">@Tr("إعداد الضرائب", "Tax setup")</a>
-                <a href="settings/fiscal-year" class="@ActiveLink("settings/fiscal-year")" @onclick="CloseSidebar">@Tr("السنة المالية", "Fiscal year")</a>
-                <a href="settings/cash-accounts" class="@(ActiveLink("settings/cash-accounts", "settings/payment-methods", "settings/opening-balances"))" @onclick="CloseSidebar">@Tr("نقدية وبنوك", "Money & banks")</a>
-                <a href="settings/chart-of-accounts" class="@ActiveLink("settings/chart-of-accounts")" @onclick="CloseSidebar">@Tr("دليل الحسابات", "Chart of accounts")</a>
-                <a href="currencies" class="@ActiveLink("currencies")" @onclick="CloseSidebar">@Tr("💱 العملات", "💱 Currencies")</a>
-                <a href="expense-categories" class="@ActiveLink("expense-categories")" @onclick="CloseSidebar">@Tr("فئات المصروفات", "Expense categories")</a>
-                <a href="settings/quotation-templates" class="@ActiveLink("settings/quotation-templates")" @onclick="CloseSidebar">@Tr("📋 قوالب عروض الأسعار", "📋 Quotation templates")</a>
-                <a href="settings/webhooks" class="@ActiveLink("settings/webhooks")" @onclick="CloseSidebar">@Tr("🔔 Webhooks", "🔔 Webhooks")</a>
-                <a href="eta-wizard" class="@ActiveLink("eta-wizard")" @onclick="CloseSidebar">@Tr("معالج إعداد ETA", "ETA setup wizard")</a>
-                <a href="certificates" class="@ActiveLink("certificates")" @onclick="CloseSidebar">@Tr("الشهادات الرقمية", "Digital certificates")</a>
-                <a href="cockpit" class="@ActiveLink("cockpit")" @onclick="CloseSidebar">@Tr("قمرة الإقفال", "Closing cockpit")</a>
-                <a href="audit-log" class="@ActiveLink("audit-log")" @onclick="CloseSidebar">@Tr("سجل التدقيق", "Audit log")</a>
-                <a href="inspection-bundle" class="@ActiveLink("inspection-bundle")" @onclick="CloseSidebar">@Tr("حزمة الفحص الضريبي", "Inspection bundle")</a>
-                <a href="scan-history" class="@ActiveLink("scan-history")" @onclick="CloseSidebar">@Tr("📜 سجل الذكاء الاصطناعي", "📜 AI activity log")</a>
-                <a href="settings/referrals" class="@ActiveLink("settings/referrals")" @onclick="CloseSidebar">@Tr("ادعُ صديق", "Refer a friend")</a>
-                @* Firm Portal items — niche, rolled into Settings rather than its own group *@
-                <a href="firm-portal" class="@ActiveLink("firm-portal")" @onclick="CloseSidebar">@Tr("🏛️ بوابة المكتب", "🏛️ Firm portal")</a>
-                <a href="firm-portal/switch" class="@ActiveLink("firm-portal/switch")" @onclick="CloseSidebar">@Tr("🔄 تبديل الشركة", "🔄 Switch company")</a>
-                <a href="firm-portal/commissions" class="@ActiveLink("firm-portal/commissions")" @onclick="CloseSidebar">@Tr("عمولات المحاسبين", "Firm commissions")</a>
+                <a href="settings" class="@ActiveLink("settings")" @onclick="CloseSidebar" data-search="إعدادات settings admin"><strong>@Tr("⚙️ لوحة الإعدادات", "⚙️ Admin panel")</strong></a>
+
+                <div class="sidebar-subhead">@Tr("الشركة", "Company")</div>
+                <a href="settings/company" class="@ActiveLink("settings/company")" @onclick="CloseSidebar" data-search="شركة company profile">@Tr("بيانات الشركة", "Company profile")</a>
+                <a href="settings/fiscal-year" class="@ActiveLink("settings/fiscal-year")" @onclick="CloseSidebar" data-search="السنة المالية fiscal year">@Tr("السنة المالية", "Fiscal year")</a>
+                <a href="settings/chart-of-accounts" class="@ActiveLink("settings/chart-of-accounts")" @onclick="CloseSidebar" data-search="دليل الحسابات chart of accounts coa">@Tr("دليل الحسابات", "Chart of accounts")</a>
+
+                <div class="sidebar-subhead">@Tr("المالية", "Money")</div>
+                <a href="settings/tax-periods" class="@(ActiveLink("settings/tax-periods", "settings/vat-categories"))" @onclick="CloseSidebar" data-search="ضرائب tax setup vat">@Tr("إعداد الضرائب", "Tax setup")</a>
+                <a href="settings/cash-accounts" class="@(ActiveLink("settings/cash-accounts", "settings/payment-methods", "settings/opening-balances"))" @onclick="CloseSidebar" data-search="نقدية بنوك cash banks">@Tr("نقدية وبنوك", "Money & banks")</a>
+                <a href="currencies" class="@ActiveLink("currencies")" @onclick="CloseSidebar" data-search="عملات currencies">@Tr("العملات", "Currencies")</a>
+                <a href="expense-categories" class="@ActiveLink("expense-categories")" @onclick="CloseSidebar" data-search="فئات المصروفات expense categories">@Tr("فئات المصروفات", "Expense categories")</a>
+
+                <div class="sidebar-subhead">@Tr("متقدم", "Advanced")</div>
+                <a href="settings/quotation-templates" class="@ActiveLink("settings/quotation-templates")" @onclick="CloseSidebar" data-search="قوالب templates">@Tr("قوالب عروض الأسعار", "Quotation templates")</a>
+                <a href="settings/webhooks" class="@ActiveLink("settings/webhooks")" @onclick="CloseSidebar" data-search="webhooks api">Webhooks</a>
+                <a href="eta-wizard" class="@ActiveLink("eta-wizard")" @onclick="CloseSidebar" data-search="معالج eta wizard setup">@Tr("معالج إعداد ETA", "ETA setup wizard")</a>
+                <a href="certificates" class="@ActiveLink("certificates")" @onclick="CloseSidebar" data-search="شهادات certificates">@Tr("الشهادات الرقمية", "Digital certificates")</a>
+
+                <div class="sidebar-subhead">@Tr("المراجعة", "Audit")</div>
+                <a href="cockpit" class="@ActiveLink("cockpit")" @onclick="CloseSidebar" data-search="قمرة الإقفال cockpit closing">@Tr("قمرة الإقفال", "Closing cockpit")</a>
+                <a href="audit-log" class="@ActiveLink("audit-log")" @onclick="CloseSidebar" data-search="سجل التدقيق audit log">@Tr("سجل التدقيق", "Audit log")</a>
+                <a href="inspection-bundle" class="@ActiveLink("inspection-bundle")" @onclick="CloseSidebar" data-search="حزمة فحص inspection bundle">@Tr("حزمة الفحص الضريبي", "Inspection bundle")</a>
+                <a href="scan-history" class="@ActiveLink("scan-history")" @onclick="CloseSidebar" data-search="سجل ai history scan">@Tr("سجل الذكاء الاصطناعي", "AI activity log")</a>
+
+                <div class="sidebar-subhead">@Tr("المكتب", "Firm portal")</div>
+                <a href="firm-portal" class="@ActiveLink("firm-portal")" @onclick="CloseSidebar" data-search="بوابة المكتب firm portal accountant">@Tr("لوحة المراجعة", "Accountant review")</a>
+                <a href="firm-portal/switch" class="@ActiveLink("firm-portal/switch")" @onclick="CloseSidebar" data-search="تبديل الشركة switch company">@Tr("تبديل الشركة", "Switch company")</a>
+                <a href="firm-portal/commissions" class="@ActiveLink("firm-portal/commissions")" @onclick="CloseSidebar" data-search="عمولات المحاسبين firm commissions">@Tr("عمولات المحاسبين", "Firm commissions")</a>
+                <a href="settings/referrals" class="@ActiveLink("settings/referrals")" @onclick="CloseSidebar" data-search="ادعُ صديق refer friend">@Tr("ادعُ صديق", "Refer a friend")</a>
             </nav>
         </details>
         }

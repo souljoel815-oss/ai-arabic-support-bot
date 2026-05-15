@@ -4212,4 +4212,143 @@ a.btn-secondary .ic {
     }
 }
 
+/* ============================================================
+   v5 UI Sprint 1 — Sidebar v2
+   Search box, favorites with gold pin, sub-headers within
+   groups, gold-accent active group, dotted connector lines on
+   sub-items per the operator-approved mockup.
+   ============================================================ */
+
+/* Brand gold lifted into a CSS variable so dark theme can
+   tweak it without re-typing the value in 6 places. */
+:root {
+    --accent-gold: #D4A017;
+    --accent-gold-soft: rgba(212, 160, 23, 0.12);
+}
+[data-theme="leil"] {
+    --accent-gold: #E8B82E;
+    --accent-gold-soft: rgba(232, 184, 46, 0.18);
+}
+
+.sidebar-v2 .sidebar-search-box {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px;
+    align-items: center;
+    margin: 8px 12px 12px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 10px;
+    color: rgba(255, 255, 255, 0.6);
+}
+.sidebar-v2 .sidebar-search-box input {
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font-size: 13px;
+    outline: 0;
+    width: 100%;
+}
+.sidebar-v2 .sidebar-search-box input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* Live filter: when [data-search-active] is on the sidebar,
+   any link whose data-search doesn't include the typed text
+   gets display:none. Driven by the inline JS below — see the
+   <details>/<nav> hide rule. */
+
+.sidebar-v2 .sidebar-favs {
+    margin: 0 8px 8px;
+}
+.sidebar-v2 .sidebar-section-label {
+    color: var(--accent-gold);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 8px 12px 4px;
+    text-transform: uppercase;
+}
+.sidebar-v2 .sidebar-favs .fav-pin {
+    color: var(--accent-gold);
+    font-size: 11px;
+    margin-inline-end: 4px;
+}
+.sidebar-v2 .sidebar-favs .fav-unpin {
+    margin-inline-start: auto;
+    background: transparent;
+    border: 0;
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    visibility: hidden;
+}
+.sidebar-v2 .sidebar-favs a:hover .fav-unpin {
+    visibility: visible;
+}
+.sidebar-v2 .sidebar-favs .fav-unpin:hover {
+    color: var(--accent-gold);
+}
+.sidebar-v2 .sidebar-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 8px 12px;
+}
+
+/* Sub-headers inside a group ("الشركة" / "المالية" etc.) */
+.sidebar-v2 .sidebar-subhead {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    padding: 8px 16px 2px;
+}
+
+/* Gold-accent treatment for the open (active) group's <summary>.
+   The browser auto-applies [open] attribute to expanded <details>
+   so the CSS just listens for it. */
+.sidebar-v2 .sidebar-group[open] > summary {
+    background: var(--accent-gold-soft);
+    color: var(--accent-gold);
+    border-radius: 8px;
+}
+.sidebar-v2 .sidebar-group[open] > summary .nav-icon {
+    color: var(--accent-gold);
+}
+
+/* Dotted connector line on sub-items when group is expanded —
+   inline-end side per the mockup (right in RTL, left in LTR). */
+.sidebar-v2 .sidebar-group[open] > .app-nav {
+    position: relative;
+    margin-inline-start: 28px;
+    padding-inline-start: 10px;
+    border-inline-start: 1px dashed rgba(255, 255, 255, 0.20);
+}
+
+/* The live-search filter: whenever the sidebar has the
+   data-search-active="1" attribute, links without a matching
+   data-search get hidden. The match is done by the JS inline
+   below MainLayout. */
+.sidebar-v2[data-search-active="1"] .sidebar-favs,
+.sidebar-v2[data-search-active="1"] .sidebar-quick-actions {
+    display: none;
+}
+.sidebar-v2[data-search-active="1"] .app-nav .hide-by-search {
+    display: none;
+}
+.sidebar-v2[data-search-active="1"] .sidebar-group:not(:has(a:not(.hide-by-search))) {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .sidebar-v2 .sidebar-search-box,
+    .sidebar-v2 .sidebar-favs {
+        margin-inline: 16px;
+    }
+}
+
 
