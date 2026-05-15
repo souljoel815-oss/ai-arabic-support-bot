@@ -580,6 +580,155 @@ A.6 POS sessions) per §6 sequencing, then Phase B + D as planned.
 
 ---
 
+## 3.7. v5 UI Rebuild — operator-pulled (~3 weeks)
+
+**Trigger:** 2026-05-15 operator feedback. After DP.1–DP.5 shipped,
+the operator surfaced six high-fidelity Arabic mockups (Dashboard
+light + dark, Invoice editor, POS, CRM kanban, sidebar
+Before/After) and explicit critique of DP.2: *"شلت اللينكات
+رميتها كلها في settings — انا استفدت اي"*. The §3.6 Design
+Polish was a band-aid; the mockups call for an actual UI rebuild.
+
+The operator picked a 6-sprint plan, all six executed in
+sequence (no Phase A2/B/D work in between).
+
+### Sprint 1 — Sidebar v2 (~2d)
+
+What the mockup specifies (last image):
+- DaftarX gold logo at top
+- Full-width **search box** to filter nav items live
+- ⭐ **المفضلة** section with operator-pinned items (gold pin
+  icon next to each)
+- 8 groups, each expandable; active group highlighted **gold**
+  (`--accent-gold` #D4A017) with chevron-up
+- Sub-items revealed on expand, connected by a dotted vertical
+  border on the inline-end side
+- 3–6 sub-items per group max — NOT the 22-item dumping ground
+  DP.2 left in Settings
+
+What ships:
+- Sidebar search input (filters visible items as user types)
+- Favorites: localStorage list of `{url, label}`; pin/unpin from
+  hover ⋮ menu on any nav item; favorites render at top under
+  "المفضلة" with the gold pin icon
+- 8 groups properly organized:
+  - **الرئيسية** — direct link
+  - **المبيعات** (5): invoices, quotations, leads, sales
+    orders, customer receipts
+  - **المشتريات** (4): purchase invoices, expenses, supplier
+    payments, AI scan-receipt
+  - **المخزون** (5): items, stock count, reorder suggestions,
+    stock transfer, locations
+  - **جهات الاتصال** (3): customers, suppliers, data import
+  - **نقطة البيع** — direct link
+  - **التقارير والامتثال** (organized with sub-headers,
+    not 18-item dump): GL / TB / Cash Flow / Cost Centers /
+    Sales reports / VAT / Income tax / WHT / Penalty Shield /
+    ETA dashboard
+  - **الإعدادات** (organized): Company / Tax / Accounts /
+    Advanced (templates, webhooks) / Audit
+- Visual: gold-active styling, dotted connector lines on sub-
+  items, modern type weight
+
+### Sprint 2 — Dashboard rebuild (~3d)
+
+What the mockup specifies (images 4 + 5):
+- 4 large KPI cards at top: Total Sales, Expenses, Net Profit,
+  Overdue Invoices
+- Each card: colored circular icon (green up-arrow / red wallet
+  / green credit-card / red triangle), big bold number with EGP
+  suffix, trend % with up/down arrow ("12.5% up from previous
+  period")
+- Monthly Sales & Expenses **bar chart** (6 months back,
+  blue=sales / gray=expenses)
+- **Recent Activity** timeline on right: per-row status pill
+  (Paid green, Partial blue, Overdue red), date + time, company
+  name, INV-XXXX-XXXX number link
+- Dark mode variant: same layout with glow on card borders
+
+What ships:
+- Replace `Index.razor` with the new layout
+- 4 KPI cards using existing data (fetch real numbers from
+  posted invoices + expenses + AR)
+- Bar chart via Chart.js (one new ~30KB JS dep — accepted)
+- Recent Activity = last 10 posted invoices with their state +
+  outstanding balance derived from receipts
+
+### Sprint 3 — POS rebuild (~3d)
+
+What the mockup specifies (image 2):
+- Category tabs at top (الكل / إلكترونيات / أثاث / مستلزمات)
+- Product grid with **image thumbnails** (placeholder + photo
+  upload later); name + price below each tile
+- Cart pane on right: per-row qty controls (+ / − / ×), price,
+  subtotal
+- Big totals block (subtotal + VAT 14% + total)
+- 3 huge payment buttons:
+  - **نقدي** (green, with banknote icon)
+  - **بطاقة** (blue, with card icon)
+  - **تقسيم** (orange, with split icon — opens DP.5's split
+    payment we already have)
+
+What ships:
+- Add `Item.ImageUrl` (nullable) + categories navigation
+- Replace `/pos` with the new tile-grid + colored payment
+  trio; preserves the v5 A.5 split-payment + AR-settling logic
+  from `b8ba5f1` underneath
+
+### Sprint 4 — Invoice editor rebuild (~3d)
+
+What the mockup specifies (image 1):
+- Breadcrumb (الفواتير > فاتورة جديدة)
+- 4 fields in one row: Customer (with dropdown + search),
+  invoice number (auto), invoice date, due date — date pickers
+  with calendar icons
+- Customer dropdown opens a search field + list with C-001 codes
+  and "+ عميل جديد" inline link
+- Lines table: trash icon per row, item dropdown, qty, unit
+  price, VAT dropdown, total
+- Totals card on the right (subtotal, VAT 14%, **bold total**)
+- 3 buttons at bottom: حفظ كمسودة (gray), إرسال للعميل (blue),
+  إرسال للضرائب (orange/gold)
+
+What ships:
+- Rewrite `SalesInvoiceEdit.razor` to match the layout
+- Customer dropdown with inline search + create-new shortcut
+- Cleaner line editor with date-picker + VAT dropdown styling
+- Three-button footer with new color treatment
+
+### Sprint 5 — CRM kanban polish (~2d)
+
+What the mockup specifies (image 3):
+- 5-column kanban: جديد / مؤهل / عرض سعر / تفاوض / مكسب
+- Each column header shows total deal value: "إجمالي: 180,000 ج.م"
+- Cards show: company name, contact name, deal value, probability
+  badge (75% / 60% / 50% / 100%), status dot color (red/yellow/
+  green), "آخر نشاط منذ X يوم"
+- "+ فرصة جديدة" button (gold) at top-right
+- Filter chips: تصفية / منتجات/خدمات / المسؤولين / تاريخ متوقع /
+  المزيد
+
+What ships:
+- Update `Leads.razor` (the kanban) to match column header style
+  + per-stage totals + activity-staleness indicator + status dot
+- Filter chips at top
+
+### Sprint 6 — Component library + visual QA (~2d)
+
+- Status pills (Paid green / Partial blue / Overdue red /
+  Cancelled gray / Draft) — single component used across all
+  list pages
+- Button variants standardized (primary blue / success green /
+  warning orange / danger red / ghost gray)
+- Card component (border-radius 12px, padding 24px, shadow
+  pattern from §6.3 of the design doc)
+- Visual sweep across the top 15 pages to apply the new
+  components
+
+**UI Rebuild total: ~3 weeks. After Sprint 6, resume v5 Phase A2.**
+
+---
+
 ## 4. v5 Phase C — Carryover from v4 §C
 
 These wait for a real customer ask. Three items previously on
