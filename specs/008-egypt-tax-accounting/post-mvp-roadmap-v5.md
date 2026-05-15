@@ -1078,6 +1078,14 @@ Source: Manus AI's *DaftarX Full Gap Analysis v2*, 2026-05-15
 in the first pass — Courses 1, 2, 3 covering v17 + v19). Lists
 22 claimed gaps across 4 tiers totalling 75 working days of work.
 
+> **Sprint plan companion doc:**
+> [`phase-f-sprint-plan-2026-05-15.md`](phase-f-sprint-plan-2026-05-15.md) —
+> the third-pass Manus deliverable that takes the 8 verified
+> Phase F items below and slices them into 3 sprints
+> (Sprint 1 = 10d / Sprint 2 = 21d / Sprint 3 = 7d = 38d total)
+> with day-by-day breakdowns, JV examples in Arabic, and
+> acceptance criteria per feature.
+
 **Same critical-review discipline as §3.8.1 — verified each claim
 against the codebase before adding. Hit rate worse than the first
 pass.**

@@ -72,6 +72,22 @@
             <span>@(IsArabic ? "تاريخ المستند" : "Document date")</span>
             <input type="date" @bind="_documentDate" />
         </label>
+        <label>
+            <span>@(IsArabic ? "شروط الدفع" : "Payment term")</span>
+            <select @bind="_paymentTermId">
+                <option value="@Guid.Empty">@(IsArabic ? "— بدون —" : "— none —")</option>
+                @foreach (var t in _paymentTerms)
+                {
+                    <option value="@t.Id">
+                        @(IsArabic ? t.Name.Arabic : t.Name.English) — @(t.DiscountPercent > 0
+                            ? (IsArabic
+                                ? $"{t.DiscountPercent:0.##}% خلال {t.DiscountWindowDays} يوم / صافي {t.NetDays}"
+                                : $"{t.DiscountPercent:0.##}/{t.DiscountWindowDays} Net {t.NetDays}")
+                            : (IsArabic ? $"صافي {t.NetDays} يوم" : $"Net {t.NetDays}"))
+                    </option>
+                }
+            </select>
+        </label>
     </fieldset>
 
     <fieldset>
@@ -225,10 +241,12 @@
     private List<Customer> _customers = new();
     private List<Item> _items = new();
     private List<VatCategory> _vatCategories = new();
+    private List<PaymentTerm> _paymentTerms = new();
     private List<DraftLine> _lines = new();
 
     private Guid _customerId;
     private DateOnly _documentDate = DateOnly.FromDateTime(DateTime.UtcNow);
+    private Guid _paymentTermId;
 
     private Guid _newLineItemId;
     private decimal _newLineQty = 1m;
@@ -252,6 +270,9 @@
             .Where(c => c.Status == CustomerStatus.Active).OrderBy(c => c.Code).ToListAsync();
         _items = await Db.Set<Item>().AsNoTracking().OrderBy(i => i.Code).ToListAsync();
         _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
+        _paymentTerms = await Db.Set<PaymentTerm>().AsNoTracking()
+            .Where(t => t.IsActive)
+            .OrderByDescending(t => t.IsDefault).ThenBy(t => t.NetDays).ToListAsync();
 
         // Phase B — decide whether the primary button is "Post" or
         // "Submit for approval". The toggle lives on SalesRepSettings;
@@ -273,6 +294,7 @@
             {
                 _customerId = _invoice.CustomerId;
                 _documentDate = _invoice.DocumentDate;
+                _paymentTermId = _invoice.PaymentTermId ?? Guid.Empty;
                 _lines = _invoice.Lines
                     .Select(l => new DraftLine(l.Id, l.ItemId, l.Quantity, l.UnitPrice.Amount, l.VatCategoryId, l.VatRatePercent,
                         l.LineSubtotal.Amount, l.LineVat.Amount, l.LineTotal.Amount))
@@ -288,6 +310,12 @@
                     _discountAmount = _invoice.InvoiceLevelDiscountAmount.Amount;
                 }
             }
+        }
+        else
+        {
+            // New invoice — preselect the default term if one is marked.
+            var def = _paymentTerms.FirstOrDefault(t => t.IsDefault);
+            if (def is not null) _paymentTermId = def.Id;
         }
 
         _loading = false;
@@ -387,6 +415,7 @@
                     line.VatCategoryId, line.VatRatePercent);
             }
             ApplyDiscount(_invoice);
+            _invoice.SetPaymentTerm(_paymentTermId == Guid.Empty ? null : _paymentTermId);
             Db.Add(_invoice);
         }
         else
@@ -404,6 +433,7 @@
                     line.VatCategoryId, line.VatRatePercent);
             }
             ApplyDiscount(_invoice);
+            _invoice.SetPaymentTerm(_paymentTermId == Guid.Empty ? null : _paymentTermId);
         }
 
         await Db.SaveChangesAsync();

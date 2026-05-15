@@ -149,3 +149,14 @@ scratch/
 # Local dev-server boot logs (per-session, never committed).
 boot.log
 boot-err.log
+
+# Roslyn / dotnet build cache (per-build, regenerates).
+*.csproj.lscache
+
+# UI-handoff working artefacts (designer drops the zip; we extract
+# locally; the handoff zip itself is regenerated on demand from
+# the canonical files in src/).
+.tmp-handoff-v2/
+daftarx-ui-blazor-handoff-v2/
+daftarx-ui-blazor-handoff-v2.zip
+ui-handoff-2026-05-15.zip
