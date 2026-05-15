@@ -1,0 +1,452 @@
+/* ============================================================
+   v5 UI Rebuild — Sprint 1. AppShell layout (3-tier nav).
+   ============================================================
+   Adopted from the Manus 2026-05-15 design spec. Lives
+   side-by-side with site.css — site.css still applies to all
+   144 legacy pages on MainLayout; this file applies only to
+   pages that opt into AppShellLayout via the @layout directive.
+
+   Visual reference: 5 mockup PNGs the operator dropped 2026-05-15
+   (Dashboard, Invoice list, Invoice detail, JE editor, Cmd palette
+   open) — all confirmed dark navy + gold scheme with 64px module
+   sidebar + 240px contextual sub-nav.
+
+   Strategy: scope every selector under `.appshell` so nothing
+   here can leak into the legacy layout. The dark theme tokens
+   below are hard-coded (NOT inheriting from site.css's `--bg`
+   etc.) so this layout looks identical regardless of the
+   `data-theme` toggle — the new design is dark-only by intent
+   (per the Manus spec: "لا يوجد light mode — المحاسب يشتغل
+   ساعات طويلة، الـ dark أريح للعين").
+   ============================================================ */
+
+:root {
+    --appshell-bg:           #0a0f1c;
+    --appshell-bg-elev:      #0e1424;
+    --appshell-bg-card:      #121929;
+    --appshell-border:       #1c2538;
+    --appshell-border-soft:  #141c2c;
+
+    --appshell-text:         #e5e7eb;
+    --appshell-text-muted:   #9ca3af;
+    --appshell-text-subtle:  #6b7280;
+
+    --appshell-gold:         #d4a217;
+    --appshell-gold-bright:  #f0c040;
+    --appshell-gold-soft:    rgba(212, 162, 23, 0.15);
+    --appshell-gold-line:    rgba(212, 162, 23, 0.40);
+
+    --appshell-success:      #34d399;
+    --appshell-warning:      #fbbf24;
+    --appshell-danger:       #f87171;
+    --appshell-info:         #38bdf8;
+
+    --appshell-sidebar-w:    64px;
+    --appshell-subnav-w:     240px;
+}
+
+/* Top-level container fills the viewport so the sidebar can
+   pin to the full height; main content scrolls inside its own
+   column. */
+.appshell {
+    display: flex;
+    flex-direction: row;
+    min-height: 100vh;
+    background: var(--appshell-bg);
+    color: var(--appshell-text);
+    font-family: 'Cairo', 'IBM Plex Sans Arabic', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* ---------- Module sidebar (64px) ---------- */
+.appshell-modules {
+    flex: 0 0 var(--appshell-sidebar-w);
+    width: var(--appshell-sidebar-w);
+    background: var(--appshell-bg);
+    border-inline-start: 1px solid var(--appshell-border-soft);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0;
+    gap: 8px;
+    /* Sidebar is "static" relative to the flex row but sticky
+       so it stays in view during long content scrolls. */
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    z-index: 50;
+}
+
+.appshell-modules-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    color: var(--appshell-gold);
+    background: var(--appshell-gold-soft);
+    border: 1px solid var(--appshell-gold-line);
+    text-decoration: none;
+    margin-bottom: 8px;
+    transition: transform 120ms ease, background 120ms ease;
+}
+.appshell-modules-logo:hover { transform: scale(1.05); }
+
+.appshell-modules-nav {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    width: 100%;
+    padding: 4px 0;
+}
+
+.appshell-modules-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 8px;
+    width: 100%;
+    border-top: 1px solid var(--appshell-border-soft);
+}
+
+.appshell-module-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    color: var(--appshell-text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    text-decoration: none;
+    transition: color 120ms ease, background 120ms ease, transform 120ms ease;
+    flex-shrink: 0;
+}
+.appshell-module-btn:hover {
+    color: var(--appshell-text);
+    background: var(--appshell-bg-elev);
+    transform: scale(1.04);
+}
+.appshell-module-btn.is-active {
+    color: var(--appshell-gold);
+    background: var(--appshell-gold-soft);
+    border-color: var(--appshell-gold-line);
+}
+
+.appshell-module-icon {
+    width: 22px; height: 22px;
+    stroke-width: 1.75;
+}
+
+.appshell-user-btn {
+    background: var(--appshell-bg-elev);
+    color: var(--appshell-text);
+}
+.appshell-user-initial {
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1;
+}
+
+/* ---------- Sub-nav panel (240px) ---------- */
+.appshell-subnav {
+    flex: 0 0 var(--appshell-subnav-w);
+    width: var(--appshell-subnav-w);
+    background: var(--appshell-bg-elev);
+    border-inline-start: 1px solid var(--appshell-border-soft);
+    /* Stick alongside the sidebar so the panel stays visible
+       during content scrolls without cloning sidebar height. */
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 18px 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.appshell-subnav-header {
+    padding: 0 20px 14px;
+    color: var(--appshell-gold);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    border-bottom: 1px solid var(--appshell-border-soft);
+    margin-bottom: 8px;
+}
+
+.appshell-subnav-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 8px;
+}
+
+.appshell-subnav-link {
+    display: flex;
+    align-items: center;
+    padding: 9px 12px;
+    border-radius: 8px;
+    color: var(--appshell-text-muted);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 500;
+    transition: color 120ms ease, background 120ms ease;
+    border-inline-end: 2px solid transparent;
+    line-height: 1.4;
+}
+.appshell-subnav-link:hover {
+    background: var(--appshell-bg-card);
+    color: var(--appshell-text);
+}
+.appshell-subnav-link.is-active {
+    color: var(--appshell-gold-bright);
+    background: var(--appshell-gold-soft);
+    border-inline-end-color: var(--appshell-gold);
+    font-weight: 600;
+}
+
+.appshell-subnav-sep {
+    border: 0;
+    height: 1px;
+    background: var(--appshell-border-soft);
+    margin: 10px 16px;
+}
+
+.appshell-subnav-group {
+    padding: 12px 16px 6px;
+    color: var(--appshell-gold);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+/* ---------- Main content ---------- */
+.appshell-main {
+    flex: 1 1 auto;
+    min-width: 0;             /* prevent overflow from blowing flex */
+    padding: 24px 32px 64px;
+    overflow-x: hidden;
+}
+
+/* ---------- Dashboard (single-screen module) styling ---------- */
+/* These rules style the existing Index.razor markup (KPI cards,
+   action items list, charts) inside the new AppShell. The
+   classes below are added in Sprint 1.5 when we restyle the
+   dashboard to match mockup #5. For now they're a baseline
+   that makes the legacy markup at least render reasonably. */
+
+.appshell-page-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    gap: 16px;
+}
+.appshell-page-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--appshell-text);
+    margin: 0;
+}
+.appshell-page-subtitle {
+    font-size: 14px;
+    color: var(--appshell-text-muted);
+    margin: 4px 0 0;
+}
+
+.appshell-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+@media (max-width: 1280px) { .appshell-kpi-row { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 720px)  { .appshell-kpi-row { grid-template-columns: 1fr; } }
+
+.appshell-kpi-card {
+    background: var(--appshell-bg-card);
+    border: 1px solid var(--appshell-border);
+    border-radius: 14px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 132px;
+}
+.appshell-kpi-label {
+    color: var(--appshell-text-muted);
+    font-size: 13.5px;
+    font-weight: 500;
+    margin: 0;
+    text-align: end;
+}
+.appshell-kpi-value {
+    color: var(--appshell-text);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.1;
+    direction: ltr;
+    text-align: end;
+    font-family: 'Space Grotesk', 'Cairo', system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+}
+.appshell-kpi-trend {
+    font-size: 12px;
+    color: var(--appshell-text-muted);
+    text-align: end;
+}
+.appshell-kpi-trend.is-up    { color: var(--appshell-success); }
+.appshell-kpi-trend.is-down  { color: var(--appshell-danger); }
+.appshell-kpi-trend.is-warn  { color: var(--appshell-warning); }
+
+.appshell-kpi-card.is-danger .appshell-kpi-value  { color: var(--appshell-danger); }
+.appshell-kpi-card.is-success .appshell-kpi-value { color: var(--appshell-success); }
+.appshell-kpi-card.is-gold .appshell-kpi-value    { color: var(--appshell-gold-bright); }
+
+.appshell-kpi-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--appshell-gold-soft);
+    color: var(--appshell-gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-inline-end: auto;     /* push to the start (right in RTL) */
+}
+
+/* Action-items panel — the "المهام العاجلة" widget from mockup #5 */
+.appshell-action-panel {
+    background: var(--appshell-bg-card);
+    border: 1px solid var(--appshell-border);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+.appshell-action-panel-title {
+    color: var(--appshell-text);
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0 0 12px;
+}
+.appshell-action-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--appshell-border-soft);
+}
+.appshell-action-row:last-child { border-bottom: none; }
+.appshell-action-row-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: var(--appshell-bg-elev);
+    color: var(--appshell-text-muted);
+}
+.appshell-action-row-icon.is-danger  { color: var(--appshell-danger); }
+.appshell-action-row-icon.is-warning { color: var(--appshell-warning); }
+.appshell-action-row-icon.is-info    { color: var(--appshell-info); }
+.appshell-action-row-text {
+    flex: 1;
+    color: var(--appshell-text);
+    font-size: 14px;
+}
+.appshell-action-row-cta {
+    background: transparent;
+    border: 1px solid var(--appshell-gold-line);
+    color: var(--appshell-gold-bright);
+    padding: 5px 14px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 120ms ease, color 120ms ease;
+}
+.appshell-action-row-cta:hover {
+    background: var(--appshell-gold-soft);
+    color: var(--appshell-gold-bright);
+}
+
+/* Charts row */
+.appshell-chart-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+@media (max-width: 1100px) { .appshell-chart-row { grid-template-columns: 1fr; } }
+
+.appshell-chart-card {
+    background: var(--appshell-bg-card);
+    border: 1px solid var(--appshell-border);
+    border-radius: 14px;
+    padding: 20px;
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+}
+.appshell-chart-title {
+    color: var(--appshell-text);
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 12px;
+}
+
+/* ---------- Universal helpers used inside AppShell pages ---------- */
+.appshell h1, .appshell h2, .appshell h3 { color: var(--appshell-text); }
+.appshell p, .appshell span, .appshell li { color: var(--appshell-text); }
+.appshell a { color: var(--appshell-gold-bright); }
+
+/* Numbers inside any AppShell page should always read LTR even
+   inside RTL pages (per the Manus spec). */
+.appshell .num,
+.appshell .appshell-kpi-value,
+.appshell .appshell-amount {
+    direction: ltr;
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+}
+
+/* ---------- Mobile responsiveness ---------- */
+@media (max-width: 768px) {
+    .appshell { flex-direction: column; }
+    .appshell-modules {
+        flex-direction: row;
+        width: 100%;
+        height: 56px;
+        position: sticky;
+        top: 0;
+        padding: 6px 12px;
+        gap: 4px;
+        border-bottom: 1px solid var(--appshell-border-soft);
+        border-inline-start: none;
+    }
+    .appshell-modules-nav { flex-direction: row; }
+    .appshell-modules-footer {
+        flex-direction: row;
+        margin-top: 0;
+        margin-inline-start: auto;
+        padding-top: 0;
+        border-top: none;
+        border-inline-start: 1px solid var(--appshell-border-soft);
+        padding-inline-start: 8px;
+    }
+    .appshell-subnav {
+        width: 100%;
+        height: auto;
+        max-height: none;
+        position: static;
+        padding: 12px 0;
+    }
+    .appshell-main { padding: 16px; }
+}

@@ -580,9 +580,61 @@ A.6 POS sessions) per §6 sequencing, then Phase B + D as planned.
 
 ---
 
-## 3.7. v5 UI Rebuild — operator-pulled (~3 weeks)
+## 3.7. v5 UI Rebuild — operator-pulled (~9.5 weeks total)
 
-**Trigger:** 2026-05-15 operator feedback. After DP.1–DP.5 shipped,
+**Status update 2026-05-15 (afternoon):** The original §3.7 below
+(6-sprint plan kicked off after DP.5) was paused after the
+operator pushed back on the first attempt. Operator went away,
+worked with Manus to produce a much more detailed spec, and
+returned with **5 high-fidelity mockups + a full screen-by-screen
+Manus design document** dropped on 2026-05-15.
+
+**Authoritative spec lives in [`ui-redesign-spec-2026-05-15.md`](./ui-redesign-spec-2026-05-15.md).**
+The summary: replace the single-level 30-item sidebar with a
+3-tier "Mission Control" navigation:
+- **64px Module Sidebar** — 7 module icons (Dashboard / Sales /
+  Purchases / Inventory / Accounting / Contacts / Settings)
+- **240px Sub-Nav Panel** — context-sensitive per active module,
+  groups by named section (e.g. Accounting → Tax / Closing / Reports)
+- **Command Palette** — universal fuzzy search (already shipped
+  via DP.3; polish in this rebuild)
+
+**Implementation discipline (operator-confirmed, 2026-05-15):**
+the Manus spec proposes React/TypeScript/Vite/shadcn — that's
+incompatible with our Blazor Server stack and would require a
+months-long rewrite of all ~145 `.razor` pages. Operator picked
+"adopt design intent in Blazor" — the IA + visual + UX patterns
+transfer 1:1 to `.razor`; the file-structure paths the spec gives
+as `client/src/components/...tsx` map to
+`src/EgyptTax.Web/Shared/AppShell/...razor`.
+
+**Sprint plan (Blazor adaptation, supersedes the 6-sprint plan
+written below for the prior operator pass):**
+
+| Sprint | Deliverable | Effort |
+|---|---|---|
+| 1 | `AppShellLayout.razor` + `ModuleSidebar.razor` + `SubNavPanel.razor` + Dashboard rebuild matching mockup #5. Built side-by-side with existing `MainLayout`; only Dashboard switched over so the other 144 pages keep working unchanged | ~1 week |
+| 2 | Migrate Sales pages (lists + details set the template) | ~2 weeks |
+| 3 | Migrate Purchases pages | ~1.5 weeks |
+| 4 | Migrate Inventory pages | ~1 week |
+| 5 | Migrate Accounting pages + every report | ~2 weeks |
+| 6 | Migrate Contacts + CRM Pipeline (Kanban) | ~1 week |
+| 7 | Migrate Settings + polish (mobile responsive, empty states, loading states) | ~1 week |
+
+Total: **~9.5 weeks**. Sprint 1 is the high-risk sprint (gets the
+shell right, gets one screen pixel-matched to the mockup so the
+operator can sign off the visual direction); the rest is mechanical
+migration of one screen pattern at a time.
+
+The 6-sprint plan written below is **superseded** but kept for
+historical context (it documents what the operator pushed back on
++ what we learned about not band-aiding CSS on top of legacy).
+
+---
+
+### Original 6-sprint plan (superseded — kept for context)
+
+**Trigger:** 2026-05-15 operator feedback (morning). After DP.1–DP.5 shipped,
 the operator surfaced six high-fidelity Arabic mockups (Dashboard
 light + dark, Invoice editor, POS, CRM kanban, sidebar
 Before/After) and explicit critique of DP.2: *"شلت اللينكات

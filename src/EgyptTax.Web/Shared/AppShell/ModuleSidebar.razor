@@ -1,0 +1,94 @@
+@using System.Globalization
+@using EgyptTax.Web.Shared.AppShell
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+@inject IJSRuntime Js
+
+@*
+    v5 UI Rebuild — Sprint 1. The 64px icon-only sidebar from the
+    Manus 2026-05-15 design (RTL: pinned to the right edge of
+    viewport). Each icon is one of the 7 modules; the active
+    module gets the gold-circle treatment from the mockups.
+
+    Bottom slot holds the universal-search trigger (opens the
+    existing CommandPalette) and the user avatar / signout menu.
+*@
+
+<aside class="appshell-modules" aria-label="@(_isArabic ? "الوحدات" : "Modules")">
+    <a class="appshell-modules-logo" href="/" title="DaftarX">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round"
+             width="22" height="22" aria-hidden="true">
+            <path d="M12 2L4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4Z"/>
+        </svg>
+    </a>
+
+    <nav class="appshell-modules-nav">
+        @foreach (var m in AppShellModuleRegistry.All)
+        {
+            var isActive = m.Id == ActiveModuleId;
+            <a class="appshell-module-btn @(isActive ? "is-active" : "")"
+               href="@m.DefaultRoute"
+               title="@(_isArabic ? m.LabelAr : m.LabelEn)"
+               aria-label="@(_isArabic ? m.LabelAr : m.LabelEn)"
+               aria-current="@(isActive ? "page" : null)">
+                <Icon Name="@m.IconName" Class="appshell-module-icon" />
+            </a>
+        }
+    </nav>
+
+    <div class="appshell-modules-footer">
+        <button type="button" class="appshell-module-btn"
+                title="@(_isArabic ? "بحث (Ctrl+K)" : "Search (Ctrl+K)")"
+                aria-label="@(_isArabic ? "افتح البحث الشامل" : "Open universal search")"
+                @onclick="OpenCommandPaletteAsync">
+            <Icon Name="search" Class="appshell-module-icon" />
+        </button>
+
+        @if (!string.IsNullOrEmpty(_userInitial))
+        {
+            <a class="appshell-module-btn appshell-user-btn"
+               href="/profile"
+               title="@_userDisplayName">
+                <span class="appshell-user-initial">@_userInitial</span>
+            </a>
+        }
+        else
+        {
+            <a class="appshell-module-btn"
+               href="/login"
+               title="@(_isArabic ? "تسجيل الدخول" : "Sign in")">
+                <Icon Name="user" Class="appshell-module-icon" />
+            </a>
+        }
+    </div>
+</aside>
+
+@code {
+    [Parameter, EditorRequired] public string ActiveModuleId { get; set; } = "dashboard";
+
+    private bool _isArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    private string? _userInitial;
+    private string? _userDisplayName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var user = auth.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var name = user.Identity.Name ?? user.FindFirst("name")?.Value ?? "?";
+            _userDisplayName = name;
+            _userInitial = string.IsNullOrEmpty(name) ? "?" : char.ToUpperInvariant(name[0]).ToString();
+        }
+    }
+
+    private async Task OpenCommandPaletteAsync()
+    {
+        try { await Js.InvokeVoidAsync("daftarxOpenCmdPalette"); }
+        catch { /* JS not loaded yet — first paint, ignore */ }
+    }
+}

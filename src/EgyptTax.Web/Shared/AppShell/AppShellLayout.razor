@@ -1,0 +1,66 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@using EgyptTax.Web.Shared.AppShell
+@using EgyptTax.Web.Shared.Toasts
+@using EgyptTax.Web.Shared.CmdPalette
+@using Microsoft.AspNetCore.Components.Routing
+@inject NavigationManager Nav
+
+@*
+    v5 UI Rebuild — Sprint 1. The new "Mission Control" layout
+    per the Manus 2026-05-15 design: 3-tier nav (64px module
+    sidebar + 240px context-sensitive sub-nav + main content).
+
+    Lives side-by-side with the existing MainLayout — only pages
+    that opt-in via @layout AppShellLayout get the new chrome;
+    every other page keeps using MainLayout. Lets the operator
+    drive the rebuild module-by-module without breaking anything.
+
+    Dashboard is single-screen (no sub-nav per spec); other 6
+    modules render the contextual SubNavPanel between sidebar and
+    main content.
+*@
+
+<div class="appshell @(_activeModule?.HasSubNav == true ? "has-subnav" : "no-subnav")">
+    <ModuleSidebar ActiveModuleId="@_activeModuleId" />
+
+    @if (_activeModule?.HasSubNav == true)
+    {
+        <SubNavPanel Module="@_activeModule" />
+    }
+
+    <main class="appshell-main">
+        @Body
+    </main>
+</div>
+
+@* Reuse the existing palette + toast layer — no rebuild needed. *@
+<CommandPalette />
+<ToastContainer />
+
+@code {
+    private string _activeModuleId = AppShellModuleRegistry.DashboardId;
+    private AppShellModule? _activeModule;
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        ResolveActiveModule();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        ResolveActiveModule();
+        StateHasChanged();
+    }
+
+    private void ResolveActiveModule()
+    {
+        var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+        if (string.IsNullOrEmpty(path)) path = "/";
+        _activeModuleId = AppShellModuleRegistry.ResolveActive(path);
+        _activeModule = AppShellModuleRegistry.Get(_activeModuleId);
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}

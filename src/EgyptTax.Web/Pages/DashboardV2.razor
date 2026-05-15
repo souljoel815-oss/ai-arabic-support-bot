@@ -1,0 +1,416 @@
+@page "/dashboard-v2"
+@layout EgyptTax.Web.Shared.AppShell.AppShellLayout
+@using System.Globalization
+@using EgyptTax.Application.Compliance.PenaltyShield
+@using EgyptTax.Domain.Banking
+@using EgyptTax.Domain.Compliance
+@using EgyptTax.Domain.Eta
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Periods
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IPenaltyExposureQuery PenaltyQuery
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v5 UI Rebuild — Sprint 1 PoC. The new Dashboard rebuilt to
+    match mockup #5 (operator-supplied 2026-05-15) on the new
+    AppShellLayout. Lives at /dashboard-v2 so the operator can
+    A/B against the legacy / page without breaking it.
+
+    Once the visual direction is approved, this content moves into
+    Index.razor and the legacy 845-line dashboard retires.
+*@
+
+<PageTitle>DaftarX — @(IsArabic ? "الرئيسية" : "Home")</PageTitle>
+
+<header class="appshell-page-header">
+    <div>
+        <h1 class="appshell-page-title">
+            @(IsArabic ? "مرحبًا بك في DaftarX" : "Welcome to DaftarX")
+        </h1>
+        <p class="appshell-page-subtitle">@_todayLabel</p>
+    </div>
+</header>
+
+<section class="appshell-kpi-row">
+    @* KPI 1 — Compliance score *@
+    <div class="appshell-kpi-card is-gold">
+        <div class="kpi-row" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+            <div style="flex:1;">
+                <p class="appshell-kpi-label">@(IsArabic ? "درجة الامتثال" : "Compliance score")</p>
+                <div class="appshell-kpi-value">@_complianceScore<span style="font-size:18px;color:var(--appshell-text-muted);">%</span></div>
+                <p class="appshell-kpi-trend" style="color:var(--appshell-gold-bright);">@(IsArabic ? _complianceLabelAr : _complianceLabelEn)</p>
+            </div>
+            <div class="appshell-kpi-icon">
+                <Icon Name="shield-check" Class="appshell-module-icon" />
+            </div>
+        </div>
+    </div>
+
+    @* KPI 2 — Net profit (this month) *@
+    <div class="appshell-kpi-card is-success">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+            <div style="flex:1;">
+                <p class="appshell-kpi-label">@(IsArabic ? "صافي الربح (الشهر)" : "Net profit (month)")</p>
+                <div class="appshell-kpi-value">@_netProfit.ToString("N0") <span style="font-size:14px;color:var(--appshell-text-muted);">@(IsArabic ? "ج.م" : "EGP")</span></div>
+                <p class="appshell-kpi-trend @(_netProfit >= 0 ? "is-up" : "is-down")">
+                    @(_netProfit >= 0 ? "▲" : "▼") @(IsArabic ? "إيرادات − مصروفات الشهر" : "Revenue − expenses, this month")
+                </p>
+            </div>
+            <div class="appshell-kpi-icon" style="background:rgba(52,211,153,0.15);color:var(--appshell-success);">
+                <Icon Name="trending-up" Class="appshell-module-icon" />
+            </div>
+        </div>
+    </div>
+
+    @* KPI 3 — Overdue receivables *@
+    <div class="appshell-kpi-card is-danger">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+            <div style="flex:1;">
+                <p class="appshell-kpi-label">@(IsArabic ? "المستحقات المتأخرة" : "Overdue receivables")</p>
+                <div class="appshell-kpi-value">@_overdueAmount.ToString("N0") <span style="font-size:14px;color:var(--appshell-text-muted);">@(IsArabic ? "ج.م" : "EGP")</span></div>
+                <p class="appshell-kpi-trend is-down">
+                    @_overdueCount @(IsArabic ? "فاتورة متأخرة" : "overdue invoices")
+                </p>
+            </div>
+            <div class="appshell-kpi-icon" style="background:rgba(248,113,113,0.15);color:var(--appshell-danger);">
+                <Icon Name="clock" Class="appshell-module-icon" />
+            </div>
+        </div>
+    </div>
+
+    @* KPI 4 — Total sales (this month) *@
+    <div class="appshell-kpi-card">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+            <div style="flex:1;">
+                <p class="appshell-kpi-label">@(IsArabic ? "إجمالي المبيعات (الشهر)" : "Total sales (month)")</p>
+                <div class="appshell-kpi-value">@_salesThisMonth.ToString("N0") <span style="font-size:14px;color:var(--appshell-text-muted);">@(IsArabic ? "ج.م" : "EGP")</span></div>
+                <p class="appshell-kpi-trend">@_postedInvoicesThisMonth @(IsArabic ? "فاتورة مُرحَّلة" : "posted invoices")</p>
+            </div>
+            <div class="appshell-kpi-icon">
+                <Icon Name="receipt" Class="appshell-module-icon" />
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="appshell-action-panel">
+    <h2 class="appshell-action-panel-title">@(IsArabic ? "المهام العاجلة" : "Urgent tasks")</h2>
+
+    @if (_overdueCount > 0)
+    {
+        <div class="appshell-action-row">
+            <div class="appshell-action-row-icon is-danger"><Icon Name="bell" Class="appshell-module-icon" /></div>
+            <div class="appshell-action-row-text">
+                @_overdueCount @(IsArabic ? "فواتير متأخرة" : "overdue invoices") —
+                <strong>@_overdueAmount.ToString("N0") @(IsArabic ? "ج.م" : "EGP")</strong>
+            </div>
+            <a class="appshell-action-row-cta" href="/invoices">@(IsArabic ? "متابعة" : "Follow up")</a>
+        </div>
+    }
+
+    @if (_nextVatDue is not null)
+    {
+        <div class="appshell-action-row">
+            <div class="appshell-action-row-icon is-warning"><Icon Name="calendar" Class="appshell-module-icon" /></div>
+            <div class="appshell-action-row-text">
+                @(IsArabic ? "إقرار ضريبة القيمة المضافة" : "VAT return") —
+                <strong>@_nextVatDue.Value.ToString("yyyy-MM-dd")</strong>
+            </div>
+            <a class="appshell-action-row-cta" href="/tax/vat-return">@(IsArabic ? "تقديم" : "File")</a>
+        </div>
+    }
+
+    @if (_unmatchedBankOps > 0)
+    {
+        <div class="appshell-action-row">
+            <div class="appshell-action-row-icon is-info"><Icon Name="landmark" Class="appshell-module-icon" /></div>
+            <div class="appshell-action-row-text">
+                @_unmatchedBankOps @(IsArabic ? "عملية بنكية تحتاج مطابقة" : "bank operations need reconciliation")
+            </div>
+            <a class="appshell-action-row-cta" href="/payments/unmatched">@(IsArabic ? "مطابقة" : "Reconcile")</a>
+        </div>
+    }
+
+    @if (_lowStockCount > 0)
+    {
+        <div class="appshell-action-row">
+            <div class="appshell-action-row-icon is-warning"><Icon Name="package" Class="appshell-module-icon" /></div>
+            <div class="appshell-action-row-text">
+                @_lowStockCount @(IsArabic ? "أصناف وصلت الحد الأدنى للمخزون" : "items at minimum stock level")
+            </div>
+            <a class="appshell-action-row-cta" href="/items">@(IsArabic ? "طلب شراء" : "Reorder")</a>
+        </div>
+    }
+
+    @if (_overdueCount == 0 && _nextVatDue is null && _unmatchedBankOps == 0 && _lowStockCount == 0)
+    {
+        <p style="color:var(--appshell-text-muted);text-align:center;padding:24px 0;margin:0;">
+            ✓ @(IsArabic ? "ما فيش مهام عاجلة دلوقتي." : "No urgent tasks right now.")
+        </p>
+    }
+</section>
+
+<section class="appshell-chart-row">
+    <div class="appshell-chart-card">
+        <h3 class="appshell-chart-title">@(IsArabic ? "الإيرادات vs المصروفات (آخر 6 أشهر)" : "Revenue vs expenses (last 6 months)")</h3>
+        @if (_revenueByMonth.Count > 0)
+        {
+            var maxBar = Math.Max(_revenueByMonth.Max(x => x.Revenue), _revenueByMonth.Max(x => x.Expenses));
+            if (maxBar <= 0) maxBar = 1;
+            <div style="flex:1;display:flex;align-items:flex-end;gap:8px;padding:8px 0;">
+                @foreach (var bucket in _revenueByMonth)
+                {
+                    var revH = (int)(bucket.Revenue / maxBar * 200);
+                    var expH = (int)(bucket.Expenses / maxBar * 200);
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+                        <div style="display:flex;align-items:flex-end;gap:3px;height:200px;">
+                            <div title="@(IsArabic ? "إيرادات" : "Revenue") @bucket.Revenue.ToString("N0")"
+                                 style="width:14px;height:@(revH)px;background:var(--appshell-info);border-radius:3px 3px 0 0;"></div>
+                            <div title="@(IsArabic ? "مصروفات" : "Expenses") @bucket.Expenses.ToString("N0")"
+                                 style="width:14px;height:@(expH)px;background:var(--appshell-gold);border-radius:3px 3px 0 0;"></div>
+                        </div>
+                        <span style="font-size:11px;color:var(--appshell-text-muted);">@bucket.Label</span>
+                    </div>
+                }
+            </div>
+            <div style="display:flex;gap:16px;justify-content:center;font-size:12px;color:var(--appshell-text-muted);margin-top:8px;">
+                <span><span style="display:inline-block;width:10px;height:10px;background:var(--appshell-info);border-radius:2px;margin-inline-end:4px;"></span>@(IsArabic ? "إيرادات" : "Revenue")</span>
+                <span><span style="display:inline-block;width:10px;height:10px;background:var(--appshell-gold);border-radius:2px;margin-inline-end:4px;"></span>@(IsArabic ? "مصروفات" : "Expenses")</span>
+            </div>
+        }
+        else
+        {
+            <p style="color:var(--appshell-text-muted);text-align:center;padding:48px 0;">
+                @(IsArabic ? "ما فيش بيانات كافية بعد." : "Not enough data yet.")
+            </p>
+        }
+    </div>
+
+    <div class="appshell-chart-card">
+        <h3 class="appshell-chart-title">@(IsArabic ? "التدفقات النقدية (آخر 30 يومًا)" : "Cash flow (last 30 days)")</h3>
+        @if (_cashFlowDaily.Count > 1)
+        {
+            var minCash = _cashFlowDaily.Min(x => x.RunningTotal);
+            var maxCash = _cashFlowDaily.Max(x => x.RunningTotal);
+            var rangeCash = Math.Max(maxCash - minCash, 1m);
+            var chartW = 600;
+            var chartH = 200;
+            var chartStep = (double)chartW / Math.Max(_cashFlowDaily.Count - 1, 1);
+            var chartPts = _cashFlowDaily.Select((p, i) =>
+            {
+                var x = i * chartStep;
+                var y = chartH - (double)((p.RunningTotal - minCash) / rangeCash) * chartH;
+                return $"{x:0.##},{y:0.##}";
+            });
+            var polyline = string.Join(" ", chartPts);
+            var area = $"0,{chartH} {polyline} {chartW},{chartH}";
+            <svg viewBox="0 0 @chartW @chartH" preserveAspectRatio="none" style="width:100%;height:200px;flex:1;">
+                <polygon points="@area" fill="var(--appshell-gold-soft)" />
+                <polyline points="@polyline" fill="none" stroke="var(--appshell-gold)" stroke-width="2" />
+            </svg>
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--appshell-text-muted);">
+                <span>@_cashFlowDaily.First().Date.ToString("MM-dd")</span>
+                <span>@_cashFlowDaily.Last().Date.ToString("MM-dd")</span>
+            </div>
+        }
+        else
+        {
+            <p style="color:var(--appshell-text-muted);text-align:center;padding:48px 0;">
+                @(IsArabic ? "ما فيش بيانات تدفقات بعد." : "No cash flow data yet.")
+            </p>
+        }
+    </div>
+</section>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    private string _todayLabel = "";
+
+    // KPI data
+    private decimal _salesThisMonth;
+    private int _postedInvoicesThisMonth;
+    private decimal _overdueAmount;
+    private int _overdueCount;
+    private decimal _netProfit;
+    private int _complianceScore = 100;
+    private string _complianceLabelAr = "ممتاز";
+    private string _complianceLabelEn = "Excellent";
+
+    // Action items
+    private DateOnly? _nextVatDue;
+    private int _unmatchedBankOps;
+    private int _lowStockCount;
+
+    // Charts
+    private record MonthBucket(string Label, decimal Revenue, decimal Expenses);
+    private List<MonthBucket> _revenueByMonth = new();
+
+    private record DayPoint(DateOnly Date, decimal RunningTotal);
+    private List<DayPoint> _cashFlowDaily = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var now = DateTime.UtcNow;
+        var today = DateOnly.FromDateTime(now);
+        var monthStart = new DateOnly(today.Year, today.Month, 1);
+
+        _todayLabel = IsArabic
+            ? today.ToString("dddd، d MMMM yyyy", new CultureInfo("ar-EG"))
+            : today.ToString("dddd, d MMMM yyyy", CultureInfo.InvariantCulture);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // Sales this month + total invoices posted
+        var monthInvoices = await db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted
+                && i.PostedAtUtc != null
+                && i.DocumentDate >= monthStart)
+            .Select(i => new { i.GrandTotal.Amount, i.Id })
+            .ToListAsync();
+        _salesThisMonth = monthInvoices.Sum(x => x.Amount);
+        _postedInvoicesThisMonth = monthInvoices.Count;
+
+        // Overdue: posted invoices past due date with outstanding balance.
+        // Approximated via document_date + 30d; refined when E.8 ships.
+        var thirtyDaysAgo = today.AddDays(-30);
+        var postedOlder = await db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted
+                && i.DocumentDate < thirtyDaysAgo)
+            .Select(i => new { i.Id, i.GrandTotal.Amount })
+            .ToListAsync();
+        var overdueIds = postedOlder.Select(x => x.Id).ToHashSet();
+
+        // SQLite can't Sum decimal server-side — materialize then sum.
+        var allocations = await db.Set<EgyptTax.Domain.Documents.PaymentAllocation>().AsNoTracking()
+            .Where(a => overdueIds.Contains(a.TargetDocumentId)
+                && a.TargetDocumentType == DocumentType.SalesInvoice)
+            .Select(a => new { a.TargetDocumentId, Amt = a.AllocatedAmount.Amount })
+            .ToListAsync();
+        var paidByInvoice = allocations
+            .GroupBy(a => a.TargetDocumentId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amt));
+
+        var overdueRows = postedOlder
+            .Select(i => new { i.Id, Outstanding = i.Amount - paidByInvoice.GetValueOrDefault(i.Id, 0m) })
+            .Where(x => x.Outstanding > 0m)
+            .ToList();
+        _overdueCount = overdueRows.Count;
+        _overdueAmount = overdueRows.Sum(x => x.Outstanding);
+
+        // Compliance: reuse PenaltyExposureQuery for the headline score.
+        // Lower exposure → higher score (cap deduction at 50 so even a
+        // bad month still shows a partial number).
+        try
+        {
+            var penalty = await PenaltyQuery.GetAsync(now);
+            // Use the projected exposure for the current month + count
+            // of overdue actions as the headline. Each overdue item
+            // costs a fixed 10% of the score; projected EGP costs 1
+            // point per 1000 EGP.
+            var deduction = penalty.ProjectedThisMonthEgp / 1000m
+                + penalty.WorkQueue.Count(w => w.Urgency == PenaltyActionUrgency.Overdue) * 10m;
+            if (deduction < 0) deduction = 0;
+            if (deduction > 50) deduction = 50;
+            _complianceScore = 100 - (int)Math.Round(deduction);
+        }
+        catch
+        {
+            _complianceScore = 100;
+        }
+        _complianceLabelAr = _complianceScore >= 90 ? "ممتاز"
+            : _complianceScore >= 75 ? "جيد"
+            : _complianceScore >= 50 ? "يحتاج متابعة"
+            : "خطر مرتفع";
+        _complianceLabelEn = _complianceScore >= 90 ? "Excellent"
+            : _complianceScore >= 75 ? "Good"
+            : _complianceScore >= 50 ? "Needs attention"
+            : "High risk";
+
+        // Net profit (month) = sales − expenses this month, very rough.
+        // SQLite can't Sum decimal server-side; pull rows then sum.
+        var monthExpenseRows = await db.Set<EgyptTax.Domain.Expenses.Expense>().AsNoTracking()
+            .Where(e => e.State == DocumentState.Posted
+                && e.DocumentDate >= monthStart)
+            .Select(e => e.Amount.Amount)
+            .ToListAsync();
+        var monthExpenses = monthExpenseRows.Sum();
+        _netProfit = _salesThisMonth - monthExpenses;
+
+        // Next VAT deadline (monthly OR quarterly — whichever is closer)
+        _nextVatDue = await db.Set<ComplianceObligation>().AsNoTracking()
+            .Where(o => (o.Kind == ComplianceObligationKind.VatMonthly
+                    || o.Kind == ComplianceObligationKind.VatQuarterly)
+                && o.DueDate >= today
+                && o.Status != ComplianceObligationStatus.Filed)
+            .OrderBy(o => o.DueDate)
+            .Select(o => (DateOnly?)o.DueDate)
+            .FirstOrDefaultAsync();
+
+        // Unmatched bank ops
+        _unmatchedBankOps = await db.Set<BankStatementLine>().AsNoTracking()
+            .Where(l => l.MatchedCustomerReceiptVoucherId == null
+                && l.MatchedSupplierPaymentVoucherId == null)
+            .CountAsync();
+
+        // Low stock items
+        _lowStockCount = await db.Set<Item>().AsNoTracking()
+            .Where(i => i.LowStockThreshold > 0
+                && i.QuantityOnHand <= i.LowStockThreshold)
+            .CountAsync();
+
+        // Revenue vs expenses last 6 months
+        var sixMonthsAgo = new DateOnly(today.Year, today.Month, 1).AddMonths(-5);
+        var revRows = await db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted && i.DocumentDate >= sixMonthsAgo)
+            .Select(i => new { i.DocumentDate, i.GrandTotal.Amount })
+            .ToListAsync();
+        var expRows = await db.Set<EgyptTax.Domain.Expenses.Expense>().AsNoTracking()
+            .Where(e => e.State == DocumentState.Posted && e.DocumentDate >= sixMonthsAgo)
+            .Select(e => new { e.DocumentDate, e.Amount.Amount })
+            .ToListAsync();
+
+        for (int i = 0; i < 6; i++)
+        {
+            var month = sixMonthsAgo.AddMonths(i);
+            var nextMonth = month.AddMonths(1);
+            var rev = revRows.Where(r => r.DocumentDate >= month && r.DocumentDate < nextMonth).Sum(r => r.Amount);
+            var exp = expRows.Where(e => e.DocumentDate >= month && e.DocumentDate < nextMonth).Sum(e => e.Amount);
+            var label = IsArabic
+                ? month.ToString("MMM", new CultureInfo("ar-EG"))
+                : month.ToString("MMM", CultureInfo.InvariantCulture);
+            _revenueByMonth.Add(new MonthBucket(label, rev, exp));
+        }
+
+        // Cash flow last 30 days — running balance from CRVs (in) − SPVs (out)
+        var since = today.AddDays(-30);
+        var inflows = await db.Set<EgyptTax.Domain.Documents.CustomerReceiptVoucher>().AsNoTracking()
+            .Where(c => c.State == DocumentState.Posted
+                && c.PostedAtUtc != null
+                && c.ReceiptDate >= since)
+            .Select(c => new { Date = c.ReceiptDate, Amt = c.NetCashReceived.Amount })
+            .ToListAsync();
+        var outflows = await db.Set<EgyptTax.Domain.Documents.SupplierPaymentVoucher>().AsNoTracking()
+            .Where(p => p.State == DocumentState.Posted
+                && p.PostedAtUtc != null
+                && p.PaymentDate >= since)
+            .Select(p => new { Date = p.PaymentDate, Amt = p.NetCashPaid.Amount })
+            .ToListAsync();
+
+        decimal running = 0m;
+        for (int i = 0; i <= 30; i++)
+        {
+            var d = since.AddDays(i);
+            running += inflows.Where(x => x.Date == d).Sum(x => x.Amt);
+            running -= outflows.Where(x => x.Date == d).Sum(x => x.Amt);
+            _cashFlowDaily.Add(new DayPoint(d, running));
+        }
+    }
+}

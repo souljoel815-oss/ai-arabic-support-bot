@@ -1,0 +1,68 @@
+@using System.Globalization
+@using EgyptTax.Web.Shared.AppShell
+@inject NavigationManager Nav
+
+@*
+    v5 UI Rebuild — Sprint 1. The 240px sub-nav panel from the
+    Manus 2026-05-15 design (RTL: sits to the LEFT of the 64px
+    module sidebar, i.e. between the sidebar and the main content
+    area). Renders the active module's contextual links, grouped
+    by named section with separators between groups.
+
+    Header at the top shows the module's Arabic + English label.
+    Active link highlighted with the gold treatment from the
+    mockups (gold left border + gold text + tinted background).
+*@
+
+@if (Module is null)
+{
+    return;
+}
+
+<aside class="appshell-subnav" aria-label="@(_isArabic ? Module.LabelAr : Module.LabelEn)">
+    <header class="appshell-subnav-header">
+        @(_isArabic ? Module.LabelAr : Module.LabelEn)
+    </header>
+
+    <nav class="appshell-subnav-nav">
+        @foreach (var entry in Module.SubNavEntries)
+        {
+            switch (entry)
+            {
+                case SubNavSeparator:
+                    <hr class="appshell-subnav-sep" />
+                    break;
+
+                case SubNavGroupHeader gh:
+                    <div class="appshell-subnav-group">
+                        @(_isArabic ? gh.LabelAr : gh.LabelEn)
+                    </div>
+                    break;
+
+                case SubNavLink link:
+                    var isActive = IsActiveLink(link.Url);
+                    <a class="appshell-subnav-link @(isActive ? "is-active" : "")"
+                       href="@link.Url"
+                       aria-current="@(isActive ? "page" : null)">
+                        @(_isArabic ? link.LabelAr : link.LabelEn)
+                    </a>
+                    break;
+            }
+        }
+    </nav>
+</aside>
+
+@code {
+    [Parameter, EditorRequired] public AppShellModule? Module { get; set; }
+
+    private bool _isArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsActiveLink(string url)
+    {
+        var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+        if (string.IsNullOrEmpty(path)) path = "/";
+        return path.Equals(url, StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith(url + "/", StringComparison.OrdinalIgnoreCase);
+    }
+}

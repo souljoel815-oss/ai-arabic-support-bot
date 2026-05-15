@@ -37,6 +37,10 @@
     <meta name="mobile-web-app-capable" content="yes" />
 
     <link rel="stylesheet" href="~/site.css" asp-append-version="true" />
+    @* v5 UI Rebuild — Sprint 1. AppShell layout (3-tier nav).
+       Loaded after site.css so the .appshell-scoped rules win
+       on opt-in pages; site.css still owns the legacy 144 pages. *@
+    <link rel="stylesheet" href="~/css/app-shell.css" asp-append-version="true" />
 
     @* v5 DP.5 — apply theme BEFORE first paint to avoid a
        light-flash on dark loads. Inline + before any rendered
