@@ -4,20 +4,25 @@
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 @using System.Globalization
+@using EgyptTax.Application.Compliance.PenaltyShield
+@using EgyptTax.Domain.Audit
+@using EgyptTax.Domain.Compliance
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Eta
+@using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Purchases
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.Web.Shared.AppShell
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IPenaltyExposureQuery PenaltyQuery
 @inject NavigationManager Nav
-
-@*
-    v5 UI Rebuild — Sprint 1 (updated 2026-05-15).
-    Dashboard with:
-      - Greeting header
-      - 4 KPI cards (Sales, Receivables, Expenses, Compliance Score)
-      - 3 action items (onboarding tasks)
-      - 2 chart placeholders (Sales last 6 months, Expenses by category)
-    
-    Data is placeholder until the real queries are wired.
-*@
+@inject AuthenticationStateProvider Auth
 
 <PageTitle>DaftarX — @(_isArabic ? "الرئيسية" : "Dashboard")</PageTitle>
 
@@ -31,140 +36,525 @@
             </h1>
             <p class="dx-dash-date">
                 <Icon Name="calendar" Class="dx-dash-date-ic" />
-                @DateTime.Now.ToString("dddd، d MMMM yyyy", new CultureInfo("ar-EG"))
+                @DateTime.Now.ToString(_isArabic ? "dddd، d MMMM yyyy" : "dddd, MMMM d, yyyy",
+                    new CultureInfo(_isArabic ? "ar-EG" : "en-US"))
+                <span class="dx-dash-period-sep">·</span>
+                <span>@(_isArabic ? "الفترة" : "Period"): @_periodLabel</span>
             </p>
         </div>
     </div>
 
     @* ── KPI Cards Row ── *@
     <div class="dx-kpi-row">
-        @* Card 1: Sales this month *@
-        <div class="dx-kpi-card">
+        @* Sales this month *@
+        <a href="/invoices" class="dx-kpi-card">
             <div class="dx-kpi-body">
-                <p class="dx-kpi-label">@(_isArabic ? "المبيعات هذا الشهر" : "Sales this month")</p>
+                <p class="dx-kpi-label">@(_isArabic ? "مبيعات الشهر" : "Sales this month")</p>
                 <div class="dx-kpi-value-row">
-                    <span class="dx-kpi-amount">@ArabicNumerals.Format(0m)</span>
+                    <span class="dx-kpi-amount">@ArabicNumerals.Format(_salesThisMonth)</span>
                     <span class="dx-kpi-unit">@(_isArabic ? "ج.م" : "EGP")</span>
                 </div>
-                <p class="dx-kpi-trend">—</p>
+                <p class="dx-kpi-trend">
+                    @if (_postedInvoiceCount > 0)
+                    {
+                        <span>@ArabicNumerals.Format(_postedInvoiceCount) @(_isArabic ? "فاتورة مرحّلة" : "posted invoices")</span>
+                    }
+                    else
+                    {
+                        <span>@(_isArabic ? "لا توجد فواتير بعد" : "no invoices yet")</span>
+                    }
+                </p>
             </div>
             <div class="dx-kpi-icon dx-kpi-icon--gold">
                 <Icon Name="trending-up" Class="dx-kpi-ic" />
             </div>
-        </div>
+        </a>
 
-        @* Card 2: Receivables *@
-        <div class="dx-kpi-card">
+        @* Expenses this month *@
+        <a href="/expenses" class="dx-kpi-card">
             <div class="dx-kpi-body">
-                <p class="dx-kpi-label">@(_isArabic ? "المستحقات" : "Receivables")</p>
+                <p class="dx-kpi-label">@(_isArabic ? "مصروفات الشهر" : "Expenses this month")</p>
                 <div class="dx-kpi-value-row">
-                    <span class="dx-kpi-amount">@ArabicNumerals.Format(0m)</span>
+                    <span class="dx-kpi-amount">@ArabicNumerals.Format(_expensesThisMonth)</span>
                     <span class="dx-kpi-unit">@(_isArabic ? "ج.م" : "EGP")</span>
                 </div>
-                <p class="dx-kpi-trend">@(_isArabic ? "٠ فاتورة مستحقة" : "0 invoices due")</p>
-            </div>
-            <div class="dx-kpi-icon dx-kpi-icon--danger">
-                <Icon Name="alert-triangle" Class="dx-kpi-ic" />
-            </div>
-        </div>
-
-        @* Card 3: Expenses *@
-        <div class="dx-kpi-card">
-            <div class="dx-kpi-body">
-                <p class="dx-kpi-label">@(_isArabic ? "المصروفات" : "Expenses")</p>
-                <div class="dx-kpi-value-row">
-                    <span class="dx-kpi-amount">@ArabicNumerals.Format(0m)</span>
-                    <span class="dx-kpi-unit">@(_isArabic ? "ج.م" : "EGP")</span>
-                </div>
-                <p class="dx-kpi-trend">—</p>
+                <p class="dx-kpi-trend">
+                    @if (_expensesMissingAttachment > 0)
+                    {
+                        <span class="is-warn">@ArabicNumerals.Format(_expensesMissingAttachment) @(_isArabic ? "بدون مرفق" : "missing receipt")</span>
+                    }
+                    else
+                    {
+                        <span>@(_isArabic ? "صافي الربح" : "net profit"): @ArabicNumerals.Format(_salesThisMonth - _expensesThisMonth) @(_isArabic ? "ج.م" : "EGP")</span>
+                    }
+                </p>
             </div>
             <div class="dx-kpi-icon dx-kpi-icon--warning">
                 <Icon Name="credit-card" Class="dx-kpi-ic" />
             </div>
-        </div>
+        </a>
 
-        @* Card 4: Compliance Score *@
-        <div class="dx-kpi-card">
+        @* VAT payable *@
+        <a href="/tax/vat-return" class="dx-kpi-card">
             <div class="dx-kpi-body">
-                <p class="dx-kpi-label">@(_isArabic ? "درجة الامتثال" : "Compliance score")</p>
-                <p class="dx-kpi-compliance-label">@(_isArabic ? "لا توجد بيانات بعد" : "No data yet")</p>
+                <p class="dx-kpi-label">@(_isArabic ? "ضريبة القيمة المضافة المستحقة" : "VAT payable")</p>
+                <div class="dx-kpi-value-row @(_vatPayable > 0 ? "dx-kpi-value--danger" : "")">
+                    <span class="dx-kpi-amount">@ArabicNumerals.Format(_vatPayable)</span>
+                    <span class="dx-kpi-unit">@(_isArabic ? "ج.م" : "EGP")</span>
+                </div>
+                <p class="dx-kpi-trend">
+                    @(_isArabic ? "مخرجات" : "Output"): @ArabicNumerals.Format(_outputVat)
+                    · @(_isArabic ? "مدخلات" : "Input"): @ArabicNumerals.Format(_inputVat)
+                </p>
             </div>
-            <div class="dx-kpi-icon dx-kpi-icon--success">
-                <Icon Name="shield" Class="dx-kpi-ic" />
+            <div class="dx-kpi-icon @(_vatPayable > 0 ? "dx-kpi-icon--danger" : "dx-kpi-icon--success")">
+                <Icon Name="percent" Class="dx-kpi-ic" />
             </div>
-        </div>
+        </a>
+
+        @* Open tasks / inbox *@
+        <a href="/approvals" class="dx-kpi-card">
+            <div class="dx-kpi-body">
+                <p class="dx-kpi-label">@(_isArabic ? "مهام في الانتظار" : "Open tasks")</p>
+                <div class="dx-kpi-value-row">
+                    <span class="dx-kpi-amount">@ArabicNumerals.Format(_openTasksCount)</span>
+                    <span class="dx-kpi-unit">@(_isArabic ? "بند" : "items")</span>
+                </div>
+                <p class="dx-kpi-trend">
+                    @if (_etaCriticalCount > 0)
+                    {
+                        <span class="is-warn">@ArabicNumerals.Format(_etaCriticalCount) @(_isArabic ? "إرسال ETA حرج" : "ETA critical")</span>
+                    }
+                    else if (_pendingApprovalCount > 0)
+                    {
+                        <span>@ArabicNumerals.Format(_pendingApprovalCount) @(_isArabic ? "اعتماد" : "approvals")</span>
+                    }
+                    else
+                    {
+                        <span>@(_isArabic ? "كل شيء على ما يرام" : "all clear")</span>
+                    }
+                </p>
+            </div>
+            <div class="dx-kpi-icon @(_etaCriticalCount > 0 ? "dx-kpi-icon--danger" : "dx-kpi-icon--info")">
+                <Icon Name="bell" Class="dx-kpi-ic" />
+            </div>
+        </a>
     </div>
 
-    @* ── Action Items Panel ── *@
-    <div class="dx-action-panel">
-        <h2 class="dx-action-panel-title">@(_isArabic ? "المهام العاجلة" : "Urgent tasks")</h2>
-        <div class="dx-action-list">
-            @* Action 1: Company data *@
-            <div class="dx-action-row">
-                <a class="dx-action-cta" href="/settings/company">@(_isArabic ? "إعدادات ←" : "Settings →")</a>
-                <div class="dx-action-text">
-                    <strong>@(_isArabic ? "أضف بيانات شركتك" : "Add company data")</strong><br />
-                    <span>@(_isArabic ? "اذهب للإعدادات وأكمل بيانات الشركة والرقم الضريبي" : "Go to settings and complete company info and tax ID")</span>
-                </div>
-                <div class="dx-action-icon dx-action-icon--warning">
-                    <Icon Name="alert-triangle" Class="dx-kpi-ic" />
-                </div>
-            </div>
-
-            @* Action 2: Chart of accounts *@
-            <div class="dx-action-row">
-                <a class="dx-action-cta" href="/settings/chart-of-accounts">@(_isArabic ? "المحاسبة ←" : "Accounting →")</a>
-                <div class="dx-action-text">
-                    <strong>@(_isArabic ? "أنشئ شجرة الحسابات" : "Create chart of accounts")</strong><br />
-                    <span>@(_isArabic ? "ابدأ بإنشاء شجرة الحسابات أو استوردها من ملف Excel" : "Create chart of accounts or import from Excel")</span>
-                </div>
-                <div class="dx-action-icon dx-action-icon--info">
-                    <Icon Name="boxes" Class="dx-kpi-ic" />
-                </div>
-            </div>
-
-            @* Action 3: First customer *@
-            <div class="dx-action-row">
-                <a class="dx-action-cta" href="/customers">@(_isArabic ? "العملاء ←" : "Contacts →")</a>
-                <div class="dx-action-text">
-                    <strong>@(_isArabic ? "أضف أول عميل" : "Add first customer")</strong><br />
-                    <span>@(_isArabic ? "أضف بيانات عملائك لبدء إصدار الفواتير" : "Add customer data to start issuing invoices")</span>
-                </div>
-                <div class="dx-action-icon dx-action-icon--info">
-                    <Icon Name="user" Class="dx-kpi-ic" />
-                </div>
+    <div class="dx-dash-grid">
+        @* ── Action Items Panel ── *@
+        <div class="dx-action-panel">
+            <h2 class="dx-action-panel-title">@(_isArabic ? "تحتاج انتباهك" : "Needs your attention")</h2>
+            <div class="dx-action-list">
+                @if (_etaCriticalCount > 0)
+                {
+                    <a class="dx-action-row" href="/eta">
+                        <div class="dx-action-icon dx-action-icon--danger">
+                            <Icon Name="shield-alert" Class="dx-kpi-ic" />
+                        </div>
+                        <div class="dx-action-text">
+                            <strong>@ArabicNumerals.Format(_etaCriticalCount) @(_isArabic ? "إرسال ETA حرج" : "ETA submissions critical")</strong><br />
+                            <span>@(_isArabic ? "نافذة الإرسال خلال 24 ساعة — اضغط للمعالجة" : "Submission window closes within 24h — open to resolve")</span>
+                        </div>
+                        <span class="dx-action-cta">@(_isArabic ? "افتح ←" : "Open →")</span>
+                    </a>
+                }
+                @if (_pendingApprovalCount > 0)
+                {
+                    <a class="dx-action-row" href="/approvals">
+                        <div class="dx-action-icon dx-action-icon--warning">
+                            <Icon Name="check-square" Class="dx-kpi-ic" />
+                        </div>
+                        <div class="dx-action-text">
+                            <strong>@ArabicNumerals.Format(_pendingApprovalCount) @(_isArabic ? "طلب اعتماد" : "pending approvals")</strong><br />
+                            <span>@(_isArabic ? "طلبات في انتظار قرارك" : "Requests waiting on your decision")</span>
+                        </div>
+                        <span class="dx-action-cta">@(_isArabic ? "راجع ←" : "Review →")</span>
+                    </a>
+                }
+                @if (_draftsCount > 0)
+                {
+                    <a class="dx-action-row" href="/invoices?state=Draft">
+                        <div class="dx-action-icon dx-action-icon--info">
+                            <Icon Name="edit" Class="dx-kpi-ic" />
+                        </div>
+                        <div class="dx-action-text">
+                            <strong>@ArabicNumerals.Format(_draftsCount) @(_isArabic ? "فاتورة مسودة" : "draft invoices")</strong><br />
+                            <span>@(_isArabic ? "فواتير لم تُرحّل بعد" : "Invoices not yet posted")</span>
+                        </div>
+                        <span class="dx-action-cta">@(_isArabic ? "أكمل ←" : "Finish →")</span>
+                    </a>
+                }
+                @if (_lowStockCount > 0)
+                {
+                    <a class="dx-action-row" href="/items?lowStock=1">
+                        <div class="dx-action-icon dx-action-icon--warning">
+                            <Icon Name="package" Class="dx-kpi-ic" />
+                        </div>
+                        <div class="dx-action-text">
+                            <strong>@ArabicNumerals.Format(_lowStockCount) @(_isArabic ? "صنف عند حد التنبيه" : "items at threshold")</strong><br />
+                            <span>@string.Join("، ", _lowStockTop.Take(3).Select(s => s.Code))</span>
+                        </div>
+                        <span class="dx-action-cta">@(_isArabic ? "اطلب ←" : "Reorder →")</span>
+                    </a>
+                }
+                @if (_expensesMissingAttachment > 0)
+                {
+                    <a class="dx-action-row" href="/expenses?attachment=missing">
+                        <div class="dx-action-icon dx-action-icon--warning">
+                            <Icon Name="paperclip" Class="dx-kpi-ic" />
+                        </div>
+                        <div class="dx-action-text">
+                            <strong>@ArabicNumerals.Format(_expensesMissingAttachment) @(_isArabic ? "مصروف بدون مرفق" : "expenses missing receipts")</strong><br />
+                            <span>@(_isArabic ? "خصمها الضريبي مهدد — أرفق الإيصال" : "Tax-deductible status at risk — attach receipts")</span>
+                        </div>
+                        <span class="dx-action-cta">@(_isArabic ? "أصلح ←" : "Fix →")</span>
+                    </a>
+                }
+                @if (_upcomingDeadlines.Count > 0)
+                {
+                    @foreach (var d in _upcomingDeadlines.Take(2))
+                    {
+                        var days = (d.DueDate.ToDateTime(TimeOnly.MinValue) - DateTime.Today).Days;
+                        <a class="dx-action-row" href="/compliance/calendar">
+                            <div class="dx-action-icon @(days <= 3 ? "dx-action-icon--danger" : "dx-action-icon--info")">
+                                <Icon Name="calendar" Class="dx-kpi-ic" />
+                            </div>
+                            <div class="dx-action-text">
+                                <strong>@DeadlineLabel(d.Kind)</strong><br />
+                                <span>
+                                    @(_isArabic
+                                        ? (days == 0 ? "اليوم" : days == 1 ? "غداً" : $"خلال {ArabicNumerals.Format(days)} يوم")
+                                        : (days == 0 ? "today" : days == 1 ? "tomorrow" : $"in {days} days"))
+                                </span>
+                            </div>
+                            <span class="dx-action-cta">@(_isArabic ? "التقويم ←" : "Calendar →")</span>
+                        </a>
+                    }
+                }
+                @if (_openTasksCount == 0
+                    && _lowStockCount == 0
+                    && _expensesMissingAttachment == 0
+                    && _upcomingDeadlines.Count == 0)
+                {
+                    <div class="dx-action-empty">
+                        <Icon Name="check-circle" Class="dx-action-empty-ic" />
+                        <strong>@(_isArabic ? "لا مهام عاجلة الآن" : "No urgent tasks")</strong>
+                        <span>@(_isArabic ? "كل المستندات مرحّلة، كل الإرسالات على وقتها." : "Everything is posted and on schedule.")</span>
+                    </div>
+                }
             </div>
         </div>
-    </div>
 
-    @* ── Chart Placeholders ── *@
-    <div class="dx-chart-row">
+        @* ── Revenue Trend (6 months) ── *@
         <div class="dx-chart-card">
             <div class="dx-chart-header">
                 <h3 class="dx-chart-title">@(_isArabic ? "المبيعات — آخر 6 أشهر" : "Sales — last 6 months")</h3>
+                <a href="/reports/sales-by-rep" class="dx-chart-link">@(_isArabic ? "كل التقارير ←" : "All reports →")</a>
             </div>
-            <p class="dx-chart-empty">@(_isArabic ? "لا توجد بيانات بعد" : "No data yet")</p>
-        </div>
-        <div class="dx-chart-card">
-            <div class="dx-chart-header">
-                <h3 class="dx-chart-title">@(_isArabic ? "المصروفات حسب الفئة" : "Expenses by category")</h3>
-            </div>
-            <p class="dx-chart-empty">@(_isArabic ? "لا توجد بيانات بعد" : "No data yet")</p>
+            @if (_revenueTrend.Count == 0 || _revenueTrend.All(b => b.Egp == 0))
+            {
+                <p class="dx-chart-empty">@(_isArabic ? "لا توجد بيانات بعد" : "No data yet")</p>
+            }
+            else
+            {
+                var maxBar = _revenueTrend.Max(b => b.Egp);
+                if (maxBar == 0) maxBar = 1;
+                <div class="dx-bar-chart">
+                    @foreach (var b in _revenueTrend)
+                    {
+                        var pct = (double)(b.Egp / maxBar) * 100.0;
+                        var monthLabel = MonthAbbrev(b.Month);
+                        <div class="dx-bar-col" title="@b.Egp.ToString("N0") EGP">
+                            <div class="dx-bar-amount">@ArabicNumerals.Format(b.Egp / 1000m)k</div>
+                            <div class="dx-bar-wrap">
+                                <div class="dx-bar-fill" style="height: @pct.ToString("F1", CultureInfo.InvariantCulture)%;"></div>
+                            </div>
+                            <div class="dx-bar-label">@monthLabel</div>
+                        </div>
+                    }
+                </div>
+            }
         </div>
     </div>
+
+    @* ── Activity Feed ── *@
+    @if (_feed.Count > 0)
+    {
+        <div class="dx-action-panel">
+            <h2 class="dx-action-panel-title">@(_isArabic ? "آخر الحركات" : "Recent activity")</h2>
+            <div class="dx-feed-list">
+                @foreach (var item in _feed)
+                {
+                    <a class="dx-feed-row @item.Tone" href="@item.Href">
+                        <div class="dx-feed-icon">
+                            <Icon Name="@item.IconName" Class="dx-kpi-ic" />
+                        </div>
+                        <div class="dx-feed-text">
+                            <strong>@item.Title</strong>
+                            <span>@item.Meta</span>
+                        </div>
+                        <span class="dx-feed-time">@FormatTimeAgo(item.At)</span>
+                    </a>
+                }
+            </div>
+        </div>
+    }
 </section>
 
 @code {
     private bool _isArabic =>
         CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
 
+    private DateOnly _monthStart;
+    private DateOnly _monthEnd;
+    private string _periodLabel = "";
+
+    // KPIs
+    private decimal _salesThisMonth;
+    private decimal _expensesThisMonth;
+    private decimal _outputVat;
+    private decimal _inputVat;
+    private decimal _vatPayable;
+
+    private int _etaPending;
+    private int _etaFailed;
+    private int _etaCriticalCount;
+    private int _draftsCount;
+    private int _postedInvoiceCount;
+    private int _pendingApprovalCount;
+    private int _expensesMissingAttachment;
+    private int _lowStockCount;
+
+    private int _openTasksCount => _draftsCount + _pendingApprovalCount + _etaPending + _etaFailed;
+
+    private List<(string Code, decimal Qty, decimal Threshold)> _lowStockTop = new();
+    private List<ComplianceObligation> _upcomingDeadlines = new();
+
+    private record RevenueBucket(int Year, int Month, decimal Egp);
+    private List<RevenueBucket> _revenueTrend = new();
+
+    private record FeedItem(string IconName, string Tone, string Title, string Meta, string? Href, DateTime At);
+    private List<FeedItem> _feed = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var now = DateTime.UtcNow;
+        _monthStart = new DateOnly(now.Year, now.Month, 1);
+        _monthEnd = _monthStart.AddMonths(1).AddDays(-1);
+        _periodLabel = $"{MonthName(now.Month)} {now.Year}";
+
+        await using var Db = await DbFactory.CreateDbContextAsync();
+
+        // Fresh-install empty-state redirect.
+        var hasCompany = await Db.Set<Company>().AsNoTracking().AnyAsync();
+        if (!hasCompany)
+        {
+            Nav.NavigateTo("/setup-wizard", forceLoad: false);
+            return;
+        }
+
+        // Sales this month — sum from posted SalesInvoice grand totals.
+        var salesAmounts = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted
+                && i.DocumentDate >= _monthStart && i.DocumentDate <= _monthEnd)
+            .Select(i => new { i.GrandTotal.Amount, i.VatTotal })
+            .ToListAsync();
+        _salesThisMonth = salesAmounts.Sum(a => a.Amount);
+        _outputVat = salesAmounts.Sum(a => a.VatTotal.Amount);
+
+        // Expenses this month — posted Expense amounts.
+        var expenseAmounts = await Db.Set<Expense>().AsNoTracking()
+            .Where(e => e.State == DocumentState.Posted
+                && e.DocumentDate >= _monthStart && e.DocumentDate <= _monthEnd)
+            .Select(e => e.Amount.Amount)
+            .ToListAsync();
+        _expensesThisMonth = expenseAmounts.Sum();
+
+        // Input VAT — posted PurchaseInvoice VAT totals.
+        var inputAmounts = await Db.Set<PurchaseInvoice>().AsNoTracking()
+            .Where(p => p.State == DocumentState.Posted
+                && p.DateReceived >= _monthStart && p.DateReceived <= _monthEnd)
+            .Select(p => p.VatTotal.Amount)
+            .ToListAsync();
+        _inputVat = inputAmounts.Sum();
+        _vatPayable = _outputVat - _inputVat;
+
+        // 6-month revenue trend.
+        _revenueTrend.Clear();
+        for (int back = 5; back >= 0; back--)
+        {
+            var bs = new DateOnly(now.Year, now.Month, 1).AddMonths(-back);
+            var be = bs.AddMonths(1).AddDays(-1);
+            var amounts = await Db.Set<SalesInvoice>().AsNoTracking()
+                .Where(i => i.State == DocumentState.Posted
+                    && i.DocumentDate >= bs && i.DocumentDate <= be)
+                .Select(i => i.GrandTotal.Amount)
+                .ToListAsync();
+            _revenueTrend.Add(new RevenueBucket(bs.Year, bs.Month, amounts.Sum()));
+        }
+
+        // ETA status counts.
+        _etaPending = await Db.Set<EtaSubmission>().AsNoTracking()
+            .CountAsync(s => s.Status == EtaSubmissionStatus.Pending);
+        _etaFailed = await Db.Set<EtaSubmission>().AsNoTracking()
+            .CountAsync(s => s.Status == EtaSubmissionStatus.Failed);
+        var critCutoff = now.AddHours(24);
+        _etaCriticalCount = await Db.Set<EtaSubmission>().AsNoTracking()
+            .CountAsync(s => (s.Status == EtaSubmissionStatus.Pending || s.Status == EtaSubmissionStatus.Failed)
+                && s.SubmissionWindowExpiresAtUtc < critCutoff);
+
+        // Drafts / posted counts.
+        _draftsCount = await Db.Set<SalesInvoice>().AsNoTracking()
+            .CountAsync(i => i.State == DocumentState.Draft);
+        _postedInvoiceCount = await Db.Set<SalesInvoice>().AsNoTracking()
+            .CountAsync(i => i.State == DocumentState.Posted);
+
+        // Pending approvals.
+        _pendingApprovalCount = await Db.Set<ApprovalRequest>().AsNoTracking()
+            .CountAsync(r => r.ApprovedByUserId == null && r.RejectedByUserId == null);
+
+        // Expenses missing attachment.
+        var expenseAttachedIds = Db.Set<Attachment>().AsNoTracking()
+            .Where(a => a.DocumentType == DocumentType.Expense)
+            .Select(a => a.DocumentId);
+        _expensesMissingAttachment = await Db.Set<Expense>().AsNoTracking()
+            .Where(e => e.DeductibleFlag && !expenseAttachedIds.Contains(e.Id))
+            .CountAsync();
+
+        // Low stock.
+        var lowStockMatches = await Db.Set<Item>().AsNoTracking()
+            .Where(i => i.Status == ItemStatus.Active
+                && i.LowStockThreshold != null
+                && i.QuantityOnHand <= i.LowStockThreshold!.Value)
+            .Select(i => new { i.Code, i.QuantityOnHand, i.LowStockThreshold })
+            .ToListAsync();
+        _lowStockCount = lowStockMatches.Count;
+        _lowStockTop = lowStockMatches
+            .OrderBy(i => i.QuantityOnHand)
+            .Take(5)
+            .Select(i => (i.Code, i.QuantityOnHand, i.LowStockThreshold!.Value))
+            .ToList();
+
+        // Upcoming deadlines (next 30 days).
+        var horizon = DateOnly.FromDateTime(now.AddDays(30));
+        var today = DateOnly.FromDateTime(now);
+        _upcomingDeadlines = await Db.Set<ComplianceObligation>().AsNoTracking()
+            .Where(o => o.Status == ComplianceObligationStatus.Upcoming
+                && o.DueDate >= today && o.DueDate <= horizon)
+            .OrderBy(o => o.DueDate)
+            .Take(5)
+            .ToListAsync();
+
+        // Activity feed.
+        await BuildFeedAsync(Db);
+    }
+
+    private async Task BuildFeedAsync(AppDbContext Db)
+    {
+        var recentSales = await Db.Set<SalesInvoice>().AsNoTracking()
+            .OrderByDescending(i => i.PostedAtUtc.HasValue)
+            .ThenByDescending(i => i.PostedAtUtc)
+            .ThenByDescending(i => i.DocumentDate)
+            .Take(4)
+            .Select(i => new { i.Id, i.DocumentNumber, i.GrandTotal, i.State, i.DocumentDate, i.PostedAtUtc })
+            .ToListAsync();
+        foreach (var r in recentSales)
+        {
+            var at = r.PostedAtUtc ?? r.DocumentDate.ToDateTime(TimeOnly.MinValue);
+            _feed.Add(new FeedItem(
+                "file-text",
+                r.State == DocumentState.Posted ? "tone-success" : "tone-info",
+                _isArabic ? $"فاتورة مبيعات {r.DocumentNumber ?? "(مسودة)"}" : $"Sales invoice {r.DocumentNumber ?? "(draft)"}",
+                $"{r.GrandTotal.Amount:N2} {(_isArabic ? "ج.م." : "EGP")} · {r.State}",
+                $"/invoices/{r.Id}",
+                at));
+        }
+
+        var recentPurchases = await Db.Set<PurchaseInvoice>().AsNoTracking()
+            .OrderByDescending(p => p.PostedAtUtc.HasValue)
+            .ThenByDescending(p => p.PostedAtUtc)
+            .ThenByDescending(p => p.DateReceived)
+            .Take(3)
+            .Select(p => new { p.Id, p.DocumentNumber, p.GrandTotal, p.State, p.DateReceived, p.PostedAtUtc })
+            .ToListAsync();
+        foreach (var r in recentPurchases)
+        {
+            var at = r.PostedAtUtc ?? r.DateReceived.ToDateTime(TimeOnly.MinValue);
+            _feed.Add(new FeedItem(
+                "package",
+                r.State == DocumentState.Posted ? "tone-success" : "tone-info",
+                _isArabic ? $"فاتورة مشتريات {r.DocumentNumber ?? "(مسودة)"}" : $"Purchase invoice {r.DocumentNumber ?? "(draft)"}",
+                $"{r.GrandTotal.Amount:N2} {(_isArabic ? "ج.م." : "EGP")} · {r.State}",
+                $"/purchase-invoices/{r.Id}",
+                at));
+        }
+
+        var recentExpenses = await Db.Set<Expense>().AsNoTracking()
+            .OrderByDescending(e => e.PostedAtUtc.HasValue)
+            .ThenByDescending(e => e.PostedAtUtc)
+            .ThenByDescending(e => e.DocumentDate)
+            .Take(2)
+            .Select(e => new { e.Id, e.DocumentNumber, e.Amount, e.State, e.DocumentDate, e.PostedAtUtc })
+            .ToListAsync();
+        foreach (var r in recentExpenses)
+        {
+            var at = r.PostedAtUtc ?? r.DocumentDate.ToDateTime(TimeOnly.MinValue);
+            _feed.Add(new FeedItem(
+                "credit-card",
+                "tone-info",
+                _isArabic ? $"مصروف {r.DocumentNumber ?? "(مسودة)"}" : $"Expense {r.DocumentNumber ?? "(draft)"}",
+                $"{r.Amount.Amount:N2} {(_isArabic ? "ج.م." : "EGP")} · {r.State}",
+                $"/expenses/{r.Id}",
+                at));
+        }
+
+        _feed = _feed.OrderByDescending(f => f.At).Take(8).ToList();
+    }
+
     private string GetGreeting()
     {
         var hour = DateTime.Now.Hour;
         if (_isArabic)
         {
-            return hour < 12 ? "صباح الخير" : "مساء الخير";
+            return hour < 12 ? "صباح الخير" : hour < 18 ? "مساء الخير" : "مساء الخير";
         }
-        return hour < 12 ? "Good morning" : "Good afternoon";
+        return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    }
+
+    private string MonthName(int m)
+    {
+        var ci = new CultureInfo(_isArabic ? "ar-EG" : "en-US");
+        return ci.DateTimeFormat.GetMonthName(m);
+    }
+
+    private string MonthAbbrev(int m)
+    {
+        var ci = new CultureInfo(_isArabic ? "ar-EG" : "en-US");
+        return ci.DateTimeFormat.GetAbbreviatedMonthName(m);
+    }
+
+    private string DeadlineLabel(ComplianceObligationKind kind) => (kind, _isArabic) switch
+    {
+        (ComplianceObligationKind.VatMonthly,       true)  => "إقرار ضريبة القيمة المضافة (شهري)",
+        (ComplianceObligationKind.VatMonthly,       false) => "VAT return (monthly)",
+        (ComplianceObligationKind.VatQuarterly,     true)  => "إقرار ضريبة القيمة المضافة (ربع سنوي)",
+        (ComplianceObligationKind.VatQuarterly,     false) => "VAT return (quarterly)",
+        (ComplianceObligationKind.Form41Quarterly,  true)  => "نموذج 41 — الخصم من المنبع",
+        (ComplianceObligationKind.Form41Quarterly,  false) => "Form 41 — withholding tax",
+        (ComplianceObligationKind.IncomeTaxAnnual,  true)  => "إقرار ضريبة الدخل السنوي",
+        (ComplianceObligationKind.IncomeTaxAnnual,  false) => "Annual income tax return",
+        (ComplianceObligationKind.TurnoverTaxAnnual,true)  => "إقرار ضريبة رقم الأعمال السنوي",
+        (ComplianceObligationKind.TurnoverTaxAnnual,false) => "Annual turnover tax return",
+        _ => kind.ToString(),
+    };
+
+    private string FormatTimeAgo(DateTime at)
+    {
+        var span = DateTime.UtcNow - at.ToUniversalTime();
+        if (span.TotalMinutes < 1) return _isArabic ? "الآن" : "now";
+        if (span.TotalHours < 1) return _isArabic ? $"منذ {ArabicNumerals.Format((int)span.TotalMinutes)} دقيقة" : $"{(int)span.TotalMinutes}m ago";
+        if (span.TotalDays < 1) return _isArabic ? $"منذ {ArabicNumerals.Format((int)span.TotalHours)} ساعة" : $"{(int)span.TotalHours}h ago";
+        return _isArabic ? $"منذ {ArabicNumerals.Format((int)span.TotalDays)} يوم" : $"{(int)span.TotalDays}d ago";
     }
 }

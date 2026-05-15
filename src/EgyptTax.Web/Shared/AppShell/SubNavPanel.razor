@@ -52,14 +52,33 @@
 @code {
     [Parameter, EditorRequired] public AppShellModule? Module { get; set; }
 
+    private string? _activeLinkUrl;
+
     private bool _isArabic =>
         CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
 
-    private bool IsActiveLink(string url)
+    protected override void OnParametersSet()
     {
+        RecomputeActiveLink();
+    }
+
+    private void RecomputeActiveLink()
+    {
+        if (Module is null) { _activeLinkUrl = null; return; }
+
         var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
         if (string.IsNullOrEmpty(path)) path = "/";
-        return path.Equals(url, StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith(url + "/", StringComparison.OrdinalIgnoreCase);
+
+        // Pick the LONGEST matching url so /items/categories wins over /items.
+        _activeLinkUrl = Module.SubNavEntries
+            .OfType<SubNavLink>()
+            .Where(l => path.Equals(l.Url, StringComparison.OrdinalIgnoreCase)
+                     || path.StartsWith(l.Url.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(l => l.Url.Length)
+            .Select(l => l.Url)
+            .FirstOrDefault();
     }
+
+    private bool IsActiveLink(string url) =>
+        string.Equals(_activeLinkUrl, url, StringComparison.OrdinalIgnoreCase);
 }

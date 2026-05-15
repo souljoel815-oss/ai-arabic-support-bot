@@ -36,7 +36,7 @@
         }
     </nav>
 
-    @* Bottom section: search, settings, logout *@
+    @* Bottom section: search, theme, settings, logout *@
     <div class="appshell-modules-footer">
         @* Search / Command Palette trigger *@
         <button type="button" class="appshell-module-btn appshell-module-btn--footer"
@@ -46,6 +46,17 @@
             <Icon Name="search" Class="appshell-module-icon" />
             <span class="appshell-module-label">@(_isArabic ? "بحث" : "Search")</span>
             <kbd class="appshell-kbd">⌘K</kbd>
+        </button>
+
+        @* Theme toggle (nahar/leil) *@
+        <button type="button" class="appshell-module-btn appshell-module-btn--footer"
+                title="@(_isArabic ? "تبديل المظهر" : "Toggle theme")"
+                aria-label="@(_isArabic ? "تبديل بين الفاتح والداكن" : "Toggle light/dark theme")"
+                @onclick="ToggleThemeAsync">
+            <Icon Name="@(_currentTheme == "leil" ? "sun" : "moon")" Class="appshell-module-icon" />
+            <span class="appshell-module-label">@(_isArabic
+                ? (_currentTheme == "leil" ? "فاتح" : "داكن")
+                : (_currentTheme == "leil" ? "Light" : "Dark"))</span>
         </button>
 
         @* Settings module link *@
@@ -79,10 +90,32 @@
     private bool _isArabic =>
         CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
 
+    private string _currentTheme = "leil";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _currentTheme = await Js.InvokeAsync<string>("daftarxGetTheme") ?? "leil";
+                StateHasChanged();
+            }
+            catch { /* JS not loaded yet — keep default */ }
+        }
+    }
+
     private async Task OpenCommandPaletteAsync()
     {
         try { await Js.InvokeVoidAsync("daftarxOpenCmdPalette"); }
         catch { /* JS not loaded yet — first paint, ignore */ }
+    }
+
+    private async Task ToggleThemeAsync()
+    {
+        _currentTheme = _currentTheme == "leil" ? "nahar" : "leil";
+        try { await Js.InvokeVoidAsync("daftarxSetTheme", _currentTheme); }
+        catch { /* JS not loaded yet — next click will work */ }
     }
 
     private async Task LogoutAsync()

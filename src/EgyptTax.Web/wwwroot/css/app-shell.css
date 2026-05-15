@@ -14,26 +14,75 @@
    ============================================================ */
 
 :root {
-    /* Surfaces */
-    --dx-bg:           #0a0f1f;
+    /* Light theme (nahar) — default surfaces. Subtle warm-cool gradient
+       between bg and bg-card adds depth without leaving the white spec. */
+    --dx-bg:           #f4f6fa;
+    --dx-bg-card:      #ffffff;
+    --dx-bg-input:     #ffffff;
+    --dx-bg-hover:     #eaeef6;
+    --dx-bg-elevated:  #ffffff;
+    --dx-border:       #dde3ec;
+    --dx-border-soft:  #eef1f6;
+    --dx-shadow-sm:    0 1px 2px rgba(11, 29, 58, 0.04), 0 1px 3px rgba(11, 29, 58, 0.06);
+    --dx-shadow-md:    0 4px 12px rgba(11, 29, 58, 0.08), 0 2px 4px rgba(11, 29, 58, 0.04);
+    --dx-shadow-glow:  0 0 0 1px rgba(154, 107, 28, 0.15), 0 8px 20px rgba(154, 107, 28, 0.12);
+
+    /* Light theme typography */
+    --dx-text:         #0b1d3a;
+    --dx-text-muted:   #5b6b81;
+    --dx-text-subtle:  #93a1b5;
+
+    /* Brand — light theme uses deeper bronze so it reads on white.
+       The bright variant stays warm/gold for accents on tinted bgs. */
+    --dx-gold:         #9a6b1c;
+    --dx-gold-bright:  #b8821f;
+    --dx-gold-deep:    #6b4a13;
+    --dx-gold-dim:     rgba(154, 107, 28, 0.10);
+    --dx-gold-dim-2:   rgba(154, 107, 28, 0.18);
+    --dx-gold-line:    rgba(154, 107, 28, 0.30);
+
+    /* Semantic — light theme defaults (darker, higher contrast on white) */
+    --dx-success:      #16a34a;
+    --dx-success-dim:  rgba(22, 163, 74, 0.10);
+    --dx-warning:      #d97706;
+    --dx-warning-dim:  rgba(217, 119, 6, 0.10);
+    --dx-danger:       #dc2626;
+    --dx-danger-dim:   rgba(220, 38, 38, 0.10);
+    --dx-info:         #2563eb;
+    --dx-info-dim:     rgba(37, 99, 235, 0.10);
+
+    /* Layout */
+    --dx-sidebar-w:    248px;
+    --dx-subnav-w:     280px;
+    --dx-radius-sm:    8px;
+    --dx-radius-md:    12px;
+    --dx-radius-lg:    16px;
+}
+
+/* Dark theme (leil) — premium navy + warm gold combo. */
+[data-theme="leil"] {
+    --dx-bg:           #070b18;
     --dx-bg-card:      #0e1530;
     --dx-bg-input:     #0d1428;
-    --dx-bg-hover:     #131a36;
-    --dx-border:       #1c2645;
-    --dx-border-soft:  #14213d;
+    --dx-bg-hover:     #161e3e;
+    --dx-bg-elevated:  #131a36;
+    --dx-border:       #1e2a4a;
+    --dx-border-soft:  #131c36;
+    --dx-shadow-sm:    0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
+    --dx-shadow-md:    0 6px 18px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.35);
+    --dx-shadow-glow:  0 0 0 1px rgba(240, 192, 64, 0.18), 0 12px 28px rgba(212, 162, 23, 0.18);
 
-    /* Typography */
-    --dx-text:         #e8eaf2;
-    --dx-text-muted:   #8b94b1;
+    --dx-text:         #eef0f8;
+    --dx-text-muted:   #97a1bd;
     --dx-text-subtle:  #5b6488;
 
-    /* Brand */
     --dx-gold:         #d4a217;
     --dx-gold-bright:  #f0c040;
-    --dx-gold-dim:     rgba(212, 162, 23, 0.18);
-    --dx-gold-line:    rgba(212, 162, 23, 0.45);
+    --dx-gold-deep:    #8a6810;
+    --dx-gold-dim:     rgba(212, 162, 23, 0.12);
+    --dx-gold-dim-2:   rgba(240, 192, 64, 0.22);
+    --dx-gold-line:    rgba(240, 192, 64, 0.45);
 
-    /* Semantic */
     --dx-success:      #34d399;
     --dx-success-dim:  rgba(52, 211, 153, 0.15);
     --dx-warning:      #fbbf24;
@@ -42,10 +91,6 @@
     --dx-danger-dim:   rgba(248, 113, 113, 0.15);
     --dx-info:         #60a5fa;
     --dx-info-dim:     rgba(96, 165, 250, 0.15);
-
-    /* Layout — UPDATED */
-    --dx-sidebar-w:    200px;
-    --dx-subnav-w:     220px;
 }
 
 /* ---------- Top-level shell ---------- */
@@ -56,17 +101,22 @@
     background: var(--dx-bg);
     color: var(--dx-text);
     font-family: 'Cairo', 'IBM Plex Sans Arabic', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
 }
 
 .appshell-main {
     flex: 1 1 auto;
     min-width: 0;
-    padding: 28px 36px 64px;
+    padding: 36px 44px 80px;
     overflow-x: hidden;
 }
 
 /* ============================================================
-   Module sidebar (200px — icons + labels always visible)
+   Module sidebar (248px — icons + labels always visible)
    ============================================================ */
 .appshell-modules {
     flex: 0 0 var(--dx-sidebar-w);
@@ -75,8 +125,8 @@
     border-inline-start: 1px solid var(--dx-border-soft);
     display: flex;
     flex-direction: column;
-    padding: 14px 10px;
-    gap: 2px;
+    padding: 26px 16px 20px;
+    gap: 4px;
     position: sticky;
     top: 0;
     height: 100vh;
@@ -84,91 +134,125 @@
     overflow-y: auto;
 }
 
-/* Logo — horizontal layout with "DaftarX" text */
+/* Logo — refined chip + wordmark */
 .appshell-modules-logo {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 6px 10px;
-    margin-bottom: 14px;
+    gap: 13px;
+    padding: 10px 12px;
+    margin-bottom: 26px;
     text-decoration: none;
-    border-radius: 10px;
-    transition: background 120ms ease;
+    border-radius: var(--dx-radius-md);
+    transition: background 180ms ease, transform 180ms ease;
 }
-.appshell-modules-logo:hover { background: var(--dx-bg-hover); }
+.appshell-modules-logo:hover {
+    background: var(--dx-bg-hover);
+    transform: translateY(-1px);
+}
 
 .appshell-logo-d {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    color: var(--dx-bg);
-    background: var(--dx-gold);
+    width: 46px;
+    height: 46px;
+    border-radius: 13px;
+    color: #1a1206;
+    background:
+        radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.40) 0%, transparent 55%),
+        linear-gradient(135deg, #f6d472 0%, var(--dx-gold-bright) 35%, var(--dx-gold) 70%, var(--dx-gold-deep) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.45),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+        0 8px 18px rgba(212, 162, 23, 0.30),
+        0 2px 4px rgba(212, 162, 23, 0.18);
     font-weight: 800;
     font-family: 'Space Grotesk', 'Cairo', sans-serif;
-    font-size: 18px;
+    font-size: 23px;
     line-height: 1;
     flex-shrink: 0;
+    letter-spacing: -0.04em;
 }
 .appshell-logo-text {
     font-family: 'Space Grotesk', 'Cairo', sans-serif;
     font-weight: 700;
-    font-size: 16px;
+    font-size: 21px;
     color: var(--dx-text);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.025em;
 }
 
 .appshell-modules-nav {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     flex: 1 1 auto;
     width: 100%;
-    padding: 4px 0;
+    padding: 6px 0;
 }
 
 .appshell-modules-footer {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     margin-top: auto;
-    padding-top: 12px;
+    padding-top: 16px;
     width: 100%;
     border-top: 1px solid var(--dx-border-soft);
 }
 
-/* Module button — HORIZONTAL layout (icon + label side by side) */
+/* Module button — HORIZONTAL layout (icon + label side by side).
+   Premium pattern: vertical accent bar on inline-start edge appears
+   on active state. */
 .appshell-module-btn {
+    position: relative;
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    border-radius: 10px;
+    gap: 14px;
+    padding: 13px 16px;
+    border-radius: var(--dx-radius-md);
     color: var(--dx-text-muted);
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
     text-decoration: none;
-    transition: color 120ms ease, background 120ms ease;
+    transition: color 200ms ease, background 200ms ease, border-color 200ms ease, transform 120ms ease;
     width: 100%;
     font: inherit;
+    overflow: hidden;
+}
+.appshell-module-btn::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: 0;
+    top: 50%;
+    transform: translateY(-50%) scaleY(0);
+    width: 3px;
+    height: 60%;
+    background: var(--dx-gold-bright);
+    border-radius: 2px;
+    transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 0 12px var(--dx-gold-bright);
 }
 .appshell-module-btn:hover {
     color: var(--dx-text);
     background: var(--dx-bg-hover);
 }
+.appshell-module-btn:active { transform: translateY(1px); }
 .appshell-module-btn.is-active {
-    color: var(--dx-gold);
-    background: var(--dx-gold-dim);
-    border-color: var(--dx-gold-line);
+    color: var(--dx-gold-bright);
+    background: var(--dx-gold-dim-2);
+    font-weight: 600;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        var(--dx-shadow-glow);
 }
+.appshell-module-btn.is-active::before { transform: translateY(-50%) scaleY(1); }
 
-/* Footer button variant (search, settings, logout) */
+/* Footer button variant (search, theme, settings, logout) */
 .appshell-module-btn--footer {
-    padding: 8px 12px;
+    padding: 11px 16px;
 }
 
 /* Danger variant (logout) */
@@ -178,32 +262,34 @@
 }
 
 .appshell-module-icon {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     stroke-width: 1.75;
     flex-shrink: 0;
 }
 
 .appshell-module-label {
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 500;
     line-height: 1.3;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    letter-spacing: 0.005em;
 }
 
 /* Keyboard shortcut badge */
 .appshell-kbd {
     margin-inline-start: auto;
-    font-size: 10px;
+    font-size: 11px;
     font-family: 'SF Mono', 'Fira Code', monospace;
     color: var(--dx-text-subtle);
     background: var(--dx-bg-hover);
     border: 1px solid var(--dx-border);
-    border-radius: 4px;
-    padding: 2px 5px;
+    border-radius: 6px;
+    padding: 3px 7px;
     line-height: 1;
+    box-shadow: var(--dx-shadow-sm);
 }
 
 /* User pill (kept for backward compat, now optional) */
@@ -228,7 +314,7 @@
 }
 
 /* ============================================================
-   Sub-nav panel (220px)
+   Sub-nav panel (280px)
    ============================================================ */
 .appshell-subnav {
     flex: 0 0 var(--dx-subnav-w);
@@ -239,73 +325,112 @@
     top: 0;
     height: 100vh;
     overflow-y: auto;
-    padding: 22px 0 32px;
+    padding: 30px 0 40px;
     display: flex;
     flex-direction: column;
 }
 
 .appshell-subnav-header {
-    padding: 0 20px 16px;
-    color: var(--dx-gold);
-    font-size: 17px;
+    padding: 0 24px 20px;
+    color: var(--dx-text);
+    font-size: 22px;
     font-weight: 700;
-    border-bottom: 1px solid var(--dx-border-soft);
-    margin-bottom: 10px;
+    letter-spacing: -0.018em;
+    position: relative;
+    margin-bottom: 16px;
+}
+.appshell-subnav-header::after {
+    content: '';
+    position: absolute;
+    inset-inline-start: 24px;
+    inset-inline-end: 24px;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        var(--dx-gold-line) 0%,
+        var(--dx-border-soft) 40%,
+        transparent 100%
+    );
 }
 
 .appshell-subnav-nav {
     display: flex;
     flex-direction: column;
-    gap: 1px;
-    padding: 0 8px;
+    gap: 2px;
+    padding: 0 12px;
 }
 
 .appshell-subnav-link {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 9px;
-    padding: 8px 10px;
-    border-radius: 8px;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: var(--dx-radius-md);
     color: var(--dx-text-muted);
     text-decoration: none;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 500;
-    transition: color 120ms ease, background 120ms ease;
+    transition: color 200ms ease, background 200ms ease, padding 200ms ease;
     line-height: 1.4;
+}
+.appshell-subnav-link::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: 0;
+    top: 50%;
+    transform: translateY(-50%) scaleY(0);
+    width: 3px;
+    height: 55%;
+    background: var(--dx-gold-bright);
+    border-radius: 2px;
+    transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .appshell-subnav-link:hover {
     background: var(--dx-bg-hover);
     color: var(--dx-text);
+    padding-inline-start: 18px;
 }
 .appshell-subnav-link.is-active {
     color: var(--dx-gold-bright);
-    background: var(--dx-gold-dim);
+    background: var(--dx-gold-dim-2);
     font-weight: 600;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
+.appshell-subnav-link.is-active::before { transform: translateY(-50%) scaleY(1); }
 
 .appshell-subnav-icon {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     stroke-width: 1.75;
     flex-shrink: 0;
-    opacity: 0.85;
+    opacity: 0.7;
+    transition: opacity 200ms ease;
 }
+.appshell-subnav-link:hover .appshell-subnav-icon { opacity: 1; }
 .appshell-subnav-link.is-active .appshell-subnav-icon { opacity: 1; }
 
 .appshell-subnav-sep {
     border: 0;
     height: 1px;
-    background: var(--dx-border-soft);
-    margin: 10px 16px;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--dx-border-soft) 30%,
+        var(--dx-border-soft) 70%,
+        transparent 100%
+    );
+    margin: 16px 24px;
 }
 
 .appshell-subnav-group {
-    padding: 12px 16px 6px;
-    color: var(--dx-gold);
+    padding: 16px 24px 8px;
+    color: var(--dx-text-subtle);
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.12em;
 }
 
 /* ============================================================
@@ -943,4 +1068,191 @@
     }
     .appshell-main { padding: 16px; }
     .dx-dash-brand-text { font-size: 28px; }
+    .dx-dash-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   v5 Dashboard rebuild — additions for real-data layout
+   ============================================================ */
+
+/* Period separator dot in header */
+.dx-dash-period-sep {
+    margin: 0 8px;
+    color: var(--dx-text-subtle);
+}
+
+/* 2-col grid: action panel + revenue chart side-by-side */
+.dx-dash-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+/* Action row when rendered as <a> link */
+a.dx-action-row {
+    text-decoration: none;
+    color: inherit;
+    border-radius: 10px;
+    padding: 12px 8px;
+    margin: 0 -8px;
+    transition: background 150ms ease;
+}
+a.dx-action-row:hover { background: var(--dx-bg-hover); }
+a.dx-action-row:hover .dx-action-cta { background: var(--dx-gold-dim); }
+a.dx-action-row .dx-action-cta {
+    pointer-events: none;
+}
+
+/* Action panel empty state with icon */
+.dx-action-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 36px 0;
+    color: var(--dx-text-muted);
+    text-align: center;
+}
+.dx-action-empty strong {
+    font-size: 16px;
+    color: var(--dx-text);
+    font-weight: 700;
+}
+.dx-action-empty-ic {
+    width: 40px;
+    height: 40px;
+    color: var(--dx-success);
+    stroke-width: 1.75;
+}
+
+/* Trend modifier (warning text in KPI footer) */
+.dx-kpi-trend .is-warn,
+.is-warn { color: var(--dx-warning); font-weight: 600; }
+
+/* Chart header CTA link */
+.dx-chart-link {
+    color: var(--dx-gold-bright);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+}
+.dx-chart-link:hover { text-decoration: underline; }
+
+/* Simplified single-series bar chart (revenue trend, 6 cols) */
+.dx-bar-chart {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    align-items: end;
+    gap: 14px;
+    padding: 18px 6px 6px;
+    min-height: 240px;
+}
+.dx-bar-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+}
+.dx-bar-amount {
+    font-size: 11px;
+    color: var(--dx-text-muted);
+    font-weight: 600;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    letter-spacing: -0.01em;
+}
+.dx-bar-wrap {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    width: 100%;
+    max-width: 38px;
+    margin: 0 auto;
+}
+.dx-bar-fill {
+    width: 100%;
+    min-height: 4px;
+    background: linear-gradient(180deg, var(--dx-gold-bright) 0%, var(--dx-gold) 100%);
+    border-radius: 6px 6px 2px 2px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        0 3px 8px rgba(212, 162, 23, 0.25);
+    transition: filter 180ms ease, transform 180ms ease;
+}
+.dx-bar-col:hover .dx-bar-fill {
+    filter: brightness(1.15);
+    transform: translateY(-2px);
+}
+.dx-bar-label {
+    font-size: 12px;
+    color: var(--dx-text-muted);
+    font-weight: 500;
+}
+
+/* Activity feed list */
+.dx-feed-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.dx-feed-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 8px;
+    margin: 0 -8px;
+    border-bottom: 1px solid var(--dx-border-soft);
+    text-decoration: none;
+    color: inherit;
+    border-radius: 10px;
+    transition: background 150ms ease;
+}
+.dx-feed-row:hover { background: var(--dx-bg-hover); }
+.dx-feed-row:last-child { border-bottom: none; }
+
+.dx-feed-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--dx-bg-hover);
+    color: var(--dx-text-muted);
+    flex-shrink: 0;
+}
+.dx-feed-row.tone-success .dx-feed-icon { background: var(--dx-success-dim); color: var(--dx-success); }
+.dx-feed-row.tone-info    .dx-feed-icon { background: var(--dx-info-dim);    color: var(--dx-info); }
+.dx-feed-row.tone-warning .dx-feed-icon { background: var(--dx-warning-dim); color: var(--dx-warning); }
+.dx-feed-row.tone-danger  .dx-feed-icon { background: var(--dx-danger-dim);  color: var(--dx-danger); }
+.dx-feed-row.tone-primary .dx-feed-icon { background: var(--dx-gold-dim);    color: var(--dx-gold-bright); }
+
+.dx-feed-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.dx-feed-text strong {
+    color: var(--dx-text);
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dx-feed-text span {
+    color: var(--dx-text-muted);
+    font-size: 12.5px;
+}
+
+.dx-feed-time {
+    color: var(--dx-text-subtle);
+    font-size: 12px;
+    font-weight: 500;
+    flex-shrink: 0;
+    margin-inline-start: 8px;
 }

@@ -32,7 +32,7 @@
   }
 
   function applyTheme(theme) {
-    if (!VALID.has(theme)) theme = 'nahar';
+    if (!VALID.has(theme)) theme = 'leil';
     if (theme === 'nahar') {
       document.documentElement.removeAttribute('data-theme');
     } else {
@@ -45,11 +45,11 @@
     if (!theme) {
       try { theme = localStorage.getItem(STORAGE_KEY); } catch (_) { /* ignore */ }
     }
-    applyTheme(theme || 'nahar');
+    applyTheme(theme || 'leil');
   };
 
   window.daftarxSetTheme = function (theme) {
-    if (!VALID.has(theme)) theme = 'nahar';
+    if (!VALID.has(theme)) theme = 'leil';
     applyTheme(theme);
     writeCookie(COOKIE_NAME, theme, 365);
     try { localStorage.setItem(STORAGE_KEY, theme); } catch (_) { /* ignore */ }
