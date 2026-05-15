@@ -116,6 +116,7 @@ public static class AppShellModuleRegistry
             SubNavEntries: new SubNavEntry[]
             {
                 new SubNavLink("قيود اليومية", "Journal entries", "/journals", "journal قيد", "edit"),
+                new SubNavLink("قوالب القيود الدورية", "Recurring JV templates", "/journal-templates", "journal template قالب recurring", "file-text"),
                 new SubNavLink("شجرة الحسابات", "Chart of accounts", "/settings/chart-of-accounts", "coa حسابات", "boxes"),
                 new SubNavLink("المطابقة البنكية", "Bank reconciliation", "/payments/bank-statements", "bank statement كشف", "landmark"),
                 new SubNavLink("تحويل أموال", "Fund transfer", "/payments/unmatched", "fund transfer تحويل", "arrow-right"),
