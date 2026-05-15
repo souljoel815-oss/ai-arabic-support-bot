@@ -1,0 +1,289 @@
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+@inject NavigationManager Nav
+
+@*
+    v5 DP.3 — global Cmd+K / Ctrl+K command palette. Operator
+    presses ⌘K from any page; modal opens centered with a search
+    input + filtered list of every page route + common quick-create
+    actions in both languages. Type to filter (simple
+    case-insensitive contains; no fuzzy lib). Up/Down navigates
+    the list, Enter follows, Esc closes.
+*@
+
+<div class="cmd-palette-modal @(_open ? "is-open" : "")" @onclick="OnBackdropClick">
+    @if (_open)
+    {
+        <div class="cmd-palette-card" @onclick:stopPropagation>
+            <div class="cmd-palette-search">
+                <span class="cmd-palette-icon">⌘K</span>
+                <input @ref="_inputRef"
+                       type="search"
+                       placeholder="@Tr("ابحث عن صفحة أو إجراء…", "Search pages or actions…")"
+                       value="@_query"
+                       @oninput="OnQueryChanged"
+                       @onkeydown="OnKeyDown" />
+                <button type="button" class="cmd-palette-dismiss"
+                        @onclick="Close" aria-label="Close">×</button>
+            </div>
+
+            <div class="cmd-palette-results">
+                @if (Filtered.Count == 0)
+                {
+                    <div class="cmd-palette-empty">
+                        @Tr("ما فيش نتائج للبحث ده.", "Nothing matches that search.")
+                    </div>
+                }
+                else
+                {
+                    @for (var i = 0; i < Filtered.Count; i++)
+                    {
+                        var idx = i;
+                        var cmd = Filtered[idx];
+                        <button type="button"
+                                class="cmd-palette-item @(idx == _selectedIndex ? "is-active" : "")"
+                                @onmouseenter="() => _selectedIndex = idx"
+                                @onclick="() => Run(cmd)">
+                            <span class="cmd-palette-item-icon">@cmd.Icon</span>
+                            <span class="cmd-palette-item-label">
+                                <span>@(IsArabic ? cmd.LabelAr : cmd.LabelEn)</span>
+                                <small>@cmd.Hint</small>
+                            </span>
+                            <span class="cmd-palette-item-section">@cmd.Section</span>
+                        </button>
+                    }
+                }
+            </div>
+
+            <div class="cmd-palette-foot">
+                <span><kbd>↑</kbd><kbd>↓</kbd> @Tr("للتنقل", "navigate")</span>
+                <span><kbd>↵</kbd> @Tr("افتح", "open")</span>
+                <span><kbd>Esc</kbd> @Tr("إغلاق", "close")</span>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private string _query = "";
+    private int _selectedIndex;
+    private ElementReference _inputRef;
+    private DotNetObjectReference<CommandPalette>? _selfRef;
+    private bool _jsRegistered;
+
+    private bool IsArabic =>
+        System.Globalization.CultureInfo.CurrentCulture.Name.StartsWith(
+            "ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    public sealed record PaletteCommand(
+        string Icon,
+        string LabelAr,
+        string LabelEn,
+        string Section,
+        string? Url = null,
+        Action? Action = null,
+        string? Hint = null);
+
+    /// <summary>Hard-coded list of every page route + the most-
+    /// common quick-create actions. Mirrors what's in the sidebar
+    /// + everything reachable that ISN'T in the sidebar (e.g.
+    /// /dashboards/me which DP.2 dropped from the visible nav).</summary>
+    private static readonly List<PaletteCommand> AllCommands = new()
+    {
+        // Quick-create actions (top of search)
+        new("➕", "فاتورة جديدة", "+ New invoice", "Quick", Url: "/invoices/new"),
+        new("➕", "مصروف جديد", "+ New expense", "Quick", Url: "/expenses/new"),
+        new("➕", "عرض سعر جديد", "+ New quotation", "Quick", Url: "/quotations/new"),
+        new("➕", "فاتورة شراء جديدة", "+ New purchase invoice", "Quick", Url: "/purchase-invoices/new"),
+        new("➕", "عميل جديد", "+ New customer", "Quick", Url: "/customers"),
+        new("➕", "مورد جديد", "+ New supplier", "Quick", Url: "/suppliers"),
+        new("➕", "lead جديد", "+ New lead", "Quick", Url: "/leads/new"),
+        new("➕", "إيصال قبض", "+ Receive payment", "Quick", Url: "/payments/customer-receipts/new"),
+        new("➕", "دفعة لمورد", "+ Pay a supplier", "Quick", Url: "/payments/supplier-payments/new"),
+
+        // Sales group
+        new("📄", "فواتير المبيعات", "Sales invoices", "Sales", Url: "/invoices"),
+        new("📋", "أوامر البيع", "Sales orders", "Sales", Url: "/sales-orders"),
+        new("📝", "عروض الأسعار", "Quotations", "Sales", Url: "/quotations"),
+        new("🎯", "الفرص البيعية", "Leads / pipeline", "Sales", Url: "/leads"),
+        new("🚐", "خط السير", "Route plan", "Sales", Url: "/routes"),
+        new("🔁", "فواتير متكررة", "Recurring invoices", "Sales", Url: "/recurring-invoices"),
+        new("📦", "رفع جماعي للفواتير", "Bulk invoice upload", "Sales", Url: "/invoices/bulk"),
+
+        // Purchases group
+        new("📄", "فواتير المشتريات", "Purchase invoices", "Purchases", Url: "/purchase-invoices"),
+        new("💼", "المصروفات", "Expenses", "Purchases", Url: "/expenses"),
+        new("🤖", "مسح إيصال (AI)", "Scan receipt (AI)", "Purchases", Url: "/scan-receipt"),
+        new("🏦", "كشوف البنك", "Bank statements", "Purchases", Url: "/payments/bank-statements"),
+        new("🔍", "بنود غير مطابقة", "Unmatched bank lines", "Purchases", Url: "/payments/unmatched"),
+
+        // Inventory group
+        new("📦", "الأصناف", "Items", "Inventory", Url: "/items"),
+        new("📦", "جرد مخزني", "Stock count", "Inventory", Url: "/stock-adjustments"),
+        new("📋", "اقتراحات إعادة الطلب", "Reorder suggestions", "Inventory", Url: "/reorder-suggestions"),
+        new("🔄", "نقل مخزون", "Stock transfer", "Inventory", Url: "/stock-transfer"),
+        new("🏬", "المخازن والفروع", "Stock locations", "Inventory", Url: "/stock-locations"),
+        new("🧪", "دفعات قاربت تنتهي", "Expiring lots", "Inventory", Url: "/expiring-lots"),
+        new("🔁", "قواعد إعادة الطلب", "Reorder rules", "Inventory", Url: "/reorder-rules"),
+        new("🏷️", "مراكز التكلفة", "Cost centers", "Inventory", Url: "/cost-centers"),
+
+        // Contacts
+        new("👥", "العملاء", "Customers", "Contacts", Url: "/customers"),
+        new("🏢", "الموردون", "Suppliers", "Contacts", Url: "/suppliers"),
+        new("📥", "استيراد بيانات", "Import data (CSV)", "Contacts", Url: "/data-import"),
+
+        // Reports & Compliance
+        new("📚", "دفتر الأستاذ", "General Ledger", "Reports", Url: "/reports/general-ledger"),
+        new("⚖️", "ميزان المراجعة", "Trial balance", "Reports", Url: "/reports/trial-balance"),
+        new("💵", "التدفقات النقدية", "Cash flow", "Reports", Url: "/reports/cash-flow"),
+        new("📊", "تقرير مراكز التكلفة", "Cost centers report", "Reports", Url: "/reports/cost-centers"),
+        new("🎯", "قمع المبيعات", "Sales pipeline report", "Reports", Url: "/reports/sales-pipeline"),
+        new("📊", "مبيعات المناديب", "Sales by rep", "Reports", Url: "/reports/sales-by-rep"),
+        new("💰", "عمولات المناديب", "Commissions", "Reports", Url: "/reports/commissions"),
+        new("📊", "لوحة المبيعات", "Sales dashboard", "Reports", Url: "/dashboards/sales"),
+        new("👤", "لوحتي الشخصية", "My dashboard", "Reports", Url: "/dashboards/me"),
+        new("📁", "المشروعات", "Projects", "Reports", Url: "/projects"),
+        new("💰", "الدخل الخاضع للضريبة", "Taxable income", "Reports", Url: "/reports/taxable-income"),
+        new("💰", "ضريبة معدل الدوران", "Turnover tax", "Reports", Url: "/reports/turnover-tax"),
+        new("💰", "الضريبة الشهرية", "Monthly VAT", "Reports", Url: "/reports/vat-monthly"),
+        new("🩺", "صحة الامتثال", "Compliance health", "Compliance", Url: "/compliance/health"),
+        new("🛡️", "درع الغرامات", "Penalty Shield", "Compliance", Url: "/penalty-shield"),
+        new("📅", "تقويم الالتزامات", "Compliance calendar", "Compliance", Url: "/compliance/calendar"),
+        new("📡", "لوحة ETA", "ETA dashboard", "Compliance", Url: "/eta-dashboard"),
+        new("📨", "صندوق ETA الوارد", "ETA inbox", "Compliance", Url: "/eta-inbox"),
+        new("📤", "تصدير ETA", "ETA export", "Compliance", Url: "/eta-export"),
+        new("📑", "إقرارات الضريبة", "VAT returns", "Compliance", Url: "/tax/vat-return"),
+        new("📑", "إقرارات ضريبة الدخل", "Income-tax returns", "Compliance", Url: "/tax/income-tax-return"),
+        new("✂️", "دورة الخصم WHT", "WHT lifecycle", "Compliance", Url: "/wht"),
+        new("✂️", "شهادات خصم واردة", "Inbound WHT", "Compliance", Url: "/wht/inbound"),
+
+        // POS
+        new("🛒", "نقطة البيع", "Point of Sale", "POS", Url: "/pos"),
+
+        // Settings
+        new("⚙️", "لوحة الإعدادات", "Admin panel", "Settings", Url: "/settings"),
+        new("🏢", "بيانات الشركة", "Company profile", "Settings", Url: "/settings/company"),
+        new("📑", "إعداد الضرائب", "Tax setup", "Settings", Url: "/settings/tax-periods"),
+        new("📅", "السنة المالية", "Fiscal year", "Settings", Url: "/settings/fiscal-year"),
+        new("🏦", "نقدية وبنوك", "Money & banks", "Settings", Url: "/settings/cash-accounts"),
+        new("📒", "دليل الحسابات", "Chart of accounts", "Settings", Url: "/settings/chart-of-accounts"),
+        new("💱", "العملات", "Currencies", "Settings", Url: "/currencies"),
+        new("🗂️", "فئات المصروفات", "Expense categories", "Settings", Url: "/expense-categories"),
+        new("📋", "قوالب عروض الأسعار", "Quotation templates", "Settings", Url: "/settings/quotation-templates"),
+        new("🔔", "Webhooks", "Webhooks", "Settings", Url: "/settings/webhooks"),
+        new("🪄", "معالج إعداد ETA", "ETA setup wizard", "Settings", Url: "/eta-wizard"),
+        new("🎓", "الشهادات الرقمية", "Digital certificates", "Settings", Url: "/certificates"),
+        new("🛬", "قمرة الإقفال", "Closing cockpit", "Settings", Url: "/cockpit"),
+        new("📜", "سجل التدقيق", "Audit log", "Settings", Url: "/audit-log"),
+        new("📦", "حزمة الفحص الضريبي", "Inspection bundle", "Settings", Url: "/inspection-bundle"),
+        new("📜", "سجل الذكاء الاصطناعي", "AI activity log", "Settings", Url: "/scan-history"),
+        new("🎁", "ادعُ صديق", "Refer a friend", "Settings", Url: "/settings/referrals"),
+        new("🏛️", "بوابة المكتب", "Firm portal", "Settings", Url: "/firm-portal"),
+        new("🔄", "تبديل الشركة", "Switch company", "Settings", Url: "/firm-portal/switch"),
+    };
+
+    private List<PaletteCommand> Filtered
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_query))
+            {
+                // No query → show top 20 (Quick + first sections).
+                return AllCommands.Take(20).ToList();
+            }
+            var q = _query.Trim();
+            return AllCommands
+                .Where(c => c.LabelAr.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || c.LabelEn.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || (c.Section?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (c.Url?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false))
+                .Take(40)
+                .ToList();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("daftarxRegisterCmdPalette", _selfRef);
+            _jsRegistered = true;
+        }
+
+        if (_open && _inputRef.Context is not null)
+        {
+            try { await _inputRef.FocusAsync(); } catch { /* element may not be in DOM yet */ }
+        }
+    }
+
+    [JSInvokable]
+    public Task Toggle()
+    {
+        _open = !_open;
+        if (_open)
+        {
+            _query = "";
+            _selectedIndex = 0;
+        }
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task Close()
+    {
+        _open = false;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private void OnQueryChanged(ChangeEventArgs e)
+    {
+        _query = e.Value?.ToString() ?? "";
+        _selectedIndex = 0;
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        var max = Filtered.Count;
+        if (max == 0) return;
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                _selectedIndex = (_selectedIndex + 1) % max;
+                break;
+            case "ArrowUp":
+                _selectedIndex = (_selectedIndex - 1 + max) % max;
+                break;
+            case "Enter":
+                Run(Filtered[_selectedIndex]);
+                break;
+        }
+    }
+
+    private void Run(PaletteCommand cmd)
+    {
+        _open = false;
+        if (cmd.Url is { } url)
+        {
+            Nav.NavigateTo(url);
+        }
+        cmd.Action?.Invoke();
+    }
+
+    private void OnBackdropClick() => Close();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_jsRegistered)
+        {
+            // Listener stays bound for the page lifetime; Blazor
+            // server-side circuits aren't long-lived enough to
+            // benefit from removeEventListener bookkeeping.
+        }
+        _selfRef?.Dispose();
+        await Task.CompletedTask;
+    }
+}

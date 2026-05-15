@@ -3919,4 +3919,163 @@ a.btn-secondary .ic {
     color: var(--text);
 }
 
+/* ============================================================
+   v5 DP.3 — Command palette (Cmd+K)
+   Centered modal; backdrop blur; type-to-filter results list.
+   Always rendered; visibility toggled via .is-open.
+   ============================================================ */
+.cmd-palette-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(11, 29, 58, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    z-index: 10000;
+    padding-top: 12vh;
+    animation: cmd-palette-fade 150ms ease-out;
+}
+.cmd-palette-modal.is-open {
+    display: flex;
+}
+@keyframes cmd-palette-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+.cmd-palette-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+    width: min(640px, calc(100vw - 32px));
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: cmd-palette-pop 180ms ease-out;
+}
+@keyframes cmd-palette-pop {
+    from { opacity: 0; transform: scale(0.97) translateY(-6px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.cmd-palette-search {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+}
+.cmd-palette-icon {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-weight: 600;
+}
+.cmd-palette-search input {
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font-size: 16px;
+    color: var(--text);
+    width: 100%;
+    padding: 6px 0;
+}
+.cmd-palette-dismiss {
+    background: transparent;
+    border: 0;
+    color: var(--text-subtle);
+    font-size: 22px;
+    cursor: pointer;
+    padding: 0 6px;
+    line-height: 1;
+}
+.cmd-palette-dismiss:hover { color: var(--text); }
+.cmd-palette-results {
+    overflow-y: auto;
+    flex: 1;
+}
+.cmd-palette-empty {
+    padding: 32px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+.cmd-palette-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+    width: 100%;
+    padding: 10px 14px;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    text-align: start;
+    color: var(--text);
+    transition: background-color 100ms;
+}
+.cmd-palette-item:last-child { border-bottom: 0; }
+.cmd-palette-item:hover,
+.cmd-palette-item.is-active {
+    background: var(--primary-soft);
+}
+.cmd-palette-item-icon {
+    font-size: 18px;
+    width: 24px;
+    text-align: center;
+}
+.cmd-palette-item-label {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.cmd-palette-item-label span {
+    font-size: 14px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cmd-palette-item-label small {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+.cmd-palette-item-section {
+    color: var(--text-subtle);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--bg-2);
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+.cmd-palette-foot {
+    display: flex;
+    gap: 16px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.cmd-palette-foot kbd {
+    display: inline-block;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text);
+    margin-inline-end: 4px;
+}
+
 

@@ -466,3 +466,8 @@
 @* v5 DP.1 — global toast stack rendered above everything else.
    Scoped service means one stack per Blazor circuit. *@
 <EgyptTax.Web.Shared.Toasts.ToastContainer />
+
+@* v5 DP.3 — global Cmd+K command palette. JS in
+   /js/cmd-palette.js listens for the keyboard shortcut + nudges
+   this component to toggle. *@
+<EgyptTax.Web.Shared.CmdPalette.CommandPalette />
