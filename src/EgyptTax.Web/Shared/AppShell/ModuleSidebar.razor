@@ -6,22 +6,19 @@
 @inject IJSRuntime Js
 
 @*
-    v5 UI Rebuild — Sprint 1. The 64px icon-only sidebar from the
-    Manus 2026-05-15 design (RTL: pinned to the right edge of
-    viewport). Each icon is one of the 7 modules; the active
-    module gets the gold-circle treatment from the mockups.
-
-    Bottom slot holds the universal-search trigger (opens the
-    existing CommandPalette) and the user avatar / signout menu.
+    v5 UI Rebuild — Sprint 1, mockup-fidelity pass.
+    The right-edge (RTL) module rail per the Manus 2026-05-15 mockups:
+    ~88px wide, dark-navy bg, gold "D" shield logo at top, then 7
+    module buttons each with an icon + tiny Arabic label below.
+    Active module gets a gold-tinted rounded box around the whole
+    icon+label block. Bottom rail: search trigger, settings (link to
+    Settings module if not already active), and a circular user
+    avatar — icon-only at the bottom, no labels there per mockup.
 *@
 
 <aside class="appshell-modules" aria-label="@(_isArabic ? "الوحدات" : "Modules")">
-    <a class="appshell-modules-logo" href="/" title="DaftarX">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-             stroke-linecap="round" stroke-linejoin="round"
-             width="22" height="22" aria-hidden="true">
-            <path d="M12 2L4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4Z"/>
-        </svg>
+    <a class="appshell-modules-logo" href="/" title="DaftarX" aria-label="DaftarX">
+        <span class="appshell-logo-d">D</span>
     </a>
 
     <nav class="appshell-modules-nav">
@@ -30,38 +27,34 @@
             var isActive = m.Id == ActiveModuleId;
             <a class="appshell-module-btn @(isActive ? "is-active" : "")"
                href="@m.DefaultRoute"
-               title="@(_isArabic ? m.LabelAr : m.LabelEn)"
-               aria-label="@(_isArabic ? m.LabelAr : m.LabelEn)"
-               aria-current="@(isActive ? "page" : null)">
+               aria-current="@(isActive ? "page" : null)"
+               aria-label="@(_isArabic ? m.LabelAr : m.LabelEn)">
                 <Icon Name="@m.IconName" Class="appshell-module-icon" />
+                <span class="appshell-module-label">@(_isArabic ? m.LabelAr : m.LabelEn)</span>
             </a>
         }
     </nav>
 
     <div class="appshell-modules-footer">
-        <button type="button" class="appshell-module-btn"
+        <button type="button" class="appshell-module-btn appshell-module-btn--icon-only"
                 title="@(_isArabic ? "بحث (Ctrl+K)" : "Search (Ctrl+K)")"
                 aria-label="@(_isArabic ? "افتح البحث الشامل" : "Open universal search")"
                 @onclick="OpenCommandPaletteAsync">
             <Icon Name="search" Class="appshell-module-icon" />
         </button>
 
-        @if (!string.IsNullOrEmpty(_userInitial))
-        {
-            <a class="appshell-module-btn appshell-user-btn"
-               href="/profile"
-               title="@_userDisplayName">
+        <a class="appshell-user-pill"
+           href="/profile"
+           title="@(_userDisplayName ?? "Profile")">
+            @if (!string.IsNullOrEmpty(_userInitial))
+            {
                 <span class="appshell-user-initial">@_userInitial</span>
-            </a>
-        }
-        else
-        {
-            <a class="appshell-module-btn"
-               href="/login"
-               title="@(_isArabic ? "تسجيل الدخول" : "Sign in")">
+            }
+            else
+            {
                 <Icon Name="user" Class="appshell-module-icon" />
-            </a>
-        }
+            }
+        </a>
     </div>
 </aside>
 

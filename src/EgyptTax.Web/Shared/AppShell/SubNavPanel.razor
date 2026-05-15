@@ -44,7 +44,8 @@
                     <a class="appshell-subnav-link @(isActive ? "is-active" : "")"
                        href="@link.Url"
                        aria-current="@(isActive ? "page" : null)">
-                        @(_isArabic ? link.LabelAr : link.LabelEn)
+                        <Icon Name="@link.IconName" Class="appshell-subnav-icon" />
+                        <span>@(_isArabic ? link.LabelAr : link.LabelEn)</span>
                     </a>
                     break;
             }
