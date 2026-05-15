@@ -164,6 +164,7 @@ public static class AppShellModuleRegistry
                 new SubNavLink("الحسابات النقدية", "Cash accounts", "/settings/cash-accounts", "cash account نقدي", "wallet"),
                 new SubNavLink("قوالب عروض الأسعار", "Quotation templates", "/settings/quotation-templates", "quotation template قالب", "file-text"),
                 new SubNavLink("فرق المبيعات", "Sales teams", "/settings/sales-teams", "sales team فريق", "users"),
+                new SubNavLink("قوائم الأسعار", "Pricelists", "/settings/pricelists", "pricelist قائمة أسعار", "tag"),
                 new SubNavLink("Webhooks", "Webhooks", "/settings/webhooks", "webhook", "zap"),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("الاستيراد والإحالات", "Import & referrals"),

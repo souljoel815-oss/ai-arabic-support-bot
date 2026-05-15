@@ -34,6 +34,13 @@ public sealed class Item
     /// </summary>
     public decimal? LowStockThreshold { get; private set; }
 
+    /// <summary>v5 B.2 — operator-set list price in EGP. Null = no
+    /// list price configured (operator types the price on every
+    /// invoice line). When set, becomes the price the
+    /// <c>PricelistResolver</c> applies discount-% rules against;
+    /// fixed-price rules ignore this field.</summary>
+    public decimal? DefaultUnitPriceEgp { get; private set; }
+
     /// <summary>v3 §11 #5 (lot tracking) — opt-in flag. When true,
     /// stock receipts must specify a lot code + optional expiry
     /// date; per-lot stock is tracked in <see cref="ItemLot"/>
@@ -104,6 +111,18 @@ public sealed class Item
     public void Deactivate() => Status = ItemStatus.Inactive;
 
     public void Reactivate() => Status = ItemStatus.Active;
+
+    /// <summary>v5 B.2 — set or clear the list price. Allowed in
+    /// any state (operator may add the price retroactively).</summary>
+    public void SetDefaultUnitPrice(decimal? priceEgp)
+    {
+        if (priceEgp is < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(priceEgp),
+                "Default unit price cannot be negative.");
+        }
+        DefaultUnitPriceEgp = priceEgp;
+    }
 
     /// <summary>
     /// Phase D — receive stock or post an upward adjustment. The

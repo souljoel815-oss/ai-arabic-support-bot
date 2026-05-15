@@ -28,6 +28,12 @@ public sealed class Customer
     /// </summary>
     public decimal? CreditLimitEgp { get; private set; }
 
+    /// <summary>v5 B.2 — default Pricelist for this customer.
+    /// Null = standard <c>Item.UnitPrice</c> applies. When set,
+    /// the <c>PricelistResolver</c> picks the first matching rule
+    /// at invoice-line-add time and pre-fills the unit price.</summary>
+    public Guid? DefaultPricelistId { get; private set; }
+
     private Customer() { }
 
     public Customer(
@@ -68,6 +74,15 @@ public sealed class Customer
             throw new ArgumentOutOfRangeException(nameof(limitEgp),
                 "Credit limit cannot be negative.");
         CreditLimitEgp = limitEgp;
+    }
+
+    /// <summary>v5 B.2 — assign default pricelist or detach (null).
+    /// The application layer enforces that the pricelist exists +
+    /// is Active before calling.</summary>
+    public void AssignPricelist(Guid? pricelistId)
+    {
+        if (pricelistId == Guid.Empty) pricelistId = null;
+        DefaultPricelistId = pricelistId;
     }
 }
 

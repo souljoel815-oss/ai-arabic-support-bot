@@ -44,6 +44,9 @@ internal sealed class ItemConfiguration : IEntityTypeConfiguration<Item>
         b.Property(i => i.LowStockThreshold)
             .HasColumnName("low_stock_threshold")
             .HasColumnType("decimal(19,3)");
+        b.Property(i => i.DefaultUnitPriceEgp)
+            .HasColumnName("default_unit_price_egp")
+            .HasColumnType("decimal(19,2)");
         b.Property(i => i.EtaItemCode)
             .HasColumnName("eta_item_code")
             .HasMaxLength(32)

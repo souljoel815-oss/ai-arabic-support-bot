@@ -138,6 +138,7 @@ builder.Services.AddScoped<
     EgyptTax.Infrastructure.Accounting.CustomerReceiptVoucherJournalEmitter
 >();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Payments.AllocatePaymentHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Pricing.PricelistResolver>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Payments.PostSupplierPaymentVoucherHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Payments.PostCustomerReceiptVoucherHandler>();
 builder.Services.AddScoped<

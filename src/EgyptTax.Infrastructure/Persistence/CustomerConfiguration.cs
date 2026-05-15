@@ -81,6 +81,12 @@ internal sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
             .HasColumnName("credit_limit_egp")
             .HasColumnType("decimal(19,2)");
 
+        // v5 B.2 — default pricelist FK (nullable). No CASCADE; we
+        // soft-deactivate pricelists via PricelistStatus.Inactive
+        // and keep historical assignments intact.
+        b.Property(c => c.DefaultPricelistId).HasColumnName("default_pricelist_id");
+        b.HasIndex(c => c.DefaultPricelistId).HasDatabaseName("ix_customers_default_pricelist_id");
+
         b.ComplexProperty(
             c => c.TaxProfile,
             t =>

@@ -1,0 +1,329 @@
+@page "/settings/pricelists"
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Pricing
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.SharedKernel.Time
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IClock Clock
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 B.2 — Pricelists CRUD. Operator creates a pricelist, adds
+    rules (per-item discount % OR per-item fixed price), then
+    assigns the pricelist as a customer's default. The actual
+    price resolution happens in PricelistResolver, called by
+    SalesInvoiceEdit when a line item is picked.
+*@
+
+<PageTitle>@(IsArabic ? "قوائم الأسعار | DaftarX" : "Pricelists | DaftarX")</PageTitle>
+
+<h1>@(IsArabic ? "قوائم الأسعار" : "Pricelists")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "أنشئ قوائم أسعار خاصة بعملاء معيّنين (خصم نسبة أو سعر ثابت). كل عميل ممكن يكون له قائمة افتراضية واحدة."
+        : "Create customer-specific pricing rules (percentage discount OR fixed override). Each customer can have one default pricelist.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="kpi-card kpi-info" role="status" style="margin:8px 0;">@_flash</div>
+}
+
+<section style="display:grid;grid-template-columns:minmax(0, 320px) 1fr;gap:24px;align-items:flex-start;margin-top:18px;">
+    @* Create form *@
+    <div class="form-grid">
+        <h2 style="margin-top:0;">@(IsArabic ? "قائمة جديدة" : "New pricelist")</h2>
+        <label>
+            <span>@(IsArabic ? "الاسم (عربي) *" : "Name (Arabic) *")</span>
+            <input type="text" maxlength="120" @bind="_form.NameArabic" @bind:event="oninput" />
+        </label>
+        <label>
+            <span>Name (English) *</span>
+            <input type="text" maxlength="120" @bind="_form.NameEnglish" @bind:event="oninput" />
+        </label>
+        <button type="button" class="btn-primary" @onclick="OnCreatePricelistAsync"
+                disabled="@(string.IsNullOrWhiteSpace(_form.NameArabic) || string.IsNullOrWhiteSpace(_form.NameEnglish))">
+            @(IsArabic ? "إنشاء" : "Create")
+        </button>
+    </div>
+
+    @* Existing pricelists *@
+    <div>
+        <h2 style="margin-top:0;">@(IsArabic ? "القوائم الحالية" : "Existing pricelists") (@_pricelists.Count)</h2>
+        @if (_pricelists.Count == 0)
+        {
+            <p><em>@(IsArabic ? "ما فيش قوائم بعد." : "No pricelists yet.")</em></p>
+        }
+        else
+        {
+            @foreach (var pl in _pricelists)
+            {
+                var memberCount = _customers.Count(c => c.DefaultPricelistId == pl.Id);
+                <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;background:var(--surface);">
+                    <header style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
+                        <div>
+                            <strong style="font-size:15px;">@(IsArabic ? pl.Name.Arabic : pl.Name.English)</strong>
+                            <span style="font-size:11px;color:var(--text-muted);margin-inline-start:8px;">
+                                @memberCount @(IsArabic ? "عميل" : "customers") · @pl.Rules.Count @(IsArabic ? "قاعدة" : "rules")
+                            </span>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <span class="badge" style="background:@(pl.Status == PricelistStatus.Active ? "var(--success-soft)" : "var(--neutral-soft)");color:@(pl.Status == PricelistStatus.Active ? "var(--success-text)" : "var(--neutral-text)");padding:2px 8px;border-radius:6px;font-size:11px;">
+                                @(pl.Status == PricelistStatus.Active ? (IsArabic ? "نشط" : "Active") : (IsArabic ? "غير نشط" : "Inactive"))
+                            </span>
+                            <button type="button" class="btn-secondary" style="font-size:12px;" @onclick="@(() => OnTogglePricelistAsync(pl))">
+                                @(pl.Status == PricelistStatus.Active ? (IsArabic ? "تعطيل" : "Deactivate") : (IsArabic ? "تفعيل" : "Activate"))
+                            </button>
+                        </div>
+                    </header>
+
+                    <table class="data-grid" style="font-size:13px;">
+                        <thead>
+                            <tr>
+                                <th>@(IsArabic ? "الصنف" : "Item")</th>
+                                <th>@(IsArabic ? "العميل" : "Customer")</th>
+                                <th>@(IsArabic ? "النوع" : "Type")</th>
+                                <th class="num">@(IsArabic ? "القيمة" : "Value")</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var rule in pl.Rules.OrderBy(r => r.Sequence))
+                            {
+                                var itemLabel = rule.ItemId is { } iid && _itemById.TryGetValue(iid, out var it)
+                                    ? it.Code
+                                    : (IsArabic ? "كل الأصناف" : "All items");
+                                var custLabel = rule.CustomerId is { } cid && _customerById.TryGetValue(cid, out var cu)
+                                    ? cu.Code
+                                    : (IsArabic ? "كل العملاء" : "All customers");
+                                <tr>
+                                    <td>@itemLabel</td>
+                                    <td>@custLabel</td>
+                                    <td>@(rule.DiscountPercent is not null ? (IsArabic ? "خصم" : "Discount") : (IsArabic ? "سعر ثابت" : "Fixed"))</td>
+                                    <td class="num">
+                                        @(rule.DiscountPercent is decimal d
+                                            ? $"{d:F2}%"
+                                            : $"{rule.FixedPriceEgp:N2} EGP")
+                                    </td>
+                                    <td><button type="button" class="btn-secondary" style="font-size:11px;" @onclick="@(() => OnRemoveRuleAsync(pl.Id, rule.Id))">×</button></td>
+                                </tr>
+                            }
+                            <tr style="background:var(--bg-2);">
+                                <td>
+                                    <select @bind="@_ruleForm[pl.Id].ItemId">
+                                        <option value="">— @(IsArabic ? "كل الأصناف" : "All items") —</option>
+                                        @foreach (var it in _items)
+                                        {
+                                            <option value="@it.Id">@it.Code (@(IsArabic ? it.Name.Arabic : it.Name.English))</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select @bind="@_ruleForm[pl.Id].CustomerId">
+                                        <option value="">— @(IsArabic ? "كل العملاء" : "All customers") —</option>
+                                        @foreach (var c in _customers)
+                                        {
+                                            <option value="@c.Id">@c.Code</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select @bind="@_ruleForm[pl.Id].Kind">
+                                        <option value="discount">@(IsArabic ? "خصم %" : "Discount %")</option>
+                                        <option value="fixed">@(IsArabic ? "سعر ثابت" : "Fixed price")</option>
+                                    </select>
+                                </td>
+                                <td class="num">
+                                    <input type="number" min="0" step="0.01" style="width:100px;text-align:end;"
+                                           @bind="@_ruleForm[pl.Id].Value" />
+                                </td>
+                                <td><button type="button" class="btn-primary" style="font-size:12px;" @onclick="@(() => OnAddRuleAsync(pl.Id))">+</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+
+        <h2 style="margin-top:32px;">@(IsArabic ? "تعيين القوائم للعملاء" : "Assign to customers")</h2>
+        @if (_customers.Count == 0)
+        {
+            <p><em>@(IsArabic ? "ما فيش عملاء بعد." : "No customers yet.")</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead>
+                    <tr>
+                        <th>@(IsArabic ? "الكود" : "Code")</th>
+                        <th>@(IsArabic ? "الاسم" : "Name")</th>
+                        <th>@(IsArabic ? "القائمة الافتراضية" : "Default pricelist")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in _customers)
+                    {
+                        <tr>
+                            <td><code>@c.Code</code></td>
+                            <td>@(IsArabic ? c.Name.Arabic : c.Name.English)</td>
+                            <td>
+                                <select value="@(c.DefaultPricelistId?.ToString() ?? "")"
+                                        @onchange="@(e => OnAssignToCustomerAsync(c.Id, e.Value?.ToString()))">
+                                    <option value="">— @(IsArabic ? "بدون" : "None") —</option>
+                                    @foreach (var pl in _pricelists.Where(p => p.Status == PricelistStatus.Active))
+                                    {
+                                        <option value="@pl.Id">@(IsArabic ? pl.Name.Arabic : pl.Name.English)</option>
+                                    }
+                                </select>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</section>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<Pricelist> _pricelists = new();
+    private List<Customer> _customers = new();
+    private List<Item> _items = new();
+    private Dictionary<Guid, Customer> _customerById = new();
+    private Dictionary<Guid, Item> _itemById = new();
+    private FormModel _form = new();
+    private Dictionary<Guid, RuleFormModel> _ruleForm = new();
+    private string? _flash;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _pricelists = await db.Set<Pricelist>().AsNoTracking()
+            .Include(p => p.Rules)
+            .OrderByDescending(p => p.Status)
+            .ThenBy(p => p.Name.English)
+            .ToListAsync();
+        _customers = await db.Set<Customer>().AsNoTracking()
+            .OrderBy(c => c.Code)
+            .ToListAsync();
+        _items = await db.Set<Item>().AsNoTracking()
+            .Where(i => i.Status == ItemStatus.Active)
+            .OrderBy(i => i.Code)
+            .ToListAsync();
+        _customerById = _customers.ToDictionary(c => c.Id);
+        _itemById = _items.ToDictionary(i => i.Id);
+
+        // Make sure every pricelist has a fresh rule-form scratch model.
+        foreach (var pl in _pricelists)
+        {
+            if (!_ruleForm.ContainsKey(pl.Id))
+            {
+                _ruleForm[pl.Id] = new RuleFormModel();
+            }
+        }
+    }
+
+    private async Task OnCreatePricelistAsync()
+    {
+        _flash = null;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var pl = new Pricelist(
+                new ArabicEnglishText(_form.NameArabic.Trim(), _form.NameEnglish.Trim()),
+                Clock.UtcNow);
+            db.Add(pl);
+            await db.SaveChangesAsync();
+            _form = new FormModel();
+            _flash = Tr("تم الإنشاء.", "Created.");
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; }
+    }
+
+    private async Task OnTogglePricelistAsync(Pricelist pl)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var live = await db.Set<Pricelist>().FirstOrDefaultAsync(p => p.Id == pl.Id);
+        if (live is null) return;
+        if (live.Status == PricelistStatus.Active) live.Deactivate();
+        else live.Reactivate();
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task OnAddRuleAsync(Guid pricelistId)
+    {
+        _flash = null;
+        try
+        {
+            var form = _ruleForm[pricelistId];
+            if (form.Value <= 0)
+            {
+                _flash = Tr("القيمة لازم تكون أكبر من صفر.", "Value must be greater than zero.");
+                return;
+            }
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var pl = await db.Set<Pricelist>().Include(p => p.Rules).FirstOrDefaultAsync(p => p.Id == pricelistId);
+            if (pl is null) return;
+            Guid? itemId = Guid.TryParse(form.ItemId, out var iid) ? iid : null;
+            Guid? custId = Guid.TryParse(form.CustomerId, out var cid) ? cid : null;
+            if (form.Kind == "discount")
+            {
+                pl.AddDiscountRule(itemId, custId, form.Value);
+            }
+            else
+            {
+                pl.AddFixedPriceRule(itemId, custId, MoneyEgp.From(form.Value));
+            }
+            await db.SaveChangesAsync();
+            _ruleForm[pricelistId] = new RuleFormModel();
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _flash = ex.Message; }
+    }
+
+    private async Task OnRemoveRuleAsync(Guid pricelistId, Guid ruleId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var pl = await db.Set<Pricelist>().Include(p => p.Rules).FirstOrDefaultAsync(p => p.Id == pricelistId);
+        if (pl is null) return;
+        pl.RemoveRule(ruleId);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task OnAssignToCustomerAsync(Guid customerId, string? pricelistIdRaw)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var live = await db.Set<Customer>().FirstOrDefaultAsync(c => c.Id == customerId);
+        if (live is null) return;
+        Guid? pid = Guid.TryParse(pricelistIdRaw, out var p) ? p : null;
+        live.AssignPricelist(pid);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private sealed class FormModel
+    {
+        [Required, StringLength(120)] public string NameArabic { get; set; } = "";
+        [Required, StringLength(120)] public string NameEnglish { get; set; } = "";
+    }
+
+    private sealed class RuleFormModel
+    {
+        public string ItemId { get; set; } = "";
+        public string CustomerId { get; set; } = "";
+        public string Kind { get; set; } = "discount"; // "discount" | "fixed"
+        public decimal Value { get; set; }
+    }
+}
