@@ -1,0 +1,345 @@
+@page "/deferred-revenue"
+@using System.Globalization
+@using EgyptTax.Domain.Accounting
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<PageTitle>@Tr("الإيرادات المؤجلة | DaftarX", "Deferred Revenue | DaftarX")</PageTitle>
+
+<h1>@Tr("📈 الإيرادات المؤجلة (Unearned Revenue)", "📈 Deferred revenue (F.1)")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "للعقود الللي بتقبضها مقدماً ولازم تتوزع على شهور (صيانة سنوية، تدريب مدفوع مقدم، اشتراكات سنوية). المبلغ بيترحّل أول مرة كالتزام في 2320، وكل شهر تضغط «احسب الفترة التالية» يطلع قيد: مدين 2320 / دائن الإيراد الفعلي.",
+        "For revenue collected up-front that economically spans multiple months (annual maintenance, prepaid training, subscription invoices). Initial booking lands as liability in 2320. Each period, click \"Recognize next period\" to post: DR 2320 / CR revenue account.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass">@_flash</div>
+}
+
+@if (_loading) { <p>@Tr("جارٍ التحميل…", "Loading…")</p> return; }
+
+@if (_deferreds.Count > 0)
+{
+    var totalLiability = _deferreds.Sum(d => d.RemainingBalance.Amount);
+    var fullyDone = _deferreds.Count(d => d.IsFullyRecognized);
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("إجمالي العقود", "Total contracts")</span>
+            <span class="list-stat-value">@_deferreds.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("مكتملة", "Fully recognized")</span>
+            <span class="list-stat-value is-success">@fullyDone</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("الالتزام المتبقي (2320)", "Outstanding (2320)")</span>
+            <span class="list-stat-value is-warn">@totalLiability.ToString("N0") <small>@Tr("ج.م", "EGP")</small></span>
+        </div>
+    </div>
+}
+
+<section class="invoice-toolbar">
+    <button type="button" class="btn-primary" @onclick="StartCreate" disabled="@_editing">
+        + @Tr("تسجيل إيراد مؤجل", "Record deferred revenue")
+    </button>
+</section>
+
+@if (_editing)
+{
+    <section class="form-grid" style="margin-top:16px;max-width:760px;">
+        <h2 style="margin:0 0 12px;">@Tr("تسجيل إيراد مؤجل", "Record deferred revenue")</h2>
+
+        <label>
+            <span>@Tr("الاسم", "Name")</span>
+            <input type="text" @bind="_form.Name" placeholder="@Tr("مثال: عقد صيانة سنوي 2026", "e.g. Annual maintenance contract 2026")" />
+        </label>
+        <label>
+            <span>@Tr("الوصف (اختياري)", "Description (optional)")</span>
+            <textarea rows="2" @bind="_form.Description"></textarea>
+        </label>
+        <label>
+            <span>@Tr("المبلغ الإجمالي", "Total amount")</span>
+            <input type="number" step="0.01" min="0.01" @bind="_form.TotalAmount" />
+        </label>
+        <label>
+            <span>@Tr("حساب الإيراد", "Revenue account")</span>
+            <select @bind="_form.RevenueAccountCode">
+                <option value="">@Tr("— اختر —", "— Pick —")</option>
+                <option value="4000">4000 — @Tr("إيرادات المبيعات", "Sales revenue")</option>
+                <option value="4900">4900 — @Tr("إيرادات أخرى", "Other income")</option>
+            </select>
+        </label>
+        <label>
+            <span>@Tr("شهر البداية", "Start month")</span>
+            <input type="month" @bind="_form.StartMonth" />
+        </label>
+        <label>
+            <span>@Tr("عدد الفترات (شهور)", "Number of periods (months)")</span>
+            <input type="number" min="1" max="60" @bind="_form.PeriodCount" />
+        </label>
+
+        @if (_form.TotalAmount > 0 && _form.PeriodCount > 0)
+        {
+            var monthly = Math.Round(_form.TotalAmount / _form.PeriodCount, 2);
+            <div class="kpi-card kpi-info" style="font-size:13px;">
+                @Tr(
+                    $"حسابياً: قسط شهري = {monthly:N2} ج.م × {_form.PeriodCount} فترة = {_form.TotalAmount:N2} ج.م",
+                    $"Reads as: monthly = {monthly:N2} EGP × {_form.PeriodCount} periods = {_form.TotalAmount:N2} EGP")<br />
+                @Tr("القيد الافتتاحي:", "Initial JE:") <strong>DR 1100 Cash @_form.TotalAmount.ToString("N2") / CR 2320 Unearned Revenue @_form.TotalAmount.ToString("N2")</strong>
+            </div>
+        }
+
+        <div class="invoice-actions" style="margin-top:16px;">
+            <button type="button" class="btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ + ترحيل القيد الافتتاحي", "Save + post initial JE"))
+            </button>
+            <button type="button" class="btn-secondary" @onclick="@(() => _editing = false)">
+                @Tr("إلغاء", "Cancel")
+            </button>
+        </div>
+    </section>
+}
+
+@if (!_editing && _deferreds.Count > 0)
+{
+    <table class="data-grid" style="margin-top:16px;">
+        <thead>
+            <tr>
+                <th>@Tr("الاسم", "Name")</th>
+                <th class="num">@Tr("الإجمالي", "Total")</th>
+                <th class="num">@Tr("الشهري", "Monthly")</th>
+                <th>@Tr("التقدم", "Progress")</th>
+                <th class="num">@Tr("المتبقي", "Remaining")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var d in _deferreds)
+            {
+                var pct = d.PeriodCount == 0 ? 0 : (int)Math.Round((double)d.PeriodsRecognized / d.PeriodCount * 100);
+                <tr class="@(d.IsFullyRecognized ? "row-muted" : "")">
+                    <td>
+                        <strong>@d.Name</strong>
+                        @if (!string.IsNullOrEmpty(d.Description))
+                        {
+                            <br /><span style="font-size:12px;color:var(--text-muted);">@d.Description</span>
+                        }
+                    </td>
+                    <td class="num">@d.TotalAmount.Amount.ToString("N2")</td>
+                    <td class="num">@d.MonthlyAmount.Amount.ToString("N2")</td>
+                    <td>
+                        @d.PeriodsRecognized / @d.PeriodCount (@pct%)
+                        <div style="background:var(--dx-bg-hover);height:4px;border-radius:2px;margin-top:3px;overflow:hidden;">
+                            <div style="background:var(--dx-success);height:100%;width:@(pct)%;"></div>
+                        </div>
+                    </td>
+                    <td class="num">
+                        @if (d.IsFullyRecognized)
+                        {
+                            <span class="state-badge state-approved">@Tr("مكتمل", "Done")</span>
+                        }
+                        else
+                        {
+                            <strong>@d.RemainingBalance.Amount.ToString("N2")</strong>
+                        }
+                    </td>
+                    <td>
+                        @if (!d.IsFullyRecognized)
+                        {
+                            <button type="button" class="btn-primary"
+                                    @onclick="@(() => RecognizeAsync(d.Id))"
+                                    disabled="@_saving">
+                                @Tr($"احسب {d.NextRecognitionMonth:yyyy-MM}", $"Recognize {d.NextRecognitionMonth:yyyy-MM}")
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else if (!_editing)
+{
+    <p style="padding:32px 0;text-align:center;color:var(--text-muted);">
+        <em>@Tr("لا توجد إيرادات مؤجلة. اضغط «تسجيل إيراد مؤجل» للأول.",
+            "No deferred revenue yet. Click \"Record deferred revenue\" to add one.")</em>
+    </p>
+}
+
+@code {
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private bool _loading = true;
+    private bool _editing;
+    private bool _saving;
+    private FormModel _form = new();
+    private List<DeferredRevenue> _deferreds = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    private const string DeferredVoucherPrefix = "DEFR";
+    private const string DeferredRecognizePrefix = "DEFR-REC";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _deferreds = await db.Set<DeferredRevenue>().AsNoTracking()
+            .OrderBy(d => d.PeriodsRecognized == d.PeriodCount)
+            .ThenByDescending(d => d.CreatedAtUtc)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void StartCreate()
+    {
+        _form = new FormModel
+        {
+            StartMonth = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1),
+            PeriodCount = 12,
+            RevenueAccountCode = "4000",
+        };
+        _editing = true;
+        _flash = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _flash = null;
+        if (string.IsNullOrWhiteSpace(_form.Name) || _form.TotalAmount <= 0 || _form.PeriodCount < 1 || string.IsNullOrWhiteSpace(_form.RevenueAccountCode))
+        {
+            _flash = Tr("املأ كل الحقول.", "Fill all fields.");
+            _flashClass = "flash-error";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId();
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var deferred = new DeferredRevenue(
+                _form.Name,
+                _form.Description,
+                MoneyEgp.From(_form.TotalAmount),
+                _form.RevenueAccountCode,
+                _form.StartMonth,
+                _form.PeriodCount,
+                DateTime.UtcNow,
+                userId);
+            db.Add(deferred);
+
+            // Initial JE: DR 1100 Cash / CR 2320 Unearned Revenue.
+            var jeNumber = $"{DeferredVoucherPrefix}-{deferred.Id:N}".Substring(0, 16);
+            var jeLines = new[]
+            {
+                (ChartOfAccountCodes.Cash, deferred.TotalAmount, MoneyEgp.Zero,
+                    $"Cash received for deferred revenue {deferred.Name}"),
+                (ChartOfAccountCodes.UnearnedRevenue, MoneyEgp.Zero, deferred.TotalAmount,
+                    $"Unearned revenue booked: {deferred.Name}"),
+            };
+            var entry = JournalEntry.Create(
+                sourceDocumentId: deferred.Id,
+                sourceDocumentNumber: jeNumber,
+                sourceDocumentType: DocumentType.JournalVoucher,
+                postedAtUtc: DateTime.UtcNow,
+                lines: jeLines);
+            db.Add(entry);
+
+            await db.SaveChangesAsync();
+            _flash = Tr(
+                $"تم تسجيل عقد «{deferred.Name}» + ترحيل القيد الافتتاحي.",
+                $"Deferred revenue '{deferred.Name}' recorded + initial JE posted.");
+            _flashClass = "flash-success";
+            _editing = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task RecognizeAsync(Guid deferredId)
+    {
+        _flash = null;
+        _saving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var deferred = await db.Set<DeferredRevenue>().FirstAsync(d => d.Id == deferredId);
+            if (deferred.IsFullyRecognized)
+            {
+                _flash = Tr("مكتمل بالفعل.", "Already fully recognized.");
+                _flashClass = "flash-error";
+                return;
+            }
+            var recognitionMonth = deferred.NextRecognitionMonth;
+            deferred.RecognizeNextPeriod(DateTime.UtcNow);
+
+            var jeNumber = $"{DeferredRecognizePrefix}-{deferred.Id:N}".Substring(0, 22);
+            var jeLines = new[]
+            {
+                (ChartOfAccountCodes.UnearnedRevenue, deferred.MonthlyAmount, MoneyEgp.Zero,
+                    $"Recognize {deferred.Name} — {recognitionMonth:yyyy-MM}"),
+                (deferred.RevenueAccountCode, MoneyEgp.Zero, deferred.MonthlyAmount,
+                    $"Earn revenue from {deferred.Name}"),
+            };
+            var entry = JournalEntry.Create(
+                sourceDocumentId: deferred.Id,
+                sourceDocumentNumber: jeNumber,
+                sourceDocumentType: DocumentType.JournalVoucher,
+                postedAtUtc: DateTime.UtcNow,
+                lines: jeLines);
+            db.Add(entry);
+
+            await db.SaveChangesAsync();
+            _flash = Tr(
+                $"تم احتساب فترة {recognitionMonth:yyyy-MM} ({deferred.MonthlyAmount.Amount:N2} ج.م) + ترحيل القيد.",
+                $"Recognized {recognitionMonth:yyyy-MM} ({deferred.MonthlyAmount.Amount:N2} EGP) + JE posted.");
+            _flashClass = "flash-success";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private sealed class FormModel
+    {
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public decimal TotalAmount { get; set; }
+        public string RevenueAccountCode { get; set; } = "4000";
+        public DateOnly StartMonth { get; set; } = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+        public int PeriodCount { get; set; } = 12;
+    }
+}

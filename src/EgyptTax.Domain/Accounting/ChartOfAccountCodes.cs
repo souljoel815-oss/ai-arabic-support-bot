@@ -88,4 +88,13 @@ public static class ChartOfAccountCodes
     /// operator-triggered recognition JE that simultaneously debits
     /// the underlying expense account (e.g. 5200 GenericExpense).</summary>
     public const string PrepaidExpenseAsset = "1400";
+
+    /// <summary>v5 F.1 — current liability holding revenue collected
+    /// in advance of being earned: annual maintenance contracts,
+    /// prepaid training, subscription invoices. Credited when the
+    /// <c>DeferredRevenue</c> is booked (mirror of the prepaid-expense
+    /// pattern on the income side); debited monthly by the
+    /// recognition JE that simultaneously credits the revenue account
+    /// (typically 4000 Sales Revenue).</summary>
+    public const string UnearnedRevenue = "2320";
 }

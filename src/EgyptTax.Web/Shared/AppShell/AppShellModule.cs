@@ -124,6 +124,7 @@ public static class AppShellModuleRegistry
                 new SubNavLink("قيود اليومية", "Journal entries", "/journals", "journal قيد", "edit"),
                 new SubNavLink("قوالب القيود الدورية", "Recurring JV templates", "/journal-templates", "journal template قالب recurring", "file-text"),
                 new SubNavLink("المصروفات المدفوعة مقدماً", "Prepaid expenses", "/prepaid-expenses", "prepaid expense مدفوع مقدم", "calendar"),
+                new SubNavLink("الإيرادات المؤجلة", "Deferred revenue", "/deferred-revenue", "deferred revenue إيراد مؤجل unearned", "trending-up"),
                 new SubNavLink("شجرة الحسابات", "Chart of accounts", "/settings/chart-of-accounts", "coa حسابات", "boxes"),
                 new SubNavLink("المطابقة البنكية", "Bank reconciliation", "/payments/bank-statements", "bank statement كشف", "landmark"),
                 new SubNavLink("تحويل أموال", "Fund transfer", "/cash-transfer", "fund transfer تحويل", "arrow-right"),
