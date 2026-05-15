@@ -280,7 +280,9 @@
                             <th>@(IsArabic ? "العميل / المورد" : "Party")</th>
                             <th>@(IsArabic ? "النوع" : "Type")</th>
                             <th>@(IsArabic ? "التاريخ" : "Date")</th>
-                            <th class="num">@(IsArabic ? "الإجمالي" : "Total")</th>
+                            <th class="num">@(IsArabic ? "قبل الضريبة" : "Subtotal")</th>
+                            <th class="num">@(IsArabic ? "الضريبة" : "VAT")</th>
+                            <th class="num">@(IsArabic ? "الإجمالي" : "Grand total")</th>
                             <th>@(IsArabic ? "الحالة" : "Status")</th>
                         </tr>
                     </thead>
@@ -292,7 +294,9 @@
                                 <td>@r.PartyName</td>
                                 <td><span class="dash-type-chip @(r.Kind == "sales" ? "is-sales" : "is-purchase")">@r.TypeLabel</span></td>
                                 <td>@r.Date.ToString("yyyy-MM-dd")</td>
-                                <td class="num">@FormatThousands(r.Amount) <small>@(IsArabic ? "ج.م" : "EGP")</small></td>
+                                <td class="num">@FormatThousands(r.Subtotal)</td>
+                                <td class="num">@FormatThousands(r.Vat)</td>
+                                <td class="num"><strong>@FormatThousands(r.Amount)</strong></td>
                                 <td><span class="status-pill @r.StatusClass">@r.StatusLabel</span></td>
                             </tr>
                         }
@@ -389,7 +393,7 @@
     private List<TrendBucket> _trend = new();
 
     // Recent invoices
-    private record RecentRow(string Url, string DocumentNumber, string PartyName, string Kind, string TypeLabel, DateOnly Date, decimal Amount, string StatusClass, string StatusLabel);
+    private record RecentRow(string Url, string DocumentNumber, string PartyName, string Kind, string TypeLabel, DateOnly Date, decimal Subtotal, decimal Vat, decimal Amount, string StatusClass, string StatusLabel);
     private List<RecentRow> _recent = new();
 
     protected override async Task OnInitializedAsync()
@@ -447,12 +451,17 @@
             .ToListAsync();
         var cash = receipts.Where(r => r.PaymentMethod == PaymentMethod.Cash).Sum(r => r.Amount);
         var bank = receipts.Where(r => r.PaymentMethod == PaymentMethod.BankTransfer).Sum(r => r.Amount);
-        var credit = Math.Max(0m, _salesThisMonth - cash - bank);
+        // Card payments aren't a distinct PaymentMethod yet — placeholder
+        // segment so the donut matches the 2026-05-15 mockup's 4-slice
+        // layout. When the enum picks up a Card value this will populate.
+        var card = 0m;
+        var credit = Math.Max(0m, _salesThisMonth - cash - bank - card);
         _paymentMix = new List<PieSeg>
         {
-            new(IsArabic ? "تحويل بنكي" : "Bank transfer", bank,   "#f0c040"),
-            new(IsArabic ? "نقدي"       : "Cash",         cash,   "#60a5fa"),
-            new(IsArabic ? "آجل"        : "On account",  credit, "#a78bfa"),
+            new(IsArabic ? "تحويل بنكي"     : "Bank transfer",  bank,   "#f0b90b"),
+            new(IsArabic ? "نقدي"           : "Cash",           cash,   "#22c55e"),
+            new(IsArabic ? "بطاقة ائتمان"   : "Credit card",    card,   "#60a5fa"),
+            new(IsArabic ? "آجل"            : "On account",     credit, "#a78bfa"),
         }.Where(s => s.Amount > 0).ToList();
 
         // 6-month sales+purchases trend.
@@ -473,14 +482,14 @@
             .ThenByDescending(i => i.PostedAtUtc)
             .ThenByDescending(i => i.DocumentDate)
             .Take(5)
-            .Select(i => new { i.Id, i.DocumentNumber, i.CustomerId, i.GrandTotal, i.State, i.DocumentDate })
+            .Select(i => new { i.Id, i.DocumentNumber, i.CustomerId, i.Subtotal, i.VatTotal, i.GrandTotal, i.State, i.DocumentDate })
             .ToListAsync();
         var recentPurchases = await Db.Set<PurchaseInvoice>().AsNoTracking()
             .OrderByDescending(p => p.PostedAtUtc.HasValue)
             .ThenByDescending(p => p.PostedAtUtc)
             .ThenByDescending(p => p.DateReceived)
             .Take(5)
-            .Select(p => new { p.Id, p.DocumentNumber, p.SupplierId, p.GrandTotal, p.State, p.DateReceived })
+            .Select(p => new { p.Id, p.DocumentNumber, p.SupplierId, p.Subtotal, p.VatTotal, p.GrandTotal, p.State, p.DateReceived })
             .ToListAsync();
 
         var customerIds = recentSales.Select(s => s.CustomerId).Distinct().ToArray();
@@ -502,6 +511,8 @@
                 Kind: "sales",
                 TypeLabel: IsArabic ? "فاتورة مبيعات" : "Sales invoice",
                 Date: s.DocumentDate,
+                Subtotal: s.Subtotal.Amount,
+                Vat: s.VatTotal.Amount,
                 Amount: s.GrandTotal.Amount,
                 StatusClass: ClassForState(s.State),
                 StatusLabel: LabelForState(s.State)
@@ -516,6 +527,8 @@
                 Kind: "purchase",
                 TypeLabel: IsArabic ? "فاتورة شراء" : "Purchase invoice",
                 Date: p.DateReceived,
+                Subtotal: p.Subtotal.Amount,
+                Vat: p.VatTotal.Amount,
                 Amount: p.GrandTotal.Amount,
                 StatusClass: ClassForState(p.State),
                 StatusLabel: LabelForState(p.State)
