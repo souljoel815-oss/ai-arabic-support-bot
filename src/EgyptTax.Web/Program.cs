@@ -140,6 +140,7 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<EgyptTax.Infrastructure.Payments.AllocatePaymentHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Pricing.PricelistResolver>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Crm.SendLeadEmailHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Inventory.WeightedAvgCostQuery>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Payments.PostSupplierPaymentVoucherHandler>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Payments.PostCustomerReceiptVoucherHandler>();
 builder.Services.AddScoped<

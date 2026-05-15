@@ -1,5 +1,7 @@
 @page "/stock-adjustments"
+@using EgyptTax.Domain.Documents
 @using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Inventory
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.SharedKernel
 @using EgyptTax.Web.Auth
@@ -8,6 +10,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext Db
 @inject AuthenticationStateProvider Auth
+@inject WeightedAvgCostQuery CostQuery
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 @*
@@ -236,6 +239,14 @@
                 .Where(r => r.ActualCount.HasValue && r.ActualCount.Value != r.SystemCount)
                 .ToList();
 
+            // v5 E.4 — pre-load weighted-avg cost per item so we can
+            // value the JV emit. Items without posted purchases come
+            // back null; we skip JV emission for those rows (the
+            // adjustment still records, just without an accounting
+            // impact on the GL).
+            var costByItem = await CostQuery.GetCostByItemAsync(
+                changedRows.Select(r => r.ItemId).Distinct().ToList());
+
             // Pull live Item + ItemStockByLocation rows tracked so we
             // can mutate via the domain methods + persist them in a
             // single SaveChanges.
@@ -300,6 +311,39 @@
                     kind: StockMovementKind.Adjustment,
                     note: BuildMovementNote(row),
                     createdByUserId: userId));
+
+                // v5 E.4 — emit a balanced JV per non-zero delta so
+                // the GL reflects the inventory shrinkage / gain.
+                // delta < 0 → DR Inventory Loss / CR Inventory Asset
+                // delta > 0 → DR Inventory Asset / CR Inventory Gain
+                // Items with no purchase history get costByItem = null;
+                // we skip the JV (the StockAdjustment audit row still
+                // records — accounting impact lands when a cost exists).
+                if (costByItem.TryGetValue(row.ItemId, out var cost) && cost is decimal unitCost && unitCost > 0m)
+                {
+                    var valueEgp = MoneyEgp.From(decimal.Round(Math.Abs(delta) * unitCost, 2, MidpointRounding.ToEven));
+                    if (valueEgp.Amount > 0m)
+                    {
+                        var (drCode, crCode, narrationAr, narrationEn) = delta < 0m
+                            ? ("6140", "1410",
+                                $"تسوية مخزون — {row.Reason} — {item.Code}",
+                                $"Stock adjustment — {row.Reason} — {item.Code}")
+                            : ("1410", "4900",
+                                $"زيادة مخزون — {row.Reason} — {item.Code}",
+                                $"Stock gain — {row.Reason} — {item.Code}");
+                        var jv = JournalVoucher.CreateManual(
+                            date: DateOnly.FromDateTime(nowUtc),
+                            narration: new ArabicEnglishText(narrationAr, narrationEn),
+                            createdByUserId: userId,
+                            createdAtUtc: nowUtc,
+                            lines: new[]
+                            {
+                                (drCode, valueEgp, MoneyEgp.Zero, narrationEn),
+                                (crCode, MoneyEgp.Zero, valueEgp, narrationEn),
+                            });
+                        Db.Add(jv);
+                    }
+                }
             }
 
             await Db.SaveChangesAsync();
