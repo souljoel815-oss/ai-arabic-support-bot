@@ -1379,8 +1379,10 @@ a.dx-action-row .dx-action-cta {
     color: var(--dx-text);
 }
 
-/* Ghost (generic) buttons */
-.appshell button:not(.btn-primary):not(.btn-secondary):not([type="submit"]):not(.appshell-module-btn):not(.dx-action-cta) {
+/* Ghost (generic) buttons — only style buttons that have NO class
+   so we don't override custom button widgets like .pos-item-card,
+   .kanban-card-* buttons, qty +/- in line editors, etc. */
+.appshell button:not([class]) {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -1395,7 +1397,7 @@ a.dx-action-row .dx-action-cta {
     cursor: pointer;
     transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
 }
-.appshell button:not(.btn-primary):not(.btn-secondary):not([type="submit"]):not(.appshell-module-btn):not(.dx-action-cta):hover {
+.appshell button:not([class]):hover {
     background: var(--dx-bg-hover);
     color: var(--dx-text);
     border-color: var(--dx-border);
@@ -2131,6 +2133,151 @@ a.dx-action-row .dx-action-cta {
 }
 .appshell .kanban-card-date {
     color: var(--dx-text-subtle);
+}
+
+/* ============================================================
+   POS (Point of Sale) — bridge for legacy .pos-* classes
+   ============================================================ */
+.appshell .pos-shell {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 18px;
+    margin-top: 4px;
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .appshell .pos-shell { grid-template-columns: 1fr; }
+}
+
+.appshell .pos-items { display: flex; flex-direction: column; gap: 14px; }
+
+.appshell .pos-search input {
+    width: 100%;
+    padding: 11px 14px;
+    font-size: 14px;
+    border-radius: var(--dx-radius-md);
+    background: var(--dx-bg-card);
+    border: 1px solid var(--dx-border);
+}
+
+.appshell .pos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.appshell .pos-item-card {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 4px !important;
+    text-align: start !important;
+    background: var(--dx-bg-card) !important;
+    border: 1px solid var(--dx-border-soft) !important;
+    border-radius: var(--dx-radius-md) !important;
+    padding: 14px 14px !important;
+    cursor: pointer !important;
+    transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease !important;
+    font: inherit !important;
+    color: var(--dx-text) !important;
+    min-height: 96px;
+    box-shadow: var(--dx-shadow-sm) !important;
+}
+.appshell .pos-item-card:hover {
+    transform: translateY(-2px) !important;
+    border-color: var(--dx-gold-line) !important;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08), 0 0 0 1px var(--dx-gold-dim-2) !important;
+}
+.appshell .pos-item-card:active {
+    transform: translateY(0) !important;
+}
+.appshell .pos-item-code {
+    font-size: 11px;
+    color: var(--dx-text-subtle);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.appshell .pos-item-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--dx-text);
+    line-height: 1.35;
+    margin-top: 4px;
+    flex: 1;
+}
+.appshell .pos-item-price {
+    font-size: 14px;
+    color: var(--dx-gold-bright);
+    font-weight: 700;
+    margin-top: 6px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Cart sidebar */
+.appshell .pos-cart {
+    background: var(--dx-bg-card);
+    border: 1px solid var(--dx-border-soft);
+    border-radius: var(--dx-radius-lg);
+    position: sticky;
+    top: 24px;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: var(--dx-shadow-md);
+}
+.appshell .pos-cart-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--dx-border-soft);
+    background: var(--dx-bg);
+}
+.appshell .pos-cart-head h2,
+.appshell .pos-cart-head strong {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--dx-text);
+}
+.appshell .pos-customer {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--dx-border-soft);
+}
+.appshell .pos-cart-items {
+    padding: 12px 18px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+.appshell .pos-cart-empty {
+    color: var(--dx-text-subtle);
+    font-style: normal;
+    text-align: center;
+    padding: 28px 0;
+}
+.appshell .pos-cart-line {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--dx-border-soft);
+}
+.appshell .pos-cart-line:last-child { border-bottom: none; }
+.appshell .pos-cart-line-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dx-text);
+    margin-bottom: 4px;
+}
+.appshell .pos-cart-line-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--dx-text-muted);
+}
+.appshell .pos-cart-line-total {
+    margin-inline-start: auto;
+    font-weight: 700;
+    color: var(--dx-gold-bright);
+    font-variant-numeric: tabular-nums;
 }
 
 /* ============================================================
