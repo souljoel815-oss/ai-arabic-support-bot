@@ -1,0 +1,284 @@
+@page "/cash-transfer"
+@using System.Globalization
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 E.5 — Internal funds transfer (bank-to-bank, bank-to-cash,
+    cash-to-bank). Daily-use convenience: posts a balanced JV
+    (DR destination cash account / CR source cash account) so both
+    cash-account ledgers reflect the move without the operator
+    typing a manual journal voucher.
+
+    No FX — single-currency v5. Both accounts must be EGP.
+*@
+
+<PageTitle>@(IsArabic ? "تحويل أموال بين الحسابات | DaftarX" : "Fund transfer | DaftarX")</PageTitle>
+
+<h1>@(IsArabic ? "تحويل أموال بين الحسابات" : "Fund transfer")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "حوّل بين الحسابات النقدية أو البنكية. النظام بيقيّد القيد المتوازن تلقائياً (مدين: الحساب المستلم / دائن: الحساب المرسل)."
+        : "Move funds between cash / bank accounts. The system posts a balanced JV automatically (DR destination / CR source).")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status" style="margin:8px 0;">@_flash</div>
+}
+
+<section style="display:grid;grid-template-columns:minmax(0, 380px) 1fr;gap:24px;align-items:flex-start;margin-top:18px;">
+    <div class="form-grid">
+        <h2 style="margin-top:0;">@(IsArabic ? "تحويل جديد" : "New transfer")</h2>
+        <label>
+            <span>@(IsArabic ? "من حساب *" : "From account *")</span>
+            <select @bind="_form.FromAccountId">
+                <option value="">— @(IsArabic ? "اختر —" : "Choose —")</option>
+                @foreach (var c in _cashAccounts)
+                {
+                    <option value="@c.Id">@c.AccountCode — @(IsArabic ? c.Name.Arabic : c.Name.English) (@c.Currency)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@(IsArabic ? "إلى حساب *" : "To account *")</span>
+            <select @bind="_form.ToAccountId">
+                <option value="">— @(IsArabic ? "اختر —" : "Choose —")</option>
+                @foreach (var c in _cashAccounts)
+                {
+                    <option value="@c.Id">@c.AccountCode — @(IsArabic ? c.Name.Arabic : c.Name.English) (@c.Currency)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@(IsArabic ? "المبلغ (ج.م) *" : "Amount (EGP) *")</span>
+            <input type="number" min="0.01" step="0.01" @bind="_form.Amount" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "التاريخ *" : "Date *")</span>
+            <input type="date" @bind="_form.Date" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "رقم المرجع (اختياري)" : "Reference (optional)")</span>
+            <input type="text" maxlength="100" @bind="_form.Reference"
+                   placeholder="@(IsArabic ? "رقم تحويل / رقم شيك" : "Transfer ref / cheque #")" />
+        </label>
+        <button type="button" class="btn-primary" @onclick="OnPostAsync"
+                disabled="@(_busy || string.IsNullOrEmpty(_form.FromAccountId) || string.IsNullOrEmpty(_form.ToAccountId) || _form.Amount <= 0m)">
+            @(_busy ? (IsArabic ? "جارٍ الترحيل…" : "Posting…") : (IsArabic ? "ترحيل التحويل" : "Post transfer"))
+        </button>
+    </div>
+
+    <div>
+        <h2 style="margin-top:0;">@(IsArabic ? "آخر التحويلات" : "Recent transfers") (@_recent.Count)</h2>
+        @if (_recent.Count == 0)
+        {
+            <p><em>@(IsArabic ? "ما فيش تحويلات بعد." : "No transfers yet.")</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead>
+                    <tr>
+                        <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                        <th>@(IsArabic ? "من" : "From")</th>
+                        <th>@(IsArabic ? "إلى" : "To")</th>
+                        <th class="num">@(IsArabic ? "المبلغ" : "Amount")</th>
+                        <th>@(IsArabic ? "المرجع" : "Reference")</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in _recent)
+                    {
+                        <tr>
+                            <td>@t.Date.ToString("yyyy-MM-dd")</td>
+                            <td>@t.FromLabel</td>
+                            <td>@t.ToLabel</td>
+                            <td class="num">@t.Amount.ToString("N2")</td>
+                            <td><small>@t.Reference</small></td>
+                            <td><a href="/journals/@t.JournalId">@(IsArabic ? "القيد" : "JV")</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</section>
+
+@code {
+    /// <summary>Marker prefix used in JV narration so the recent-
+    /// transfers list can find prior fund-transfer JVs without a
+    /// dedicated entity. "FUND-XFER" is intentionally rare in
+    /// natural-language narrations.</summary>
+    private const string TransferMarker = "[FUND-XFER]";
+
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<CashAccount> _cashAccounts = new();
+    private FormModel _form = new();
+    private List<TransferRow> _recent = new();
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _cashAccounts = await Db.Set<CashAccount>().AsNoTracking()
+            .OrderBy(c => c.AccountCode)
+            .ToListAsync();
+
+        // Find recent transfers — JVs whose narration starts with
+        // the marker. Cap at 50.
+        var recentJvIds = await Db.Set<JournalVoucher>().AsNoTracking()
+            .Where(j => j.Narration.English.StartsWith(TransferMarker)
+                || j.Narration.Arabic.StartsWith(TransferMarker))
+            .OrderByDescending(j => j.Date)
+            .Take(50)
+            .Select(j => j.Id)
+            .ToListAsync();
+
+        var jvs = await Db.Set<JournalVoucher>().AsNoTracking()
+            .Where(j => recentJvIds.Contains(j.Id))
+            .Include(j => j.Lines)
+            .ToListAsync();
+
+        var byCode = _cashAccounts.ToDictionary(c => c.AccountCode);
+
+        _recent = jvs
+            .OrderByDescending(j => j.Date)
+            .Select(j =>
+            {
+                var dr = j.Lines.FirstOrDefault(l => l.Debit.Amount > 0m);
+                var cr = j.Lines.FirstOrDefault(l => l.Credit.Amount > 0m);
+                string Label(string code) =>
+                    byCode.TryGetValue(code, out var ca)
+                        ? $"{ca.AccountCode} — {(IsArabic ? ca.Name.Arabic : ca.Name.English)}"
+                        : code;
+                return new TransferRow(
+                    JournalId: j.Id,
+                    Date: j.Date,
+                    FromLabel: cr is null ? "—" : Label(cr.AccountCode),
+                    ToLabel: dr is null ? "—" : Label(dr.AccountCode),
+                    Amount: dr?.Debit.Amount ?? 0m,
+                    Reference: ExtractReference(IsArabic ? j.Narration.Arabic : j.Narration.English));
+            })
+            .ToList();
+    }
+
+    private static string ExtractReference(string narration)
+    {
+        // Format: "[FUND-XFER] [ref]: rest" — pull ref if present.
+        var marker = narration.IndexOf(TransferMarker, StringComparison.Ordinal);
+        if (marker < 0) return "";
+        var afterMarker = narration[(marker + TransferMarker.Length)..].Trim();
+        if (!afterMarker.StartsWith("[")) return "";
+        var close = afterMarker.IndexOf(']');
+        return close < 1 ? "" : afterMarker[1..close];
+    }
+
+    private async Task OnPostAsync()
+    {
+        _busy = true;
+        _flash = null;
+        try
+        {
+            if (!Guid.TryParse(_form.FromAccountId, out var fromId)
+                || !Guid.TryParse(_form.ToAccountId, out var toId))
+            {
+                _flash = Tr("اختر الحسابين.", "Pick both accounts.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+            if (fromId == toId)
+            {
+                _flash = Tr("الحساب المرسل والمستلم لازم يكونوا مختلفين.",
+                    "Source and destination must differ.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+            var fromAcc = _cashAccounts.First(c => c.Id == fromId);
+            var toAcc = _cashAccounts.First(c => c.Id == toId);
+            if (!string.Equals(fromAcc.Currency, toAcc.Currency, StringComparison.OrdinalIgnoreCase))
+            {
+                _flash = Tr("التحويل بين عملات مختلفة غير مدعوم في v5.",
+                    "Cross-currency transfers aren't supported in v5.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+            if (_form.Amount <= 0m)
+            {
+                _flash = Tr("المبلغ لازم يكون أكبر من صفر.", "Amount must be positive.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId() ?? Guid.Empty;
+            if (userId == Guid.Empty)
+            {
+                _flash = Tr("تعذّر تحديد المستخدم.", "Could not resolve current user.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+
+            var amount = MoneyEgp.From(_form.Amount);
+            var refTag = string.IsNullOrWhiteSpace(_form.Reference) ? "" : $" [{_form.Reference.Trim()}]";
+            var narrAr = $"{TransferMarker}{refTag}: تحويل من {fromAcc.AccountCode} إلى {toAcc.AccountCode}";
+            var narrEn = $"{TransferMarker}{refTag}: Transfer {fromAcc.AccountCode} → {toAcc.AccountCode}";
+
+            var jv = JournalVoucher.CreateManual(
+                date: _form.Date,
+                narration: new ArabicEnglishText(narrAr, narrEn),
+                createdByUserId: userId,
+                createdAtUtc: DateTime.UtcNow,
+                lines: new[]
+                {
+                    (toAcc.AccountCode,   amount,         MoneyEgp.Zero, narrEn),
+                    (fromAcc.AccountCode, MoneyEgp.Zero,  amount,        narrEn),
+                });
+            Db.Add(jv);
+            await Db.SaveChangesAsync();
+
+            _flash = Tr($"تم تحويل {_form.Amount:N2} ج.م.", $"Transferred {_form.Amount:N2} EGP.");
+            _flashClass = "kpi-card kpi-info";
+            _form = new FormModel();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private sealed class FormModel
+    {
+        public string FromAccountId { get; set; } = "";
+        public string ToAccountId { get; set; } = "";
+        public decimal Amount { get; set; }
+        public DateOnly Date { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
+        public string Reference { get; set; } = "";
+    }
+
+    private sealed record TransferRow(
+        Guid JournalId,
+        DateOnly Date,
+        string FromLabel,
+        string ToLabel,
+        decimal Amount,
+        string Reference);
+}

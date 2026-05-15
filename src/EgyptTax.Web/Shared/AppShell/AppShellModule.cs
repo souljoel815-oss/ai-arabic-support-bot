@@ -112,7 +112,7 @@ public static class AppShellModuleRegistry
                 new SubNavLink("قيود اليومية", "Journal entries", "/journals", "journal قيد", "edit"),
                 new SubNavLink("شجرة الحسابات", "Chart of accounts", "/settings/chart-of-accounts", "coa حسابات", "boxes"),
                 new SubNavLink("المطابقة البنكية", "Bank reconciliation", "/payments/bank-statements", "bank statement كشف", "landmark"),
-                new SubNavLink("تحويل أموال", "Fund transfer", "/payments/unmatched", "fund transfer تحويل", "arrow-right"),
+                new SubNavLink("تحويل أموال", "Fund transfer", "/cash-transfer", "fund transfer تحويل", "arrow-right"),
                 new SubNavLink("مراكز التكلفة", "Cost centers", "/cost-centers", "cost center مركز تكلفة", "tag"),
                 new SubNavLink("مسحوبات شخصية", "Owner drawings", "/owner-drawings", "drawings مسحوبات owner", "wallet"),
                 new SubNavSeparator(),
