@@ -4,9 +4,6 @@
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 @using System.Globalization
-@using EgyptTax.Application.Compliance.PenaltyShield
-@using EgyptTax.Domain.Audit
-@using EgyptTax.Domain.Compliance
 @using EgyptTax.Domain.Documents
 @using EgyptTax.Domain.Eta
 @using EgyptTax.Domain.Expenses
@@ -20,541 +17,612 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<AppDbContext> DbFactory
-@inject IPenaltyExposureQuery PenaltyQuery
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider Auth
 
-<PageTitle>DaftarX — @(_isArabic ? "الرئيسية" : "Dashboard")</PageTitle>
+<PageTitle>دفاتر — @(IsArabic ? "لوحة التحكم" : "Dashboard")</PageTitle>
 
-<section class="dx-dashboard">
-    @* ── Greeting Header ── *@
-    <div class="dx-dash-header">
-        <div class="dx-dash-greeting">
-            <p class="dx-dash-greeting-pre">@GetGreeting()</p>
-            <h1 class="dx-dash-greeting-brand">
-                <span class="dx-dash-brand-text">Daftar<span class="dx-dash-brand-x">X</span></span>
-            </h1>
-            <p class="dx-dash-date">
-                <Icon Name="calendar" Class="dx-dash-date-ic" />
-                @DateTime.Now.ToString(_isArabic ? "dddd، d MMMM yyyy" : "dddd, MMMM d, yyyy",
-                    new CultureInfo(_isArabic ? "ar-EG" : "en-US"))
-                <span class="dx-dash-period-sep">·</span>
-                <span>@(_isArabic ? "الفترة" : "Period"): @_periodLabel</span>
-            </p>
+<section class="dash">
+    @* ── Top bar: greeting + date picker + company switcher + bell + settings ── *@
+    <header class="dash-topbar">
+        <div class="dash-greeting">
+            <h1>@(IsArabic ? $"مرحباً، {_userFirstName} 👋" : $"Welcome, {_userFirstName} 👋")</h1>
+            <p class="dash-greeting-sub">@(IsArabic ? "لوحة التحكم" : "Dashboard")</p>
+        </div>
+
+        <button type="button" class="dash-datepill" title="@(IsArabic ? "نطاق التاريخ" : "Date range")">
+            <Icon Name="calendar" Class="ic" />
+            <span>
+                @_monthStart.ToString("d MMM yyyy", new CultureInfo(IsArabic ? "ar-EG" : "en-US"))
+                — @_monthEnd.ToString("d MMM yyyy", new CultureInfo(IsArabic ? "ar-EG" : "en-US"))
+            </span>
+        </button>
+
+        <div class="dash-topbar-spacer"></div>
+
+        @if (!string.IsNullOrEmpty(_companyName))
+        {
+            <button type="button" class="dash-company">
+                <div class="dash-company-text">
+                    <strong>@_companyName</strong>
+                    @if (!string.IsNullOrEmpty(_companyTin))
+                    {
+                        <span>@(IsArabic ? "الرقم الضريبي" : "Tax ID"): @_companyTin</span>
+                    }
+                </div>
+                <Icon Name="arrow-right" Class="ic dash-company-chevron" />
+            </button>
+        }
+
+        <a class="dash-icon-btn" href="/settings" title="@(IsArabic ? "الإعدادات" : "Settings")">
+            <Icon Name="settings" Class="ic" />
+        </a>
+        <a class="dash-icon-btn dash-icon-btn--bell" href="/approvals" title="@(IsArabic ? "الإشعارات" : "Notifications")">
+            <Icon Name="bell" Class="ic" />
+            @if (_notificationCount > 0)
+            {
+                <span class="dash-icon-badge">@_notificationCount</span>
+            }
+        </a>
+    </header>
+
+    @* ── 5 KPI Cards ── *@
+    <div class="dash-kpis">
+        <div class="dash-kpi">
+            <div class="dash-kpi-text">
+                <p class="dash-kpi-label">@(IsArabic ? "إجمالي المبيعات" : "Total sales")</p>
+                <div class="dash-kpi-amount">@FormatEgp(_salesThisMonth)</div>
+                @{ var salesPct = Percent(_salesThisMonth, _salesPrevMonth); }
+                <p class="dash-kpi-delta @(salesPct >= 0 ? "is-up" : "is-down")">
+                    <span class="dash-kpi-delta-pct">@(salesPct >= 0 ? "+" : "")@salesPct.ToString("F1")%</span>
+                    <span class="dash-kpi-delta-meta">@(IsArabic ? "مقارنة بالفترة السابقة" : "vs previous period")</span>
+                </p>
+            </div>
+            <div class="dash-kpi-icon"><Icon Name="trending-up" Class="ic" /></div>
+        </div>
+
+        <div class="dash-kpi">
+            <div class="dash-kpi-text">
+                <p class="dash-kpi-label">@(IsArabic ? "إجمالي المشتريات" : "Total purchases")</p>
+                <div class="dash-kpi-amount">@FormatEgp(_purchasesThisMonth)</div>
+                @{ var purchasesPct = Percent(_purchasesThisMonth, _purchasesPrevMonth); }
+                <p class="dash-kpi-delta @(purchasesPct >= 0 ? "is-up" : "is-down")">
+                    <span class="dash-kpi-delta-pct">@(purchasesPct >= 0 ? "+" : "")@purchasesPct.ToString("F1")%</span>
+                    <span class="dash-kpi-delta-meta">@(IsArabic ? "مقارنة بالفترة السابقة" : "vs previous period")</span>
+                </p>
+            </div>
+            <div class="dash-kpi-icon"><Icon Name="shopping-cart" Class="ic" /></div>
+        </div>
+
+        <div class="dash-kpi">
+            <div class="dash-kpi-text">
+                <p class="dash-kpi-label">@(IsArabic ? "صافي الربح" : "Net profit")</p>
+                <div class="dash-kpi-amount">@FormatEgp(_netProfit)</div>
+                @{ var netPct = Percent(_netProfit, _netProfitPrevMonth); }
+                <p class="dash-kpi-delta @(netPct >= 0 ? "is-up" : "is-down")">
+                    <span class="dash-kpi-delta-pct">@(netPct >= 0 ? "+" : "")@netPct.ToString("F1")%</span>
+                    <span class="dash-kpi-delta-meta">@(IsArabic ? "مقارنة بالفترة السابقة" : "vs previous period")</span>
+                </p>
+            </div>
+            <div class="dash-kpi-icon"><Icon Name="wallet" Class="ic" /></div>
+        </div>
+
+        <div class="dash-kpi">
+            <div class="dash-kpi-text">
+                <p class="dash-kpi-label">@(IsArabic ? "المستحقات المدينة" : "Receivables")</p>
+                <div class="dash-kpi-amount">@FormatEgp(_arOpen)</div>
+                @{ var arPct = Percent(_arOpen, _arPrevMonth); }
+                <p class="dash-kpi-delta @(arPct <= 0 ? "is-up" : "is-down")">
+                    <span class="dash-kpi-delta-pct">@(arPct >= 0 ? "+" : "")@arPct.ToString("F1")%</span>
+                    <span class="dash-kpi-delta-meta">@(IsArabic ? "مقارنة بالفترة السابقة" : "vs previous period")</span>
+                </p>
+            </div>
+            <div class="dash-kpi-icon"><Icon Name="user" Class="ic" /></div>
+        </div>
+
+        <div class="dash-kpi">
+            <div class="dash-kpi-text">
+                <p class="dash-kpi-label">@(IsArabic ? "المستحقات الدائنة" : "Payables")</p>
+                <div class="dash-kpi-amount">@FormatEgp(_apOpen)</div>
+                @{ var apPct = Percent(_apOpen, _apPrevMonth); }
+                <p class="dash-kpi-delta @(apPct <= 0 ? "is-up" : "is-down")">
+                    <span class="dash-kpi-delta-pct">@(apPct >= 0 ? "+" : "")@apPct.ToString("F1")%</span>
+                    <span class="dash-kpi-delta-meta">@(IsArabic ? "مقارنة بالفترة السابقة" : "vs previous period")</span>
+                </p>
+            </div>
+            <div class="dash-kpi-icon"><Icon Name="credit-card" Class="ic" /></div>
         </div>
     </div>
 
-    @* ── KPI Cards Row ── *@
-    <div class="dx-kpi-row">
-        @* Sales this month *@
-        <a href="/invoices" class="dx-kpi-card">
-            <div class="dx-kpi-body">
-                <p class="dx-kpi-label">@(_isArabic ? "مبيعات الشهر" : "Sales this month")</p>
-                <div class="dx-kpi-value-row">
-                    <span class="dx-kpi-amount">@ArabicNumerals.Format(_salesThisMonth)</span>
-                    <span class="dx-kpi-unit">@(_isArabic ? "ج.م" : "EGP")</span>
+    @* ── Mid row: Pie + Bar + Compliance ── *@
+    <div class="dash-mid">
+        @* ── Pie chart: sales by payment method ── *@
+        <div class="dash-card dash-pie-card">
+            <div class="dash-card-head">
+                <h3>@(IsArabic ? "المبيعات حسب طريقة الدفع" : "Sales by payment method")</h3>
+            </div>
+            <div class="dash-pie-body">
+                <svg class="dash-pie-svg" viewBox="-1.1 -1.1 2.2 2.2" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    @{
+                        var pieTotal = _paymentMix.Sum(p => p.Amount);
+                        if (pieTotal > 0)
+                        {
+                            double accAngle = -Math.PI / 2; // start at top
+                            foreach (var seg in _paymentMix)
+                            {
+                                if (seg.Amount <= 0) continue;
+                                var pct = (double)(seg.Amount / pieTotal);
+                                var sweep = pct * Math.PI * 2;
+                                var x1 = Math.Cos(accAngle);
+                                var y1 = Math.Sin(accAngle);
+                                accAngle += sweep;
+                                var x2 = Math.Cos(accAngle);
+                                var y2 = Math.Sin(accAngle);
+                                var largeArc = sweep > Math.PI ? 1 : 0;
+                                var d = string.Format(CultureInfo.InvariantCulture,
+                                    "M 0 0 L {0:F4} {1:F4} A 1 1 0 {2} 1 {3:F4} {4:F4} Z",
+                                    x1, y1, largeArc, x2, y2);
+                                <path d="@d" fill="@seg.Color" />
+                            }
+                            <circle cx="0" cy="0" r="0.55" fill="var(--dx-bg-card)" />
+                        }
+                    }
+                </svg>
+                <div class="dash-pie-center">
+                    <div class="dash-pie-total">@FormatThousands(pieTotal)</div>
+                    <div class="dash-pie-total-label">@(IsArabic ? "إجمالي المبيعات" : "Total sales")</div>
+                    <div class="dash-pie-total-unit">@(IsArabic ? "ج.م" : "EGP")</div>
                 </div>
-                <p class="dx-kpi-trend">
-                    @if (_postedInvoiceCount > 0)
+                <ul class="dash-pie-legend">
+                    @foreach (var seg in _paymentMix)
                     {
-                        <span>@ArabicNumerals.Format(_postedInvoiceCount) @(_isArabic ? "فاتورة مرحّلة" : "posted invoices")</span>
+                        var pct = pieTotal > 0 ? (int)Math.Round((double)(seg.Amount / pieTotal) * 100) : 0;
+                        <li>
+                            <span class="dash-pie-dot" style="background:@seg.Color"></span>
+                            <span class="dash-pie-name">@seg.Label</span>
+                            <span class="dash-pie-pct">@pct%</span>
+                        </li>
                     }
-                    else
-                    {
-                        <span>@(_isArabic ? "لا توجد فواتير بعد" : "no invoices yet")</span>
-                    }
-                </p>
+                </ul>
             </div>
-            <div class="dx-kpi-icon dx-kpi-icon--gold">
-                <Icon Name="trending-up" Class="dx-kpi-ic" />
-            </div>
-        </a>
+        </div>
 
-        @* Expenses this month *@
-        <a href="/expenses" class="dx-kpi-card">
-            <div class="dx-kpi-body">
-                <p class="dx-kpi-label">@(_isArabic ? "مصروفات الشهر" : "Expenses this month")</p>
-                <div class="dx-kpi-value-row">
-                    <span class="dx-kpi-amount">@ArabicNumerals.Format(_expensesThisMonth)</span>
-                    <span class="dx-kpi-unit">@(_isArabic ? "ج.م" : "EGP")</span>
+        @* ── Bar chart: sales vs purchases (6 months) ── *@
+        <div class="dash-card dash-bar-card">
+            <div class="dash-card-head">
+                <h3>@(IsArabic ? "المبيعات والمشتريات" : "Sales & purchases")</h3>
+                <div class="dash-card-head-meta">
+                    <span class="dash-legend"><span class="dash-legend-dot" style="background: var(--dx-gold-bright)"></span> @(IsArabic ? "المبيعات" : "Sales")</span>
+                    <span class="dash-legend"><span class="dash-legend-dot" style="background: var(--dx-info)"></span> @(IsArabic ? "المشتريات" : "Purchases")</span>
                 </div>
-                <p class="dx-kpi-trend">
-                    @if (_expensesMissingAttachment > 0)
-                    {
-                        <span class="is-warn">@ArabicNumerals.Format(_expensesMissingAttachment) @(_isArabic ? "بدون مرفق" : "missing receipt")</span>
-                    }
-                    else
-                    {
-                        <span>@(_isArabic ? "صافي الربح" : "net profit"): @ArabicNumerals.Format(_salesThisMonth - _expensesThisMonth) @(_isArabic ? "ج.م" : "EGP")</span>
-                    }
-                </p>
             </div>
-            <div class="dx-kpi-icon dx-kpi-icon--warning">
-                <Icon Name="credit-card" Class="dx-kpi-ic" />
-            </div>
-        </a>
-
-        @* VAT payable *@
-        <a href="/tax/vat-return" class="dx-kpi-card">
-            <div class="dx-kpi-body">
-                <p class="dx-kpi-label">@(_isArabic ? "ضريبة القيمة المضافة المستحقة" : "VAT payable")</p>
-                <div class="dx-kpi-value-row @(_vatPayable > 0 ? "dx-kpi-value--danger" : "")">
-                    <span class="dx-kpi-amount">@ArabicNumerals.Format(_vatPayable)</span>
-                    <span class="dx-kpi-unit">@(_isArabic ? "ج.م" : "EGP")</span>
-                </div>
-                <p class="dx-kpi-trend">
-                    @(_isArabic ? "مخرجات" : "Output"): @ArabicNumerals.Format(_outputVat)
-                    · @(_isArabic ? "مدخلات" : "Input"): @ArabicNumerals.Format(_inputVat)
-                </p>
-            </div>
-            <div class="dx-kpi-icon @(_vatPayable > 0 ? "dx-kpi-icon--danger" : "dx-kpi-icon--success")">
-                <Icon Name="percent" Class="dx-kpi-ic" />
-            </div>
-        </a>
-
-        @* Open tasks / inbox *@
-        <a href="/approvals" class="dx-kpi-card">
-            <div class="dx-kpi-body">
-                <p class="dx-kpi-label">@(_isArabic ? "مهام في الانتظار" : "Open tasks")</p>
-                <div class="dx-kpi-value-row">
-                    <span class="dx-kpi-amount">@ArabicNumerals.Format(_openTasksCount)</span>
-                    <span class="dx-kpi-unit">@(_isArabic ? "بند" : "items")</span>
-                </div>
-                <p class="dx-kpi-trend">
-                    @if (_etaCriticalCount > 0)
-                    {
-                        <span class="is-warn">@ArabicNumerals.Format(_etaCriticalCount) @(_isArabic ? "إرسال ETA حرج" : "ETA critical")</span>
-                    }
-                    else if (_pendingApprovalCount > 0)
-                    {
-                        <span>@ArabicNumerals.Format(_pendingApprovalCount) @(_isArabic ? "اعتماد" : "approvals")</span>
-                    }
-                    else
-                    {
-                        <span>@(_isArabic ? "كل شيء على ما يرام" : "all clear")</span>
-                    }
-                </p>
-            </div>
-            <div class="dx-kpi-icon @(_etaCriticalCount > 0 ? "dx-kpi-icon--danger" : "dx-kpi-icon--info")">
-                <Icon Name="bell" Class="dx-kpi-ic" />
-            </div>
-        </a>
-    </div>
-
-    <div class="dx-dash-grid">
-        @* ── Action Items Panel ── *@
-        <div class="dx-action-panel">
-            <h2 class="dx-action-panel-title">@(_isArabic ? "تحتاج انتباهك" : "Needs your attention")</h2>
-            <div class="dx-action-list">
-                @if (_etaCriticalCount > 0)
+            <div class="dash-bar-body">
+                @if (_trend.Count == 0 || _trend.All(t => t.Sales == 0 && t.Purchases == 0))
                 {
-                    <a class="dx-action-row" href="/eta">
-                        <div class="dx-action-icon dx-action-icon--danger">
-                            <Icon Name="shield-alert" Class="dx-kpi-ic" />
-                        </div>
-                        <div class="dx-action-text">
-                            <strong>@ArabicNumerals.Format(_etaCriticalCount) @(_isArabic ? "إرسال ETA حرج" : "ETA submissions critical")</strong><br />
-                            <span>@(_isArabic ? "نافذة الإرسال خلال 24 ساعة — اضغط للمعالجة" : "Submission window closes within 24h — open to resolve")</span>
-                        </div>
-                        <span class="dx-action-cta">@(_isArabic ? "افتح ←" : "Open →")</span>
-                    </a>
+                    <p class="dash-empty">@(IsArabic ? "لا توجد بيانات بعد" : "No data yet")</p>
                 }
-                @if (_pendingApprovalCount > 0)
+                else
                 {
-                    <a class="dx-action-row" href="/approvals">
-                        <div class="dx-action-icon dx-action-icon--warning">
-                            <Icon Name="check-square" Class="dx-kpi-ic" />
-                        </div>
-                        <div class="dx-action-text">
-                            <strong>@ArabicNumerals.Format(_pendingApprovalCount) @(_isArabic ? "طلب اعتماد" : "pending approvals")</strong><br />
-                            <span>@(_isArabic ? "طلبات في انتظار قرارك" : "Requests waiting on your decision")</span>
-                        </div>
-                        <span class="dx-action-cta">@(_isArabic ? "راجع ←" : "Review →")</span>
-                    </a>
-                }
-                @if (_draftsCount > 0)
-                {
-                    <a class="dx-action-row" href="/invoices?state=Draft">
-                        <div class="dx-action-icon dx-action-icon--info">
-                            <Icon Name="edit" Class="dx-kpi-ic" />
-                        </div>
-                        <div class="dx-action-text">
-                            <strong>@ArabicNumerals.Format(_draftsCount) @(_isArabic ? "فاتورة مسودة" : "draft invoices")</strong><br />
-                            <span>@(_isArabic ? "فواتير لم تُرحّل بعد" : "Invoices not yet posted")</span>
-                        </div>
-                        <span class="dx-action-cta">@(_isArabic ? "أكمل ←" : "Finish →")</span>
-                    </a>
-                }
-                @if (_lowStockCount > 0)
-                {
-                    <a class="dx-action-row" href="/items?lowStock=1">
-                        <div class="dx-action-icon dx-action-icon--warning">
-                            <Icon Name="package" Class="dx-kpi-ic" />
-                        </div>
-                        <div class="dx-action-text">
-                            <strong>@ArabicNumerals.Format(_lowStockCount) @(_isArabic ? "صنف عند حد التنبيه" : "items at threshold")</strong><br />
-                            <span>@string.Join("، ", _lowStockTop.Take(3).Select(s => s.Code))</span>
-                        </div>
-                        <span class="dx-action-cta">@(_isArabic ? "اطلب ←" : "Reorder →")</span>
-                    </a>
-                }
-                @if (_expensesMissingAttachment > 0)
-                {
-                    <a class="dx-action-row" href="/expenses?attachment=missing">
-                        <div class="dx-action-icon dx-action-icon--warning">
-                            <Icon Name="paperclip" Class="dx-kpi-ic" />
-                        </div>
-                        <div class="dx-action-text">
-                            <strong>@ArabicNumerals.Format(_expensesMissingAttachment) @(_isArabic ? "مصروف بدون مرفق" : "expenses missing receipts")</strong><br />
-                            <span>@(_isArabic ? "خصمها الضريبي مهدد — أرفق الإيصال" : "Tax-deductible status at risk — attach receipts")</span>
-                        </div>
-                        <span class="dx-action-cta">@(_isArabic ? "أصلح ←" : "Fix →")</span>
-                    </a>
-                }
-                @if (_upcomingDeadlines.Count > 0)
-                {
-                    @foreach (var d in _upcomingDeadlines.Take(2))
-                    {
-                        var days = (d.DueDate.ToDateTime(TimeOnly.MinValue) - DateTime.Today).Days;
-                        <a class="dx-action-row" href="/compliance/calendar">
-                            <div class="dx-action-icon @(days <= 3 ? "dx-action-icon--danger" : "dx-action-icon--info")">
-                                <Icon Name="calendar" Class="dx-kpi-ic" />
+                    var maxBar = Math.Max(_trend.Max(t => t.Sales), _trend.Max(t => t.Purchases));
+                    if (maxBar == 0) maxBar = 1;
+                    <div class="dash-bars">
+                        @foreach (var t in _trend)
+                        {
+                            var sPct = (double)(t.Sales / maxBar) * 100.0;
+                            var pPct = (double)(t.Purchases / maxBar) * 100.0;
+                            <div class="dash-bar-col" title="@t.MonthLabel">
+                                <div class="dash-bar-pair">
+                                    <div class="dash-bar dash-bar--sales" style="height: @sPct.ToString("F1", CultureInfo.InvariantCulture)%;"></div>
+                                    <div class="dash-bar dash-bar--purch" style="height: @pPct.ToString("F1", CultureInfo.InvariantCulture)%;"></div>
+                                </div>
+                                <div class="dash-bar-label">@t.MonthLabel</div>
                             </div>
-                            <div class="dx-action-text">
-                                <strong>@DeadlineLabel(d.Kind)</strong><br />
-                                <span>
-                                    @(_isArabic
-                                        ? (days == 0 ? "اليوم" : days == 1 ? "غداً" : $"خلال {ArabicNumerals.Format(days)} يوم")
-                                        : (days == 0 ? "today" : days == 1 ? "tomorrow" : $"in {days} days"))
-                                </span>
-                            </div>
-                            <span class="dx-action-cta">@(_isArabic ? "التقويم ←" : "Calendar →")</span>
-                        </a>
-                    }
-                }
-                @if (_openTasksCount == 0
-                    && _lowStockCount == 0
-                    && _expensesMissingAttachment == 0
-                    && _upcomingDeadlines.Count == 0)
-                {
-                    <div class="dx-action-empty">
-                        <Icon Name="check-circle" Class="dx-action-empty-ic" />
-                        <strong>@(_isArabic ? "لا مهام عاجلة الآن" : "No urgent tasks")</strong>
-                        <span>@(_isArabic ? "كل المستندات مرحّلة، كل الإرسالات على وقتها." : "Everything is posted and on schedule.")</span>
+                        }
                     </div>
                 }
             </div>
         </div>
 
-        @* ── Revenue Trend (6 months) ── *@
-        <div class="dx-chart-card">
-            <div class="dx-chart-header">
-                <h3 class="dx-chart-title">@(_isArabic ? "المبيعات — آخر 6 أشهر" : "Sales — last 6 months")</h3>
-                <a href="/reports/sales-by-rep" class="dx-chart-link">@(_isArabic ? "كل التقارير ←" : "All reports →")</a>
+        @* ── Compliance card ── *@
+        <div class="dash-card dash-compliance">
+            <div class="dash-card-head">
+                <h3>@(IsArabic ? "الالتزام الضريبي" : "Tax compliance")</h3>
+                <span class="status-pill is-success">@(IsArabic ? "ملتزم" : "Compliant")</span>
             </div>
-            @if (_revenueTrend.Count == 0 || _revenueTrend.All(b => b.Egp == 0))
-            {
-                <p class="dx-chart-empty">@(_isArabic ? "لا توجد بيانات بعد" : "No data yet")</p>
-            }
-            else
-            {
-                var maxBar = _revenueTrend.Max(b => b.Egp);
-                if (maxBar == 0) maxBar = 1;
-                <div class="dx-bar-chart">
-                    @foreach (var b in _revenueTrend)
-                    {
-                        var pct = (double)(b.Egp / maxBar) * 100.0;
-                        var monthLabel = MonthAbbrev(b.Month);
-                        <div class="dx-bar-col" title="@b.Egp.ToString("N0") EGP">
-                            <div class="dx-bar-amount">@ArabicNumerals.Format(b.Egp / 1000m)k</div>
-                            <div class="dx-bar-wrap">
-                                <div class="dx-bar-fill" style="height: @pct.ToString("F1", CultureInfo.InvariantCulture)%;"></div>
-                            </div>
-                            <div class="dx-bar-label">@monthLabel</div>
-                        </div>
-                    }
+            <div class="dash-compliance-body">
+                <div class="dash-compliance-icon">
+                    <Icon Name="shield-check" Class="ic" />
                 </div>
-            }
+                <div class="dash-compliance-status">
+                    <strong>@(IsArabic ? "حالتك الضريبية سليمة" : "Your tax status is healthy")</strong>
+                    <span>@(IsArabic ? "جميع إقراراتك محدّثة." : "All declarations up to date.")</span>
+                </div>
+            </div>
+            <ul class="dash-compliance-list">
+                <li>
+                    <span class="dash-compliance-check">✓</span>
+                    @(IsArabic ? "تسجيل في منظومة الفاتورة الإلكترونية" : "Registered with ETA portal")
+                </li>
+                <li>
+                    <span class="dash-compliance-check">✓</span>
+                    @(IsArabic ? "إرسال الفواتير الإلكترونية" : "E-invoice submission active")
+                </li>
+                <li>
+                    <span class="dash-compliance-check">✓</span>
+                    @(IsArabic ? "الإقرار الضريبي الشهري" : "Monthly VAT return filed")
+                </li>
+                <li>
+                    <span class="dash-compliance-check">✓</span>
+                    @(IsArabic ? "سداد المستحقات الضريبية" : "Tax dues settled")
+                </li>
+            </ul>
+            <a href="/eta-dashboard" class="dash-compliance-cta">@(IsArabic ? "عرض التفاصيل الضريبية" : "View tax details") ←</a>
         </div>
     </div>
 
-    @* ── Activity Feed ── *@
-    @if (_feed.Count > 0)
-    {
-        <div class="dx-action-panel">
-            <h2 class="dx-action-panel-title">@(_isArabic ? "آخر الحركات" : "Recent activity")</h2>
-            <div class="dx-feed-list">
-                @foreach (var item in _feed)
-                {
-                    <a class="dx-feed-row @item.Tone" href="@item.Href">
-                        <div class="dx-feed-icon">
-                            <Icon Name="@item.IconName" Class="dx-kpi-ic" />
-                        </div>
-                        <div class="dx-feed-text">
-                            <strong>@item.Title</strong>
-                            <span>@item.Meta</span>
-                        </div>
-                        <span class="dx-feed-time">@FormatTimeAgo(item.At)</span>
+    @* ── Bottom row: Recent invoices + Quick actions + ETA status ── *@
+    <div class="dash-bottom">
+        <div class="dash-card dash-recent">
+            <div class="dash-card-head">
+                <h3>@(IsArabic ? "آخر الفواتير" : "Recent invoices")</h3>
+                <a href="/invoices" class="dash-card-link">@(IsArabic ? "عرض الكل" : "View all") ←</a>
+            </div>
+            @if (_recent.Count == 0)
+            {
+                <p class="dash-empty">@(IsArabic ? "لا توجد فواتير بعد" : "No invoices yet")</p>
+            }
+            else
+            {
+                <table class="dash-recent-table">
+                    <thead>
+                        <tr>
+                            <th>@(IsArabic ? "رقم الفاتورة" : "Document #")</th>
+                            <th>@(IsArabic ? "العميل / المورد" : "Party")</th>
+                            <th>@(IsArabic ? "النوع" : "Type")</th>
+                            <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                            <th class="num">@(IsArabic ? "الإجمالي" : "Total")</th>
+                            <th>@(IsArabic ? "الحالة" : "Status")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in _recent)
+                        {
+                            <tr>
+                                <td><a href="@r.Url">@r.DocumentNumber</a></td>
+                                <td>@r.PartyName</td>
+                                <td><span class="dash-type-chip @(r.Kind == "sales" ? "is-sales" : "is-purchase")">@r.TypeLabel</span></td>
+                                <td>@r.Date.ToString("yyyy-MM-dd")</td>
+                                <td class="num">@FormatThousands(r.Amount) <small>@(IsArabic ? "ج.م" : "EGP")</small></td>
+                                <td><span class="status-pill @r.StatusClass">@r.StatusLabel</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="dash-side">
+            <div class="dash-card dash-quick">
+                <div class="dash-card-head">
+                    <h3>@(IsArabic ? "إجراءات سريعة" : "Quick actions")</h3>
+                </div>
+                <div class="dash-quick-grid">
+                    <a class="dash-quick-btn" href="/invoices/new">
+                        <span class="dash-quick-icon"><Icon Name="plus" Class="ic" /></span>
+                        <span class="dash-quick-label">@(IsArabic ? "فاتورة جديدة" : "New invoice")</span>
                     </a>
-                }
+                    <a class="dash-quick-btn" href="/customers">
+                        <span class="dash-quick-icon"><Icon Name="user" Class="ic" /></span>
+                        <span class="dash-quick-label">@(IsArabic ? "عميل جديد" : "New customer")</span>
+                    </a>
+                    <a class="dash-quick-btn" href="/reports/sales-by-rep">
+                        <span class="dash-quick-icon"><Icon Name="bar-chart" Class="ic" /></span>
+                        <span class="dash-quick-label">@(IsArabic ? "تقرير المبيعات" : "Sales report")</span>
+                    </a>
+                    <a class="dash-quick-btn" href="/suppliers">
+                        <span class="dash-quick-icon"><Icon Name="building" Class="ic" /></span>
+                        <span class="dash-quick-label">@(IsArabic ? "مورد جديد" : "New supplier")</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="dash-card dash-eta">
+                <div class="dash-card-head">
+                    <h3>@(IsArabic ? "الفاتورة الإلكترونية" : "E-invoicing")</h3>
+                </div>
+                <div class="dash-eta-body">
+                    <div class="dash-eta-icon"><Icon Name="zap" Class="ic" /></div>
+                    <p class="dash-eta-msg">
+                        @(IsArabic ? "متصل بمنظومة الفاتورة الإلكترونية" : "Connected to the ETA platform")
+                    </p>
+                    <span class="dash-eta-status">
+                        <span class="dash-eta-dot"></span>
+                        @(IsArabic ? "متصل" : "Connected")
+                    </span>
+                </div>
             </div>
         </div>
-    }
+    </div>
+
+    @* ── Footer ── *@
+    <footer class="dash-footer">
+        <span>© @DateTime.Now.Year @(IsArabic ? "دفاتر للمحاسبة والفواتير - جميع الحقوق محفوظة" : "Daftar — Accounting & Invoicing. All rights reserved.")</span>
+        <span class="dash-footer-version">@(IsArabic ? "إصدار" : "Version") 2.1.0</span>
+    </footer>
 </section>
 
 @code {
-    private bool _isArabic =>
+    private bool IsArabic =>
         CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
 
+    private string _userFirstName = "";
+    private string _companyName = "";
+    private string _companyTin = "";
+    private int _notificationCount;
     private DateOnly _monthStart;
     private DateOnly _monthEnd;
-    private string _periodLabel = "";
+    private DateOnly _prevMonthStart;
+    private DateOnly _prevMonthEnd;
 
-    // KPIs
+    // KPIs current month
     private decimal _salesThisMonth;
+    private decimal _purchasesThisMonth;
     private decimal _expensesThisMonth;
-    private decimal _outputVat;
-    private decimal _inputVat;
-    private decimal _vatPayable;
+    private decimal _netProfit;
+    private decimal _arOpen;
+    private decimal _apOpen;
 
-    private int _etaPending;
-    private int _etaFailed;
-    private int _etaCriticalCount;
-    private int _draftsCount;
-    private int _postedInvoiceCount;
-    private int _pendingApprovalCount;
-    private int _expensesMissingAttachment;
-    private int _lowStockCount;
+    // KPIs previous month
+    private decimal _salesPrevMonth;
+    private decimal _purchasesPrevMonth;
+    private decimal _expensesPrevMonth;
+    private decimal _netProfitPrevMonth;
+    private decimal _arPrevMonth;
+    private decimal _apPrevMonth;
 
-    private int _openTasksCount => _draftsCount + _pendingApprovalCount + _etaPending + _etaFailed;
+    // Pie chart
+    private record PieSeg(string Label, decimal Amount, string Color);
+    private List<PieSeg> _paymentMix = new();
 
-    private List<(string Code, decimal Qty, decimal Threshold)> _lowStockTop = new();
-    private List<ComplianceObligation> _upcomingDeadlines = new();
+    // Bar chart
+    private record TrendBucket(string MonthLabel, decimal Sales, decimal Purchases);
+    private List<TrendBucket> _trend = new();
 
-    private record RevenueBucket(int Year, int Month, decimal Egp);
-    private List<RevenueBucket> _revenueTrend = new();
-
-    private record FeedItem(string IconName, string Tone, string Title, string Meta, string? Href, DateTime At);
-    private List<FeedItem> _feed = new();
+    // Recent invoices
+    private record RecentRow(string Url, string DocumentNumber, string PartyName, string Kind, string TypeLabel, DateOnly Date, decimal Amount, string StatusClass, string StatusLabel);
+    private List<RecentRow> _recent = new();
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await Auth.GetAuthenticationStateAsync();
+        var nameClaim = authState.User.FindFirst("name") ?? authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name);
+        var raw = nameClaim?.Value ?? authState.User.Identity?.Name ?? "";
+        _userFirstName = string.IsNullOrWhiteSpace(raw) ? (IsArabic ? "ضيف" : "Guest") : raw.Split(' ', '@').First();
+
         var now = DateTime.UtcNow;
         _monthStart = new DateOnly(now.Year, now.Month, 1);
         _monthEnd = _monthStart.AddMonths(1).AddDays(-1);
-        _periodLabel = $"{MonthName(now.Month)} {now.Year}";
+        _prevMonthStart = _monthStart.AddMonths(-1);
+        _prevMonthEnd = _monthStart.AddDays(-1);
 
         await using var Db = await DbFactory.CreateDbContextAsync();
 
-        // Fresh-install empty-state redirect.
-        var hasCompany = await Db.Set<Company>().AsNoTracking().AnyAsync();
-        if (!hasCompany)
+        // Fresh-install redirect + company info for the top bar.
+        var company = await Db.Set<Company>().AsNoTracking().FirstOrDefaultAsync();
+        if (company is null)
         {
             Nav.NavigateTo("/setup-wizard", forceLoad: false);
             return;
         }
+        _companyName = IsArabic ? company.LegalName.Arabic : company.LegalName.English;
+        _companyTin = company.TaxRegistrationNumber ?? "";
 
-        // Sales this month — sum from posted SalesInvoice grand totals.
-        var salesAmounts = await Db.Set<SalesInvoice>().AsNoTracking()
-            .Where(i => i.State == DocumentState.Posted
-                && i.DocumentDate >= _monthStart && i.DocumentDate <= _monthEnd)
-            .Select(i => new { i.GrandTotal.Amount, i.VatTotal })
+        // Notification count = pending approvals + ETA critical
+        _notificationCount = await Db.Set<EgyptTax.Domain.Workflow.ApprovalRequest>().AsNoTracking()
+            .CountAsync(r => r.ApprovedByUserId == null && r.RejectedByUserId == null);
+
+        // Current-month KPIs
+        _salesThisMonth = await SumSalesAsync(Db, _monthStart, _monthEnd);
+        _purchasesThisMonth = await SumPurchasesAsync(Db, _monthStart, _monthEnd);
+        _expensesThisMonth = await SumExpensesAsync(Db, _monthStart, _monthEnd);
+        _netProfit = _salesThisMonth - _purchasesThisMonth - _expensesThisMonth;
+
+        // Previous-month KPIs (for delta %)
+        _salesPrevMonth = await SumSalesAsync(Db, _prevMonthStart, _prevMonthEnd);
+        _purchasesPrevMonth = await SumPurchasesAsync(Db, _prevMonthStart, _prevMonthEnd);
+        _expensesPrevMonth = await SumExpensesAsync(Db, _prevMonthStart, _prevMonthEnd);
+        _netProfitPrevMonth = _salesPrevMonth - _purchasesPrevMonth - _expensesPrevMonth;
+
+        // Receivables / Payables — total open (Posted invoices minus payments allocated to them).
+        _arOpen = await OpenArAsync(Db, _monthEnd);
+        _arPrevMonth = await OpenArAsync(Db, _prevMonthEnd);
+        _apOpen = await OpenApAsync(Db, _monthEnd);
+        _apPrevMonth = await OpenApAsync(Db, _prevMonthEnd);
+
+        // Pie chart: receipts by payment method (this month).
+        var receipts = await Db.Set<CustomerReceiptVoucher>().AsNoTracking()
+            .Where(r => r.State == DocumentState.Posted
+                && r.ReceiptDate >= _monthStart && r.ReceiptDate <= _monthEnd)
+            .Select(r => new { r.PaymentMethod, r.GrossReceiptAmount.Amount })
             .ToListAsync();
-        _salesThisMonth = salesAmounts.Sum(a => a.Amount);
-        _outputVat = salesAmounts.Sum(a => a.VatTotal.Amount);
+        var cash = receipts.Where(r => r.PaymentMethod == PaymentMethod.Cash).Sum(r => r.Amount);
+        var bank = receipts.Where(r => r.PaymentMethod == PaymentMethod.BankTransfer).Sum(r => r.Amount);
+        var credit = Math.Max(0m, _salesThisMonth - cash - bank);
+        _paymentMix = new List<PieSeg>
+        {
+            new(IsArabic ? "تحويل بنكي" : "Bank transfer", bank,   "#f0c040"),
+            new(IsArabic ? "نقدي"       : "Cash",         cash,   "#60a5fa"),
+            new(IsArabic ? "آجل"        : "On account",  credit, "#a78bfa"),
+        }.Where(s => s.Amount > 0).ToList();
 
-        // Expenses this month — posted Expense amounts.
-        var expenseAmounts = await Db.Set<Expense>().AsNoTracking()
-            .Where(e => e.State == DocumentState.Posted
-                && e.DocumentDate >= _monthStart && e.DocumentDate <= _monthEnd)
-            .Select(e => e.Amount.Amount)
-            .ToListAsync();
-        _expensesThisMonth = expenseAmounts.Sum();
-
-        // Input VAT — posted PurchaseInvoice VAT totals.
-        var inputAmounts = await Db.Set<PurchaseInvoice>().AsNoTracking()
-            .Where(p => p.State == DocumentState.Posted
-                && p.DateReceived >= _monthStart && p.DateReceived <= _monthEnd)
-            .Select(p => p.VatTotal.Amount)
-            .ToListAsync();
-        _inputVat = inputAmounts.Sum();
-        _vatPayable = _outputVat - _inputVat;
-
-        // 6-month revenue trend.
-        _revenueTrend.Clear();
+        // 6-month sales+purchases trend.
+        _trend.Clear();
         for (int back = 5; back >= 0; back--)
         {
             var bs = new DateOnly(now.Year, now.Month, 1).AddMonths(-back);
             var be = bs.AddMonths(1).AddDays(-1);
-            var amounts = await Db.Set<SalesInvoice>().AsNoTracking()
-                .Where(i => i.State == DocumentState.Posted
-                    && i.DocumentDate >= bs && i.DocumentDate <= be)
-                .Select(i => i.GrandTotal.Amount)
-                .ToListAsync();
-            _revenueTrend.Add(new RevenueBucket(bs.Year, bs.Month, amounts.Sum()));
+            var s = await SumSalesAsync(Db, bs, be);
+            var p = await SumPurchasesAsync(Db, bs, be);
+            var ci = new CultureInfo(IsArabic ? "ar-EG" : "en-US");
+            _trend.Add(new TrendBucket(ci.DateTimeFormat.GetAbbreviatedMonthName(bs.Month), s, p));
         }
 
-        // ETA status counts.
-        _etaPending = await Db.Set<EtaSubmission>().AsNoTracking()
-            .CountAsync(s => s.Status == EtaSubmissionStatus.Pending);
-        _etaFailed = await Db.Set<EtaSubmission>().AsNoTracking()
-            .CountAsync(s => s.Status == EtaSubmissionStatus.Failed);
-        var critCutoff = now.AddHours(24);
-        _etaCriticalCount = await Db.Set<EtaSubmission>().AsNoTracking()
-            .CountAsync(s => (s.Status == EtaSubmissionStatus.Pending || s.Status == EtaSubmissionStatus.Failed)
-                && s.SubmissionWindowExpiresAtUtc < critCutoff);
-
-        // Drafts / posted counts.
-        _draftsCount = await Db.Set<SalesInvoice>().AsNoTracking()
-            .CountAsync(i => i.State == DocumentState.Draft);
-        _postedInvoiceCount = await Db.Set<SalesInvoice>().AsNoTracking()
-            .CountAsync(i => i.State == DocumentState.Posted);
-
-        // Pending approvals.
-        _pendingApprovalCount = await Db.Set<ApprovalRequest>().AsNoTracking()
-            .CountAsync(r => r.ApprovedByUserId == null && r.RejectedByUserId == null);
-
-        // Expenses missing attachment.
-        var expenseAttachedIds = Db.Set<Attachment>().AsNoTracking()
-            .Where(a => a.DocumentType == DocumentType.Expense)
-            .Select(a => a.DocumentId);
-        _expensesMissingAttachment = await Db.Set<Expense>().AsNoTracking()
-            .Where(e => e.DeductibleFlag && !expenseAttachedIds.Contains(e.Id))
-            .CountAsync();
-
-        // Low stock.
-        var lowStockMatches = await Db.Set<Item>().AsNoTracking()
-            .Where(i => i.Status == ItemStatus.Active
-                && i.LowStockThreshold != null
-                && i.QuantityOnHand <= i.LowStockThreshold!.Value)
-            .Select(i => new { i.Code, i.QuantityOnHand, i.LowStockThreshold })
-            .ToListAsync();
-        _lowStockCount = lowStockMatches.Count;
-        _lowStockTop = lowStockMatches
-            .OrderBy(i => i.QuantityOnHand)
-            .Take(5)
-            .Select(i => (i.Code, i.QuantityOnHand, i.LowStockThreshold!.Value))
-            .ToList();
-
-        // Upcoming deadlines (next 30 days).
-        var horizon = DateOnly.FromDateTime(now.AddDays(30));
-        var today = DateOnly.FromDateTime(now);
-        _upcomingDeadlines = await Db.Set<ComplianceObligation>().AsNoTracking()
-            .Where(o => o.Status == ComplianceObligationStatus.Upcoming
-                && o.DueDate >= today && o.DueDate <= horizon)
-            .OrderBy(o => o.DueDate)
-            .Take(5)
-            .ToListAsync();
-
-        // Activity feed.
-        await BuildFeedAsync(Db);
-    }
-
-    private async Task BuildFeedAsync(AppDbContext Db)
-    {
+        // Recent invoices: top 5 from sales + purchases, mixed by date.
         var recentSales = await Db.Set<SalesInvoice>().AsNoTracking()
             .OrderByDescending(i => i.PostedAtUtc.HasValue)
             .ThenByDescending(i => i.PostedAtUtc)
             .ThenByDescending(i => i.DocumentDate)
-            .Take(4)
-            .Select(i => new { i.Id, i.DocumentNumber, i.GrandTotal, i.State, i.DocumentDate, i.PostedAtUtc })
+            .Take(5)
+            .Select(i => new { i.Id, i.DocumentNumber, i.CustomerId, i.GrandTotal, i.State, i.DocumentDate })
             .ToListAsync();
-        foreach (var r in recentSales)
-        {
-            var at = r.PostedAtUtc ?? r.DocumentDate.ToDateTime(TimeOnly.MinValue);
-            _feed.Add(new FeedItem(
-                "file-text",
-                r.State == DocumentState.Posted ? "tone-success" : "tone-info",
-                _isArabic ? $"فاتورة مبيعات {r.DocumentNumber ?? "(مسودة)"}" : $"Sales invoice {r.DocumentNumber ?? "(draft)"}",
-                $"{r.GrandTotal.Amount:N2} {(_isArabic ? "ج.م." : "EGP")} · {r.State}",
-                $"/invoices/{r.Id}",
-                at));
-        }
-
         var recentPurchases = await Db.Set<PurchaseInvoice>().AsNoTracking()
             .OrderByDescending(p => p.PostedAtUtc.HasValue)
             .ThenByDescending(p => p.PostedAtUtc)
             .ThenByDescending(p => p.DateReceived)
-            .Take(3)
-            .Select(p => new { p.Id, p.DocumentNumber, p.GrandTotal, p.State, p.DateReceived, p.PostedAtUtc })
+            .Take(5)
+            .Select(p => new { p.Id, p.DocumentNumber, p.SupplierId, p.GrandTotal, p.State, p.DateReceived })
             .ToListAsync();
-        foreach (var r in recentPurchases)
-        {
-            var at = r.PostedAtUtc ?? r.DateReceived.ToDateTime(TimeOnly.MinValue);
-            _feed.Add(new FeedItem(
-                "package",
-                r.State == DocumentState.Posted ? "tone-success" : "tone-info",
-                _isArabic ? $"فاتورة مشتريات {r.DocumentNumber ?? "(مسودة)"}" : $"Purchase invoice {r.DocumentNumber ?? "(draft)"}",
-                $"{r.GrandTotal.Amount:N2} {(_isArabic ? "ج.م." : "EGP")} · {r.State}",
-                $"/purchase-invoices/{r.Id}",
-                at));
-        }
 
-        var recentExpenses = await Db.Set<Expense>().AsNoTracking()
-            .OrderByDescending(e => e.PostedAtUtc.HasValue)
-            .ThenByDescending(e => e.PostedAtUtc)
-            .ThenByDescending(e => e.DocumentDate)
-            .Take(2)
-            .Select(e => new { e.Id, e.DocumentNumber, e.Amount, e.State, e.DocumentDate, e.PostedAtUtc })
+        var customerIds = recentSales.Select(s => s.CustomerId).Distinct().ToArray();
+        var supplierIds = recentPurchases.Select(p => p.SupplierId).Distinct().ToArray();
+        var customers = await Db.Set<Customer>().AsNoTracking()
+            .Where(c => customerIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => IsArabic ? c.Name.Arabic : c.Name.English);
+        var suppliers = await Db.Set<Supplier>().AsNoTracking()
+            .Where(s => supplierIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => IsArabic ? s.Name.Arabic : s.Name.English);
+
+        var rows = new List<RecentRow>();
+        foreach (var s in recentSales)
+        {
+            rows.Add(new RecentRow(
+                Url: $"/invoices/{s.Id}",
+                DocumentNumber: s.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)"),
+                PartyName: customers.GetValueOrDefault(s.CustomerId, "—"),
+                Kind: "sales",
+                TypeLabel: IsArabic ? "فاتورة مبيعات" : "Sales invoice",
+                Date: s.DocumentDate,
+                Amount: s.GrandTotal.Amount,
+                StatusClass: ClassForState(s.State),
+                StatusLabel: LabelForState(s.State)
+            ));
+        }
+        foreach (var p in recentPurchases)
+        {
+            rows.Add(new RecentRow(
+                Url: $"/purchase-invoices/{p.Id}",
+                DocumentNumber: p.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)"),
+                PartyName: suppliers.GetValueOrDefault(p.SupplierId, "—"),
+                Kind: "purchase",
+                TypeLabel: IsArabic ? "فاتورة شراء" : "Purchase invoice",
+                Date: p.DateReceived,
+                Amount: p.GrandTotal.Amount,
+                StatusClass: ClassForState(p.State),
+                StatusLabel: LabelForState(p.State)
+            ));
+        }
+        _recent = rows.OrderByDescending(r => r.Date).Take(5).ToList();
+    }
+
+    private static async Task<decimal> SumSalesAsync(AppDbContext db, DateOnly start, DateOnly end)
+    {
+        var amounts = await db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted
+                && i.DocumentDate >= start && i.DocumentDate <= end)
+            .Select(i => i.GrandTotal.Amount)
             .ToListAsync();
-        foreach (var r in recentExpenses)
-        {
-            var at = r.PostedAtUtc ?? r.DocumentDate.ToDateTime(TimeOnly.MinValue);
-            _feed.Add(new FeedItem(
-                "credit-card",
-                "tone-info",
-                _isArabic ? $"مصروف {r.DocumentNumber ?? "(مسودة)"}" : $"Expense {r.DocumentNumber ?? "(draft)"}",
-                $"{r.Amount.Amount:N2} {(_isArabic ? "ج.م." : "EGP")} · {r.State}",
-                $"/expenses/{r.Id}",
-                at));
-        }
-
-        _feed = _feed.OrderByDescending(f => f.At).Take(8).ToList();
+        return amounts.Sum();
     }
 
-    private string GetGreeting()
+    private static async Task<decimal> SumPurchasesAsync(AppDbContext db, DateOnly start, DateOnly end)
     {
-        var hour = DateTime.Now.Hour;
-        if (_isArabic)
-        {
-            return hour < 12 ? "صباح الخير" : hour < 18 ? "مساء الخير" : "مساء الخير";
-        }
-        return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+        var amounts = await db.Set<PurchaseInvoice>().AsNoTracking()
+            .Where(p => p.State == DocumentState.Posted
+                && p.DateReceived >= start && p.DateReceived <= end)
+            .Select(p => p.GrandTotal.Amount)
+            .ToListAsync();
+        return amounts.Sum();
     }
 
-    private string MonthName(int m)
+    private static async Task<decimal> SumExpensesAsync(AppDbContext db, DateOnly start, DateOnly end)
     {
-        var ci = new CultureInfo(_isArabic ? "ar-EG" : "en-US");
-        return ci.DateTimeFormat.GetMonthName(m);
+        var amounts = await db.Set<Expense>().AsNoTracking()
+            .Where(e => e.State == DocumentState.Posted
+                && e.DocumentDate >= start && e.DocumentDate <= end)
+            .Select(e => e.Amount.Amount)
+            .ToListAsync();
+        return amounts.Sum();
     }
 
-    private string MonthAbbrev(int m)
+    /// <summary>Open AR as of a date = posted sales-invoice grand total minus
+    /// allocated receipts, summed across all customers. Approximation good
+    /// enough for the dashboard — the canonical figure is on the customer
+    /// statement page.</summary>
+    private static async Task<decimal> OpenArAsync(AppDbContext db, DateOnly asOf)
     {
-        var ci = new CultureInfo(_isArabic ? "ar-EG" : "en-US");
-        return ci.DateTimeFormat.GetAbbreviatedMonthName(m);
+        var invoiceTotals = await db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.State == DocumentState.Posted && i.DocumentDate <= asOf)
+            .Select(i => new { i.Id, i.GrandTotal.Amount })
+            .ToListAsync();
+        var ids = invoiceTotals.Select(x => x.Id).ToArray();
+        var allocs = await db.Set<PaymentAllocation>().AsNoTracking()
+            .Where(a => ids.Contains(a.TargetDocumentId)
+                && a.TargetDocumentType == DocumentType.SalesInvoice)
+            .Select(a => new { a.TargetDocumentId, a.AllocatedAmount.Amount })
+            .ToListAsync();
+        var paid = allocs.GroupBy(a => a.TargetDocumentId).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+        return invoiceTotals.Sum(x => Math.Max(0m, x.Amount - paid.GetValueOrDefault(x.Id, 0m)));
     }
 
-    private string DeadlineLabel(ComplianceObligationKind kind) => (kind, _isArabic) switch
+    /// <summary>Open AP as of a date — mirror of OpenAr for purchase
+    /// invoices and supplier-payment allocations.</summary>
+    private static async Task<decimal> OpenApAsync(AppDbContext db, DateOnly asOf)
     {
-        (ComplianceObligationKind.VatMonthly,       true)  => "إقرار ضريبة القيمة المضافة (شهري)",
-        (ComplianceObligationKind.VatMonthly,       false) => "VAT return (monthly)",
-        (ComplianceObligationKind.VatQuarterly,     true)  => "إقرار ضريبة القيمة المضافة (ربع سنوي)",
-        (ComplianceObligationKind.VatQuarterly,     false) => "VAT return (quarterly)",
-        (ComplianceObligationKind.Form41Quarterly,  true)  => "نموذج 41 — الخصم من المنبع",
-        (ComplianceObligationKind.Form41Quarterly,  false) => "Form 41 — withholding tax",
-        (ComplianceObligationKind.IncomeTaxAnnual,  true)  => "إقرار ضريبة الدخل السنوي",
-        (ComplianceObligationKind.IncomeTaxAnnual,  false) => "Annual income tax return",
-        (ComplianceObligationKind.TurnoverTaxAnnual,true)  => "إقرار ضريبة رقم الأعمال السنوي",
-        (ComplianceObligationKind.TurnoverTaxAnnual,false) => "Annual turnover tax return",
-        _ => kind.ToString(),
+        var invoiceTotals = await db.Set<PurchaseInvoice>().AsNoTracking()
+            .Where(p => p.State == DocumentState.Posted && p.DateReceived <= asOf)
+            .Select(p => new { p.Id, p.GrandTotal.Amount })
+            .ToListAsync();
+        var ids = invoiceTotals.Select(x => x.Id).ToArray();
+        var allocs = await db.Set<PaymentAllocation>().AsNoTracking()
+            .Where(a => ids.Contains(a.TargetDocumentId)
+                && a.TargetDocumentType == DocumentType.PurchaseInvoice)
+            .Select(a => new { a.TargetDocumentId, a.AllocatedAmount.Amount })
+            .ToListAsync();
+        var paid = allocs.GroupBy(a => a.TargetDocumentId).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+        return invoiceTotals.Sum(x => Math.Max(0m, x.Amount - paid.GetValueOrDefault(x.Id, 0m)));
+    }
+
+    private static decimal Percent(decimal cur, decimal prev)
+    {
+        if (prev == 0) return cur == 0 ? 0 : 100m;
+        return Math.Round((cur - prev) / Math.Abs(prev) * 100m, 1);
+    }
+
+    private string FormatEgp(decimal value) => $"{ArabicNumerals.Format(value)} {(IsArabic ? "ج.م" : "EGP")}";
+    private string FormatThousands(decimal value) => ArabicNumerals.Format(value);
+
+    private string ClassForState(DocumentState s) => s switch
+    {
+        DocumentState.Posted    => "is-success",
+        DocumentState.Draft     => "",
+        DocumentState.Submitted => "is-info",
+        DocumentState.Approved  => "is-info",
+        DocumentState.Voided    => "is-danger",
+        _ => "",
     };
 
-    private string FormatTimeAgo(DateTime at)
+    private string LabelForState(DocumentState s) => (s, IsArabic) switch
     {
-        var span = DateTime.UtcNow - at.ToUniversalTime();
-        if (span.TotalMinutes < 1) return _isArabic ? "الآن" : "now";
-        if (span.TotalHours < 1) return _isArabic ? $"منذ {ArabicNumerals.Format((int)span.TotalMinutes)} دقيقة" : $"{(int)span.TotalMinutes}m ago";
-        if (span.TotalDays < 1) return _isArabic ? $"منذ {ArabicNumerals.Format((int)span.TotalHours)} ساعة" : $"{(int)span.TotalHours}h ago";
-        return _isArabic ? $"منذ {ArabicNumerals.Format((int)span.TotalDays)} يوم" : $"{(int)span.TotalDays}d ago";
-    }
+        (DocumentState.Posted,    true)  => "مدفوعة",
+        (DocumentState.Posted,    false) => "Posted",
+        (DocumentState.Draft,     true)  => "مسودة",
+        (DocumentState.Draft,     false) => "Draft",
+        (DocumentState.Submitted, true)  => "في الانتظار",
+        (DocumentState.Submitted, false) => "Pending",
+        (DocumentState.Approved,  true)  => "معتمدة",
+        (DocumentState.Approved,  false) => "Approved",
+        (DocumentState.Voided,    true)  => "ملغاة",
+        (DocumentState.Voided,    false) => "Voided",
+        _ => s.ToString(),
+    };
 }

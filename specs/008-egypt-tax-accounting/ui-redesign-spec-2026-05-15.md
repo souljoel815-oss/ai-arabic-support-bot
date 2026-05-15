@@ -141,3 +141,26 @@ Five PNG mockups attached in chat as visual reference for Sprint 1:
 5. **Dashboard (الرئيسية)** — 4 KPI cards (compliance / net profit / overdue / total sales), action items panel (4 items with one-click action button), 2 charts (revenue vs expenses bar + cash flow area)
 
 Re-attach in future sessions if needed.
+
+---
+
+## 🔒 LOCKED — Sidebar architecture decision (operator, 2026-05-15 evening)
+
+**The 2-tier "Mission Control" sidebar pattern is the FINAL choice and must NOT be reverted to a single-tier collapsible sidebar.**
+
+Layout:
+- **`ModuleSidebar`** (248px on the inline-start edge) — fixed-width column of 7 module icons + Arabic labels (Dashboard / Sales / Purchases / Inventory / Accounting / Contacts / Settings). Logo + footer (search / theme toggle / logout) live in this column.
+- **`SubNavPanel`** (280px, sits next to the module sidebar) — context-sensitive list of sub-pages for the currently active module. Renders only when the active module's `HasSubNav` is `true` (Dashboard doesn't).
+- **Main content area** — flex fills the rest, with `--dx-sidebar-w` + `--dx-subnav-w` reserved.
+
+Files (do not merge / collapse into one sidebar):
+- `src/EgyptTax.Web/Shared/AppShell/ModuleSidebar.razor`
+- `src/EgyptTax.Web/Shared/AppShell/SubNavPanel.razor`
+- `src/EgyptTax.Web/Shared/AppShell/AppShellLayout.razor` — orchestrates both via `AppShellModuleRegistry.ResolveActive(path)`.
+
+**Why locked:** an attempted "match the Manus single-sidebar mockup" merge during the 2026-05-15 evening pass produced a sidebar-inside-sidebar bug and visually regressed to a legacy MainLayout feel. The operator explicitly rejected the merge twice in the same session ("ليه رجعت القوائم بالشكل القديم"، "اثبت علي نظام القوائم دا"). The single-sidebar variant in the Manus PNG is a mockup-only suggestion — the implemented 2-tier pattern wins because:
+- The icon strip keeps every module reachable in one click.
+- The sub-nav panel scales to modules with many links (Accounting has ~14) without nested scroll.
+- It survives long navigation labels without truncation.
+
+**If a future Manus pass proposes a single sidebar again:** ignore for the sidebar component specifically; cherry-pick visual ideas (logo, colors, ETA card placement) only.
