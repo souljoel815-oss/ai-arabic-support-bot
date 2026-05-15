@@ -17,6 +17,7 @@ public enum DocumentType
     SupplierPaymentVoucher,
     CustomerReceiptVoucher,
     FixedAsset,
+    ExpenseReport,
 }
 
 public static class DocumentTypeExtensions
@@ -38,6 +39,7 @@ public static class DocumentTypeExtensions
             DocumentType.JournalVoucher => false,
             DocumentType.SupplierPaymentVoucher => false,
             DocumentType.CustomerReceiptVoucher => false,
+            DocumentType.ExpenseReport => false,
             _ => false,
         };
 }

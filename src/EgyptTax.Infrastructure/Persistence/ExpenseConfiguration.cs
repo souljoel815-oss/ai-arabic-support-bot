@@ -65,5 +65,9 @@ internal sealed class ExpenseConfiguration : IEntityTypeConfiguration<Expense>
         // v3 §11 #3 — cost-center tag (nullable FK).
         b.Property(e => e.CostCenterId).HasColumnName("cost_center_id");
         b.HasIndex(e => e.CostCenterId).HasDatabaseName("ix_expenses_cost_center_id");
+
+        // v5 B.4 — bundle FK (nullable; null = standalone expense).
+        b.Property(e => e.ExpenseReportId).HasColumnName("expense_report_id");
+        b.HasIndex(e => e.ExpenseReportId).HasDatabaseName("ix_expenses_expense_report_id");
     }
 }

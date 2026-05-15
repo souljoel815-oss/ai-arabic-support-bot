@@ -1,0 +1,205 @@
+@page "/expense-reports/new"
+@using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel.Time
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject IClock Clock
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 B.4 — bundle Draft expenses into a single approval. Operator
+    names the report, ticks the expenses, hits Create. The report
+    starts in Draft so they can verify the bundle before submitting
+    via the detail page's Submit button.
+*@
+
+<h1>@(IsArabic ? "تقرير مصروفات جديد" : "New expense report")</h1>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status" style="margin:8px 0;">@_flash</div>
+}
+
+<div class="form-grid" style="max-width:680px;">
+    <label>
+        <span>@(IsArabic ? "اسم التقرير" : "Report name") *</span>
+        <input type="text" maxlength="200" placeholder="@(IsArabic ? "مثلاً: سفر — مؤتمر القاهرة — مارس 2026" : "e.g. Travel — Cairo conf — Mar 2026")"
+               @bind="_name" @bind:event="oninput" />
+    </label>
+</div>
+
+<h2 style="margin-top:24px;">@(IsArabic ? "المصروفات المتاحة (مسودة، غير مرتبطة بتقرير)" : "Available expenses (Draft, not in any report)")</h2>
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+}
+else if (_available.Count == 0)
+{
+    <p><em>
+        @(IsArabic
+            ? "ما فيش مصروفات Draft متاحة. أنشئ مصروفات من /expenses/new أولاً."
+            : "No Draft expenses available. Create expenses from /expenses/new first.")
+    </em></p>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th><input type="checkbox" @onchange="OnToggleAll" checked="@AllSelected" /></th>
+                <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                <th>@(IsArabic ? "الفئة" : "Category")</th>
+                <th>@(IsArabic ? "الوصف" : "Description")</th>
+                <th class="num">@(IsArabic ? "المبلغ" : "Amount")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in _available)
+            {
+                <tr>
+                    <td>
+                        <input type="checkbox" checked="@_selected.Contains(row.Expense.Id)"
+                               @onchange="@(e => OnToggle(row.Expense.Id, e))" />
+                    </td>
+                    <td>@row.Expense.DocumentDate.ToString("yyyy-MM-dd")</td>
+                    <td>@row.CategoryCode</td>
+                    <td>@(IsArabic ? row.Expense.Description.Arabic : row.Expense.Description.English)</td>
+                    <td class="num">@row.Expense.Amount.Amount.ToString("N2")</td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="4" style="text-align:end;font-weight:600;">
+                    @(IsArabic ? "إجمالي المختار:" : "Selected total:")
+                </td>
+                <td class="num"><strong>@SelectedTotal.ToString("N2")</strong></td>
+            </tr>
+        </tfoot>
+    </table>
+}
+
+<div style="margin-top:16px;">
+    <button type="button" class="btn-primary" @onclick="OnCreateAsync"
+            disabled="@(_busy || string.IsNullOrWhiteSpace(_name) || _selected.Count == 0)">
+        @(_busy
+            ? (IsArabic ? "جارٍ الإنشاء…" : "Creating…")
+            : (IsArabic ? $"إنشاء التقرير ({_selected.Count})" : $"Create report ({_selected.Count})"))
+    </button>
+    <a href="/expense-reports" style="margin-inline-start:12px;">
+        @(IsArabic ? "إلغاء" : "Cancel")
+    </a>
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string _name = "";
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private List<Row> _available = new();
+    private HashSet<Guid> _selected = new();
+    private Guid _currentUserId;
+
+    private decimal SelectedTotal => _available
+        .Where(r => _selected.Contains(r.Expense.Id))
+        .Sum(r => r.Expense.Amount.Amount);
+
+    private bool AllSelected =>
+        _available.Count > 0 && _selected.Count == _available.Count;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var claim = auth.User.FindFirst("sub")?.Value
+            ?? auth.User.FindFirst("userId")?.Value;
+        _currentUserId = Guid.TryParse(claim, out var u) ? u : Guid.Empty;
+
+        var rows = await Db.Set<Expense>().AsNoTracking()
+            .Where(e => e.State == DocumentState.Draft && e.ExpenseReportId == null)
+            .OrderByDescending(e => e.DocumentDate)
+            .Take(500)
+            .ToListAsync();
+
+        var categoryIds = rows.Select(r => r.CategoryId).Distinct().ToArray();
+        var categories = await Db.Set<DeductibleExpenseCategory>().AsNoTracking()
+            .Where(c => categoryIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Code);
+
+        _available = rows.Select(e => new Row(e, categories.GetValueOrDefault(e.CategoryId, "?"))).ToList();
+        _loading = false;
+    }
+
+    private void OnToggle(Guid id, ChangeEventArgs e)
+    {
+        if (e.Value is bool b && b) _selected.Add(id);
+        else _selected.Remove(id);
+    }
+
+    private void OnToggleAll(ChangeEventArgs e)
+    {
+        if (e.Value is bool b && b)
+        {
+            _selected = _available.Select(r => r.Expense.Id).ToHashSet();
+        }
+        else
+        {
+            _selected.Clear();
+        }
+    }
+
+    private async Task OnCreateAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _flash = null;
+        try
+        {
+            if (_currentUserId == Guid.Empty)
+            {
+                _flash = IsArabic ? "تعذر تحديد المستخدم الحالي." : "Could not resolve current user.";
+                _flashClass = "flash-error";
+                return;
+            }
+            var report = new ExpenseReport(_name.Trim(), _currentUserId, Clock.UtcNow);
+            Db.Add(report);
+
+            // Re-load tracked Expense entities for the selected ids
+            // so AssignToReport mutates rows EF tracks for save.
+            var picked = await Db.Set<Expense>()
+                .Where(e => _selected.Contains(e.Id))
+                .ToListAsync();
+            foreach (var ex in picked)
+            {
+                if (ex.State != DocumentState.Draft || ex.ExpenseReportId is not null)
+                {
+                    throw new InvalidOperationException(
+                        $"Expense {ex.Id} is no longer assignable (state {ex.State}, report {ex.ExpenseReportId}).");
+                }
+                ex.AssignToReport(report.Id);
+            }
+
+            await Db.SaveChangesAsync();
+            Nav.NavigateTo($"/expense-reports/{report.Id}");
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private sealed record Row(Expense Expense, string CategoryCode);
+}

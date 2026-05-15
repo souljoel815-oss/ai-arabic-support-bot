@@ -42,6 +42,13 @@ public sealed class Expense
     /// for reports without re-opening the document).</summary>
     public Guid? CostCenterId { get; private set; }
 
+    /// <summary>v5 B.4 — when set, this expense is a child of an
+    /// <c>ExpenseReport</c> bundle and follows the report's
+    /// approval lifecycle (the report's Submit/Approve/Reject
+    /// cascades to the child via DocumentApprovalHandler).
+    /// Null = standalone expense, follows the per-document path.</summary>
+    public Guid? ExpenseReportId { get; private set; }
+
     private Expense() { }
 
     private Expense(
@@ -129,6 +136,28 @@ public sealed class Expense
     {
         if (costCenterId == Guid.Empty) costCenterId = null;
         CostCenterId = costCenterId;
+    }
+
+    /// <summary>v5 B.4 — attach this Draft expense to an
+    /// ExpenseReport bundle. Only Draft expenses can be added; once
+    /// the report is Submitted the children are locked to the
+    /// bundle until reject/approve.</summary>
+    public void AssignToReport(Guid reportId)
+    {
+        ThrowIfNotDraft(nameof(AssignToReport));
+        if (reportId == Guid.Empty)
+        {
+            throw new ArgumentException("ReportId required.", nameof(reportId));
+        }
+        ExpenseReportId = reportId;
+    }
+
+    /// <summary>v5 B.4 — detach from a Draft bundle (only allowed
+    /// while both the expense and its report are Draft).</summary>
+    public void RemoveFromReport()
+    {
+        ThrowIfNotDraft(nameof(RemoveFromReport));
+        ExpenseReportId = null;
     }
 
     /// <summary>FR-026 transitions for the approval workflow.</summary>

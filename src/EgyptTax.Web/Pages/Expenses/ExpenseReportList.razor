@@ -1,0 +1,113 @@
+@page "/expense-reports"
+@using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Web.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 B.4 — Expense reports landing page. Lists every report (any
+    state) with the bundle's child count + total. Operator hits
+    "+ New report" to bundle a week of receipts into one approval.
+*@
+
+<h1>@(IsArabic ? "تقارير المصروفات" : "Expense reports")</h1>
+
+<div class="invoice-toolbar">
+    <a class="btn-primary" href="/expense-reports/new">
+        + @(IsArabic ? "تقرير جديد" : "New report")
+    </a>
+    <select @bind="_stateFilter">
+        <option value="">@(IsArabic ? "كل الحالات" : "All states")</option>
+        @foreach (var state in new[] { DocumentState.Draft, DocumentState.Submitted, DocumentState.Approved })
+        {
+            <option value="@state">@state</option>
+        }
+    </select>
+</div>
+
+@if (_rows is null)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+}
+else if (_rows.Count == 0)
+{
+    <p><em>@(IsArabic ? "لا توجد تقارير بعد. ابدأ بإنشاء أول تقرير." : "No reports yet. Create your first one.")</em></p>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>@(IsArabic ? "الاسم" : "Name")</th>
+                <th>@(IsArabic ? "الحالة" : "State")</th>
+                <th class="num">@(IsArabic ? "عدد المصروفات" : "Expenses")</th>
+                <th class="num">@(IsArabic ? "الإجمالي" : "Total")</th>
+                <th>@(IsArabic ? "أنشأ بواسطة" : "Created by")</th>
+                <th>@(IsArabic ? "أنشئ في" : "Created at")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Filtered)
+            {
+                <tr>
+                    <td>@row.Report.Name</td>
+                    <td><StateBadge State="row.Report.State" /></td>
+                    <td class="num">@row.ChildCount</td>
+                    <td class="num">@row.Total.ToString("N2")</td>
+                    <td>@row.CreatedByName</td>
+                    <td>@row.Report.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td><a href="/expense-reports/@row.Report.Id">@(IsArabic ? "عرض" : "View")</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Row>? _rows;
+    private string _stateFilter = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var reports = await Db.Set<ExpenseReport>().AsNoTracking()
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .Take(200)
+            .ToListAsync();
+
+        var reportIds = reports.Select(r => r.Id).ToArray();
+        var children = await Db.Set<Expense>().AsNoTracking()
+            .Where(e => e.ExpenseReportId != null && reportIds.Contains(e.ExpenseReportId!.Value))
+            .Select(e => new { e.ExpenseReportId, Amount = e.Amount.Amount })
+            .ToListAsync();
+        var byReport = children
+            .GroupBy(x => x.ExpenseReportId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => (Count: g.Count(), Total: g.Sum(x => x.Amount)));
+
+        var userIds = reports.Select(r => r.CreatedByUserId).Distinct().ToArray();
+        var users = await Db.Set<User>().AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(
+                u => u.Id,
+                u => IsArabic ? u.DisplayName.Arabic : u.DisplayName.English);
+
+        _rows = reports.Select(r =>
+        {
+            var (count, total) = byReport.GetValueOrDefault(r.Id, (0, 0m));
+            return new Row(r, count, total, users.GetValueOrDefault(r.CreatedByUserId, "—"));
+        }).ToList();
+    }
+
+    private IEnumerable<Row> Filtered => (_rows ?? Enumerable.Empty<Row>())
+        .Where(r => string.IsNullOrEmpty(_stateFilter)
+            || r.Report.State.ToString() == _stateFilter);
+
+    private sealed record Row(ExpenseReport Report, int ChildCount, decimal Total, string CreatedByName);
+}

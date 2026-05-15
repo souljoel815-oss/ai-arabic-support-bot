@@ -1,0 +1,325 @@
+@page "/expense-reports/{Id:guid}"
+@using EgyptTax.Application.Workflow
+@using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Workflow
+@using EgyptTax.Web.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject DocumentApprovalHandler ApprovalHandler
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 B.4 — report detail. Shows the bundle, lets the operator
+    Submit it for approval (cascades the children Draft → Submitted
+    in one transaction), shows the live ApprovalRequest if any,
+    lets the manager Approve / Reject (cascades children too).
+*@
+
+@if (_report is null)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+<h1>@_report.Name <StateBadge State="_report.State" /></h1>
+
+<p class="page-subtitle">
+    @(IsArabic ? "أنشئ بواسطة" : "Created by")
+    <strong>@_createdByName</strong>
+    —
+    @_report.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status" style="margin:8px 0;">@_flash</div>
+}
+
+@if (_approval is not null)
+{
+    <div class="kpi-card kpi-info" style="margin:8px 0;">
+        @if (_approval.Status == ApprovalRequestStatus.Pending)
+        {
+            <text>
+                @(IsArabic ? "بانتظار الاعتماد منذ" : "Pending approval since")
+                @_approval.SubmittedAtUtc.ToString("yyyy-MM-dd HH:mm")
+                — @(IsArabic ? "قدم بواسطة" : "submitted by")
+                @_submittedByName
+            </text>
+        }
+        else if (_approval.Status == ApprovalRequestStatus.Approved)
+        {
+            <text>
+                ✓ @(IsArabic ? "اعتُمد في" : "Approved at")
+                @_approval.ApprovedAtUtc?.ToString("yyyy-MM-dd HH:mm")
+            </text>
+        }
+        else if (_approval.Status == ApprovalRequestStatus.Rejected)
+        {
+            <text>
+                ✗ @(IsArabic ? "رُفض في" : "Rejected at")
+                @_approval.RejectedAtUtc?.ToString("yyyy-MM-dd HH:mm")
+                — @_approval.RejectionReason
+            </text>
+        }
+    </div>
+}
+
+<h2 style="margin-top:24px;">@(IsArabic ? "المصروفات في هذا التقرير" : "Expenses in this report") (@_children.Count)</h2>
+
+@if (_children.Count == 0)
+{
+    <p><em>@(IsArabic ? "لا توجد مصروفات مرتبطة." : "No expenses linked.")</em></p>
+}
+else
+{
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                <th>@(IsArabic ? "الفئة" : "Category")</th>
+                <th>@(IsArabic ? "الوصف" : "Description")</th>
+                <th>@(IsArabic ? "الحالة" : "State")</th>
+                <th class="num">@(IsArabic ? "المبلغ" : "Amount")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in _children)
+            {
+                <tr>
+                    <td>@c.Expense.DocumentDate.ToString("yyyy-MM-dd")</td>
+                    <td>@c.CategoryCode</td>
+                    <td>@(IsArabic ? c.Expense.Description.Arabic : c.Expense.Description.English)</td>
+                    <td><StateBadge State="c.Expense.State" /></td>
+                    <td class="num">@c.Expense.Amount.Amount.ToString("N2")</td>
+                    <td><a href="/expenses/@c.Expense.Id">@(IsArabic ? "عرض" : "View")</a></td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="4" style="text-align:end;font-weight:600;">
+                    @(IsArabic ? "الإجمالي:" : "Total:")
+                </td>
+                <td class="num"><strong>@Total.ToString("N2")</strong></td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+}
+
+<div class="workflow-actions" style="margin-top:24px;">
+    @if (_report.State == DocumentState.Draft)
+    {
+        <button type="button" class="btn-primary" @onclick="OnSubmitAsync"
+                disabled="@(_busy || _children.Count == 0)">
+            @(_busy ? (IsArabic ? "جارٍ الإرسال…" : "Submitting…")
+                    : (IsArabic ? "إرسال البندل للاعتماد" : "Submit bundle for approval"))
+        </button>
+        <button type="button" @onclick="OnDeleteAsync" disabled="@_busy">
+            @(IsArabic ? "حذف التقرير" : "Delete report")
+        </button>
+    }
+    else if (_report.State == DocumentState.Submitted)
+    {
+        @if (CanApprove)
+        {
+            <button type="button" class="btn-primary" @onclick="OnApproveAsync" disabled="@_busy">
+                @(IsArabic ? "اعتماد البندل" : "Approve bundle")
+            </button>
+            <button type="button" @onclick="ToggleRejectInput" disabled="@_busy">
+                @(_showRejectInput ? (IsArabic ? "إلغاء الرفض" : "Cancel reject")
+                                    : (IsArabic ? "رفض البندل" : "Reject bundle"))
+            </button>
+        }
+        else
+        {
+            <p><em>@(IsArabic
+                ? "بانتظار معتمد آخر — FR-004 يمنعك من اعتماد ما قدمته بنفسك."
+                : "Awaiting another approver — FR-004 prevents you from approving your own submission.")</em></p>
+        }
+    }
+
+    @if (_showRejectInput)
+    {
+        <div class="reject-form" style="margin-top:8px;">
+            <textarea rows="3" placeholder="@(IsArabic ? "سبب الرفض (مطلوب)…" : "Reason for rejection (required)…")"
+                      @bind="_rejectReason" @bind:event="oninput"></textarea>
+            <button type="button" class="btn-primary" @onclick="OnRejectAsync" disabled="@_busy">
+                @(IsArabic ? "تأكيد الرفض" : "Confirm reject")
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ExpenseReport? _report;
+    private ApprovalRequest? _approval;
+    private List<Row> _children = new();
+    private string _createdByName = "—";
+    private string _submittedByName = "—";
+    private Guid _currentUserId;
+    private bool _busy;
+    private bool _showRejectInput;
+    private string _rejectReason = "";
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    private decimal Total => _children.Sum(c => c.Expense.Amount.Amount);
+
+    private bool CanApprove =>
+        _approval is null
+        || _approval.SubmittedByUserId != _currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var claim = auth.User.FindFirst("sub")?.Value
+            ?? auth.User.FindFirst("userId")?.Value;
+        _currentUserId = Guid.TryParse(claim, out var u) ? u : Guid.Empty;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _report = await Db.Set<ExpenseReport>().AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == Id);
+        if (_report is null) return;
+
+        var children = await Db.Set<Expense>().AsNoTracking()
+            .Where(e => e.ExpenseReportId == Id)
+            .OrderByDescending(e => e.DocumentDate)
+            .ToListAsync();
+
+        var categoryIds = children.Select(c => c.CategoryId).Distinct().ToArray();
+        var categories = await Db.Set<DeductibleExpenseCategory>().AsNoTracking()
+            .Where(c => categoryIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Code);
+
+        _children = children
+            .Select(e => new Row(e, categories.GetValueOrDefault(e.CategoryId, "?")))
+            .ToList();
+
+        _approval = await Db.Set<ApprovalRequest>().AsNoTracking()
+            .Where(a => a.DocumentId == Id && a.DocumentType == DocumentType.ExpenseReport)
+            .OrderByDescending(a => a.SubmittedAtUtc)
+            .FirstOrDefaultAsync();
+
+        var userIds = new[] { _report.CreatedByUserId, _approval?.SubmittedByUserId ?? Guid.Empty }
+            .Where(id => id != Guid.Empty).Distinct().ToArray();
+        var users = await Db.Set<User>().AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(
+                u => u.Id,
+                u => IsArabic ? u.DisplayName.Arabic : u.DisplayName.English);
+        _createdByName = users.GetValueOrDefault(_report.CreatedByUserId, "—");
+        _submittedByName = _approval is null ? "—" : users.GetValueOrDefault(_approval.SubmittedByUserId, "—");
+    }
+
+    private async Task OnSubmitAsync()
+    {
+        await RunAsync(() => ApprovalHandler.SubmitAsync(
+            new SubmitDocumentCommand(Id, DocumentType.ExpenseReport, _currentUserId),
+            CancellationToken.None),
+            success: IsArabic ? "تم إرسال البندل للاعتماد." : "Bundle submitted for approval.");
+    }
+
+    private async Task OnApproveAsync()
+    {
+        await RunAsync(() => ApprovalHandler.ApproveAsync(
+            new ApproveDocumentCommand(Id, DocumentType.ExpenseReport, _currentUserId),
+            CancellationToken.None),
+            success: IsArabic ? "تم اعتماد البندل وكل المصروفات بداخله." : "Bundle and all child expenses approved.");
+    }
+
+    private void ToggleRejectInput()
+    {
+        _showRejectInput = !_showRejectInput;
+        _rejectReason = "";
+        _flash = null;
+    }
+
+    private async Task OnRejectAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_rejectReason))
+        {
+            _flash = IsArabic ? "السبب مطلوب." : "Reason is required.";
+            _flashClass = "flash-error";
+            return;
+        }
+        await RunAsync(() => ApprovalHandler.RejectAsync(
+            new RejectDocumentCommand(Id, DocumentType.ExpenseReport, _currentUserId, _rejectReason),
+            CancellationToken.None),
+            success: IsArabic ? "رُفض البندل وأُعيدت المصروفات إلى مسودة." : "Bundle rejected; expenses returned to Draft.");
+        _showRejectInput = false;
+        _rejectReason = "";
+    }
+
+    private async Task OnDeleteAsync()
+    {
+        if (_busy || _report is null || _report.State != DocumentState.Draft) return;
+        _busy = true;
+        _flash = null;
+        try
+        {
+            // Detach the children first so they go back to the
+            // standalone Draft pool.
+            var picked = await Db.Set<Expense>()
+                .Where(e => e.ExpenseReportId == Id)
+                .ToListAsync();
+            foreach (var ex in picked)
+            {
+                if (ex.State == DocumentState.Draft) ex.RemoveFromReport();
+            }
+            var live = await Db.Set<ExpenseReport>().FirstOrDefaultAsync(r => r.Id == Id);
+            if (live is not null) Db.Remove(live);
+            await Db.SaveChangesAsync();
+            Nav.NavigateTo("/expense-reports");
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RunAsync(Func<Task> action, string success)
+    {
+        _busy = true;
+        _flash = null;
+        try
+        {
+            await action();
+            await LoadAsync();
+            _flash = success;
+            _flashClass = "flash-success";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private sealed record Row(Expense Expense, string CategoryCode);
+}

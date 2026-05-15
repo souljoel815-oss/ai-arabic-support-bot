@@ -51,8 +51,19 @@ public sealed class DocumentApprovalHandler
             sales: s => s.MarkSubmitted(),
             purchase: p => p.MarkSubmitted(),
             expense: e => e.MarkSubmitted(),
+            expenseReport: r => r.MarkSubmitted(),
             cancellationToken
         );
+
+        // v5 B.4 — submitting a report cascades to its child
+        // expenses so they enter the approval workflow alongside
+        // the bundle (children that were already non-Draft would
+        // fail the state-machine guard, which is what we want).
+        if (command.DocumentType == DocumentType.ExpenseReport)
+        {
+            await CascadeChildExpensesAsync(
+                command.DocumentId, e => e.MarkSubmitted(), cancellationToken);
+        }
 
         var request = new ApprovalRequest(
             command.DocumentId,
@@ -98,8 +109,15 @@ public sealed class DocumentApprovalHandler
             sales: s => s.MarkApproved(),
             purchase: p => p.MarkApproved(),
             expense: e => e.MarkApproved(),
+            expenseReport: r => r.MarkApproved(),
             cancellationToken
         );
+
+        if (command.DocumentType == DocumentType.ExpenseReport)
+        {
+            await CascadeChildExpensesAsync(
+                command.DocumentId, e => e.MarkApproved(), cancellationToken);
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -135,8 +153,15 @@ public sealed class DocumentApprovalHandler
             sales: s => s.MarkRejected(),
             purchase: p => p.MarkRejected(),
             expense: e => e.MarkRejected(),
+            expenseReport: r => r.MarkRejected(),
             cancellationToken
         );
+
+        if (command.DocumentType == DocumentType.ExpenseReport)
+        {
+            await CascadeChildExpensesAsync(
+                command.DocumentId, e => e.MarkRejected(), cancellationToken);
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -167,6 +192,11 @@ public sealed class DocumentApprovalHandler
             sales: s => s.MarkVoided(),
             purchase: p => p.MarkVoided(),
             expense: e => e.MarkVoided(),
+            // Reports don't void — once Approved/Rejected they're
+            // terminal; Draft reports get deleted from the page UI
+            // rather than transitioned here.
+            expenseReport: _ => throw new InvalidOperationException(
+                "ExpenseReport does not support Void."),
             cancellationToken
         );
 
@@ -212,8 +242,8 @@ public sealed class DocumentApprovalHandler
     }
 
     /// <summary>
-    /// Dispatches by document type. The three lambdas correspond to
-    /// the three approval-eligible aggregates the MVP supports;
+    /// Dispatches by document type. The four lambdas correspond to
+    /// the four approval-eligible aggregates supported today;
     /// adding a new doc type means adding one lambda + one switch
     /// arm.
     /// </summary>
@@ -223,6 +253,7 @@ public sealed class DocumentApprovalHandler
         Action<SalesInvoice> sales,
         Action<PurchaseInvoice> purchase,
         Action<Expense> expense,
+        Action<ExpenseReport> expenseReport,
         CancellationToken cancellationToken
     )
     {
@@ -260,10 +291,39 @@ public sealed class DocumentApprovalHandler
                 expense(doc);
                 break;
             }
+            case DocumentType.ExpenseReport:
+            {
+                var doc =
+                    await _db.Set<ExpenseReport>()
+                        .FirstOrDefaultAsync(r => r.Id == documentId, cancellationToken)
+                    ?? throw new InvalidOperationException(
+                        $"Expense report {documentId} not found.");
+                expenseReport(doc);
+                break;
+            }
             default:
                 throw new InvalidOperationException(
                     $"Document type {type} is not yet wired into the approval workflow."
                 );
+        }
+    }
+
+    /// <summary>v5 B.4 — apply <paramref name="transition"/> to
+    /// every Expense whose <c>ExpenseReportId</c> equals
+    /// <paramref name="reportId"/>. Caller calls SaveChangesAsync
+    /// once after both the parent and the cascade so the whole
+    /// bundle commits or rolls back together.</summary>
+    private async Task CascadeChildExpensesAsync(
+        Guid reportId,
+        Action<Expense> transition,
+        CancellationToken cancellationToken)
+    {
+        var children = await _db.Set<Expense>()
+            .Where(e => e.ExpenseReportId == reportId)
+            .ToListAsync(cancellationToken);
+        foreach (var child in children)
+        {
+            transition(child);
         }
     }
 
