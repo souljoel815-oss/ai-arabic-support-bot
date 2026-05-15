@@ -2,6 +2,7 @@
 @using System.Globalization
 @using EgyptTax.Domain.Accounting
 @using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Invoices
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Persistence
@@ -119,7 +120,53 @@
     </section>
 }
 
-@if (!_editing && _advances.Count > 0)
+@if (_applying is not null)
+{
+    <section class="form-grid" style="margin-top:16px;max-width:760px;">
+        <h2 style="margin:0 0 12px;">@Tr("تطبيق دفعة مقدمة على فاتورة", "Apply advance to invoice")</h2>
+        <p style="font-size:14px;color:var(--text-muted);margin:0 0 12px;">
+            @Tr(
+                $"تطبيق دفعة بمبلغ {_applying.Amount.Amount:N2} ج.م على فاتورة مرحّلة للعميل {_customerNames.GetValueOrDefault(_applying.CustomerId, "?")}. القيد المعكوس: DR 2310 / CR 1200.",
+                $"Applying advance of {_applying.Amount.Amount:N2} EGP against a Posted invoice for {_customerNames.GetValueOrDefault(_applying.CustomerId, "?")}. Offset JE: DR 2310 / CR 1200.")
+        </p>
+
+        @if (_applyCandidates.Count == 0)
+        {
+            <div class="kpi-card kpi-warn">
+                @Tr("لا توجد فواتير مرحّلة بمبلغ مستحق للعميل ده. أنشئ فاتورة الأول.",
+                    "No Posted invoices with an open balance for this customer. Create one first.")
+            </div>
+        }
+        else
+        {
+            <label>
+                <span>@Tr("اختر الفاتورة", "Pick invoice")</span>
+                <select @bind="_applyInvoiceId">
+                    <option value="@Guid.Empty">@Tr("— اختر —", "— Pick —")</option>
+                    @foreach (var inv in _applyCandidates)
+                    {
+                        <option value="@inv.Id">
+                            @inv.DocumentNumber — @inv.DocumentDate.ToString("yyyy-MM-dd") — @Tr("متبقّي", "Outstanding"): @inv.Outstanding.ToString("N2") ج.م
+                        </option>
+                    }
+                </select>
+            </label>
+        }
+
+        <div class="invoice-actions" style="margin-top:16px;">
+            <button type="button" class="btn-primary"
+                    @onclick="ApplyAsync"
+                    disabled="@(_saving || _applyInvoiceId == Guid.Empty)">
+                @(_saving ? Tr("جارٍ التطبيق…", "Applying…") : Tr("تطبيق + ترحيل القيد", "Apply + post offset JE"))
+            </button>
+            <button type="button" class="btn-secondary" @onclick="@(() => { _applying = null; _applyInvoiceId = Guid.Empty; })">
+                @Tr("إلغاء", "Cancel")
+            </button>
+        </div>
+    </section>
+}
+
+@if (!_editing && _applying is null && _advances.Count > 0)
 {
     <table class="data-grid" style="margin-top:16px;">
         <thead>
@@ -129,6 +176,7 @@
                 <th class="num">@Tr("المبلغ", "Amount")</th>
                 <th>@Tr("ملاحظات", "Notes")</th>
                 <th>@Tr("الحالة", "Status")</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -151,6 +199,22 @@
                             case CustomerAdvanceStatus.Refunded:
                                 <span class="state-badge state-voided">@Tr("مستردّة", "Refunded")</span>
                                 break;
+                        }
+                    </td>
+                    <td>
+                        @if (a.Status == CustomerAdvanceStatus.Held)
+                        {
+                            <button type="button" class="btn-primary"
+                                    @onclick="@(() => StartApply(a))"
+                                    disabled="@_saving">
+                                @Tr("تطبيق على فاتورة", "Apply to invoice")
+                            </button>
+                        }
+                        else if (a.AppliedToInvoiceId is { } invId)
+                        {
+                            <a href="/invoices/@invId" class="btn-secondary">
+                                @Tr("افتح الفاتورة ←", "Open invoice →")
+                            </a>
                         }
                     </td>
                 </tr>
@@ -182,7 +246,13 @@ else if (!_editing)
     private string? _flash;
     private string _flashClass = "flash-success";
 
+    private CustomerAdvance? _applying;
+    private Guid _applyInvoiceId;
+    private List<InvoiceCandidate> _applyCandidates = new();
+    private sealed record InvoiceCandidate(Guid Id, string DocumentNumber, DateOnly DocumentDate, decimal Outstanding);
+
     private const string CustomerAdvanceVoucherPrefix = "CADV";
+    private const string CustomerAdvanceApplyPrefix = "CADV-APPLY";
 
     protected override async Task OnInitializedAsync()
     {
@@ -285,6 +355,84 @@ else if (!_editing)
                 $"Advance of {advance.Amount.Amount:N2} EGP recorded + JE posted.");
             _flashClass = "flash-success";
             _editing = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task StartApply(CustomerAdvance advance)
+    {
+        _applying = advance;
+        _applyInvoiceId = Guid.Empty;
+        _applyCandidates.Clear();
+        _flash = null;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var posted = await db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => i.CustomerId == advance.CustomerId && i.State == DocumentState.Posted)
+            .Select(i => new { i.Id, i.DocumentNumber, i.DocumentDate, i.GrandTotal })
+            .ToListAsync();
+        var ids = posted.Select(p => p.Id).ToArray();
+        var allocs = await db.Set<PaymentAllocation>().AsNoTracking()
+            .Where(a => ids.Contains(a.TargetDocumentId)
+                && a.TargetDocumentType == DocumentType.SalesInvoice)
+            .Select(a => new { a.TargetDocumentId, a.AllocatedAmount.Amount })
+            .ToListAsync();
+        var paid = allocs.GroupBy(a => a.TargetDocumentId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+        _applyCandidates = posted
+            .Select(p => new InvoiceCandidate(
+                p.Id,
+                p.DocumentNumber ?? "(?)",
+                p.DocumentDate,
+                Math.Max(0m, p.GrandTotal.Amount - paid.GetValueOrDefault(p.Id, 0m))))
+            .Where(c => c.Outstanding >= advance.Amount.Amount)
+            .OrderByDescending(c => c.DocumentDate)
+            .ToList();
+    }
+
+    private async Task ApplyAsync()
+    {
+        if (_applying is null || _applyInvoiceId == Guid.Empty) return;
+        _flash = null;
+        _saving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var advance = await db.Set<CustomerAdvance>().FirstAsync(a => a.Id == _applying.Id);
+            advance.ApplyTo(_applyInvoiceId, DateTime.UtcNow);
+
+            var jeNumber = $"{CustomerAdvanceApplyPrefix}-{advance.Id:N}".Substring(0, 22);
+            var jeLines = new[]
+            {
+                (ChartOfAccountCodes.CustomerAdvances, advance.Amount, MoneyEgp.Zero,
+                    $"Apply customer advance to invoice {_applyInvoiceId:D}"),
+                (ChartOfAccountCodes.AccountsReceivable, MoneyEgp.Zero, advance.Amount,
+                    $"Customer advance offset against AR"),
+            };
+            var entry = JournalEntry.Create(
+                sourceDocumentId: advance.Id,
+                sourceDocumentNumber: jeNumber,
+                sourceDocumentType: DocumentType.JournalVoucher,
+                postedAtUtc: DateTime.UtcNow,
+                lines: jeLines);
+            db.Add(entry);
+
+            await db.SaveChangesAsync();
+            _flash = Tr(
+                $"تم تطبيق دفعة {advance.Amount.Amount:N2} ج.م على الفاتورة + ترحيل القيد المعكوس.",
+                $"Advance {advance.Amount.Amount:N2} EGP applied + offset JE posted.");
+            _flashClass = "flash-success";
+            _applying = null;
             await ReloadAsync();
         }
         catch (Exception ex)
