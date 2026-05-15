@@ -43,6 +43,28 @@
     return;
 }
 
+@if (_leads.Count > 0)
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("إجمالي الفرص", "Total leads")</span>
+            <span class="list-stat-value">@_leads.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("إجمالي القيمة المتوقعة", "Pipeline value")</span>
+            <span class="list-stat-value is-gold">@_leads.Sum(l => l.ExpectedValueEgp ?? 0m).ToString("N0") <small>@(IsArabic ? "ج.م" : "EGP")</small></span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("قيمة الفرص المكسوبة", "Won value")</span>
+            <span class="list-stat-value is-success">@_leads.Where(l => l.Stage == EgyptTax.Domain.Crm.LeadStage.Won).Sum(l => l.ExpectedValueEgp ?? 0m).ToString("N0") <small>@(IsArabic ? "ج.م" : "EGP")</small></span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("معدّل الفوز", "Win rate")</span>
+            <span class="list-stat-value @(WinRatePct() >= 30 ? "is-success" : "is-warn")">@WinRatePct()<small>%</small></span>
+        </div>
+    </div>
+}
+
 <div class="kanban-grid">
     @foreach (var stage in _activeStages)
     {
@@ -147,4 +169,12 @@
         LeadStage.Lost => Tr("مفقود", "Lost"),
         _ => s.ToString(),
     };
+
+    private int WinRatePct()
+    {
+        var closed = _leads.Count(l => l.Stage == LeadStage.Won || l.Stage == LeadStage.Lost);
+        if (closed == 0) return 0;
+        var won = _leads.Count(l => l.Stage == LeadStage.Won);
+        return (int)Math.Round(won * 100.0 / closed);
+    }
 }

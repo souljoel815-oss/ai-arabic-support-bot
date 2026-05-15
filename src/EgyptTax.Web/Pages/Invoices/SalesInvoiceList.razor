@@ -29,6 +29,28 @@
     }
 </h1>
 
+@if (_invoices is { Count: > 0 })
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي الفواتير" : "Total")</span>
+            <span class="list-stat-value">@_invoices.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "مرحّلة" : "Posted")</span>
+            <span class="list-stat-value is-success">@_invoices.Count(r => r.Invoice.State == DocumentState.Posted)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "مسودات" : "Drafts")</span>
+            <span class="list-stat-value">@_invoices.Count(r => r.Invoice.State == DocumentState.Draft)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي المستحقات" : "Outstanding")</span>
+            <span class="list-stat-value is-warn">@_invoices.Sum(r => r.Outstanding).ToString("N0") <small>@(IsArabic ? "ج.م" : "EGP")</small></span>
+        </div>
+    </div>
+}
+
 <div class="invoice-toolbar">
     <a class="btn-primary" href="/invoices/new">@(IsArabic ? "+ فاتورة جديدة" : "+ New invoice")</a>
     <input type="search" placeholder="@(IsArabic ? "البحث برقم المستند أو اسم العميل…" : "Search by document number or customer name…")"

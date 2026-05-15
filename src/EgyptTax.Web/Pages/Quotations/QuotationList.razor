@@ -17,6 +17,28 @@
         "Customers ask for a quote before they accept an invoice. Create, send, and convert accepted quotes to invoices in one click.")
 </p>
 
+@if (!_loading && _quotations.Count > 0)
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("إجمالي العروض", "Total")</span>
+            <span class="list-stat-value">@_quotations.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("مقبولة", "Accepted")</span>
+            <span class="list-stat-value is-success">@_quotations.Count(q => q.State == QuotationState.Accepted)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("مُرسلة", "Sent")</span>
+            <span class="list-stat-value is-gold">@_quotations.Count(q => q.State == QuotationState.Sent)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("قيمة المقبولة", "Accepted value")</span>
+            <span class="list-stat-value is-success">@_quotations.Where(q => q.State == QuotationState.Accepted).Sum(q => q.GrandTotal.Amount).ToString("N0") <small>@(IsArabic ? "ج.م" : "EGP")</small></span>
+        </div>
+    </div>
+}
+
 <div class="invoice-toolbar">
     <a class="btn-primary" href="/quotations/new">@Tr("+ عرض سعر جديد", "+ New quotation")</a>
     <select @bind="_stateFilter">
