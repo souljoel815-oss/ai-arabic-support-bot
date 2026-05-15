@@ -471,3 +471,10 @@
    /js/cmd-palette.js listens for the keyboard shortcut + nudges
    this component to toggle. *@
 <EgyptTax.Web.Shared.CmdPalette.CommandPalette />
+
+@* v5 DP.4 — mobile bottom tab bar. CSS hides it ≥768px so
+   desktops still see the sidebar. The "More" tab opens the
+   existing sidebar drawer; the FAB triggers the Cmd+K palette
+   so every quick-create is one tap away. *@
+<EgyptTax.Web.Shared.MobileBottomTabs IsRepOnly="@_isRepOnly"
+                                       OnMoreRequested="ToggleSidebar" />

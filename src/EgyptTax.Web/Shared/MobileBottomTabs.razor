@@ -1,0 +1,91 @@
+@using System.Globalization
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+
+@*
+    v5 DP.4 — fixed bottom tab bar visible only below 768px.
+    5 slots: Home / Sales / Quick-create FAB / Reports / More.
+    The FAB triggers the Cmd+K palette (already has every
+    quick-create at the top); More opens the existing sidebar
+    drawer for everything not in the 5 slots.
+
+    Sales-rep visibility: tabs reps don't have access to (Reports)
+    are gated server-side via the same NotSalesRepOnly check the
+    sidebar uses; they get a "POS" tab instead.
+*@
+
+<nav class="mobile-tabs" aria-label="@Tr("التنقل السريع", "Quick navigation")">
+    <a href="/" class="mobile-tab @(IsActive("") ? "is-active" : "")">
+        <span class="mobile-tab-icon">🏠</span>
+        <span class="mobile-tab-label">@Tr("الرئيسية", "Home")</span>
+    </a>
+    <a href="/invoices" class="mobile-tab @(IsActive("invoices") ? "is-active" : "")">
+        <span class="mobile-tab-icon">📄</span>
+        <span class="mobile-tab-label">@Tr("المبيعات", "Sales")</span>
+    </a>
+    <button type="button" class="mobile-tab mobile-tab-fab"
+            @onclick="OpenPaletteAsync" aria-label="@Tr("إنشاء سريع", "Quick create")">
+        <span class="mobile-tab-fab-circle">+</span>
+    </button>
+    @if (IsRepOnly)
+    {
+        <a href="/pos" class="mobile-tab @(IsActive("pos") ? "is-active" : "")">
+            <span class="mobile-tab-icon">🛒</span>
+            <span class="mobile-tab-label">@Tr("POS", "POS")</span>
+        </a>
+    }
+    else
+    {
+        <a href="/reports/general-ledger" class="mobile-tab @(IsActive("reports") ? "is-active" : "")">
+            <span class="mobile-tab-icon">📊</span>
+            <span class="mobile-tab-label">@Tr("التقارير", "Reports")</span>
+        </a>
+    }
+    <button type="button" class="mobile-tab" @onclick="OnMoreClick" aria-label="@Tr("المزيد", "More")">
+        <span class="mobile-tab-icon">☰</span>
+        <span class="mobile-tab-label">@Tr("المزيد", "More")</span>
+    </button>
+</nav>
+
+@code {
+    /// <summary>True when the operator's role is SALES_REP only —
+    /// passed in by MainLayout so the tab set adapts (POS instead
+    /// of Reports for cashiers).</summary>
+    [Parameter] public bool IsRepOnly { get; set; }
+
+    /// <summary>Callback to open the existing sidebar drawer
+    /// (the "More" tab). MainLayout owns the drawer state so we
+    /// just notify it.</summary>
+    [Parameter] public EventCallback OnMoreRequested { get; set; }
+
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private string CurrentPath
+    {
+        get
+        {
+            var rel = Nav.ToBaseRelativePath(Nav.Uri);
+            var q = rel.IndexOf('?', StringComparison.Ordinal);
+            return q < 0 ? rel : rel[..q];
+        }
+    }
+
+    private bool IsActive(string prefix)
+    {
+        if (string.IsNullOrEmpty(prefix))
+        {
+            return string.IsNullOrEmpty(CurrentPath);
+        }
+        return CurrentPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task OpenPaletteAsync()
+    {
+        try { await Js.InvokeVoidAsync("daftarxOpenCmdPalette"); }
+        catch { /* JS may not have registered yet — ignore */ }
+    }
+
+    private async Task OnMoreClick() => await OnMoreRequested.InvokeAsync();
+}

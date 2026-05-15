@@ -4078,4 +4078,76 @@ a.btn-secondary .ic {
     margin-inline-end: 4px;
 }
 
+/* ============================================================
+   v5 DP.4 — Mobile bottom tab bar
+   Hidden on desktop. Below 768px, fixed at the bottom edge
+   with 5 slots (Home / Sales / FAB / Reports-or-POS / More).
+   ============================================================ */
+.mobile-tabs {
+    display: none;
+}
+@media (max-width: 768px) {
+    .mobile-tabs {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        position: fixed;
+        bottom: 0;
+        inset-inline: 0;
+        height: 64px;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        z-index: 90;
+        box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+    .mobile-tab {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        background: transparent;
+        border: 0;
+        cursor: pointer;
+        text-decoration: none;
+        color: var(--text-muted);
+        font-size: 10px;
+        padding: 6px 4px;
+        transition: color 100ms;
+    }
+    .mobile-tab:hover,
+    .mobile-tab.is-active {
+        color: var(--primary);
+    }
+    .mobile-tab-icon {
+        font-size: 20px;
+        line-height: 1;
+    }
+    .mobile-tab-label {
+        font-size: 10px;
+        white-space: nowrap;
+    }
+    .mobile-tab-fab .mobile-tab-fab-circle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: var(--primary);
+        color: #fff;
+        font-size: 24px;
+        font-weight: 300;
+        line-height: 1;
+        box-shadow: 0 4px 12px rgba(30, 58, 95, 0.32);
+        margin-top: -16px;
+    }
+    /* Push the page main area up so the tabs don't overlap
+       page content. Topbar stays in place; only the main body
+       gets the bottom padding. */
+    .app-main {
+        padding-bottom: 80px;
+    }
+}
+
 

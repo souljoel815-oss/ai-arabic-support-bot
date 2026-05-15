@@ -9,6 +9,13 @@ window.daftarxRegisterCmdPalette = function (dotNetRef) {
   if (window.__daftarxCmdPaletteRegistered) return;
   window.__daftarxCmdPaletteRegistered = true;
 
+  // v5 DP.4 — expose a function so other UI (e.g. the mobile
+  // bottom tab bar's Quick-create FAB) can trigger the palette
+  // without each owning its own Blazor interop chain.
+  window.daftarxOpenCmdPalette = function () {
+    dotNetRef.invokeMethodAsync('Toggle');
+  };
+
   document.addEventListener('keydown', (e) => {
     const isMeta = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
     if (!isMeta || e.key !== 'k') return;
