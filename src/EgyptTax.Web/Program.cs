@@ -1177,6 +1177,371 @@ app.MapGet("/api/v1/invoices", async (
     return Results.Ok(new { skip, take, count = rows.Count, data = rows });
 });
 
+// v5 B.5 — POST /api/v1/customers. Creates a Customer master row
+// for an integration partner (Shopify-style buyer push). Mirrors
+// CustomerImportHandler's validation: code/name required + at
+// least the structured Egyptian address fields. TIN optional (if
+// supplied, profile = B2BRegistered; absent → B2CConsumer).
+// Returns 201 + the created row; emits customer.created webhook.
+app.MapPost("/api/v1/customers", async (
+    HttpContext ctx,
+    EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
+    EgyptTax.Infrastructure.Api.ApiKeyRateLimiter rateLimiter,
+    EgyptTax.Infrastructure.Api.WebhookDispatcher webhooks,
+    EgyptTax.Infrastructure.Persistence.AppDbContext db) =>
+{
+    var auth = await AuthGate(ctx, apiKeys, rateLimiter);
+    if (auth is not Microsoft.AspNetCore.Http.HttpResults.Ok) return auth;
+
+    System.Text.Json.JsonElement body;
+    try
+    {
+        body = await System.Text.Json.JsonSerializer.DeserializeAsync<System.Text.Json.JsonElement>(
+            ctx.Request.Body);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = $"Body must be valid JSON: {ex.Message}" });
+    }
+
+    static string? Str(System.Text.Json.JsonElement el, string name) =>
+        el.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String
+            ? v.GetString() : null;
+
+    try
+    {
+        var code = Str(body, "code");
+        var nameAr = Str(body, "name_ar");
+        var nameEn = Str(body, "name_en");
+        if (string.IsNullOrWhiteSpace(code))
+            return Results.BadRequest(new { error = "code is required." });
+        if (string.IsNullOrWhiteSpace(nameAr) || string.IsNullOrWhiteSpace(nameEn))
+            return Results.BadRequest(new { error = "name_ar and name_en are required." });
+        if (await db.Set<EgyptTax.Domain.MasterData.Customer>().AsNoTracking()
+            .AnyAsync(c => c.Code == code))
+        {
+            return Results.Conflict(new { error = $"customer code '{code}' already exists." });
+        }
+
+        if (!body.TryGetProperty("address", out var addrEl)
+            || addrEl.ValueKind != System.Text.Json.JsonValueKind.Object)
+        {
+            return Results.BadRequest(new { error = "address object is required." });
+        }
+        var governorate = Str(addrEl, "governorate");
+        var regionCity  = Str(addrEl, "region_city");
+        var street      = Str(addrEl, "street");
+        var building    = Str(addrEl, "building_number");
+        var postal      = Str(addrEl, "postal_code");
+        var displayAr   = Str(addrEl, "display_ar")
+            ?? string.Join(", ", new[] { street, regionCity, governorate }
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
+        var displayEn   = Str(addrEl, "display_en")
+            ?? string.Join(", ", new[] { street, regionCity, governorate }
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
+
+        EgyptTax.Domain.MasterData.PostalAddress address;
+        try
+        {
+            address = EgyptTax.Domain.MasterData.PostalAddress.Create(
+                display: new EgyptTax.SharedKernel.ArabicEnglishText(displayAr ?? "", displayEn ?? ""),
+                governorate: governorate ?? "",
+                regionCity:  regionCity  ?? "",
+                street:      street      ?? "",
+                buildingNumber: building ?? "",
+                postalCode:  string.IsNullOrWhiteSpace(postal) ? null : postal);
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+
+        EgyptTax.Domain.MasterData.CustomerTaxProfile profile;
+        var tin = Str(body, "tin");
+        if (!string.IsNullOrWhiteSpace(tin))
+        {
+            try
+            {
+                profile = EgyptTax.Domain.MasterData.CustomerTaxProfile.B2BRegistered(
+                    EgyptTax.SharedKernel.EgyptianTin.Parse(tin),
+                    vatExemption: false,
+                    defaultSalesVatCategoryId: null);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        }
+        else
+        {
+            profile = EgyptTax.Domain.MasterData.CustomerTaxProfile.B2CConsumer(
+                vatExemption: false, defaultSalesVatCategoryId: null);
+        }
+
+        var customer = new EgyptTax.Domain.MasterData.Customer(
+            code: code,
+            name: new EgyptTax.SharedKernel.ArabicEnglishText(nameAr, nameEn),
+            address: address,
+            taxProfile: profile,
+            phone: Str(body, "phone"),
+            email: Str(body, "email"));
+        db.Add(customer);
+        await db.SaveChangesAsync();
+
+        webhooks.Enqueue("customer.created", new
+        {
+            customer_id = customer.Id,
+            code = customer.Code,
+            name = new { ar = customer.Name.Arabic, en = customer.Name.English },
+            tin = customer.TaxProfile.TinValue,
+            profile = customer.TaxProfile.ProfileType.ToString(),
+        });
+
+        return Results.Created($"/customers/{customer.Id}", new
+        {
+            id = customer.Id,
+            code = customer.Code,
+            name = new { ar = customer.Name.Arabic, en = customer.Name.English },
+            tin = customer.TaxProfile.TinValue,
+            profile = customer.TaxProfile.ProfileType.ToString(),
+            phone = customer.Phone,
+            email = customer.Email,
+            status = customer.Status.ToString(),
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// v5 B.5 — POST /api/v1/leads. Creates a CRM Lead. Required:
+// name (ar OR en — at least one) + (phone OR email — at least one).
+// Optional: company, source, expected_value_egp, expected_close_date.
+app.MapPost("/api/v1/leads", async (
+    HttpContext ctx,
+    EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
+    EgyptTax.Infrastructure.Api.ApiKeyRateLimiter rateLimiter,
+    EgyptTax.Infrastructure.Api.WebhookDispatcher webhooks,
+    EgyptTax.SharedKernel.Time.IClock clock,
+    EgyptTax.Infrastructure.Persistence.AppDbContext db) =>
+{
+    var auth = await AuthGate(ctx, apiKeys, rateLimiter);
+    if (auth is not Microsoft.AspNetCore.Http.HttpResults.Ok) return auth;
+
+    System.Text.Json.JsonElement body;
+    try
+    {
+        body = await System.Text.Json.JsonSerializer.DeserializeAsync<System.Text.Json.JsonElement>(
+            ctx.Request.Body);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = $"Body must be valid JSON: {ex.Message}" });
+    }
+
+    static string? Str(System.Text.Json.JsonElement el, string name) =>
+        el.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String
+            ? v.GetString() : null;
+
+    try
+    {
+        var nameAr = Str(body, "name_ar");
+        var nameEn = Str(body, "name_en");
+        // Permit a single "name" field that maps to both halves.
+        var fallback = Str(body, "name");
+        if (string.IsNullOrWhiteSpace(nameAr) && string.IsNullOrWhiteSpace(nameEn)
+            && !string.IsNullOrWhiteSpace(fallback))
+        {
+            nameAr = fallback;
+            nameEn = fallback;
+        }
+        var phone = Str(body, "phone");
+        var email = Str(body, "email");
+        if (string.IsNullOrWhiteSpace(phone) && string.IsNullOrWhiteSpace(email))
+            return Results.BadRequest(new { error = "phone or email is required (at least one)." });
+
+        DateOnly? expectedCloseDate = null;
+        if (body.TryGetProperty("expected_close_date", out var ecdEl)
+            && ecdEl.ValueKind == System.Text.Json.JsonValueKind.String
+            && DateOnly.TryParse(ecdEl.GetString(),
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var ecd))
+        {
+            expectedCloseDate = ecd;
+        }
+        decimal? expectedValueEgp = null;
+        if (body.TryGetProperty("expected_value_egp", out var evEl)
+            && evEl.TryGetDecimal(out var ev) && ev >= 0m)
+        {
+            expectedValueEgp = ev;
+        }
+
+        EgyptTax.Domain.Crm.Lead lead;
+        try
+        {
+            lead = EgyptTax.Domain.Crm.Lead.Create(
+                name: new EgyptTax.SharedKernel.ArabicEnglishText(nameAr ?? "", nameEn ?? ""),
+                companyName: Str(body, "company"),
+                phone: phone,
+                email: email,
+                source: Str(body, "source"),
+                assignedToUserId: null,
+                createdAtUtc: clock.UtcNow,
+                createdByUserId: null);
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+
+        if (expectedCloseDate is not null || expectedValueEgp is not null)
+        {
+            lead.SetForecast(expectedCloseDate, expectedValueEgp);
+        }
+
+        db.Add(lead);
+        await db.SaveChangesAsync();
+
+        webhooks.Enqueue("lead.created", new
+        {
+            lead_id = lead.Id,
+            name = new { ar = lead.Name.Arabic, en = lead.Name.English },
+            phone = lead.Phone,
+            email = lead.Email,
+            stage = lead.Stage.ToString(),
+            source = lead.Source,
+        });
+
+        return Results.Created($"/crm/leads/{lead.Id}", new
+        {
+            id = lead.Id,
+            name = new { ar = lead.Name.Arabic, en = lead.Name.English },
+            company = lead.CompanyName,
+            phone = lead.Phone,
+            email = lead.Email,
+            stage = lead.Stage.ToString(),
+            source = lead.Source,
+            expected_value_egp = lead.ExpectedValueEgp,
+            expected_close_date = lead.ExpectedCloseDate?.ToString(
+                "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// v5 B.5 — POST /api/v1/expenses. Creates a Draft Expense (mobile
+// receipt-capture apps). Operator posts via the regular page so
+// FR-027 (interactive post path) and FR-016 (deductible →
+// attachment guard) keep their interactive enforcement.
+app.MapPost("/api/v1/expenses", async (
+    HttpContext ctx,
+    EgyptTax.Infrastructure.Api.ApiKeyService apiKeys,
+    EgyptTax.Infrastructure.Api.ApiKeyRateLimiter rateLimiter,
+    EgyptTax.Infrastructure.Api.WebhookDispatcher webhooks,
+    EgyptTax.Infrastructure.Persistence.AppDbContext db) =>
+{
+    var auth = await AuthGate(ctx, apiKeys, rateLimiter);
+    if (auth is not Microsoft.AspNetCore.Http.HttpResults.Ok) return auth;
+
+    System.Text.Json.JsonElement body;
+    try
+    {
+        body = await System.Text.Json.JsonSerializer.DeserializeAsync<System.Text.Json.JsonElement>(
+            ctx.Request.Body);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = $"Body must be valid JSON: {ex.Message}" });
+    }
+
+    static string? Str(System.Text.Json.JsonElement el, string name) =>
+        el.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String
+            ? v.GetString() : null;
+
+    try
+    {
+        if (!body.TryGetProperty("document_date", out var dateEl)
+            || !DateOnly.TryParse(dateEl.GetString(),
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var documentDate))
+        {
+            return Results.BadRequest(new { error = "document_date (yyyy-MM-dd) is required." });
+        }
+        if (!body.TryGetProperty("category_id", out var catEl)
+            || !Guid.TryParse(catEl.GetString(), out var categoryId))
+        {
+            return Results.BadRequest(new { error = "category_id (Guid) is required." });
+        }
+        if (!body.TryGetProperty("amount_egp", out var amtEl)
+            || !amtEl.TryGetDecimal(out var amount)
+            || amount <= 0m)
+        {
+            return Results.BadRequest(new { error = "amount_egp > 0 is required." });
+        }
+        var deductible = body.TryGetProperty("deductible_flag", out var dedEl)
+            && dedEl.ValueKind == System.Text.Json.JsonValueKind.True;
+        var descAr = Str(body, "description_ar") ?? "";
+        var descEn = Str(body, "description_en") ?? "";
+        if (string.IsNullOrWhiteSpace(descAr) && string.IsNullOrWhiteSpace(descEn))
+            return Results.BadRequest(new { error = "description_ar or description_en is required." });
+
+        if (!await db.Set<EgyptTax.Domain.MasterData.DeductibleExpenseCategory>().AsNoTracking()
+            .AnyAsync(c => c.Id == categoryId))
+        {
+            return Results.NotFound(new { error = $"category_id {categoryId} not found." });
+        }
+
+        EgyptTax.Domain.Expenses.Expense draft;
+        try
+        {
+            draft = EgyptTax.Domain.Expenses.Expense.CreateDraft(
+                documentDate: documentDate,
+                categoryId: categoryId,
+                amount: EgyptTax.SharedKernel.MoneyEgp.From(amount),
+                deductibleFlag: deductible,
+                description: new EgyptTax.SharedKernel.ArabicEnglishText(descAr, descEn));
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+
+        db.Add(draft);
+        await db.SaveChangesAsync();
+
+        webhooks.Enqueue("expense.created", new
+        {
+            expense_id = draft.Id,
+            document_date = draft.DocumentDate.ToString(
+                "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            category_id = draft.CategoryId,
+            amount_egp = draft.Amount.Amount,
+            deductible_flag = draft.DeductibleFlag,
+            state = draft.State.ToString(),
+        });
+
+        return Results.Created($"/expenses/{draft.Id}", new
+        {
+            id = draft.Id,
+            document_date = draft.DocumentDate.ToString(
+                "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            category_id = draft.CategoryId,
+            amount_egp = draft.Amount.Amount,
+            deductible_flag = draft.DeductibleFlag,
+            description = new { ar = draft.Description.Arabic, en = draft.Description.English },
+            state = draft.State.ToString(),
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
 // v4 B.3 — POST /api/v1/invoices/draft. Creates a SalesInvoice in
 // Draft state for an integration partner (Shopify-style push). The
 // operator reviews + posts via the regular page; we intentionally
