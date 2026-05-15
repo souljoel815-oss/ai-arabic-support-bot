@@ -1,0 +1,427 @@
+@page "/journal-templates"
+@using System.Globalization
+@using EgyptTax.Domain.Accounting
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<PageTitle>@(IsArabic ? "قوالب القيود | DaftarX" : "Journal Templates | DaftarX")</PageTitle>
+
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "دفتر اليومية" : "Journal ledger", "/journals"),
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "القوالب" : "Templates", null)
+})" />
+
+<h1>@(IsArabic ? "🧾 قوالب القيود الدورية" : "🧾 Recurring journal templates")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "إصدارات الاستحقاق الشهرية الثابتة (إيجارات، مرافق، رواتب) — اعمل القالب مرة، اضغط «توليد» كل شهر لإنشاء قيد جديد بتاريخ الفترة الحالية."
+        : "Fixed monthly accruals (rent, utilities, salaries) — build the template once, click \"Generate\" each period to post a fresh JV stamped with the current date.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass">@_flash</div>
+}
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+@if (_templates.Count > 0)
+{
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "إجمالي القوالب" : "Total templates")</span>
+            <span class="list-stat-value">@_templates.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "نشطة" : "Active")</span>
+            <span class="list-stat-value is-success">@_templates.Count(t => t.IsActive)</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@(IsArabic ? "شهرية" : "Monthly")</span>
+            <span class="list-stat-value is-gold">@_templates.Count(t => t.Schedule == JournalTemplateSchedule.Monthly)</span>
+        </div>
+    </div>
+}
+
+<section class="invoice-toolbar">
+    <button type="button" class="btn-primary" @onclick="StartCreate" disabled="@_editing">
+        + @(IsArabic ? "قالب جديد" : "New template")
+    </button>
+</section>
+
+@if (_editing)
+{
+    <section class="form-grid" style="margin-top:16px;">
+        <h2 style="margin:0 0 12px;">@(_editingId is null
+            ? (IsArabic ? "قالب جديد" : "New template")
+            : (IsArabic ? "تعديل القالب" : "Edit template"))</h2>
+
+        <label>
+            <span>@(IsArabic ? "الاسم" : "Name")</span>
+            <input type="text" @bind="_form.Name" placeholder="@(IsArabic ? "مثال: استحقاق إيجار شهري" : "e.g. Monthly rent accrual")" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "الوصف (اختياري)" : "Description (optional)")</span>
+            <textarea rows="2" @bind="_form.Description"></textarea>
+        </label>
+        <label>
+            <span>@(IsArabic ? "الجدولة" : "Schedule")</span>
+            <select @bind="_form.Schedule">
+                <option value="@JournalTemplateSchedule.Monthly">@(IsArabic ? "شهري" : "Monthly")</option>
+                <option value="@JournalTemplateSchedule.Quarterly">@(IsArabic ? "ربع سنوي" : "Quarterly")</option>
+                <option value="@JournalTemplateSchedule.Adhoc">@(IsArabic ? "حسب الطلب" : "Ad-hoc")</option>
+            </select>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" @bind="_form.AutoReverse" style="width:auto;" />
+            <span>@(IsArabic ? "عكس تلقائي في أول الشهر التالي (للأستحقاقات)" : "Auto-reverse on the 1st of the next period (for accruals)")</span>
+        </label>
+
+        <h3 style="margin:16px 0 8px;">@(IsArabic ? "بنود القيد" : "Journal lines")</h3>
+        <p style="font-size:13px;color:var(--text-muted);">
+            @(IsArabic
+                ? "أضف بنود مدين ودائن — لازم يتساووا. السطور بتنسخ في كل قيد بنفس المبلغ — لو محتاج تختلف، عدّلها بعد التوليد."
+                : "Add debit and credit lines — they must balance. Lines copy into every generated JV with the same amounts; tweak after generation if needed.")
+        </p>
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "كود الحساب" : "Account code")</th>
+                    <th class="num">@(IsArabic ? "مدين" : "Debit")</th>
+                    <th class="num">@(IsArabic ? "دائن" : "Credit")</th>
+                    <th>@(IsArabic ? "البيان" : "Description")</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < _form.Lines.Count; i++)
+                {
+                    var idx = i;
+                    var l = _form.Lines[idx];
+                    <tr>
+                        <td><input type="text" @bind="l.AccountCode" style="width:90px;" /></td>
+                        <td class="num"><input type="number" step="0.01" min="0" @bind="l.Debit" style="width:120px;text-align:end;" /></td>
+                        <td class="num"><input type="number" step="0.01" min="0" @bind="l.Credit" style="width:120px;text-align:end;" /></td>
+                        <td><input type="text" @bind="l.Description" style="width:100%;" /></td>
+                        <td><button type="button" @onclick="@(() => _form.Lines.RemoveAt(idx))" title="@(IsArabic ? "حذف" : "Remove")">🗑</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <button type="button" class="btn-secondary" @onclick="@(() => _form.Lines.Add(new LineForm()))" style="margin-top:8px;">
+            + @(IsArabic ? "إضافة بند" : "Add line")
+        </button>
+
+        @if (_form.Lines.Count > 0)
+        {
+            var dTotal = _form.Lines.Sum(l => l.Debit);
+            var cTotal = _form.Lines.Sum(l => l.Credit);
+            var balanced = dTotal == cTotal && dTotal > 0m;
+            <div class="kpi-card @(balanced ? "kpi-success" : "kpi-warn")" style="margin-top:12px;">
+                @(IsArabic ? "مدين" : "Debit"): <strong>@dTotal.ToString("N2")</strong>
+                · @(IsArabic ? "دائن" : "Credit"): <strong>@cTotal.ToString("N2")</strong>
+                · @(balanced ? (IsArabic ? "✓ متوازن" : "✓ Balanced") : (IsArabic ? "⚠ غير متوازن" : "⚠ Unbalanced"))
+            </div>
+        }
+
+        <div class="invoice-actions" style="margin-top:16px;">
+            <button type="button" class="btn-primary" @onclick="SaveTemplateAsync" disabled="@_saving">
+                @(_saving ? (IsArabic ? "جارٍ الحفظ…" : "Saving…") : (IsArabic ? "حفظ" : "Save"))
+            </button>
+            <button type="button" class="btn-secondary" @onclick="CancelEdit">
+                @(IsArabic ? "إلغاء" : "Cancel")
+            </button>
+        </div>
+    </section>
+}
+
+@if (!_editing && _templates.Count > 0)
+{
+    <table class="data-grid" style="margin-top:16px;">
+        <thead>
+            <tr>
+                <th>@(IsArabic ? "الاسم" : "Name")</th>
+                <th>@(IsArabic ? "الجدولة" : "Schedule")</th>
+                <th class="num">@(IsArabic ? "البنود" : "Lines")</th>
+                <th class="num">@(IsArabic ? "إجمالي المدين" : "Total debit")</th>
+                <th>@(IsArabic ? "الحالة" : "Status")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in _templates)
+            {
+                <tr class="@(t.IsActive ? "" : "row-muted")">
+                    <td>
+                        <strong>@t.Name</strong>
+                        @if (!string.IsNullOrEmpty(t.Description))
+                        {
+                            <br /><span style="font-size:12px;color:var(--text-muted);">@t.Description</span>
+                        }
+                    </td>
+                    <td>@ScheduleLabel(t.Schedule)@(t.AutoReverse ? " ↺" : "")</td>
+                    <td class="num">@t.Lines.Count</td>
+                    <td class="num">@t.Lines.Sum(l => l.Debit.Amount).ToString("N2")</td>
+                    <td>
+                        @if (t.IsActive)
+                        {
+                            <span class="state-badge state-approved">@(IsArabic ? "نشط" : "Active")</span>
+                        }
+                        else
+                        {
+                            <span class="state-badge state-voided">@(IsArabic ? "موقوف" : "Inactive")</span>
+                        }
+                    </td>
+                    <td>
+                        <button type="button" class="btn-primary"
+                                @onclick="@(() => GenerateAsync(t.Id))"
+                                disabled="@(_saving || !t.IsActive)">
+                            @(IsArabic ? "توليد قيد" : "Generate JV")
+                        </button>
+                        <button type="button" @onclick="@(() => StartEdit(t))">
+                            @(IsArabic ? "تعديل" : "Edit")
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else if (!_editing)
+{
+    <p style="padding:32px 0;text-align:center;color:var(--text-muted);">
+        <em>@(IsArabic ? "لا توجد قوالب بعد. اضغط «+ قالب جديد» لإنشاء أول قالب." : "No templates yet. Click \"+ New template\" to create your first one.")</em>
+    </p>
+}
+
+@code {
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    private bool _loading = true;
+    private bool _editing;
+    private bool _saving;
+    private Guid? _editingId;
+    private FormModel _form = new();
+    private List<JournalTemplate> _templates = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _templates = await db.Set<JournalTemplate>()
+            .Include(t => t.Lines)
+            .AsNoTracking()
+            .OrderByDescending(t => t.IsActive)
+            .ThenBy(t => t.Name)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void StartCreate()
+    {
+        _editingId = null;
+        _form = new FormModel();
+        _form.Lines.Add(new LineForm());
+        _form.Lines.Add(new LineForm());
+        _editing = true;
+        _flash = null;
+    }
+
+    private void StartEdit(JournalTemplate t)
+    {
+        _editingId = t.Id;
+        _form = new FormModel
+        {
+            Name = t.Name,
+            Description = t.Description ?? "",
+            Schedule = t.Schedule,
+            AutoReverse = t.AutoReverse,
+            Lines = t.Lines.Select(l => new LineForm
+            {
+                AccountCode = l.AccountCode,
+                Debit = l.Debit.Amount,
+                Credit = l.Credit.Amount,
+                Description = l.Description,
+            }).ToList(),
+        };
+        _editing = true;
+        _flash = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editing = false;
+        _form = new FormModel();
+        _editingId = null;
+    }
+
+    private async Task SaveTemplateAsync()
+    {
+        _flash = null;
+        if (string.IsNullOrWhiteSpace(_form.Name))
+        {
+            _flash = IsArabic ? "اسم القالب مطلوب." : "Template name required.";
+            _flashClass = "flash-error";
+            return;
+        }
+        var validLines = _form.Lines.Where(l => !string.IsNullOrWhiteSpace(l.AccountCode)
+            && (l.Debit > 0m || l.Credit > 0m)).ToList();
+        if (validLines.Count < 2)
+        {
+            _flash = IsArabic ? "محتاج على الأقل بندين." : "Need at least 2 lines.";
+            _flashClass = "flash-error";
+            return;
+        }
+        if (validLines.Sum(l => l.Debit) != validLines.Sum(l => l.Credit))
+        {
+            _flash = IsArabic ? "البنود غير متوازنة (مدين ≠ دائن)." : "Lines unbalanced (debit ≠ credit).";
+            _flashClass = "flash-error";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId();
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            JournalTemplate template;
+            if (_editingId is { } id)
+            {
+                template = await db.Set<JournalTemplate>()
+                    .Include(t => t.Lines)
+                    .FirstAsync(t => t.Id == id);
+                template.Update(_form.Name, _form.Description, _form.Schedule, _form.AutoReverse);
+                template.RemoveAllLines();
+            }
+            else
+            {
+                template = new JournalTemplate(
+                    name: _form.Name,
+                    description: _form.Description,
+                    schedule: _form.Schedule,
+                    autoReverse: _form.AutoReverse,
+                    createdAtUtc: DateTime.UtcNow,
+                    createdByUserId: userId);
+                db.Add(template);
+            }
+            foreach (var l in validLines)
+            {
+                template.AddLine(l.AccountCode, MoneyEgp.From(l.Debit), MoneyEgp.From(l.Credit), l.Description ?? "");
+            }
+            template.EnsureValid();
+            await db.SaveChangesAsync();
+
+            _flash = IsArabic ? $"تم حفظ القالب «{template.Name}»." : $"Template '{template.Name}' saved.";
+            _flashClass = "flash-success";
+            _editing = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task GenerateAsync(Guid templateId)
+    {
+        _flash = null;
+        _saving = true;
+        try
+        {
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId() ?? Guid.Empty;
+            if (userId == Guid.Empty)
+            {
+                _flash = "User not signed in.";
+                _flashClass = "flash-error";
+                return;
+            }
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var t = await db.Set<JournalTemplate>().Include(x => x.Lines).AsNoTracking()
+                .FirstAsync(x => x.Id == templateId);
+
+            var jvLines = t.Lines.Select(l =>
+                (l.AccountCode, l.Debit, l.Credit, l.Description));
+            var jv = JournalVoucher.CreateManual(
+                date: DateOnly.FromDateTime(DateTime.UtcNow),
+                narration: new ArabicEnglishText(
+                    $"من قالب: {t.Name}",
+                    $"From template: {t.Name}"),
+                createdByUserId: userId,
+                createdAtUtc: DateTime.UtcNow,
+                lines: jvLines);
+            db.Add(jv);
+            await db.SaveChangesAsync();
+
+            _flash = IsArabic
+                ? $"تم توليد قيد يومية جديد من «{t.Name}» (مرّت أرقام بنفس المبالغ، حرر يدوياً لو محتاج تختلف)."
+                : $"Generated a fresh JV from '{t.Name}' (same amounts; edit manually if needed).";
+            _flashClass = "flash-success";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private string ScheduleLabel(JournalTemplateSchedule s) => (s, IsArabic) switch
+    {
+        (JournalTemplateSchedule.Monthly,   true)  => "شهري",
+        (JournalTemplateSchedule.Monthly,   false) => "Monthly",
+        (JournalTemplateSchedule.Quarterly, true)  => "ربع سنوي",
+        (JournalTemplateSchedule.Quarterly, false) => "Quarterly",
+        (JournalTemplateSchedule.Adhoc,     true)  => "حسب الطلب",
+        (JournalTemplateSchedule.Adhoc,     false) => "Ad-hoc",
+        _ => s.ToString(),
+    };
+
+    private sealed class FormModel
+    {
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public JournalTemplateSchedule Schedule { get; set; } = JournalTemplateSchedule.Monthly;
+        public bool AutoReverse { get; set; }
+        public List<LineForm> Lines { get; set; } = new();
+    }
+
+    private sealed class LineForm
+    {
+        public string AccountCode { get; set; } = "";
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+        public string? Description { get; set; }
+    }
+}
