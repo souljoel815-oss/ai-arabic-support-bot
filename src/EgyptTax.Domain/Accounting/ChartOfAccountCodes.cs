@@ -80,4 +80,12 @@ public static class ChartOfAccountCodes
     /// recorded; debited (and AR credited) when the final invoice
     /// posts and the held advance is applied as an offset.</summary>
     public const string CustomerAdvances = "2310";
+
+    /// <summary>v5 E.11 — current asset that holds expenses paid in
+    /// advance (annual insurance, prepaid rent, prepaid software
+    /// subscriptions, training retainers). Debited when the
+    /// <c>PrepaidExpense</c> is booked; credited monthly by the
+    /// operator-triggered recognition JE that simultaneously debits
+    /// the underlying expense account (e.g. 5200 GenericExpense).</summary>
+    public const string PrepaidExpenseAsset = "1400";
 }

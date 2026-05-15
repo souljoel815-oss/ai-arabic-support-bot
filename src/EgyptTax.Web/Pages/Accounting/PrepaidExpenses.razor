@@ -1,0 +1,346 @@
+@page "/prepaid-expenses"
+@using System.Globalization
+@using EgyptTax.Domain.Accounting
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<PageTitle>@Tr("المصروفات المدفوعة مقدماً | DaftarX", "Prepaid Expenses | DaftarX")</PageTitle>
+
+<h1>@Tr("📅 المصروفات المدفوعة مقدماً", "📅 Prepaid expenses (E.11)")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "للمصروفات الللي بتدفعها مقدماً ولازم تتوزع على شهور (تأمين سنوي، إيجار سلف، اشتراكات سنوية). الشيء بيترحّل أول مرة كأصل (1400)، وكل شهر تضغط «احسب الفترة التالية» يطلع قيد: مدين المصروف الفعلي / دائن 1400.",
+        "For prepayments that economically span multiple months (annual insurance, prepaid rent, annual subscriptions). The initial booking lands as an asset (1400). Each period, click \"Recognize next period\" to post: DR actual-expense / CR 1400.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass">@_flash</div>
+}
+
+@if (_loading) { <p>@Tr("جارٍ التحميل…", "Loading…")</p> return; }
+
+@if (_prepaids.Count > 0)
+{
+    var totalOutstanding = _prepaids.Sum(p => p.RemainingBalance.Amount);
+    var fullyDone = _prepaids.Count(p => p.IsFullyRecognized);
+    <div class="list-stats">
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("إجمالي", "Total")</span>
+            <span class="list-stat-value">@_prepaids.Count</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("مكتملة", "Fully recognized")</span>
+            <span class="list-stat-value is-success">@fullyDone</span>
+        </div>
+        <div class="list-stat">
+            <span class="list-stat-label">@Tr("الرصيد المتبقي (1400)", "Outstanding (1400)")</span>
+            <span class="list-stat-value is-gold">@totalOutstanding.ToString("N0") <small>@Tr("ج.م", "EGP")</small></span>
+        </div>
+    </div>
+}
+
+<section class="invoice-toolbar">
+    <button type="button" class="btn-primary" @onclick="StartCreate" disabled="@_editing">
+        + @Tr("تسجيل مصروف مقدم", "Record prepayment")
+    </button>
+</section>
+
+@if (_editing)
+{
+    <section class="form-grid" style="margin-top:16px;max-width:760px;">
+        <h2 style="margin:0 0 12px;">@Tr("تسجيل مصروف مدفوع مقدماً", "Record prepaid expense")</h2>
+
+        <label>
+            <span>@Tr("الاسم", "Name")</span>
+            <input type="text" @bind="_form.Name" placeholder="@Tr("مثال: تأمين سنوي 2026", "e.g. Annual insurance 2026")" />
+        </label>
+        <label>
+            <span>@Tr("الوصف (اختياري)", "Description (optional)")</span>
+            <textarea rows="2" @bind="_form.Description"></textarea>
+        </label>
+        <label>
+            <span>@Tr("المبلغ الإجمالي", "Total amount")</span>
+            <input type="number" step="0.01" min="0.01" @bind="_form.TotalAmount" />
+        </label>
+        <label>
+            <span>@Tr("حساب المصروف", "Expense account")</span>
+            <select @bind="_form.ExpenseAccountCode">
+                <option value="">@Tr("— اختر —", "— Pick —")</option>
+                <option value="5200">5200 — @Tr("مصروف عام", "Generic expense")</option>
+                <option value="5100">5100 — @Tr("مصروف الإهلاك", "Depreciation expense")</option>
+            </select>
+        </label>
+        <label>
+            <span>@Tr("شهر البداية", "Start month")</span>
+            <input type="month" @bind="_form.StartMonth" />
+        </label>
+        <label>
+            <span>@Tr("عدد الفترات (شهور)", "Number of periods (months)")</span>
+            <input type="number" min="1" max="60" @bind="_form.PeriodCount" />
+        </label>
+
+        @if (_form.TotalAmount > 0 && _form.PeriodCount > 0)
+        {
+            var monthly = Math.Round(_form.TotalAmount / _form.PeriodCount, 2);
+            <div class="kpi-card kpi-info" style="font-size:13px;">
+                @Tr(
+                    $"حسابياً: قسط شهري = {monthly:N2} ج.م × {_form.PeriodCount} فترة = {_form.TotalAmount:N2} ج.م",
+                    $"Reads as: monthly = {monthly:N2} EGP × {_form.PeriodCount} periods = {_form.TotalAmount:N2} EGP")<br />
+                @Tr("القيد الافتتاحي:", "Initial JE:") <strong>DR 1400 Prepaid Asset @_form.TotalAmount.ToString("N2") / CR 1100 Cash @_form.TotalAmount.ToString("N2")</strong>
+            </div>
+        }
+
+        <div class="invoice-actions" style="margin-top:16px;">
+            <button type="button" class="btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ + ترحيل القيد الافتتاحي", "Save + post initial JE"))
+            </button>
+            <button type="button" class="btn-secondary" @onclick="@(() => _editing = false)">
+                @Tr("إلغاء", "Cancel")
+            </button>
+        </div>
+    </section>
+}
+
+@if (!_editing && _prepaids.Count > 0)
+{
+    <table class="data-grid" style="margin-top:16px;">
+        <thead>
+            <tr>
+                <th>@Tr("الاسم", "Name")</th>
+                <th class="num">@Tr("الإجمالي", "Total")</th>
+                <th class="num">@Tr("الشهري", "Monthly")</th>
+                <th>@Tr("التقدم", "Progress")</th>
+                <th class="num">@Tr("المتبقي", "Remaining")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in _prepaids)
+            {
+                var pct = p.PeriodCount == 0 ? 0 : (int)Math.Round((double)p.PeriodsRecognized / p.PeriodCount * 100);
+                <tr class="@(p.IsFullyRecognized ? "row-muted" : "")">
+                    <td>
+                        <strong>@p.Name</strong>
+                        @if (!string.IsNullOrEmpty(p.Description))
+                        {
+                            <br /><span style="font-size:12px;color:var(--text-muted);">@p.Description</span>
+                        }
+                    </td>
+                    <td class="num">@p.TotalAmount.Amount.ToString("N2")</td>
+                    <td class="num">@p.MonthlyAmount.Amount.ToString("N2")</td>
+                    <td>
+                        @p.PeriodsRecognized / @p.PeriodCount (@pct%)
+                        <div style="background:var(--dx-bg-hover);height:4px;border-radius:2px;margin-top:3px;overflow:hidden;">
+                            <div style="background:var(--dx-gold-bright);height:100%;width:@(pct)%;"></div>
+                        </div>
+                    </td>
+                    <td class="num">
+                        @if (p.IsFullyRecognized)
+                        {
+                            <span class="state-badge state-approved">@Tr("مكتملة", "Done")</span>
+                        }
+                        else
+                        {
+                            <strong>@p.RemainingBalance.Amount.ToString("N2")</strong>
+                        }
+                    </td>
+                    <td>
+                        @if (!p.IsFullyRecognized)
+                        {
+                            <button type="button" class="btn-primary"
+                                    @onclick="@(() => RecognizeAsync(p.Id))"
+                                    disabled="@_saving">
+                                @Tr($"احسب {p.NextRecognitionMonth:yyyy-MM}", $"Recognize {p.NextRecognitionMonth:yyyy-MM}")
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else if (!_editing)
+{
+    <p style="padding:32px 0;text-align:center;color:var(--text-muted);">
+        <em>@Tr("ما فيش مصروفات مدفوعة مقدماً. اضغط «تسجيل مصروف مقدم» لأول واحد.",
+            "No prepayments yet. Click \"Record prepayment\" to add the first.")</em>
+    </p>
+}
+
+@code {
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private bool _loading = true;
+    private bool _editing;
+    private bool _saving;
+    private FormModel _form = new();
+    private List<PrepaidExpense> _prepaids = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    private const string PrepaidVoucherPrefix = "PREP";
+    private const string PrepaidRecognizePrefix = "PREP-REC";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _prepaids = await db.Set<PrepaidExpense>().AsNoTracking()
+            .OrderBy(p => p.PeriodsRecognized == p.PeriodCount)
+            .ThenByDescending(p => p.CreatedAtUtc)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private void StartCreate()
+    {
+        _form = new FormModel
+        {
+            StartMonth = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1),
+            PeriodCount = 12,
+            ExpenseAccountCode = "5200",
+        };
+        _editing = true;
+        _flash = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _flash = null;
+        if (string.IsNullOrWhiteSpace(_form.Name) || _form.TotalAmount <= 0 || _form.PeriodCount < 1 || string.IsNullOrWhiteSpace(_form.ExpenseAccountCode))
+        {
+            _flash = Tr("املأ كل الحقول وتأكد إن المبلغ والفترات أكبر من صفر.",
+                "Fill all fields. Amount and period count must be positive.");
+            _flashClass = "flash-error";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId();
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            var pre = new PrepaidExpense(
+                _form.Name,
+                _form.Description,
+                MoneyEgp.From(_form.TotalAmount),
+                _form.ExpenseAccountCode,
+                _form.StartMonth,
+                _form.PeriodCount,
+                DateTime.UtcNow,
+                userId);
+            db.Add(pre);
+
+            // Initial JE: DR 1400 / CR 1100 Cash.
+            var jeNumber = $"{PrepaidVoucherPrefix}-{pre.Id:N}".Substring(0, 16);
+            var jeLines = new[]
+            {
+                (ChartOfAccountCodes.PrepaidExpenseAsset, pre.TotalAmount, MoneyEgp.Zero,
+                    $"Prepayment for {pre.Name}"),
+                (ChartOfAccountCodes.Cash, MoneyEgp.Zero, pre.TotalAmount,
+                    $"Cash paid for prepayment {pre.Name}"),
+            };
+            var entry = JournalEntry.Create(
+                sourceDocumentId: pre.Id,
+                sourceDocumentNumber: jeNumber,
+                sourceDocumentType: DocumentType.JournalVoucher,
+                postedAtUtc: DateTime.UtcNow,
+                lines: jeLines);
+            db.Add(entry);
+
+            await db.SaveChangesAsync();
+            _flash = Tr(
+                $"تم تسجيل المصروف المقدم «{pre.Name}» + ترحيل القيد الافتتاحي.",
+                $"Prepayment '{pre.Name}' recorded + initial JE posted.");
+            _flashClass = "flash-success";
+            _editing = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task RecognizeAsync(Guid prepaidId)
+    {
+        _flash = null;
+        _saving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var pre = await db.Set<PrepaidExpense>().FirstAsync(p => p.Id == prepaidId);
+            if (pre.IsFullyRecognized)
+            {
+                _flash = Tr("مكتمل بالفعل.", "Already fully recognized.");
+                _flashClass = "flash-error";
+                return;
+            }
+            var recognitionMonth = pre.NextRecognitionMonth;
+            pre.RecognizeNextPeriod(DateTime.UtcNow);
+
+            var jeNumber = $"{PrepaidRecognizePrefix}-{pre.Id:N}".Substring(0, 22);
+            var jeLines = new[]
+            {
+                (pre.ExpenseAccountCode, pre.MonthlyAmount, MoneyEgp.Zero,
+                    $"Recognize {pre.Name} — {recognitionMonth:yyyy-MM}"),
+                (ChartOfAccountCodes.PrepaidExpenseAsset, MoneyEgp.Zero, pre.MonthlyAmount,
+                    $"Amortize prepaid asset — {pre.Name}"),
+            };
+            var entry = JournalEntry.Create(
+                sourceDocumentId: pre.Id,
+                sourceDocumentNumber: jeNumber,
+                sourceDocumentType: DocumentType.JournalVoucher,
+                postedAtUtc: DateTime.UtcNow,
+                lines: jeLines);
+            db.Add(entry);
+
+            await db.SaveChangesAsync();
+            _flash = Tr(
+                $"تم احتساب فترة {recognitionMonth:yyyy-MM} ({pre.MonthlyAmount.Amount:N2} ج.م) + ترحيل القيد.",
+                $"Recognized {recognitionMonth:yyyy-MM} ({pre.MonthlyAmount.Amount:N2} EGP) + JE posted.");
+            _flashClass = "flash-success";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private sealed class FormModel
+    {
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public decimal TotalAmount { get; set; }
+        public string ExpenseAccountCode { get; set; } = "5200";
+        public DateOnly StartMonth { get; set; } = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+        public int PeriodCount { get; set; } = 12;
+    }
+}
