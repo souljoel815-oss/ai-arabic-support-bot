@@ -2,7 +2,9 @@
 @using EgyptTax.Domain.Crm
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Domain.Quotations
+@using EgyptTax.Infrastructure.Crm
 @using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Settings
 @using EgyptTax.SharedKernel
 @using EgyptTax.Web.Auth
 @using Microsoft.AspNetCore.Authorization
@@ -11,6 +13,8 @@
 @inject AppDbContext Db
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider Auth
+@inject SettingsRepository Settings
+@inject SendLeadEmailHandler EmailSender
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
 <PageTitle>@Tr("فرصة | DaftarX", "Lead | DaftarX")</PageTitle>
@@ -109,6 +113,50 @@
 </section>
 
 <section class="form-section">
+    <h2>@Tr("إرسال بريد للعميل المحتمل", "Send email to lead")</h2>
+    @if (string.IsNullOrWhiteSpace(_lead.Email))
+    {
+        <p class="page-subtitle" style="font-size:13px;">
+            @Tr("الفرصة دي مفيهاش بريد إلكتروني — حدّده فوق قبل ما تبعت.",
+                "This lead has no email address — set one above before sending.")
+        </p>
+    }
+    else
+    {
+        @if (_emailFlash is not null)
+        {
+            <div class="@_emailFlashClass" role="status" style="margin:8px 0;">@_emailFlash</div>
+        }
+        <div class="form-grid" style="grid-template-columns:1fr;gap:8px;">
+            <label>
+                <span>@Tr("إلى", "To")</span>
+                <input type="email" value="@_lead.Email" disabled />
+            </label>
+            <label>
+                <span>@Tr("الموضوع", "Subject")</span>
+                <input type="text" maxlength="200"
+                       @bind="_emailSubject" @bind:event="oninput" />
+            </label>
+            <label>
+                <span>@Tr("النص", "Body")</span>
+                <textarea rows="6" maxlength="4000"
+                          @bind="_emailBody" @bind:event="oninput"></textarea>
+            </label>
+            <div>
+                <button type="button" class="btn-primary" @onclick="OnSendEmailAsync"
+                        disabled="@(_emailBusy || string.IsNullOrWhiteSpace(_emailSubject) || string.IsNullOrWhiteSpace(_emailBody))">
+                    @(_emailBusy ? Tr("جارٍ الإرسال…", "Sending…") : Tr("إرسال", "Send"))
+                </button>
+                <small style="color:var(--text-muted);margin-inline-start:8px;font-size:12px;">
+                    @Tr("الرسالة هتتسجّل تلقائياً في سجل النشاط بنوع «بريد».",
+                        "The send will be logged in the activity log as an Email entry.")
+                </small>
+            </div>
+        </div>
+    }
+</section>
+
+<section class="form-section">
     <h2>@Tr("سجل النشاط", "Activity log")</h2>
     <div class="form-grid" style="grid-template-columns:auto 1fr auto;">
         <select @bind="_newActivityKind">
@@ -173,6 +221,13 @@
     private string _newActivityNote = "";
     private Guid _userId;
 
+    // v5 B.3 (phase 1) — send-only email composer state.
+    private string _emailSubject = "";
+    private string _emailBody = "";
+    private bool _emailBusy;
+    private string? _emailFlash;
+    private string _emailFlashClass = "kpi-card kpi-info";
+
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
@@ -228,6 +283,50 @@
             await LoadAsync();
         }
         catch (Exception ex) { _flash = ex.Message; _flashClass = "kpi-card kpi-error"; }
+    }
+
+    /// <summary>v5 B.3 phase-1 — send a free-form email to the lead
+    /// via the existing SMTP wiring. On success, log a LeadActivity
+    /// row with kind=Email + a body excerpt so the activity log
+    /// shows the conversation history. Failures keep the form
+    /// state populated so the operator can fix + retry.</summary>
+    private async Task OnSendEmailAsync()
+    {
+        if (_lead is null || string.IsNullOrWhiteSpace(_lead.Email)) return;
+        _emailBusy = true;
+        _emailFlash = null;
+        try
+        {
+            var smtp = await Settings.GetSmtpSettingsAsync();
+            var result = await EmailSender.SendAsync(
+                smtp, _lead.Email, _emailSubject.Trim(), _emailBody);
+
+            if (!result.Ok)
+            {
+                _emailFlash = result.Message;
+                _emailFlashClass = "kpi-card kpi-error";
+                return;
+            }
+
+            // Log the send. Note format: "Subject: …  ·  excerpt of body"
+            var excerpt = _emailBody.Length > 200 ? _emailBody[..200] + "…" : _emailBody;
+            var logNote = $"{Tr("الموضوع", "Subject")}: {_emailSubject.Trim()}  ·  {excerpt}";
+            _lead.AddActivity(LeadActivityKind.Email, logNote, DateTime.UtcNow,
+                _userId == Guid.Empty ? null : _userId);
+            await Db.SaveChangesAsync();
+
+            _emailSubject = "";
+            _emailBody = "";
+            _emailFlash = Tr("اتبعت بنجاح وسجّل في سجل النشاط.", "Sent and logged in activity.");
+            _emailFlashClass = "kpi-card kpi-success";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _emailFlash = ex.Message;
+            _emailFlashClass = "kpi-card kpi-error";
+        }
+        finally { _emailBusy = false; }
     }
 
     private async Task OnConvertAsync()
