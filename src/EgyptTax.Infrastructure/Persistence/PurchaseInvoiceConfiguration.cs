@@ -34,6 +34,13 @@ internal sealed class PurchaseInvoiceConfiguration : IEntityTypeConfiguration<Pu
             .IsUnicode(false);
         b.Property(p => p.PostedAtUtc).HasColumnName("posted_at_utc").HasColumnType("datetime2(3)");
         b.Property(p => p.PostedByUserId).HasColumnName("posted_by_user_id");
+
+        // v5 E.3 — purchase credit notes.
+        b.Property(p => p.CreditNoteOfPurchaseInvoiceId)
+            .HasColumnName("credit_note_of_purchase_invoice_id");
+        b.Property(p => p.CreditNoteReason)
+            .HasColumnName("credit_note_reason")
+            .HasMaxLength(2000);
         b.Property(p => p.PostingMode)
             .HasColumnName("posting_mode")
             .HasConversion<string>()

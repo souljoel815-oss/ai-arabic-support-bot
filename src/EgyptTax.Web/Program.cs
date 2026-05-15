@@ -550,6 +550,7 @@ builder.Services.AddSingleton<EgyptTax.Application.Ocr.IReceiptOcrService,
 builder.Services.AddScoped<EgyptTax.Application.Whatsapp.IWhatsAppDispatcher,
     EgyptTax.Infrastructure.Whatsapp.MockWhatsAppDispatcher>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Invoices.IssueCreditNoteHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Purchases.IssuePurchaseCreditNoteHandler>();
 builder.Services.AddSingleton<
     EgyptTax.Application.Pdf.ISalesInvoicePdfRenderer,
     EgyptTax.Infrastructure.Pdf.QuestPdfInvoiceRenderer

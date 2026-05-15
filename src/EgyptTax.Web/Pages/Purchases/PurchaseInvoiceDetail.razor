@@ -210,6 +210,12 @@ else
 {
     <section class="invoice-actions">
         <a href="/document360/purchase-invoice/@_invoice.Id">📂 @(IsArabic ? "ملف المستند الكامل" : "Document 360")</a>
+        @if (_invoice.State == DocumentState.Posted && !_invoice.IsCreditNote)
+        {
+            <a class="btn-secondary" href="/purchase-invoices/@_invoice.Id/credit-note/new">
+                @(IsArabic ? "إصدار إشعار خصم" : "Issue credit note")
+            </a>
+        }
     </section>
 }
 

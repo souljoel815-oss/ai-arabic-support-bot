@@ -1,0 +1,297 @@
+@page "/purchase-invoices/{Id:guid}/credit-note/new"
+@using System.ComponentModel.DataAnnotations
+@using EgyptTax.Application.Purchases
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Purchases
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.Infrastructure.Purchases
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject IssuePurchaseCreditNoteHandler Handler
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "فواتير الشراء" : "Purchase invoices", "/purchase-invoices"),
+    new Breadcrumb.BreadcrumbItem(_original?.DocumentNumber ?? "...", _original is null ? null : $"/purchase-invoices/{_original.Id}"),
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "إشعار خصم" : "Credit note", null)
+})" />
+
+<h1>@(IsArabic ? "إصدار إشعار خصم مشتريات" : "Issue purchase credit note")</h1>
+
+@if (_loading)
+{
+    <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    return;
+}
+
+@if (_original is null)
+{
+    <div class="flash-error">@(IsArabic ? "فاتورة الشراء الأصلية غير موجودة." : "Source purchase invoice not found.")</div>
+    return;
+}
+
+@if (_original.State != DocumentState.Posted)
+{
+    <div class="flash-error">
+        @(IsArabic
+            ? $"الفاتورة الأصلية {_original.DocumentNumber} في حالة {_original.State}، وليست مرحّلة. لا يمكن إصدار إشعار خصم إلا للفواتير المرحّلة."
+            : $"Source invoice {_original.DocumentNumber} is in state {_original.State}, not Posted. Only Posted invoices can be credited.")
+    </div>
+    <a href="/purchase-invoices/@_original.Id" class="btn-secondary">← @(IsArabic ? "العودة" : "Back")</a>
+    return;
+}
+
+@if (_original.IsCreditNote)
+{
+    <div class="flash-error">
+        @(IsArabic
+            ? "لا يمكن إصدار إشعار خصم على إشعار خصم. اختر الفاتورة الأصلية بدلاً منها."
+            : "Cannot issue a credit note against another credit note. Pick the original invoice instead.")
+    </div>
+    <a href="/purchase-invoices/@_original.Id" class="btn-secondary">← @(IsArabic ? "العودة" : "Back")</a>
+    return;
+}
+
+<p>
+    @if (IsArabic)
+    {
+        <text>
+            بصدد إعداد إشعار خصم على فاتورة الشراء
+            <strong><a href="/purchase-invoices/@_original.Id">@_original.DocumentNumber</a></strong>
+            من المورد <strong>@_supplierName</strong>
+            بتاريخ @_original.DateReceived.ToString("yyyy-MM-dd").
+            عدّل الكميات بالأسفل بما يطابق إشعار الخصم اللي بعتهولك المورد.
+        </text>
+    }
+    else
+    {
+        <text>
+            Drafting a credit note against purchase invoice
+            <strong><a href="/purchase-invoices/@_original.Id">@_original.DocumentNumber</a></strong>
+            from <strong>@_supplierName</strong>
+            received @_original.DateReceived.ToString("yyyy-MM-dd").
+            Adjust the quantities below to match the credit memo the supplier sent.
+        </text>
+    }
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass">@_flash</div>
+}
+
+<EditForm Model="_form" OnValidSubmit="OnSubmitAsync" FormName="purchase-credit-note-issue" class="form-grid">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <fieldset>
+        <legend>@(IsArabic ? "بيانات إشعار الخصم" : "Credit note details")</legend>
+        <label>
+            <span>@(IsArabic ? "رقم إشعار الخصم من المورد" : "Supplier credit-note number")</span>
+            <InputText @bind-Value="_form.SupplierCreditNoteNumber" placeholder="@(IsArabic ? "مثال: CN-2026-0042" : "e.g. CN-2026-0042")" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "تاريخ الاستلام" : "Date received")</span>
+            <InputDate @bind-Value="_form.DateReceived" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "السبب (مطلوب)" : "Reason (required)")</span>
+            <InputTextArea @bind-Value="_form.Reason" rows="3" placeholder="@(IsArabic ? "مثال: إرجاع بضاعة تالفة" : "e.g. damaged goods returned")" />
+        </label>
+    </fieldset>
+
+    <fieldset>
+        <legend>@(IsArabic ? "البنود المراد خصمها" : "Lines to credit")</legend>
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "الصنف / فئة المصروف" : "Item / Category")</th>
+                    <th class="num">@(IsArabic ? "الكمية الأصلية" : "Original qty")</th>
+                    <th class="num">@(IsArabic ? "كمية الخصم" : "Credit qty")</th>
+                    <th class="num">@(IsArabic ? "سعر الوحدة" : "Unit price")</th>
+                    <th class="num">@(IsArabic ? "خصم البند" : "Line credit")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < _form.Lines.Count; i++)
+                {
+                    var idx = i;
+                    var line = _form.Lines[idx];
+                    var label = line.ItemId.HasValue
+                        ? (_items.TryGetValue(line.ItemId.Value, out var it)
+                            ? $"{it.Code} — {(IsArabic ? it.Name.Arabic : it.Name.English)}"
+                            : "?")
+                        : (line.ExpenseCategoryId.HasValue && _categories.TryGetValue(line.ExpenseCategoryId.Value, out var cat)
+                            ? cat.Code
+                            : (IsArabic ? "بند مصروف" : "Expense line"));
+                    var lineCredit = line.QuantityToCredit * line.UnitPrice;
+                    <tr>
+                        <td>@label</td>
+                        <td class="num">@line.OriginalQuantity.ToString("0.##")</td>
+                        <td class="num">
+                            <input type="number" step="0.01" min="0" max="@line.OriginalQuantity"
+                                   @bind="line.QuantityToCredit" />
+                        </td>
+                        <td class="num">@line.UnitPrice.ToString("F2")</td>
+                        <td class="num">@lineCredit.ToString("F2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </fieldset>
+
+    <div class="invoice-actions">
+        <button type="submit" class="btn-primary" disabled="@(!CanSubmit)">
+            @(IsArabic ? "إصدار إشعار الخصم (مسودة)" : "Issue credit note (Draft)")
+        </button>
+        <a href="/purchase-invoices/@_original?.Id" class="btn-secondary">
+            @(IsArabic ? "إلغاء" : "Cancel")
+        </a>
+    </div>
+</EditForm>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private PurchaseInvoice? _original;
+    private string _supplierName = "";
+    private Dictionary<Guid, Item> _items = new();
+    private Dictionary<Guid, DeductibleExpenseCategory> _categories = new();
+    private FormModel _form = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    private static bool IsArabic =>
+        System.Globalization.CultureInfo.CurrentCulture.Name
+            .StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _original = await Db.Set<PurchaseInvoice>()
+            .Include(p => p.Lines)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == Id);
+        if (_original is null)
+        {
+            _loading = false;
+            return;
+        }
+
+        var supplier = await Db.Set<Supplier>().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == _original.SupplierId);
+        _supplierName = supplier is not null
+            ? (IsArabic ? supplier.Name.Arabic : supplier.Name.English)
+            : _original.SupplierId.ToString("D");
+
+        var itemIds = _original.Lines.Where(l => l.ItemId.HasValue)
+            .Select(l => l.ItemId!.Value).Distinct().ToArray();
+        _items = await Db.Set<Item>().AsNoTracking()
+            .Where(i => itemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id);
+
+        var catIds = _original.Lines.Where(l => l.ExpenseCategoryId.HasValue)
+            .Select(l => l.ExpenseCategoryId!.Value).Distinct().ToArray();
+        _categories = await Db.Set<DeductibleExpenseCategory>().AsNoTracking()
+            .Where(c => catIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id);
+
+        _form.DateReceived = DateTime.UtcNow.Date;
+        _form.Lines = _original.Lines.Select(l => new FormLine
+        {
+            ItemId = l.ItemId,
+            ExpenseCategoryId = l.ExpenseCategoryId,
+            OriginalQuantity = l.Quantity,
+            QuantityToCredit = l.Quantity,
+            UnitPrice = l.UnitPrice.Amount,
+            VatCategoryId = l.VatCategoryId,
+            VatRatePercent = l.VatRatePercent,
+            DeductibleFlag = l.DeductibleFlag,
+            CostCenterId = l.CostCenterId,
+        }).ToList();
+
+        _loading = false;
+    }
+
+    private bool CanSubmit =>
+        !string.IsNullOrWhiteSpace(_form.Reason)
+        && !string.IsNullOrWhiteSpace(_form.SupplierCreditNoteNumber)
+        && _form.Lines.Any(l => l.QuantityToCredit > 0);
+
+    private async Task OnSubmitAsync()
+    {
+        if (_original is null) return;
+
+        var lines = _form.Lines
+            .Where(l => l.QuantityToCredit > 0)
+            .Select(l => new IssuePurchaseCreditNoteLine(
+                ItemId: l.ItemId,
+                ExpenseCategoryId: l.ExpenseCategoryId,
+                Quantity: -l.QuantityToCredit,
+                UnitPrice: MoneyEgp.From(l.UnitPrice),
+                VatCategoryId: l.VatCategoryId,
+                VatRatePercent: l.VatRatePercent,
+                DeductibleFlag: l.DeductibleFlag,
+                CostCenterId: l.CostCenterId))
+            .ToList();
+        if (lines.Count == 0)
+        {
+            _flash = IsArabic
+                ? "اختر بنداً واحداً على الأقل بكمية خصم موجبة."
+                : "Select at least one line with a positive credit quantity.";
+            _flashClass = "flash-error";
+            return;
+        }
+
+        try
+        {
+            var draft = await Handler.HandleAsync(new IssuePurchaseCreditNoteCommand(
+                OriginalPurchaseInvoiceId: _original.Id,
+                Lines: lines,
+                Reason: _form.Reason,
+                SupplierCreditNoteNumber: _form.SupplierCreditNoteNumber,
+                DateReceived: DateOnly.FromDateTime(_form.DateReceived)),
+                CancellationToken.None);
+
+            Nav.NavigateTo($"/purchase-invoices/{draft.Id}/edit", forceLoad: true);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+    }
+
+    private sealed class FormModel
+    {
+        [Required(ErrorMessage = "Reason is required.")]
+        [StringLength(2000, MinimumLength = 5)]
+        public string Reason { get; set; } = "";
+
+        [Required(ErrorMessage = "Supplier credit-note number is required.")]
+        [StringLength(64, MinimumLength = 1)]
+        public string SupplierCreditNoteNumber { get; set; } = "";
+
+        public DateTime DateReceived { get; set; } = DateTime.UtcNow.Date;
+
+        public List<FormLine> Lines { get; set; } = new();
+    }
+
+    private sealed class FormLine
+    {
+        public Guid? ItemId { get; set; }
+        public Guid? ExpenseCategoryId { get; set; }
+        public decimal OriginalQuantity { get; set; }
+        public decimal QuantityToCredit { get; set; }
+        public decimal UnitPrice { get; set; }
+        public Guid VatCategoryId { get; set; }
+        public decimal VatRatePercent { get; set; }
+        public bool DeductibleFlag { get; set; }
+        public Guid? CostCenterId { get; set; }
+    }
+}

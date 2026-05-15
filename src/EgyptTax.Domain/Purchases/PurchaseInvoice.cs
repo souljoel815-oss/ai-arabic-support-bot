@@ -45,6 +45,19 @@ public sealed class PurchaseInvoice
     public MoneyEgp VatTotal { get; private set; } = MoneyEgp.Zero;
     public MoneyEgp GrandTotal { get; private set; } = MoneyEgp.Zero;
 
+    /// <summary>
+    /// v5 E.3 — when non-null, this bill is a credit note referencing
+    /// the original supplier PurchaseInvoice (e.g., supplier issued a
+    /// credit memo for returned/damaged goods). Mirrors the sales-side
+    /// <c>SalesInvoice.CreditNoteOfInvoiceId</c> pattern from FR-013.
+    /// </summary>
+    public Guid? CreditNoteOfPurchaseInvoiceId { get; private set; }
+
+    /// <summary>v5 E.3 — operator-entered reason captured at issue time.</summary>
+    public string? CreditNoteReason { get; private set; }
+
+    public bool IsCreditNote => CreditNoteOfPurchaseInvoiceId.HasValue;
+
     private readonly List<PurchaseInvoiceLine> _lines = new();
     public IReadOnlyCollection<PurchaseInvoiceLine> Lines => _lines;
 
@@ -81,6 +94,49 @@ public sealed class PurchaseInvoice
             supplierInvoiceNumber,
             dateReceived
         );
+    }
+
+    /// <summary>
+    /// v5 E.3 — factory for a purchase credit note that corrects an
+    /// existing Posted PurchaseInvoice. The original's supplier +
+    /// supplier-tax-profile snapshot are copied so the credit note
+    /// references exactly the same supplier; caller adds lines with
+    /// negated quantities via <see cref="AddLine"/>. The reason is the
+    /// operator-supplied justification (non-empty).
+    /// </summary>
+    public static PurchaseInvoice CreateCreditNoteFor(
+        PurchaseInvoice originalInvoice,
+        string reason,
+        string supplierCreditNoteNumber,
+        DateOnly dateReceived
+    )
+    {
+        ArgumentNullException.ThrowIfNull(originalInvoice);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        ArgumentException.ThrowIfNullOrWhiteSpace(supplierCreditNoteNumber);
+
+        if (originalInvoice.State != DocumentState.Posted)
+        {
+            throw new InvalidOperationException(
+                $"Cannot issue a credit note against purchase invoice {originalInvoice.Id}: source state is {originalInvoice.State}, not Posted."
+            );
+        }
+        if (originalInvoice.IsCreditNote)
+        {
+            throw new InvalidOperationException(
+                $"Cannot issue a credit note against purchase invoice {originalInvoice.Id}: source is itself a credit note. Credit-note-of-credit-note is non-sensical and would unwind the audit trail."
+            );
+        }
+
+        var draft = new PurchaseInvoice(
+            originalInvoice.SupplierId,
+            originalInvoice.SupplierTaxProfileSnapshot,
+            supplierCreditNoteNumber,
+            dateReceived
+        );
+        draft.CreditNoteOfPurchaseInvoiceId = originalInvoice.Id;
+        draft.CreditNoteReason = reason;
+        return draft;
     }
 
     public PurchaseInvoiceLine AddLine(
