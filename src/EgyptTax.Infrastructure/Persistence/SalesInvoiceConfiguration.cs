@@ -44,6 +44,9 @@ internal sealed class SalesInvoiceConfiguration : IEntityTypeConfiguration<Sales
             .HasDatabaseName("ix_sales_invoices_credit_note_of_invoice_id")
             .HasFilter("[credit_note_of_invoice_id] IS NOT NULL");
 
+        // v5 E.8 — optional payment term picked at draft time.
+        b.Property(s => s.PaymentTermId).HasColumnName("payment_term_id");
+
         b.ComplexProperty(
             s => s.CustomerTaxProfileSnapshot,
             t =>

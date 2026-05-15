@@ -52,6 +52,26 @@ public sealed class SalesInvoice
 
     public bool IsCreditNote => CreditNoteOfInvoiceId.HasValue;
 
+    /// <summary>v5 E.8 — optional payment term picked at create time
+    /// (Net 30 / 2/10 Net 30 etc). When set, the receipt-voucher post
+    /// path can read it back to apply the early-settlement discount
+    /// against this invoice. Nullable so historical invoices without
+    /// a term still load.</summary>
+    public Guid? PaymentTermId { get; private set; }
+
+    /// <summary>v5 E.8 — set or clear the payment term on a draft
+    /// invoice. Mutating after post is intentionally blocked so the
+    /// discount-window computation can't be retroactively gamed.</summary>
+    public void SetPaymentTerm(Guid? paymentTermId)
+    {
+        if (State != DocumentState.Draft)
+        {
+            throw new InvalidOperationException(
+                $"Cannot change payment term on invoice {Id}: state is {State}, not Draft.");
+        }
+        PaymentTermId = paymentTermId;
+    }
+
     public MoneyEgp Subtotal { get; private set; } = MoneyEgp.Zero;
     public MoneyEgp InvoiceLevelDiscountAmount { get; private set; } = MoneyEgp.Zero;
     public decimal InvoiceLevelDiscountPercent { get; private set; }
