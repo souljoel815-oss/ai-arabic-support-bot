@@ -23,6 +23,44 @@
     private string? _flash;
     private bool _alreadyPosted;
 
+    // v5 E.6 — bulk CSV import for GL opening balances (not just cash).
+    private string _csvText = "";
+    private List<CsvRow> _csvRows = new();
+    private string? _csvFlash;
+    private string _csvFlashClass = "kpi-info";
+
+    private sealed class CsvRow
+    {
+        public string AccountCode { get; set; } = "";
+        public decimal Balance { get; set; }
+        public string? Description { get; set; }
+        public bool IsValid { get; set; }
+        public string? ErrorReason { get; set; }
+    }
+
+    private static readonly HashSet<string> KnownGlCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ChartOfAccountCodes.Cash,
+        ChartOfAccountCodes.InputVatRecoverable,
+        ChartOfAccountCodes.WhtReceivable,
+        ChartOfAccountCodes.AccountsReceivable,
+        ChartOfAccountCodes.AccumulatedDepreciation,
+        ChartOfAccountCodes.AccountsPayable,
+        ChartOfAccountCodes.OutputVatPayable,
+        ChartOfAccountCodes.WhtPayable,
+        ChartOfAccountCodes.SalesRevenue,
+        ChartOfAccountCodes.GenericExpense,
+        ChartOfAccountCodes.DepreciationExpense,
+        "3000", // Opening Balance Equity (offset)
+        "1300", // Inventory (typical)
+        "1400", // Prepaid expenses
+        "1500", // Fixed assets
+        "2200", // Accrued liabilities
+        "2300", // Customer advances (E.1)
+        "4900", // Other income
+        "5300", // Inventory loss
+    };
+
     private const string OpeningBalanceVoucherNumber = "OPENING-001";
 
     protected override async Task OnInitializedAsync()
@@ -44,6 +82,160 @@
 
     private decimal TotalCredit() =>
         _balances.Values.Where(v => v < 0m).Sum() * -1m;
+
+    private void ParseCsv()
+    {
+        _csvRows.Clear();
+        _csvFlash = null;
+
+        if (string.IsNullOrWhiteSpace(_csvText))
+        {
+            _csvFlash = Tr("ألصق CSV أولاً.", "Paste CSV first.");
+            _csvFlashClass = "kpi-warn";
+            return;
+        }
+
+        // Build the set of allowed codes: static COA + active cash accounts.
+        var allowedCodes = new HashSet<string>(KnownGlCodes, StringComparer.OrdinalIgnoreCase);
+        foreach (var a in _cashAccounts) allowedCodes.Add(a.AccountCode);
+
+        var lines = _csvText.Replace("\r\n", "\n").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var hadHeader = lines.Length > 0
+            && (lines[0].Contains("account_code", StringComparison.OrdinalIgnoreCase)
+                || lines[0].Contains("الكود", StringComparison.OrdinalIgnoreCase));
+        var startIdx = hadHeader ? 1 : 0;
+
+        for (var i = startIdx; i < lines.Length; i++)
+        {
+            var raw = lines[i].Trim();
+            if (string.IsNullOrEmpty(raw) || raw.StartsWith("#")) continue;
+            var cells = raw.Split(',', 3, StringSplitOptions.TrimEntries);
+            if (cells.Length < 2)
+            {
+                _csvRows.Add(new CsvRow
+                {
+                    AccountCode = raw,
+                    IsValid = false,
+                    ErrorReason = Tr("صيغة غير صحيحة (عمودان مطلوبان: الكود, الرصيد).",
+                        "Invalid format (need 2 columns: code, balance)."),
+                });
+                continue;
+            }
+            var row = new CsvRow
+            {
+                AccountCode = cells[0],
+                Description = cells.Length >= 3 ? cells[2] : null,
+            };
+            if (!allowedCodes.Contains(row.AccountCode))
+            {
+                row.ErrorReason = Tr($"الكود {row.AccountCode} غير معروف في دليل الحسابات.",
+                    $"Code {row.AccountCode} not in chart of accounts.");
+            }
+            else if (!decimal.TryParse(cells[1], NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
+            {
+                row.ErrorReason = Tr($"المبلغ '{cells[1]}' ليس رقم صحيح.",
+                    $"Amount '{cells[1]}' is not a valid number.");
+            }
+            else
+            {
+                row.Balance = amount;
+                row.IsValid = true;
+            }
+            _csvRows.Add(row);
+        }
+
+        if (_csvRows.Count == 0)
+        {
+            _csvFlash = Tr("ما فيش صفوف صالحة.", "No rows parsed.");
+            _csvFlashClass = "kpi-warn";
+            return;
+        }
+
+        var validCount = _csvRows.Count(r => r.IsValid);
+        var invalidCount = _csvRows.Count - validCount;
+        _csvFlash = invalidCount == 0
+            ? Tr($"تم تحليل {validCount} صف. اضغط 'ترحيل CSV' للتأكيد.",
+                $"Parsed {validCount} rows. Click 'Post CSV' to confirm.")
+            : Tr($"تم تحليل {validCount} صف صالح + {invalidCount} صف بأخطاء — صحح الأخطاء قبل الترحيل.",
+                $"Parsed {validCount} valid + {invalidCount} errored — fix errors before posting.");
+        _csvFlashClass = invalidCount == 0 ? "kpi-success" : "kpi-warn";
+    }
+
+    private async Task PostCsvOpeningJeAsync()
+    {
+        _csvFlash = null;
+        if (_csvRows.Count == 0 || _csvRows.Any(r => !r.IsValid))
+        {
+            _csvFlash = Tr("صحح كل الأخطاء أولاً.", "Fix all errors first.");
+            _csvFlashClass = "kpi-warn";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var lines = new List<(string AccountCode, MoneyEgp Debit, MoneyEgp Credit, string Description)>(_csvRows.Count + 1);
+            foreach (var r in _csvRows.Where(r => r.IsValid && r.Balance != 0m))
+            {
+                var desc = string.IsNullOrWhiteSpace(r.Description)
+                    ? $"Opening balance — {r.AccountCode}"
+                    : r.Description!;
+                if (r.Balance > 0m)
+                {
+                    lines.Add((r.AccountCode, MoneyEgp.From(r.Balance), MoneyEgp.Zero, desc));
+                }
+                else
+                {
+                    lines.Add((r.AccountCode, MoneyEgp.Zero, MoneyEgp.From(-r.Balance), desc));
+                }
+            }
+            if (lines.Count == 0)
+            {
+                _csvFlash = Tr("كل الأرصدة = صفر.", "All balances are zero.");
+                _csvFlashClass = "kpi-warn";
+                return;
+            }
+
+            var debitTotal = lines.Sum(l => l.Debit.Amount);
+            var creditTotal = lines.Sum(l => l.Credit.Amount);
+            var net = debitTotal - creditTotal;
+            if (net > 0m)
+            {
+                lines.Add(("3000", MoneyEgp.Zero, MoneyEgp.From(net), "Opening balance equity (offset)"));
+            }
+            else if (net < 0m)
+            {
+                lines.Add(("3000", MoneyEgp.From(-net), MoneyEgp.Zero, "Opening balance equity (offset)"));
+            }
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var entry = JournalEntry.Create(
+                sourceDocumentId: Guid.NewGuid(),
+                sourceDocumentNumber: OpeningBalanceVoucherNumber,
+                sourceDocumentType: DocumentType.JournalVoucher,
+                postedAtUtc: _asOf.ToUniversalTime(),
+                lines: lines);
+            db.Add(entry);
+            await db.SaveChangesAsync();
+
+            _alreadyPosted = true;
+            _csvFlash = Tr(
+                $"تم ترحيل قيد الافتتاح من CSV. {lines.Count} بند — مدين: {debitTotal:N2} / دائن: {creditTotal:N2}.",
+                $"CSV opening posted. {lines.Count} lines — Debit: {debitTotal:N2} / Credit: {creditTotal:N2}.");
+            _csvFlashClass = "kpi-success";
+            _csvText = "";
+            _csvRows.Clear();
+        }
+        catch (Exception ex)
+        {
+            _csvFlash = ex.Message;
+            _csvFlashClass = "kpi-warn";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
 
     private async Task PostOpeningJeAsync()
     {
@@ -181,6 +373,68 @@
             }
         </tbody>
     </table>
+</section>
+
+<section class="wizard-panel" style="margin-top:24px;">
+    <h2>@Tr("📥 الاستيراد المجمّع من CSV (v5 E.6)", "📥 Bulk import from CSV (v5 E.6)")</h2>
+    <p style="font-size:13px;color:var(--text-muted);">
+        @Tr(
+            "للمحاسبين الللي بيهاجروا من نظام قديم بأرصدة لكل بنود الـ GL (مش بس النقدية): ألصق CSV بالصيغة 'الكود, الرصيد, البيان (اختياري)' — الكود لازم يكون من دليل الحسابات المعتمد، الرصيد موجب = مدين، سالب = دائن.",
+            "For accountants migrating from a legacy system with balances for all GL lines (not just cash): paste a CSV in the form 'account_code, balance, description (optional)'. The code must be in the chart of accounts; positive = debit, negative = credit.")
+    </p>
+    <textarea @bind="_csvText" rows="6" placeholder="@(IsArabic
+        ? "1100, 50000.00, نقدية افتتاحية&#10;1200, 120000.00, ذمم العملاء&#10;2100, -80000.00, ذمم الموردين"
+        : "1100, 50000.00, Opening cash\n1200, 120000.00, AR opening\n2100, -80000.00, AP opening")"
+        disabled="@_alreadyPosted"
+        style="width:100%;max-width:700px;font-family:'SF Mono','Fira Code',monospace;font-size:13px;"></textarea>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn-secondary" @onclick="ParseCsv" disabled="@(_alreadyPosted || _saving)">
+            🔍 @Tr("تحليل ومعاينة", "Parse & preview")
+        </button>
+        @if (_csvRows.Count > 0 && _csvRows.All(r => r.IsValid))
+        {
+            <button type="button" class="btn-primary" @onclick="PostCsvOpeningJeAsync" disabled="@(_alreadyPosted || _saving)">
+                @(_saving ? Tr("جارٍ الترحيل…", "Posting…") : Tr("ترحيل CSV (قيد افتتاح)", "Post CSV (opening journal)"))
+            </button>
+        }
+    </div>
+    @if (_csvFlash is not null)
+    {
+        <div class="kpi-card @_csvFlashClass" style="margin-top:12px;">@_csvFlash</div>
+    }
+    @if (_csvRows.Count > 0)
+    {
+        <table class="data-grid" style="margin-top:14px;">
+            <thead>
+                <tr>
+                    <th>@Tr("الكود", "Code")</th>
+                    <th class="num">@Tr("الرصيد", "Balance")</th>
+                    <th>@Tr("البيان", "Description")</th>
+                    <th>@Tr("الحالة", "Status")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _csvRows)
+                {
+                    <tr class="@(r.IsValid ? "" : "row-overdue")">
+                        <td><code>@r.AccountCode</code></td>
+                        <td class="num">@r.Balance.ToString("N2")</td>
+                        <td>@(r.Description ?? "—")</td>
+                        <td>
+                            @if (r.IsValid)
+                            {
+                                <span class="state-badge state-approved">@Tr("✓ صالح", "✓ Valid")</span>
+                            }
+                            else
+                            {
+                                <span class="state-badge state-rejected" title="@r.ErrorReason">@r.ErrorReason</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 </section>
 
 <section class="kpi-grid" style="margin-top:24px;">
