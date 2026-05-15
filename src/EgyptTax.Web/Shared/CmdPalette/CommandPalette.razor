@@ -1,297 +1,183 @@
-@using Microsoft.JSInterop
-@implements IAsyncDisposable
-@inject IJSRuntime Js
+@using System.Globalization
+@using EgyptTax.Web.Shared.AppShell
 @inject NavigationManager Nav
+@inject IJSRuntime Js
+@implements IAsyncDisposable
 
 @*
-    v5 DP.3 — global Cmd+K / Ctrl+K command palette. Operator
-    presses ⌘K from any page; modal opens centered with a search
-    input + filtered list of every page route + common quick-create
-    actions in both languages. Type to filter (simple
-    case-insensitive contains; no fuzzy lib). Up/Down navigates
-    the list, Enter follows, Esc closes.
+    v5 UI Rebuild — Sprint 1 (new 2026-05-15).
+    Command Palette overlay triggered by Ctrl+K.
+    Two sections:
+      1. "إجراءات سريعة" — 5 quick actions (new invoice, quotation, etc.)
+      2. "الشاشات" — all searchable screens across all modules
+    Supports real-time filtering, keyboard navigation, and
+    closes on Escape or backdrop click.
 *@
 
-<div class="cmd-palette-modal @(_open ? "is-open" : "")" @onclick="OnBackdropClick">
-    @if (_open)
-    {
-        <div class="cmd-palette-card" @onclick:stopPropagation>
-            <div class="cmd-palette-search">
-                <span class="cmd-palette-icon">⌘K</span>
-                <input @ref="_inputRef"
-                       type="search"
-                       placeholder="@Tr("ابحث عن صفحة أو إجراء…", "Search pages or actions…")"
-                       value="@_query"
-                       @oninput="OnQueryChanged"
-                       @onkeydown="OnKeyDown" />
-                <button type="button" class="cmd-palette-dismiss"
-                        @onclick="Close" aria-label="Close">×</button>
-            </div>
-
-            <div class="cmd-palette-results">
-                @if (Filtered.Count == 0)
-                {
-                    <div class="cmd-palette-empty">
-                        @Tr("ما فيش نتائج للبحث ده.", "Nothing matches that search.")
-                    </div>
-                }
-                else
-                {
-                    @for (var i = 0; i < Filtered.Count; i++)
-                    {
-                        var idx = i;
-                        var cmd = Filtered[idx];
-                        <button type="button"
-                                class="cmd-palette-item @(idx == _selectedIndex ? "is-active" : "")"
-                                @onmouseenter="() => _selectedIndex = idx"
-                                @onclick="() => Run(cmd)">
-                            <span class="cmd-palette-item-icon">@cmd.Icon</span>
-                            <span class="cmd-palette-item-label">
-                                <span>@(IsArabic ? cmd.LabelAr : cmd.LabelEn)</span>
-                                <small>@cmd.Hint</small>
-                            </span>
-                            <span class="cmd-palette-item-section">@cmd.Section</span>
-                        </button>
-                    }
-                }
-            </div>
-
-            <div class="cmd-palette-foot">
-                <span><kbd>↑</kbd><kbd>↓</kbd> @Tr("للتنقل", "navigate")</span>
-                <span><kbd>↵</kbd> @Tr("افتح", "open")</span>
-                <span><kbd>Esc</kbd> @Tr("إغلاق", "close")</span>
-            </div>
+@if (_isOpen)
+{
+    <div class="dx-cmd-backdrop" @onclick="Close" @onclick:stopPropagation="true"></div>
+    <div class="dx-cmd-palette" role="dialog" aria-modal="true" aria-label="@(_isArabic ? "البحث الشامل" : "Universal search")">
+        <div class="dx-cmd-input-wrap">
+            <Icon Name="search" Class="dx-cmd-input-icon" />
+            <input type="text"
+                   class="dx-cmd-input"
+                   placeholder="@(_isArabic ? "ابحث عن أي شيء..." : "Search anything...")"
+                   @bind="_searchText"
+                   @bind:event="oninput"
+                   @ref="_inputRef"
+                   @onkeydown="HandleKeyDown"
+                   dir="rtl" />
+            <kbd class="dx-cmd-esc">Esc</kbd>
         </div>
-    }
-</div>
+
+        <div class="dx-cmd-results" dir="rtl">
+            @if (FilteredQuickActions.Any())
+            {
+                <div class="dx-cmd-group-header">@(_isArabic ? "إجراءات سريعة" : "Quick actions")</div>
+                @foreach (var action in FilteredQuickActions)
+                {
+                    var idx = _flatItems.IndexOf(("action", action.Url));
+                    <button type="button"
+                            class="dx-cmd-item @(idx == _selectedIndex ? "is-selected" : "")"
+                            @onclick="() => Navigate(action.Url)">
+                        <span class="dx-cmd-item-icon dx-cmd-item-icon--gold">
+                            <Icon Name="plus" Class="dx-cmd-ic" />
+                        </span>
+                        <span class="dx-cmd-item-label">@(_isArabic ? action.LabelAr : action.LabelEn)</span>
+                    </button>
+                }
+            }
+
+            @if (FilteredScreens.Any())
+            {
+                <hr class="dx-cmd-sep" />
+                <div class="dx-cmd-group-header">@(_isArabic ? "الشاشات" : "Screens")</div>
+                @foreach (var screen in FilteredScreens)
+                {
+                    var idx = _flatItems.IndexOf(("screen", screen.Url));
+                    <button type="button"
+                            class="dx-cmd-item @(idx == _selectedIndex ? "is-selected" : "")"
+                            @onclick="() => Navigate(screen.Url)">
+                        <span class="dx-cmd-item-icon">
+                            <Icon Name="@screen.IconName" Class="dx-cmd-ic" />
+                        </span>
+                        <span class="dx-cmd-item-label">@screen.Label</span>
+                        <span class="dx-cmd-item-module">@screen.ModuleLabel</span>
+                    </button>
+                }
+            }
+
+            @if (!FilteredQuickActions.Any() && !FilteredScreens.Any())
+            {
+                <p class="dx-cmd-empty">@(_isArabic ? "لا توجد نتائج" : "No results")</p>
+            }
+        </div>
+    </div>
+}
 
 @code {
-    private bool _open;
-    private string _query = "";
+    private bool _isOpen;
+    private string _searchText = "";
     private int _selectedIndex;
     private ElementReference _inputRef;
-    private DotNetObjectReference<CommandPalette>? _selfRef;
-    private bool _jsRegistered;
+    private DotNetObjectReference<CommandPalette>? _objRef;
 
-    private bool IsArabic =>
-        System.Globalization.CultureInfo.CurrentCulture.Name.StartsWith(
-            "ar", StringComparison.OrdinalIgnoreCase);
-    private string Tr(string ar, string en) => IsArabic ? ar : en;
+    private bool _isArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
 
-    public sealed record PaletteCommand(
-        string Icon,
-        string LabelAr,
-        string LabelEn,
-        string Section,
-        string? Url = null,
-        Action? Action = null,
-        string? Hint = null);
+    // Flat list for keyboard navigation
+    private List<(string type, string url)> _flatItems = new();
 
-    /// <summary>Hard-coded list of every page route + the most-
-    /// common quick-create actions. Mirrors what's in the sidebar
-    /// + everything reachable that ISN'T in the sidebar (e.g.
-    /// /dashboards/me which DP.2 dropped from the visible nav).</summary>
-    private static readonly List<PaletteCommand> AllCommands = new()
-    {
-        // Quick-create actions (top of search)
-        new("➕", "فاتورة جديدة", "+ New invoice", "Quick", Url: "/invoices/new"),
-        new("➕", "مصروف جديد", "+ New expense", "Quick", Url: "/expenses/new"),
-        new("➕", "عرض سعر جديد", "+ New quotation", "Quick", Url: "/quotations/new"),
-        new("➕", "فاتورة شراء جديدة", "+ New purchase invoice", "Quick", Url: "/purchase-invoices/new"),
-        new("➕", "عميل جديد", "+ New customer", "Quick", Url: "/customers"),
-        new("➕", "مورد جديد", "+ New supplier", "Quick", Url: "/suppliers"),
-        new("➕", "lead جديد", "+ New lead", "Quick", Url: "/leads/new"),
-        new("➕", "إيصال قبض", "+ Receive payment", "Quick", Url: "/payments/customer-receipts/new"),
-        new("➕", "دفعة لمورد", "+ Pay a supplier", "Quick", Url: "/payments/supplier-payments/new"),
+    private IEnumerable<QuickAction> FilteredQuickActions =>
+        AppShellModuleRegistry.QuickActions.Where(a =>
+            string.IsNullOrEmpty(_searchText) ||
+            a.LabelAr.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+            a.LabelEn.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
 
-        // Sales group
-        new("📄", "فواتير المبيعات", "Sales invoices", "Sales", Url: "/invoices"),
-        new("📋", "أوامر البيع", "Sales orders", "Sales", Url: "/sales-orders"),
-        new("📝", "عروض الأسعار", "Quotations", "Sales", Url: "/quotations"),
-        new("🎯", "الفرص البيعية", "Leads / pipeline", "Sales", Url: "/leads"),
-        new("🚐", "خط السير", "Route plan", "Sales", Url: "/routes"),
-        new("🔁", "فواتير متكررة", "Recurring invoices", "Sales", Url: "/recurring-invoices"),
-        new("📦", "رفع جماعي للفواتير", "Bulk invoice upload", "Sales", Url: "/invoices/bulk"),
-
-        // Purchases group
-        new("📄", "فواتير المشتريات", "Purchase invoices", "Purchases", Url: "/purchase-invoices"),
-        new("💼", "المصروفات", "Expenses", "Purchases", Url: "/expenses"),
-        new("📑", "تقارير المصروفات", "Expense reports", "Purchases", Url: "/expense-reports"),
-        new("➕", "تقرير مصروفات جديد", "New expense report", "Quick Create", Url: "/expense-reports/new"),
-        new("🤖", "مسح إيصال (AI)", "Scan receipt (AI)", "Purchases", Url: "/scan-receipt"),
-        new("🏦", "كشوف البنك", "Bank statements", "Purchases", Url: "/payments/bank-statements"),
-        new("🔍", "بنود غير مطابقة", "Unmatched bank lines", "Purchases", Url: "/payments/unmatched"),
-
-        // Inventory group
-        new("📦", "الأصناف", "Items", "Inventory", Url: "/items"),
-        new("📦", "جرد مخزني", "Stock count", "Inventory", Url: "/stock-adjustments"),
-        new("📋", "اقتراحات إعادة الطلب", "Reorder suggestions", "Inventory", Url: "/reorder-suggestions"),
-        new("🔄", "نقل مخزون", "Stock transfer", "Inventory", Url: "/stock-transfer"),
-        new("🏬", "المخازن والفروع", "Stock locations", "Inventory", Url: "/stock-locations"),
-        new("🧪", "دفعات قاربت تنتهي", "Expiring lots", "Inventory", Url: "/expiring-lots"),
-        new("🔁", "قواعد إعادة الطلب", "Reorder rules", "Inventory", Url: "/reorder-rules"),
-        new("🏷️", "مراكز التكلفة", "Cost centers", "Inventory", Url: "/cost-centers"),
-
-        // Contacts
-        new("👥", "العملاء", "Customers", "Contacts", Url: "/customers"),
-        new("🏢", "الموردون", "Suppliers", "Contacts", Url: "/suppliers"),
-        new("📥", "استيراد بيانات", "Import data (CSV)", "Contacts", Url: "/data-import"),
-
-        // Reports & Compliance
-        new("📚", "دفتر الأستاذ", "General Ledger", "Reports", Url: "/reports/general-ledger"),
-        new("⚖️", "ميزان المراجعة", "Trial balance", "Reports", Url: "/reports/trial-balance"),
-        new("💵", "التدفقات النقدية", "Cash flow", "Reports", Url: "/reports/cash-flow"),
-        new("📊", "تقرير مراكز التكلفة", "Cost centers report", "Reports", Url: "/reports/cost-centers"),
-        new("📦", "تقييم المخزون", "Stock valuation", "Reports", Url: "/reports/stock-valuation"),
-        new("💰", "جلسات الكاشير", "POS sessions", "Reports", Url: "/reports/pos-sessions"),
-        new("🎯", "قمع المبيعات", "Sales pipeline report", "Reports", Url: "/reports/sales-pipeline"),
-        new("📊", "مبيعات المناديب", "Sales by rep", "Reports", Url: "/reports/sales-by-rep"),
-        new("💰", "عمولات المناديب", "Commissions", "Reports", Url: "/reports/commissions"),
-        new("📊", "لوحة المبيعات", "Sales dashboard", "Reports", Url: "/dashboards/sales"),
-        new("👤", "لوحتي الشخصية", "My dashboard", "Reports", Url: "/dashboards/me"),
-        new("📁", "المشروعات", "Projects", "Reports", Url: "/projects"),
-        new("💰", "الدخل الخاضع للضريبة", "Taxable income", "Reports", Url: "/reports/taxable-income"),
-        new("💰", "ضريبة معدل الدوران", "Turnover tax", "Reports", Url: "/reports/turnover-tax"),
-        new("💰", "الضريبة الشهرية", "Monthly VAT", "Reports", Url: "/reports/vat-monthly"),
-        new("🩺", "صحة الامتثال", "Compliance health", "Compliance", Url: "/compliance/health"),
-        new("🛡️", "درع الغرامات", "Penalty Shield", "Compliance", Url: "/penalty-shield"),
-        new("📅", "تقويم الالتزامات", "Compliance calendar", "Compliance", Url: "/compliance/calendar"),
-        new("📡", "لوحة ETA", "ETA dashboard", "Compliance", Url: "/eta-dashboard"),
-        new("📨", "صندوق ETA الوارد", "ETA inbox", "Compliance", Url: "/eta-inbox"),
-        new("📤", "تصدير ETA", "ETA export", "Compliance", Url: "/eta-export"),
-        new("📑", "إقرارات الضريبة", "VAT returns", "Compliance", Url: "/tax/vat-return"),
-        new("📑", "إقرارات ضريبة الدخل", "Income-tax returns", "Compliance", Url: "/tax/income-tax-return"),
-        new("✂️", "دورة الخصم WHT", "WHT lifecycle", "Compliance", Url: "/wht"),
-        new("✂️", "شهادات خصم واردة", "Inbound WHT", "Compliance", Url: "/wht/inbound"),
-
-        // POS
-        new("🛒", "نقطة البيع", "Point of Sale", "POS", Url: "/pos"),
-
-        // Settings
-        new("⚙️", "لوحة الإعدادات", "Admin panel", "Settings", Url: "/settings"),
-        new("🏢", "بيانات الشركة", "Company profile", "Settings", Url: "/settings/company"),
-        new("📑", "إعداد الضرائب", "Tax setup", "Settings", Url: "/settings/tax-periods"),
-        new("📅", "السنة المالية", "Fiscal year", "Settings", Url: "/settings/fiscal-year"),
-        new("🏦", "نقدية وبنوك", "Money & banks", "Settings", Url: "/settings/cash-accounts"),
-        new("📒", "دليل الحسابات", "Chart of accounts", "Settings", Url: "/settings/chart-of-accounts"),
-        new("💱", "العملات", "Currencies", "Settings", Url: "/currencies"),
-        new("🗂️", "فئات المصروفات", "Expense categories", "Settings", Url: "/expense-categories"),
-        new("📋", "قوالب عروض الأسعار", "Quotation templates", "Settings", Url: "/settings/quotation-templates"),
-        new("👥", "فرق المبيعات", "Sales teams", "Settings", Url: "/settings/sales-teams"),
-        new("💲", "قوائم الأسعار", "Pricelists", "Settings", Url: "/settings/pricelists"),
-        new("🔔", "Webhooks", "Webhooks", "Settings", Url: "/settings/webhooks"),
-        new("🪄", "معالج إعداد ETA", "ETA setup wizard", "Settings", Url: "/eta-wizard"),
-        new("🎓", "الشهادات الرقمية", "Digital certificates", "Settings", Url: "/certificates"),
-        new("🛬", "قمرة الإقفال", "Closing cockpit", "Settings", Url: "/cockpit"),
-        new("💸", "مسحوبات شخصية", "Owner drawings", "Accounting", Url: "/owner-drawings"),
-        new("🔄", "تحويل أموال", "Fund transfer", "Accounting", Url: "/cash-transfer"),
-        new("📜", "سجل التدقيق", "Audit log", "Settings", Url: "/audit-log"),
-        new("📦", "حزمة الفحص الضريبي", "Inspection bundle", "Settings", Url: "/inspection-bundle"),
-        new("📜", "سجل الذكاء الاصطناعي", "AI activity log", "Settings", Url: "/scan-history"),
-        new("🎁", "ادعُ صديق", "Refer a friend", "Settings", Url: "/settings/referrals"),
-        new("🏛️", "بوابة المكتب", "Firm portal", "Settings", Url: "/firm-portal"),
-        new("🔄", "تبديل الشركة", "Switch company", "Settings", Url: "/firm-portal/switch"),
-    };
-
-    private List<PaletteCommand> Filtered
-    {
-        get
-        {
-            if (string.IsNullOrWhiteSpace(_query))
-            {
-                // No query → show top 20 (Quick + first sections).
-                return AllCommands.Take(20).ToList();
-            }
-            var q = _query.Trim();
-            return AllCommands
-                .Where(c => c.LabelAr.Contains(q, StringComparison.OrdinalIgnoreCase)
-                    || c.LabelEn.Contains(q, StringComparison.OrdinalIgnoreCase)
-                    || (c.Section?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
-                    || (c.Url?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false))
-                .Take(40)
-                .ToList();
-        }
-    }
+    private IEnumerable<(string Label, string Url, string ModuleLabel, string IconName)> FilteredScreens =>
+        AppShellModuleRegistry.GetAllSearchableItems(_isArabic).Where(s =>
+            string.IsNullOrEmpty(_searchText) ||
+            s.Label.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+            s.ModuleLabel.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+            s.Url.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            _selfRef = DotNetObjectReference.Create(this);
-            await Js.InvokeVoidAsync("daftarxRegisterCmdPalette", _selfRef);
-            _jsRegistered = true;
+            _objRef = DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("daftarxCmdPaletteInit", _objRef);
         }
 
-        if (_open && _inputRef.Context is not null)
+        if (_isOpen)
         {
-            try { await _inputRef.FocusAsync(); } catch { /* element may not be in DOM yet */ }
+            try { await _inputRef.FocusAsync(); }
+            catch { /* element not yet in DOM */ }
         }
     }
 
     [JSInvokable]
-    public Task Toggle()
+    public void Open()
     {
-        _open = !_open;
-        if (_open)
-        {
-            _query = "";
-            _selectedIndex = 0;
-        }
-        return InvokeAsync(StateHasChanged);
-    }
-
-    [JSInvokable]
-    public Task Close()
-    {
-        _open = false;
-        return InvokeAsync(StateHasChanged);
-    }
-
-    private void OnQueryChanged(ChangeEventArgs e)
-    {
-        _query = e.Value?.ToString() ?? "";
+        _isOpen = true;
+        _searchText = "";
         _selectedIndex = 0;
+        RebuildFlatItems();
+        StateHasChanged();
     }
 
-    private void OnKeyDown(KeyboardEventArgs e)
+    private void Close()
     {
-        var max = Filtered.Count;
-        if (max == 0) return;
+        _isOpen = false;
+        _searchText = "";
+        StateHasChanged();
+    }
+
+    private void Navigate(string url)
+    {
+        Close();
+        Nav.NavigateTo(url);
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        RebuildFlatItems();
+
         switch (e.Key)
         {
+            case "Escape":
+                Close();
+                break;
             case "ArrowDown":
-                _selectedIndex = (_selectedIndex + 1) % max;
+                _selectedIndex = Math.Min(_selectedIndex + 1, _flatItems.Count - 1);
                 break;
             case "ArrowUp":
-                _selectedIndex = (_selectedIndex - 1 + max) % max;
+                _selectedIndex = Math.Max(_selectedIndex - 1, 0);
                 break;
             case "Enter":
-                Run(Filtered[_selectedIndex]);
+                if (_flatItems.Count > 0 && _selectedIndex < _flatItems.Count)
+                    Navigate(_flatItems[_selectedIndex].url);
                 break;
         }
     }
 
-    private void Run(PaletteCommand cmd)
+    private void RebuildFlatItems()
     {
-        _open = false;
-        if (cmd.Url is { } url)
-        {
-            Nav.NavigateTo(url);
-        }
-        cmd.Action?.Invoke();
-    }
+        _flatItems.Clear();
+        foreach (var a in FilteredQuickActions)
+            _flatItems.Add(("action", a.Url));
+        foreach (var s in FilteredScreens)
+            _flatItems.Add(("screen", s.Url));
 
-    private void OnBackdropClick() => Close();
+        if (_selectedIndex >= _flatItems.Count)
+            _selectedIndex = Math.Max(0, _flatItems.Count - 1);
+    }
 
     public async ValueTask DisposeAsync()
     {
-        if (_jsRegistered)
-        {
-            // Listener stays bound for the page lifetime; Blazor
-            // server-side circuits aren't long-lived enough to
-            // benefit from removeEventListener bookkeeping.
-        }
-        _selfRef?.Dispose();
-        await Task.CompletedTask;
+        try { await Js.InvokeVoidAsync("daftarxCmdPaletteDestroy"); }
+        catch { /* circuit may already be gone */ }
+        _objRef?.Dispose();
     }
 }

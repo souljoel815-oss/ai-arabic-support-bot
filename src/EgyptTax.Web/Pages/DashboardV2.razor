@@ -1,491 +1,170 @@
+@page "/"
 @page "/dashboard-v2"
 @layout EgyptTax.Web.Shared.AppShell.AppShellLayout
-@using System.Globalization
-@using EgyptTax.Application.Compliance.PenaltyShield
-@using EgyptTax.Domain.Banking
-@using EgyptTax.Domain.Compliance
-@using EgyptTax.Domain.Eta
-@using EgyptTax.Domain.Invoices
-@using EgyptTax.Domain.MasterData
-@using EgyptTax.Domain.Periods
-@using EgyptTax.Domain.Workflow
-@using EgyptTax.Infrastructure.Persistence
-@using EgyptTax.Web.Shared.AppShell
-@using Microsoft.AspNetCore.Authorization
-@using Microsoft.EntityFrameworkCore
-@inject IDbContextFactory<AppDbContext> DbFactory
-@inject IPenaltyExposureQuery PenaltyQuery
-@inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
+@using System.Globalization
+@using EgyptTax.Web.Shared.AppShell
+@using Microsoft.AspNetCore.Authorization
+@inject NavigationManager Nav
+
 @*
-    v5 UI Sprint 1 — pixel-fidelity rebuild against mockup #5.
-    Header: "مرحبًا بك في DaftarX" greeting + date with calendar icon.
-    Big gold "DaftarX" + shield logo on the right (RTL: visual right).
-    KPI row: 4 cards each with a circular colored icon on the LEFT
-    visually + content on the RIGHT (RTL flex row puts the first
-    DOM child on the visual right). Compliance card uses a CSS
-    conic-gradient donut ring; net-profit card has a tiny SVG
-    sparkline. Action panel: 4 alert rows with the CTA button
-    pinned to the visual LEFT (the action sits opposite the
-    description text). Charts row: paired bar chart (revenue +
-    expenses per month) + smooth area chart for cash flow.
+    v5 UI Rebuild — Sprint 1 (updated 2026-05-15).
+    Dashboard with:
+      - Greeting header
+      - 4 KPI cards (Sales, Receivables, Expenses, Compliance Score)
+      - 3 action items (onboarding tasks)
+      - 2 chart placeholders (Sales last 6 months, Expenses by category)
+    
+    Data is placeholder until the real queries are wired.
 *@
 
-<PageTitle>DaftarX — @(IsArabic ? "الرئيسية" : "Home")</PageTitle>
+<PageTitle>DaftarX — @(_isArabic ? "الرئيسية" : "Dashboard")</PageTitle>
 
-<header class="dx-dash-header">
-    <div class="dx-dash-greeting">
-        <p class="dx-dash-greeting-pre">@(IsArabic ? "مرحبًا بك في" : "Welcome to")</p>
-        <h1 class="dx-dash-greeting-brand">
-            <span class="dx-dash-brand-text">Daftar<span class="dx-dash-brand-x">X</span></span>
-            <span class="dx-dash-brand-shield" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round" width="38" height="38">
-                    <path d="M12 2L4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4Z"/>
-                    <text x="12" y="15" text-anchor="middle" font-size="9" font-weight="700"
-                          fill="currentColor" stroke="none">D</text>
-                </svg>
-            </span>
-        </h1>
-        <div class="dx-dash-date">
-            <Icon Name="calendar" Class="dx-dash-date-ic" />
-            <span>@_todayLabel</span>
-        </div>
-    </div>
-</header>
-
-<section class="dx-kpi-row">
-    @* KPI 1 — Total sales (rightmost in RTL = first in DOM) *@
-    <div class="dx-kpi-card">
-        <div class="dx-kpi-icon dx-kpi-icon--gold">
-            <Icon Name="wallet" Class="dx-kpi-ic" />
-        </div>
-        <div class="dx-kpi-body">
-            <p class="dx-kpi-label">@(IsArabic ? "إجمالي المبيعات" : "Total sales")</p>
-            <div class="dx-kpi-value">
-                <span class="dx-kpi-amount">@FormatNum(_salesThisMonth)</span>
-                <span class="dx-kpi-unit">@(IsArabic ? "ج.م" : "EGP")</span>
-            </div>
-            <p class="dx-kpi-trend is-up">
-                <span class="dx-kpi-trend-arrow">↑</span>
-                @FormatNum(_salesGrowthPct, "+0;-0;0")%
-                <span class="dx-kpi-trend-tail">@(IsArabic ? "مقارنة بالشهر السابق" : "vs last month")</span>
+<section class="dx-dashboard">
+    @* ── Greeting Header ── *@
+    <div class="dx-dash-header">
+        <div class="dx-dash-greeting">
+            <p class="dx-dash-greeting-pre">@GetGreeting()</p>
+            <h1 class="dx-dash-greeting-brand">
+                <span class="dx-dash-brand-text">Daftar<span class="dx-dash-brand-x">X</span></span>
+            </h1>
+            <p class="dx-dash-date">
+                <Icon Name="calendar" Class="dx-dash-date-ic" />
+                @DateTime.Now.ToString("dddd، d MMMM yyyy", new CultureInfo("ar-EG"))
             </p>
         </div>
     </div>
 
-    @* KPI 2 — Overdue receivables *@
-    <div class="dx-kpi-card">
-        <div class="dx-kpi-icon dx-kpi-icon--danger">
-            <Icon Name="clock" Class="dx-kpi-ic" />
-        </div>
-        <div class="dx-kpi-body">
-            <p class="dx-kpi-label">@(IsArabic ? "المستحقات المتأخرة" : "Overdue receivables")</p>
-            <div class="dx-kpi-value dx-kpi-value--danger">
-                <span class="dx-kpi-amount">@FormatNum(_overdueAmount)</span>
-                <span class="dx-kpi-unit">@(IsArabic ? "ج.م" : "EGP")</span>
-            </div>
-            <p class="dx-kpi-trend is-down">
-                @FormatNum(_overdueCount) @(IsArabic ? "فواتير" : "invoices")
-            </p>
-        </div>
-    </div>
-
-    @* KPI 3 — Net profit + sparkline *@
-    <div class="dx-kpi-card">
-        <div class="dx-kpi-icon dx-kpi-icon--success">
-            <Icon Name="trending-up" Class="dx-kpi-ic" />
-        </div>
-        <div class="dx-kpi-body">
-            <p class="dx-kpi-label">@(IsArabic ? "صافي الربح" : "Net profit")</p>
-            <div class="dx-kpi-value-row">
-                <span class="dx-kpi-amount">@FormatNum(_netProfit)</span>
-                <span class="dx-kpi-unit">@(IsArabic ? "ج.م" : "EGP")</span>
-            </div>
-            @if (_profitSparkline.Count > 1)
-            {
-                <svg class="dx-kpi-sparkline" viewBox="0 0 100 30" preserveAspectRatio="none"
-                     aria-hidden="true">
-                    @{
-                        var minV = _profitSparkline.Min();
-                        var maxV = _profitSparkline.Max();
-                        var rng = Math.Max(maxV - minV, 1m);
-                        var sStep = 100.0 / Math.Max(_profitSparkline.Count - 1, 1);
-                        var sPts = _profitSparkline.Select((v, i) =>
-                            $"{i * sStep:0.##},{30 - (double)((v - minV) / rng) * 28:0.##}");
-                        var sPolyline = string.Join(" ", sPts);
-                    }
-                    <polyline points="@sPolyline" fill="none"
-                              stroke="var(--dx-success)" stroke-width="2"
-                              stroke-linejoin="round" stroke-linecap="round" />
-                </svg>
-            }
-            <p class="dx-kpi-trend is-up">
-                <span class="dx-kpi-trend-arrow">↑</span>
-                @FormatNum(_profitGrowthPct, "+0;-0;0")%
-                <span class="dx-kpi-trend-tail">@(IsArabic ? "مقارنة بالشهر السابق" : "vs last month")</span>
-            </p>
-        </div>
-    </div>
-
-    @* KPI 4 — Compliance score with donut ring (leftmost in RTL = last DOM) *@
-    <div class="dx-kpi-card">
-        <div class="dx-kpi-donut" style="--p:@_complianceScore;">
-            <span class="dx-kpi-donut-pct">@FormatNum(_complianceScore)<small>%</small></span>
-        </div>
-        <div class="dx-kpi-body">
-            <p class="dx-kpi-label">@(IsArabic ? "درجة الامتثال" : "Compliance score")</p>
-            <p class="dx-kpi-compliance-label">@(IsArabic ? _complianceLabelAr : _complianceLabelEn)</p>
-        </div>
-    </div>
-</section>
-
-<section class="dx-action-panel">
-    <h2 class="dx-action-panel-title">@(IsArabic ? "المهام العاجلة" : "Urgent tasks")</h2>
-
-    <div class="dx-action-list">
-        @if (_overdueCount > 0)
-        {
-            <div class="dx-action-row">
-                <a class="dx-action-cta" href="/invoices">@(IsArabic ? "متابعة" : "Follow up")</a>
-                <div class="dx-action-text">
-                    @FormatNum(_overdueCount) @(IsArabic ? "فواتير متأخرة" : "overdue invoices") —
-                    <strong>@FormatNum(_overdueAmount) @(IsArabic ? "ج.م" : "EGP")</strong>
+    @* ── KPI Cards Row ── *@
+    <div class="dx-kpi-row">
+        @* Card 1: Sales this month *@
+        <div class="dx-kpi-card">
+            <div class="dx-kpi-body">
+                <p class="dx-kpi-label">@(_isArabic ? "المبيعات هذا الشهر" : "Sales this month")</p>
+                <div class="dx-kpi-value-row">
+                    <span class="dx-kpi-amount">@ArabicNumerals.Format(0m)</span>
+                    <span class="dx-kpi-unit">@(_isArabic ? "ج.م" : "EGP")</span>
                 </div>
-                <div class="dx-action-icon dx-action-icon--danger">
-                    <Icon Name="bell" Class="dx-kpi-ic" />
-                </div>
+                <p class="dx-kpi-trend">—</p>
             </div>
-        }
+            <div class="dx-kpi-icon dx-kpi-icon--gold">
+                <Icon Name="trending-up" Class="dx-kpi-ic" />
+            </div>
+        </div>
 
-        @if (_nextVatDue is not null)
-        {
+        @* Card 2: Receivables *@
+        <div class="dx-kpi-card">
+            <div class="dx-kpi-body">
+                <p class="dx-kpi-label">@(_isArabic ? "المستحقات" : "Receivables")</p>
+                <div class="dx-kpi-value-row">
+                    <span class="dx-kpi-amount">@ArabicNumerals.Format(0m)</span>
+                    <span class="dx-kpi-unit">@(_isArabic ? "ج.م" : "EGP")</span>
+                </div>
+                <p class="dx-kpi-trend">@(_isArabic ? "٠ فاتورة مستحقة" : "0 invoices due")</p>
+            </div>
+            <div class="dx-kpi-icon dx-kpi-icon--danger">
+                <Icon Name="alert-triangle" Class="dx-kpi-ic" />
+            </div>
+        </div>
+
+        @* Card 3: Expenses *@
+        <div class="dx-kpi-card">
+            <div class="dx-kpi-body">
+                <p class="dx-kpi-label">@(_isArabic ? "المصروفات" : "Expenses")</p>
+                <div class="dx-kpi-value-row">
+                    <span class="dx-kpi-amount">@ArabicNumerals.Format(0m)</span>
+                    <span class="dx-kpi-unit">@(_isArabic ? "ج.م" : "EGP")</span>
+                </div>
+                <p class="dx-kpi-trend">—</p>
+            </div>
+            <div class="dx-kpi-icon dx-kpi-icon--warning">
+                <Icon Name="credit-card" Class="dx-kpi-ic" />
+            </div>
+        </div>
+
+        @* Card 4: Compliance Score *@
+        <div class="dx-kpi-card">
+            <div class="dx-kpi-body">
+                <p class="dx-kpi-label">@(_isArabic ? "درجة الامتثال" : "Compliance score")</p>
+                <p class="dx-kpi-compliance-label">@(_isArabic ? "لا توجد بيانات بعد" : "No data yet")</p>
+            </div>
+            <div class="dx-kpi-icon dx-kpi-icon--success">
+                <Icon Name="shield" Class="dx-kpi-ic" />
+            </div>
+        </div>
+    </div>
+
+    @* ── Action Items Panel ── *@
+    <div class="dx-action-panel">
+        <h2 class="dx-action-panel-title">@(_isArabic ? "المهام العاجلة" : "Urgent tasks")</h2>
+        <div class="dx-action-list">
+            @* Action 1: Company data *@
             <div class="dx-action-row">
-                <a class="dx-action-cta" href="/tax/vat-return">@(IsArabic ? "تقديم" : "File")</a>
+                <a class="dx-action-cta" href="/settings/company">@(_isArabic ? "إعدادات ←" : "Settings →")</a>
                 <div class="dx-action-text">
-                    @(IsArabic ? "إقرار ضريبة القيمة المضافة" : "VAT return") —
-                    @ArabicNumerals.ToArabic(_nextVatDue.Value.ToString(IsArabic ? "d MMMM" : "MMMM d", IsArabic ? new CultureInfo("ar-EG") : CultureInfo.InvariantCulture))
+                    <strong>@(_isArabic ? "أضف بيانات شركتك" : "Add company data")</strong><br />
+                    <span>@(_isArabic ? "اذهب للإعدادات وأكمل بيانات الشركة والرقم الضريبي" : "Go to settings and complete company info and tax ID")</span>
                 </div>
                 <div class="dx-action-icon dx-action-icon--warning">
-                    <Icon Name="calendar" Class="dx-kpi-ic" />
+                    <Icon Name="alert-triangle" Class="dx-kpi-ic" />
                 </div>
             </div>
-        }
 
-        @if (_unmatchedBankOps > 0)
-        {
+            @* Action 2: Chart of accounts *@
             <div class="dx-action-row">
-                <a class="dx-action-cta" href="/payments/unmatched">@(IsArabic ? "مطابقة" : "Reconcile")</a>
+                <a class="dx-action-cta" href="/settings/chart-of-accounts">@(_isArabic ? "المحاسبة ←" : "Accounting →")</a>
                 <div class="dx-action-text">
-                    @FormatNum(_unmatchedBankOps) @(IsArabic ? "عملية بنكية تحتاج مطابقة" : "bank operations need reconciliation")
+                    <strong>@(_isArabic ? "أنشئ شجرة الحسابات" : "Create chart of accounts")</strong><br />
+                    <span>@(_isArabic ? "ابدأ بإنشاء شجرة الحسابات أو استوردها من ملف Excel" : "Create chart of accounts or import from Excel")</span>
                 </div>
                 <div class="dx-action-icon dx-action-icon--info">
-                    <Icon Name="landmark" Class="dx-kpi-ic" />
+                    <Icon Name="boxes" Class="dx-kpi-ic" />
                 </div>
             </div>
-        }
 
-        @if (_lowStockCount > 0)
-        {
+            @* Action 3: First customer *@
             <div class="dx-action-row">
-                <a class="dx-action-cta" href="/items">@(IsArabic ? "طلب شراء" : "Reorder")</a>
+                <a class="dx-action-cta" href="/customers">@(_isArabic ? "العملاء ←" : "Contacts →")</a>
                 <div class="dx-action-text">
-                    @FormatNum(_lowStockCount) @(IsArabic ? "أصناف وصلت الحد الأدنى" : "items at minimum stock")
+                    <strong>@(_isArabic ? "أضف أول عميل" : "Add first customer")</strong><br />
+                    <span>@(_isArabic ? "أضف بيانات عملائك لبدء إصدار الفواتير" : "Add customer data to start issuing invoices")</span>
                 </div>
-                <div class="dx-action-icon dx-action-icon--warning">
-                    <Icon Name="package" Class="dx-kpi-ic" />
+                <div class="dx-action-icon dx-action-icon--info">
+                    <Icon Name="user" Class="dx-kpi-ic" />
                 </div>
             </div>
-        }
-
-        @if (_overdueCount == 0 && _nextVatDue is null && _unmatchedBankOps == 0 && _lowStockCount == 0)
-        {
-            <p class="dx-action-empty">
-                ✓ @(IsArabic ? "ما فيش مهام عاجلة دلوقتي." : "No urgent tasks right now.")
-            </p>
-        }
-    </div>
-</section>
-
-<section class="dx-chart-row">
-    <div class="dx-chart-card">
-        <header class="dx-chart-header">
-            <h3 class="dx-chart-title">@(IsArabic ? "الإيرادات vs المصروفات" : "Revenue vs expenses")</h3>
-            <span class="dx-chart-period">@(IsArabic ? "آخر 6 أشهر" : "Last 6 months")</span>
-        </header>
-        <div class="dx-chart-legend">
-            <span class="dx-chart-legend-dot" style="background:var(--dx-info);"></span>
-            <span>@(IsArabic ? "الإيرادات" : "Revenue")</span>
-            <span class="dx-chart-legend-dot" style="background:var(--dx-gold);"></span>
-            <span>@(IsArabic ? "المصروفات" : "Expenses")</span>
         </div>
-        @if (_revenueByMonth.Count > 0)
-        {
-            var maxBar = Math.Max(_revenueByMonth.Max(x => x.Revenue), _revenueByMonth.Max(x => x.Expenses));
-            if (maxBar <= 0) maxBar = 1;
-            <div class="dx-bar-chart">
-                @foreach (var bucket in _revenueByMonth)
-                {
-                    var revH = (int)(bucket.Revenue / maxBar * 200);
-                    var expH = (int)(bucket.Expenses / maxBar * 200);
-                    <div class="dx-bar-group">
-                        <div class="dx-bar-pair">
-                            <div class="dx-bar dx-bar--revenue"
-                                 style="height:@(revH)px;"
-                                 title="@(IsArabic ? "إيرادات" : "Revenue") @FormatNum(bucket.Revenue) ج.م"></div>
-                            <div class="dx-bar dx-bar--expense"
-                                 style="height:@(expH)px;"
-                                 title="@(IsArabic ? "مصروفات" : "Expenses") @FormatNum(bucket.Expenses) ج.م"></div>
-                        </div>
-                        <span class="dx-bar-label">@bucket.Label</span>
-                    </div>
-                }
-            </div>
-        }
-        else
-        {
-            <p class="dx-chart-empty">@(IsArabic ? "ما فيش بيانات كافية بعد." : "Not enough data yet.")</p>
-        }
     </div>
 
-    <div class="dx-chart-card">
-        <header class="dx-chart-header">
-            <h3 class="dx-chart-title">@(IsArabic ? "التدفقات النقدية" : "Cash flow")</h3>
-            <span class="dx-chart-period">@(IsArabic ? "آخر 30 يومًا" : "Last 30 days")</span>
-        </header>
-        @if (_cashFlowDaily.Count > 1)
-        {
-            var minCash = _cashFlowDaily.Min(x => x.RunningTotal);
-            var maxCash = _cashFlowDaily.Max(x => x.RunningTotal);
-            var rangeCash = Math.Max(maxCash - minCash, 1m);
-            var chartW = 600;
-            var chartH = 240;
-            var chartStep = (double)chartW / Math.Max(_cashFlowDaily.Count - 1, 1);
-            var chartPts = _cashFlowDaily.Select((p, i) =>
-            {
-                var x = i * chartStep;
-                var y = chartH - (double)((p.RunningTotal - minCash) / rangeCash) * (chartH - 20) - 10;
-                return $"{x:0.##},{y:0.##}";
-            }).ToList();
-            var polyline = string.Join(" ", chartPts);
-            var area = $"0,{chartH} {polyline} {chartW},{chartH}";
-            var zeroY = chartH - (double)((0m - minCash) / rangeCash) * (chartH - 20) - 10;
-            <svg class="dx-area-chart" viewBox="0 0 @chartW @chartH" preserveAspectRatio="none"
-                 aria-hidden="true">
-                <defs>
-                    <linearGradient id="dxCashGrad" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%"  stop-color="var(--dx-gold)" stop-opacity="0.45" />
-                        <stop offset="100%" stop-color="var(--dx-gold)" stop-opacity="0.0" />
-                    </linearGradient>
-                </defs>
-                @if (minCash < 0 && maxCash > 0)
-                {
-                    <line x1="0" x2="@chartW" y1="@zeroY.ToString("0.##")" y2="@zeroY.ToString("0.##")"
-                          stroke="var(--dx-border)" stroke-dasharray="4 4" stroke-width="1" />
-                }
-                <polygon points="@area" fill="url(#dxCashGrad)" />
-                <polyline points="@polyline" fill="none" stroke="var(--dx-gold)" stroke-width="2.5"
-                          stroke-linejoin="round" stroke-linecap="round" />
-            </svg>
-            <div class="dx-area-axis">
-                <span>@ArabicNumerals.ToArabic(_cashFlowDaily.First().Date.ToString("d MMM", IsArabic ? new CultureInfo("ar-EG") : CultureInfo.InvariantCulture))</span>
-                <span>@ArabicNumerals.ToArabic(_cashFlowDaily.Last().Date.ToString("d MMM", IsArabic ? new CultureInfo("ar-EG") : CultureInfo.InvariantCulture))</span>
+    @* ── Chart Placeholders ── *@
+    <div class="dx-chart-row">
+        <div class="dx-chart-card">
+            <div class="dx-chart-header">
+                <h3 class="dx-chart-title">@(_isArabic ? "المبيعات — آخر 6 أشهر" : "Sales — last 6 months")</h3>
             </div>
-        }
-        else
-        {
-            <p class="dx-chart-empty">@(IsArabic ? "ما فيش بيانات تدفقات بعد." : "No cash flow data yet.")</p>
-        }
+            <p class="dx-chart-empty">@(_isArabic ? "لا توجد بيانات بعد" : "No data yet")</p>
+        </div>
+        <div class="dx-chart-card">
+            <div class="dx-chart-header">
+                <h3 class="dx-chart-title">@(_isArabic ? "المصروفات حسب الفئة" : "Expenses by category")</h3>
+            </div>
+            <p class="dx-chart-empty">@(_isArabic ? "لا توجد بيانات بعد" : "No data yet")</p>
+        </div>
     </div>
 </section>
 
 @code {
-    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private bool _isArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
 
-    private string _todayLabel = "";
-
-    private decimal _salesThisMonth;
-    private decimal _salesPrevMonth;
-    private int _salesGrowthPct;
-    private decimal _overdueAmount;
-    private int _overdueCount;
-    private decimal _netProfit;
-    private decimal _netProfitPrevMonth;
-    private int _profitGrowthPct;
-    private List<decimal> _profitSparkline = new();
-    private int _complianceScore = 100;
-    private string _complianceLabelAr = "ممتاز";
-    private string _complianceLabelEn = "Excellent";
-
-    private DateOnly? _nextVatDue;
-    private int _unmatchedBankOps;
-    private int _lowStockCount;
-
-    private record MonthBucket(string Label, decimal Revenue, decimal Expenses);
-    private List<MonthBucket> _revenueByMonth = new();
-
-    private record DayPoint(DateOnly Date, decimal RunningTotal);
-    private List<DayPoint> _cashFlowDaily = new();
-
-    private string FormatNum(decimal v, string fmt = "N0") =>
-        IsArabic ? ArabicNumerals.Format(v, fmt) : v.ToString(fmt, CultureInfo.InvariantCulture);
-    private string FormatNum(int v, string fmt = "N0") =>
-        IsArabic ? ArabicNumerals.Format(v, fmt) : v.ToString(fmt, CultureInfo.InvariantCulture);
-
-    protected override async Task OnInitializedAsync()
+    private string GetGreeting()
     {
-        var now = DateTime.UtcNow;
-        var today = DateOnly.FromDateTime(now);
-        var monthStart = new DateOnly(today.Year, today.Month, 1);
-        var prevMonthStart = monthStart.AddMonths(-1);
-
-        _todayLabel = IsArabic
-            ? ArabicNumerals.ToArabic(today.ToString("dddd، d MMMM yyyy", new CultureInfo("ar-EG")))
-            : today.ToString("dddd, d MMMM yyyy", CultureInfo.InvariantCulture);
-
-        await using var db = await DbFactory.CreateDbContextAsync();
-
-        // Sales this month + previous month for the trend %
-        var monthInvoices = await db.Set<SalesInvoice>().AsNoTracking()
-            .Where(i => i.State == DocumentState.Posted
-                && i.PostedAtUtc != null
-                && i.DocumentDate >= monthStart)
-            .Select(i => i.GrandTotal.Amount)
-            .ToListAsync();
-        _salesThisMonth = monthInvoices.Sum();
-
-        var prevInvoices = await db.Set<SalesInvoice>().AsNoTracking()
-            .Where(i => i.State == DocumentState.Posted
-                && i.PostedAtUtc != null
-                && i.DocumentDate >= prevMonthStart
-                && i.DocumentDate < monthStart)
-            .Select(i => i.GrandTotal.Amount)
-            .ToListAsync();
-        _salesPrevMonth = prevInvoices.Sum();
-        _salesGrowthPct = _salesPrevMonth == 0
-            ? (_salesThisMonth > 0 ? 100 : 0)
-            : (int)Math.Round((_salesThisMonth - _salesPrevMonth) / _salesPrevMonth * 100m);
-
-        // Overdue receivables (posted invoices > 30d old with unpaid balance).
-        var thirtyDaysAgo = today.AddDays(-30);
-        var postedOlder = await db.Set<SalesInvoice>().AsNoTracking()
-            .Where(i => i.State == DocumentState.Posted
-                && i.DocumentDate < thirtyDaysAgo)
-            .Select(i => new { i.Id, Amt = i.GrandTotal.Amount })
-            .ToListAsync();
-        var overdueIds = postedOlder.Select(x => x.Id).ToHashSet();
-
-        var allocations = await db.Set<EgyptTax.Domain.Documents.PaymentAllocation>().AsNoTracking()
-            .Where(a => overdueIds.Contains(a.TargetDocumentId)
-                && a.TargetDocumentType == DocumentType.SalesInvoice)
-            .Select(a => new { a.TargetDocumentId, Amt = a.AllocatedAmount.Amount })
-            .ToListAsync();
-        var paidByInvoice = allocations
-            .GroupBy(a => a.TargetDocumentId)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amt));
-
-        var overdueRows = postedOlder
-            .Select(i => new { i.Id, Outstanding = i.Amt - paidByInvoice.GetValueOrDefault(i.Id, 0m) })
-            .Where(x => x.Outstanding > 0m)
-            .ToList();
-        _overdueCount = overdueRows.Count;
-        _overdueAmount = overdueRows.Sum(x => x.Outstanding);
-
-        // Compliance: reuse PenaltyExposureQuery for the headline score.
-        try
+        var hour = DateTime.Now.Hour;
+        if (_isArabic)
         {
-            var penalty = await PenaltyQuery.GetAsync(now);
-            var deduction = penalty.ProjectedThisMonthEgp / 1000m
-                + penalty.WorkQueue.Count(w => w.Urgency == PenaltyActionUrgency.Overdue) * 10m;
-            if (deduction < 0) deduction = 0;
-            if (deduction > 50) deduction = 50;
-            _complianceScore = 100 - (int)Math.Round(deduction);
+            return hour < 12 ? "صباح الخير" : "مساء الخير";
         }
-        catch
-        {
-            _complianceScore = 100;
-        }
-        _complianceLabelAr = _complianceScore >= 90 ? "ممتاز"
-            : _complianceScore >= 75 ? "جيد"
-            : _complianceScore >= 50 ? "يحتاج متابعة"
-            : "خطر مرتفع";
-        _complianceLabelEn = _complianceScore >= 90 ? "Excellent"
-            : _complianceScore >= 75 ? "Good"
-            : _complianceScore >= 50 ? "Needs attention"
-            : "High risk";
-
-        // Net profit this month + sparkline of last 6 months
-        var sixMonthsAgo = monthStart.AddMonths(-5);
-        var allRev = await db.Set<SalesInvoice>().AsNoTracking()
-            .Where(i => i.State == DocumentState.Posted && i.DocumentDate >= sixMonthsAgo)
-            .Select(i => new { i.DocumentDate, Amt = i.GrandTotal.Amount })
-            .ToListAsync();
-        var allExp = await db.Set<EgyptTax.Domain.Expenses.Expense>().AsNoTracking()
-            .Where(e => e.State == DocumentState.Posted && e.DocumentDate >= sixMonthsAgo)
-            .Select(e => new { e.DocumentDate, Amt = e.Amount.Amount })
-            .ToListAsync();
-
-        for (int i = 0; i < 6; i++)
-        {
-            var month = sixMonthsAgo.AddMonths(i);
-            var nextMonth = month.AddMonths(1);
-            var rev = allRev.Where(r => r.DocumentDate >= month && r.DocumentDate < nextMonth).Sum(r => r.Amt);
-            var exp = allExp.Where(e => e.DocumentDate >= month && e.DocumentDate < nextMonth).Sum(e => e.Amt);
-            var label = IsArabic
-                ? ArabicNumerals.ToArabic(month.ToString("MMM", new CultureInfo("ar-EG")))
-                : month.ToString("MMM", CultureInfo.InvariantCulture);
-            _revenueByMonth.Add(new MonthBucket(label, rev, exp));
-            _profitSparkline.Add(rev - exp);
-        }
-        _netProfit = _profitSparkline.Last();
-        _netProfitPrevMonth = _profitSparkline.Count >= 2 ? _profitSparkline[^2] : 0m;
-        _profitGrowthPct = _netProfitPrevMonth == 0
-            ? (_netProfit > 0 ? 100 : 0)
-            : (int)Math.Round((_netProfit - _netProfitPrevMonth) / Math.Abs(_netProfitPrevMonth) * 100m);
-
-        // Action items
-        _nextVatDue = await db.Set<ComplianceObligation>().AsNoTracking()
-            .Where(o => (o.Kind == ComplianceObligationKind.VatMonthly
-                    || o.Kind == ComplianceObligationKind.VatQuarterly)
-                && o.DueDate >= today
-                && o.Status != ComplianceObligationStatus.Filed)
-            .OrderBy(o => o.DueDate)
-            .Select(o => (DateOnly?)o.DueDate)
-            .FirstOrDefaultAsync();
-
-        _unmatchedBankOps = await db.Set<BankStatementLine>().AsNoTracking()
-            .Where(l => l.MatchedCustomerReceiptVoucherId == null
-                && l.MatchedSupplierPaymentVoucherId == null)
-            .CountAsync();
-
-        _lowStockCount = await db.Set<Item>().AsNoTracking()
-            .Where(i => i.LowStockThreshold > 0
-                && i.QuantityOnHand <= i.LowStockThreshold)
-            .CountAsync();
-
-        // Cash flow last 30 days
-        var since = today.AddDays(-30);
-        var inflows = await db.Set<EgyptTax.Domain.Documents.CustomerReceiptVoucher>().AsNoTracking()
-            .Where(c => c.State == DocumentState.Posted
-                && c.PostedAtUtc != null
-                && c.ReceiptDate >= since)
-            .Select(c => new { Date = c.ReceiptDate, Amt = c.NetCashReceived.Amount })
-            .ToListAsync();
-        var outflows = await db.Set<EgyptTax.Domain.Documents.SupplierPaymentVoucher>().AsNoTracking()
-            .Where(p => p.State == DocumentState.Posted
-                && p.PostedAtUtc != null
-                && p.PaymentDate >= since)
-            .Select(p => new { Date = p.PaymentDate, Amt = p.NetCashPaid.Amount })
-            .ToListAsync();
-
-        decimal running = 0m;
-        for (int i = 0; i <= 30; i++)
-        {
-            var d = since.AddDays(i);
-            running += inflows.Where(x => x.Date == d).Sum(x => x.Amt);
-            running -= outflows.Where(x => x.Date == d).Sum(x => x.Amt);
-            _cashFlowDaily.Add(new DayPoint(d, running));
-        }
+        return hour < 12 ? "Good morning" : "Good afternoon";
     }
 }

@@ -1,44 +1,62 @@
-// v5 DP.3 — global Ctrl+K / Cmd+K listener that nudges Blazor to
-// open the command palette. The Blazor component owns the modal +
-// filtering + navigation; this file is purely a keyboard-shortcut
-// shim. Designed to coexist with browser/native Cmd+K (browser's
-// own shortcut for "search the address bar") — we preventDefault
-// only when the focus isn't already in an input the user is typing
-// into, so search boxes still let ⌘K do the native thing.
-window.daftarxRegisterCmdPalette = function (dotNetRef) {
-  if (window.__daftarxCmdPaletteRegistered) return;
-  window.__daftarxCmdPaletteRegistered = true;
+/**
+ * v5 UI Rebuild — Command Palette JS Interop
+ * Handles Ctrl+K / Cmd+K keyboard shortcut to open the palette,
+ * and provides the global `daftarxOpenCmdPalette` function that
+ * the sidebar search button calls via IJSRuntime.
+ */
+(function () {
+    "use strict";
 
-  // v5 DP.4 — expose a function so other UI (e.g. the mobile
-  // bottom tab bar's Quick-create FAB) can trigger the palette
-  // without each owning its own Blazor interop chain.
-  window.daftarxOpenCmdPalette = function () {
-    dotNetRef.invokeMethodAsync('Toggle');
-  };
+    let _dotNetRef = null;
+    let _keyHandler = null;
 
-  document.addEventListener('keydown', (e) => {
-    const isMeta = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
-    if (!isMeta || e.key !== 'k') return;
+    /**
+     * Called once from CommandPalette.razor OnAfterRenderAsync(firstRender).
+     * Stores the .NET object reference and registers the global keydown.
+     */
+    window.daftarxCmdPaletteInit = function (dotNetRef) {
+        _dotNetRef = dotNetRef;
 
-    // Don't hijack if the operator is mid-edit in a normal input
-    // OUTSIDE the palette itself; the modal's own input stays
-    // accessible because once it's open we trap focus inside.
-    const t = e.target;
-    if (t && t.closest && t.closest('.cmd-palette-modal')) return;
+        _keyHandler = function (e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+                e.preventDefault();
+                e.stopPropagation();
+                openPalette();
+            }
+        };
 
-    e.preventDefault();
-    dotNetRef.invokeMethodAsync('Toggle');
-  });
+        document.addEventListener("keydown", _keyHandler, { capture: true });
+    };
 
-  // Esc closes the palette when open. We always preventDefault on
-  // Esc when the palette is visible so it doesn't bubble into other
-  // close-handlers (e.g. modal backdrops on the page beneath).
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    const palette = document.querySelector('.cmd-palette-modal');
-    if (palette && palette.classList.contains('is-open')) {
-      e.preventDefault();
-      dotNetRef.invokeMethodAsync('Close');
+    /**
+     * Called from CommandPalette.razor DisposeAsync.
+     */
+    window.daftarxCmdPaletteDestroy = function () {
+        if (_keyHandler) {
+            document.removeEventListener("keydown", _keyHandler, { capture: true });
+            _keyHandler = null;
+        }
+        _dotNetRef = null;
+    };
+
+    /**
+     * Global function called by ModuleSidebar's search button.
+     */
+    window.daftarxOpenCmdPalette = function () {
+        openPalette();
+    };
+
+    function openPalette() {
+        if (_dotNetRef) {
+            _dotNetRef.invokeMethodAsync("Open");
+        }
     }
-  });
-};
+
+    /**
+     * Logout helper — called by ModuleSidebar logout button.
+     * Navigates to /logout with a full page reload.
+     */
+    window.daftarxLogout = function () {
+        window.location.href = "/logout";
+    };
+})();

@@ -1,15 +1,16 @@
 /* ============================================================
-   v5 UI Rebuild — Sprint 1 (mockup-fidelity pass).
-   Authoritative reference: 5 PNG mockups dropped 2026-05-15
-   (Dashboard, Invoice list, Invoice detail, JE editor, Cmd
-   palette open). All selectors here are scoped under .appshell
-   or .dx- prefixes so nothing leaks into the legacy MainLayout
-   pages — site.css still owns those.
+   v5 UI Rebuild — Sprint 1 (updated 2026-05-15).
+   Authoritative reference: 5 PNG mockups + React prototype.
+   All selectors scoped under .appshell or .dx- prefixes so
+   nothing leaks into the legacy MainLayout pages.
 
-   The new design is dark-only by intent (per the Manus spec:
-   accountants work long sessions, dark is easier on the eye).
-   Tokens hard-coded — they don't inherit from site.css's
-   data-theme tokens.
+   CHANGES from original:
+   - Sidebar widened from 92px → 200px (icons + labels always)
+   - Sub-nav widened from 232px → 220px
+   - Module buttons now horizontal (icon + label side by side)
+   - Added Command Palette (.dx-cmd-*) styles
+   - Added footer button variant (.appshell-module-btn--footer)
+   - Added keyboard shortcut badge (.appshell-kbd)
    ============================================================ */
 
 :root {
@@ -42,9 +43,9 @@
     --dx-info:         #60a5fa;
     --dx-info-dim:     rgba(96, 165, 250, 0.15);
 
-    /* Layout */
-    --dx-sidebar-w:    92px;
-    --dx-subnav-w:     232px;
+    /* Layout — UPDATED */
+    --dx-sidebar-w:    200px;
+    --dx-subnav-w:     220px;
 }
 
 /* ---------- Top-level shell ---------- */
@@ -65,7 +66,7 @@
 }
 
 /* ============================================================
-   Module sidebar (~92px)
+   Module sidebar (200px — icons + labels always visible)
    ============================================================ */
 .appshell-modules {
     flex: 0 0 var(--dx-sidebar-w);
@@ -74,40 +75,54 @@
     border-inline-start: 1px solid var(--dx-border-soft);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    padding: 14px 6px;
-    gap: 4px;
+    padding: 14px 10px;
+    gap: 2px;
     position: sticky;
     top: 0;
     height: 100vh;
     z-index: 50;
+    overflow-y: auto;
 }
 
+/* Logo — horizontal layout with "DaftarX" text */
 .appshell-modules-logo {
     display: flex;
     align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    margin-bottom: 14px;
+    text-decoration: none;
+    border-radius: 10px;
+    transition: background 120ms ease;
+}
+.appshell-modules-logo:hover { background: var(--dx-bg-hover); }
+
+.appshell-logo-d {
+    display: flex;
+    align-items: center;
     justify-content: center;
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
     color: var(--dx-bg);
     background: var(--dx-gold);
     font-weight: 800;
     font-family: 'Space Grotesk', 'Cairo', sans-serif;
-    text-decoration: none;
-    margin-bottom: 14px;
-    transition: transform 120ms ease;
-}
-.appshell-modules-logo:hover { transform: scale(1.04); }
-.appshell-logo-d {
-    font-size: 22px;
+    font-size: 18px;
     line-height: 1;
+    flex-shrink: 0;
+}
+.appshell-logo-text {
+    font-family: 'Space Grotesk', 'Cairo', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--dx-text);
+    letter-spacing: -0.01em;
 }
 
 .appshell-modules-nav {
     display: flex;
     flex-direction: column;
-    align-items: stretch;
     gap: 2px;
     flex: 1 1 auto;
     width: 100%;
@@ -117,21 +132,20 @@
 .appshell-modules-footer {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 8px;
+    gap: 2px;
     margin-top: auto;
     padding-top: 12px;
     width: 100%;
     border-top: 1px solid var(--dx-border-soft);
 }
 
+/* Module button — HORIZONTAL layout (icon + label side by side) */
 .appshell-module-btn {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 10px 4px 8px;
+    gap: 10px;
+    padding: 9px 12px;
     border-radius: 10px;
     color: var(--dx-text-muted);
     background: transparent;
@@ -152,30 +166,47 @@
     border-color: var(--dx-gold-line);
 }
 
-.appshell-module-btn--icon-only {
-    flex-direction: row;
-    padding: 10px;
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
+/* Footer button variant (search, settings, logout) */
+.appshell-module-btn--footer {
+    padding: 8px 12px;
+}
+
+/* Danger variant (logout) */
+.appshell-module-btn--danger:hover {
+    color: var(--dx-danger);
+    background: var(--dx-danger-dim);
 }
 
 .appshell-module-icon {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     stroke-width: 1.75;
     flex-shrink: 0;
 }
+
 .appshell-module-label {
-    font-size: 10.5px;
+    font-size: 13px;
     font-weight: 500;
-    line-height: 1.15;
-    text-align: center;
-    letter-spacing: -0.01em;
-    word-break: keep-all;
-    max-width: 76px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
+/* Keyboard shortcut badge */
+.appshell-kbd {
+    margin-inline-start: auto;
+    font-size: 10px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--dx-text-subtle);
+    background: var(--dx-bg-hover);
+    border: 1px solid var(--dx-border);
+    border-radius: 4px;
+    padding: 2px 5px;
+    line-height: 1;
+}
+
+/* User pill (kept for backward compat, now optional) */
 .appshell-user-pill {
     display: flex;
     align-items: center;
@@ -197,7 +228,7 @@
 }
 
 /* ============================================================
-   Sub-nav panel (232px)
+   Sub-nav panel (220px)
    ============================================================ */
 .appshell-subnav {
     flex: 0 0 var(--dx-subnav-w);
@@ -214,9 +245,9 @@
 }
 
 .appshell-subnav-header {
-    padding: 0 22px 18px;
+    padding: 0 20px 16px;
     color: var(--dx-gold);
-    font-size: 19px;
+    font-size: 17px;
     font-weight: 700;
     border-bottom: 1px solid var(--dx-border-soft);
     margin-bottom: 10px;
@@ -226,18 +257,18 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    padding: 0 10px;
+    padding: 0 8px;
 }
 
 .appshell-subnav-link {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
+    gap: 9px;
+    padding: 8px 10px;
     border-radius: 8px;
     color: var(--dx-text-muted);
     text-decoration: none;
-    font-size: 13.5px;
+    font-size: 13px;
     font-weight: 500;
     transition: color 120ms ease, background 120ms ease;
     line-height: 1.4;
@@ -253,8 +284,8 @@
 }
 
 .appshell-subnav-icon {
-    width: 17px;
-    height: 17px;
+    width: 16px;
+    height: 16px;
     stroke-width: 1.75;
     flex-shrink: 0;
     opacity: 0.85;
@@ -265,11 +296,11 @@
     border: 0;
     height: 1px;
     background: var(--dx-border-soft);
-    margin: 12px 18px;
+    margin: 10px 16px;
 }
 
 .appshell-subnav-group {
-    padding: 14px 18px 8px;
+    padding: 12px 16px 6px;
     color: var(--dx-gold);
     font-size: 11px;
     font-weight: 700;
@@ -278,8 +309,167 @@
 }
 
 /* ============================================================
-   Dashboard header (mockup #5)
+   Command Palette (.dx-cmd-*)
    ============================================================ */
+.dx-cmd-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 9998;
+}
+
+.dx-cmd-palette {
+    position: fixed;
+    top: 15vh;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(600px, 90vw);
+    max-height: 60vh;
+    background: var(--dx-bg-card);
+    border: 1px solid var(--dx-border);
+    border-radius: 16px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.dx-cmd-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--dx-border-soft);
+}
+
+.dx-cmd-input-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--dx-text-muted);
+    flex-shrink: 0;
+}
+
+.dx-cmd-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--dx-text);
+    font-size: 15px;
+    font-family: inherit;
+    caret-color: var(--dx-gold);
+}
+.dx-cmd-input::placeholder {
+    color: var(--dx-text-subtle);
+}
+
+.dx-cmd-esc {
+    font-size: 10px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--dx-text-subtle);
+    background: var(--dx-bg-hover);
+    border: 1px solid var(--dx-border);
+    border-radius: 4px;
+    padding: 3px 6px;
+    line-height: 1;
+}
+
+.dx-cmd-results {
+    overflow-y: auto;
+    padding: 8px;
+    flex: 1;
+}
+
+.dx-cmd-group-header {
+    padding: 8px 12px 4px;
+    color: var(--dx-text-subtle);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.dx-cmd-sep {
+    border: 0;
+    height: 1px;
+    background: var(--dx-border-soft);
+    margin: 6px 12px;
+}
+
+.dx-cmd-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 8px;
+    background: transparent;
+    border: none;
+    color: var(--dx-text-muted);
+    font: inherit;
+    font-size: 13.5px;
+    cursor: pointer;
+    text-align: start;
+    transition: background 80ms ease, color 80ms ease;
+}
+.dx-cmd-item:hover,
+.dx-cmd-item.is-selected {
+    background: var(--dx-bg-hover);
+    color: var(--dx-text);
+}
+
+.dx-cmd-item-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--dx-bg-hover);
+    flex-shrink: 0;
+}
+.dx-cmd-item-icon--gold {
+    background: var(--dx-gold-dim);
+    color: var(--dx-gold-bright);
+}
+
+.dx-cmd-ic {
+    width: 15px;
+    height: 15px;
+    stroke-width: 1.75;
+}
+
+.dx-cmd-item-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dx-cmd-item-module {
+    margin-inline-start: auto;
+    font-size: 11px;
+    color: var(--dx-text-subtle);
+    flex-shrink: 0;
+}
+
+.dx-cmd-empty {
+    text-align: center;
+    color: var(--dx-text-muted);
+    padding: 32px 0;
+    margin: 0;
+    font-size: 14px;
+}
+
+/* ============================================================
+   Dashboard header
+   ============================================================ */
+.dx-dashboard {
+    max-width: 1400px;
+}
+
 .dx-dash-header {
     display: flex;
     align-items: flex-start;
@@ -319,10 +509,6 @@
     direction: ltr;
 }
 .dx-dash-brand-x { color: var(--dx-gold-bright); }
-.dx-dash-brand-shield {
-    color: var(--dx-gold);
-    display: flex;
-}
 
 .dx-dash-date {
     display: flex;
@@ -360,16 +546,11 @@
     align-items: center;
     gap: 16px;
     min-height: 132px;
-    /* In RTL the first DOM child is on the visual RIGHT (text)
-       and the second is on the visual LEFT (icon) — matches
-       mockup #5 layout exactly. */
 }
 
-/* The icon block sits on the visual LEFT of each card (DOM
-   first child since text content is RTL'd to the right). */
 .dx-kpi-card > .dx-kpi-icon,
 .dx-kpi-card > .dx-kpi-donut {
-    order: 2;          /* push to visual end (= LEFT in RTL) */
+    order: 2;
 }
 .dx-kpi-card > .dx-kpi-body {
     order: 1;
@@ -419,8 +600,6 @@
     justify-content: flex-end;
     gap: 6px;
     direction: ltr;
-    /* keep the amount LTR but the parent text-align: end keeps
-       the whole block on the right in RTL */
 }
 .dx-kpi-amount {
     color: var(--dx-text);
@@ -471,7 +650,7 @@
     text-align: end;
 }
 
-/* Compliance donut ring (CSS conic-gradient + center cutout) */
+/* Compliance donut ring */
 .dx-kpi-donut {
     width: 78px;
     height: 78px;
@@ -539,8 +718,6 @@
     gap: 14px;
     padding: 12px 0;
     border-bottom: 1px solid var(--dx-border-soft);
-    /* DOM order: CTA first → text → icon. In RTL renders as:
-       icon | text (right-aligned) | CTA (visual far left). */
 }
 .dx-action-row:last-child { border-bottom: none; }
 
@@ -739,8 +916,14 @@
     .appshell-module-btn {
         flex-direction: row;
         padding: 6px 10px;
+        white-space: nowrap;
     }
     .appshell-module-label { max-width: none; }
+    .appshell-modules-logo {
+        margin-bottom: 0;
+        margin-inline-end: 8px;
+    }
+    .appshell-logo-text { display: none; }
     .appshell-modules-footer {
         flex-direction: row;
         margin-top: 0;
@@ -750,6 +933,7 @@
         border-inline-start: 1px solid var(--dx-border-soft);
         padding-inline-start: 8px;
     }
+    .appshell-kbd { display: none; }
     .appshell-subnav {
         width: 100%;
         height: auto;

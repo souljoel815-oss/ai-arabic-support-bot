@@ -7,18 +7,16 @@
 @inject NavigationManager Nav
 
 @*
-    v5 UI Rebuild — Sprint 1. The new "Mission Control" layout
-    per the Manus 2026-05-15 design: 3-tier nav (64px module
-    sidebar + 240px context-sensitive sub-nav + main content).
+    v5 UI Rebuild — Sprint 1 (updated 2026-05-15).
+    "Mission Control" layout with 3-tier navigation:
+      Layer 1: 200px module sidebar (icons + labels always visible)
+      Layer 2: 220px context-sensitive sub-nav panel
+      Layer 3: Main content area (margin adjusts automatically)
 
     Lives side-by-side with the existing MainLayout — only pages
-    that opt-in via @layout AppShellLayout get the new chrome;
-    every other page keeps using MainLayout. Lets the operator
-    drive the rebuild module-by-module without breaking anything.
-
-    Dashboard is single-screen (no sub-nav per spec); other 6
-    modules render the contextual SubNavPanel between sidebar and
-    main content.
+    that opt-in via @layout AppShellLayout get the new chrome.
+    Dashboard is single-screen (no sub-nav); other 6 modules
+    render the contextual SubNavPanel.
 *@
 
 <div class="appshell @(_activeModule?.HasSubNav == true ? "has-subnav" : "no-subnav")">
@@ -34,7 +32,7 @@
     </main>
 </div>
 
-@* Reuse the existing palette + toast layer — no rebuild needed. *@
+@* Command Palette + Toast layer *@
 <CommandPalette />
 <ToastContainer />
 

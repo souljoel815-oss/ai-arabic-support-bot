@@ -1,15 +1,14 @@
 namespace EgyptTax.Web.Shared.AppShell;
 
 /// <summary>
-/// v5 UI Rebuild — Sprint 1. Defines a module in the new 3-tier
-/// "Mission Control" navigation per the Manus 2026-05-15 design
-/// spec: 7 module icons in a 64px sidebar; clicking one swaps the
-/// 240px sub-nav panel to that module's contextual links. The
-/// Dashboard module is single-screen so it has <see cref="HasSubNav"/>
-/// = false (no panel renders).
+/// v5 UI Rebuild — Sprint 1 (updated 2026-05-15).
+/// Defines a module in the 3-tier "Mission Control" navigation:
+///   Layer 1: 200px sidebar with icons + Arabic labels always visible
+///   Layer 2: 220px sub-nav panel with contextual links
+///   Layer 3: Main content area
 ///
-/// The icon path is the SVG <c>d=</c> attribute for a 24×24
-/// viewBox; render via the existing <c>Icon</c> component.
+/// The Dashboard module is single-screen (HasSubNav = false).
+/// Icon names map to the existing <c>&lt;Icon Name="..." /&gt;</c> component.
 /// </summary>
 public sealed record AppShellModule(
     string Id,
@@ -33,10 +32,19 @@ public sealed record SubNavLink(
 ) : SubNavEntry;
 
 /// <summary>
-/// Catalog of the 7 modules + their sub-nav contents. Routes
-/// match the existing flat URL structure (e.g. <c>/invoices</c>,
-/// not <c>/sales/invoices</c>) so we don't break any link in the
-/// app — the module grouping is a UI concept, not a URL path.
+/// Quick action for the Command Palette (Ctrl+K).
+/// </summary>
+public sealed record QuickAction(
+    string LabelAr,
+    string LabelEn,
+    string Url,
+    string IconName
+);
+
+/// <summary>
+/// Catalog of the 7 modules + their sub-nav contents + quick actions.
+/// Routes match the existing flat URL structure (e.g. <c>/invoices</c>,
+/// not <c>/sales/invoices</c>) so we don't break any link in the app.
 /// </summary>
 public static class AppShellModuleRegistry
 {
@@ -89,8 +97,6 @@ public static class AppShellModuleRegistry
                 new SubNavLink("شهادات الخصم", "WHT certificates", "/certificates", "certificate شهادة", "shield-check"),
             }),
 
-        // (purchases done; rest below)
-
         new AppShellModule(InventoryId, "package", "المخزون", "Inventory", "/items", HasSubNav: true,
             SubNavEntries: new SubNavEntry[]
             {
@@ -112,9 +118,8 @@ public static class AppShellModuleRegistry
                 new SubNavLink("قيود اليومية", "Journal entries", "/journals", "journal قيد", "edit"),
                 new SubNavLink("شجرة الحسابات", "Chart of accounts", "/settings/chart-of-accounts", "coa حسابات", "boxes"),
                 new SubNavLink("المطابقة البنكية", "Bank reconciliation", "/payments/bank-statements", "bank statement كشف", "landmark"),
-                new SubNavLink("تحويل أموال", "Fund transfer", "/cash-transfer", "fund transfer تحويل", "arrow-right"),
+                new SubNavLink("تحويل أموال", "Fund transfer", "/payments/unmatched", "fund transfer تحويل", "arrow-right"),
                 new SubNavLink("مراكز التكلفة", "Cost centers", "/cost-centers", "cost center مركز تكلفة", "tag"),
-                new SubNavLink("مسحوبات شخصية", "Owner drawings", "/owner-drawings", "drawings مسحوبات owner", "wallet"),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("الضرائب", "Taxes"),
                 new SubNavLink("ضريبة القيمة المضافة", "VAT return", "/tax/vat-return", "vat return إقرار", "percent"),
@@ -130,8 +135,8 @@ public static class AppShellModuleRegistry
                 new SubNavGroupHeader("التقارير", "Reports"),
                 new SubNavLink("ميزان المراجعة", "Trial balance", "/reports/trial-balance", "trial balance ميزان", "scale"),
                 new SubNavLink("دفتر الأستاذ", "General Ledger", "/reports/general-ledger", "general ledger دفتر", "book"),
-                new SubNavLink("قائمة الدخل", "Profit & loss", "/reports/cash-flow", "p&l دخل", "trending-up"),
-                new SubNavLink("الميزانية", "Balance sheet", "/reports/cash-flow", "balance sheet ميزانية", "scale"),
+                new SubNavLink("قائمة الدخل", "Profit & loss", "/reports/profit-loss", "p&l دخل", "trending-up"),
+                new SubNavLink("الميزانية", "Balance sheet", "/reports/balance-sheet", "balance sheet ميزانية", "scale"),
                 new SubNavLink("التدفقات النقدية", "Cash flow", "/reports/cash-flow", "cash flow تدفقات", "trending-up"),
                 new SubNavLink("درع الغرامات", "Penalty shield", "/penalty-shield", "penalty غرامة", "shield-check"),
             }),
@@ -164,8 +169,6 @@ public static class AppShellModuleRegistry
                 new SubNavLink("طرق الدفع", "Payment methods", "/settings/payment-methods", "payment method طريقة", "credit-card"),
                 new SubNavLink("الحسابات النقدية", "Cash accounts", "/settings/cash-accounts", "cash account نقدي", "wallet"),
                 new SubNavLink("قوالب عروض الأسعار", "Quotation templates", "/settings/quotation-templates", "quotation template قالب", "file-text"),
-                new SubNavLink("فرق المبيعات", "Sales teams", "/settings/sales-teams", "sales team فريق", "users"),
-                new SubNavLink("قوائم الأسعار", "Pricelists", "/settings/pricelists", "pricelist قائمة أسعار", "tag"),
                 new SubNavLink("Webhooks", "Webhooks", "/settings/webhooks", "webhook", "zap"),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("الاستيراد والإحالات", "Import & referrals"),
@@ -174,16 +177,24 @@ public static class AppShellModuleRegistry
             }),
     };
 
+    /// <summary>Quick actions shown in the Command Palette (Ctrl+K).</summary>
+    public static IReadOnlyList<QuickAction> QuickActions { get; } = new[]
+    {
+        new QuickAction("فاتورة جديدة", "New invoice", "/invoices/new", "receipt"),
+        new QuickAction("عرض سعر جديد", "New quotation", "/quotations/new", "file-text"),
+        new QuickAction("مصروف جديد", "New expense", "/expenses/new", "credit-card"),
+        new QuickAction("قيد يومية جديد", "New journal entry", "/journals/new", "edit"),
+        new QuickAction("تسجيل دفعة", "Record payment", "/payments/customer-receipts/new", "wallet"),
+    };
+
     public static AppShellModule? Get(string id) =>
         All.FirstOrDefault(m => m.Id == id);
 
     /// <summary>
     /// Maps a URL path to its owning module. Order matters — more
     /// specific prefixes win (e.g. <c>/settings/chart-of-accounts</c>
-    /// belongs to Accounting, not Settings, even though it sits
-    /// under <c>/settings/</c>). Falls back to Dashboard for the
-    /// root path or anything unmatched (e.g. an admin-only page
-    /// the operator opened from a deep link).
+    /// belongs to Accounting, not Settings). Falls back to Dashboard
+    /// for the root path or anything unmatched.
     /// </summary>
     public static string ResolveActive(string path)
     {
@@ -205,8 +216,26 @@ public static class AppShellModuleRegistry
             }
         }
 
-        // Untracked routes fall back to Dashboard so the user can
-        // always click a module to navigate elsewhere.
         return DashboardId;
+    }
+
+    /// <summary>
+    /// Returns all sub-nav links across all modules — used by the
+    /// Command Palette to provide searchable screen navigation.
+    /// </summary>
+    public static IEnumerable<(string Label, string Url, string ModuleLabel, string IconName)> GetAllSearchableItems(bool arabic = true)
+    {
+        foreach (var module in All)
+        {
+            foreach (var entry in module.SubNavEntries)
+            {
+                if (entry is SubNavLink link)
+                {
+                    var label = arabic ? link.LabelAr : link.LabelEn;
+                    var modLabel = arabic ? module.LabelAr : module.LabelEn;
+                    yield return (label, link.Url, modLabel, link.IconName);
+                }
+            }
+        }
     }
 }

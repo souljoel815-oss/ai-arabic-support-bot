@@ -6,23 +6,24 @@
 @inject IJSRuntime Js
 
 @*
-    v5 UI Rebuild — Sprint 1, mockup-fidelity pass.
-    The right-edge (RTL) module rail per the Manus 2026-05-15 mockups:
-    ~88px wide, dark-navy bg, gold "D" shield logo at top, then 7
-    module buttons each with an icon + tiny Arabic label below.
-    Active module gets a gold-tinted rounded box around the whole
-    icon+label block. Bottom rail: search trigger, settings (link to
-    Settings module if not already active), and a circular user
-    avatar — icon-only at the bottom, no labels there per mockup.
+    v5 UI Rebuild — Sprint 1 (updated 2026-05-15).
+    200px-wide module sidebar (RTL: fixed right edge) with icons +
+    Arabic labels ALWAYS visible (no hover-to-expand). Gold "DX"
+    shield logo at top, then 6 main modules (dashboard through
+    contacts), then a bottom section with search trigger (Ctrl+K),
+    settings link, and logout button.
 *@
 
 <aside class="appshell-modules" aria-label="@(_isArabic ? "الوحدات" : "Modules")">
+    @* Logo block *@
     <a class="appshell-modules-logo" href="/" title="DaftarX" aria-label="DaftarX">
         <span class="appshell-logo-d">D</span>
+        <span class="appshell-logo-text">DaftarX</span>
     </a>
 
+    @* Main module buttons (all except settings) *@
     <nav class="appshell-modules-nav">
-        @foreach (var m in AppShellModuleRegistry.All)
+        @foreach (var m in AppShellModuleRegistry.All.Where(x => x.Id != AppShellModuleRegistry.SettingsId))
         {
             var isActive = m.Id == ActiveModuleId;
             <a class="appshell-module-btn @(isActive ? "is-active" : "")"
@@ -35,26 +36,40 @@
         }
     </nav>
 
+    @* Bottom section: search, settings, logout *@
     <div class="appshell-modules-footer">
-        <button type="button" class="appshell-module-btn appshell-module-btn--icon-only"
+        @* Search / Command Palette trigger *@
+        <button type="button" class="appshell-module-btn appshell-module-btn--footer"
                 title="@(_isArabic ? "بحث (Ctrl+K)" : "Search (Ctrl+K)")"
                 aria-label="@(_isArabic ? "افتح البحث الشامل" : "Open universal search")"
                 @onclick="OpenCommandPaletteAsync">
             <Icon Name="search" Class="appshell-module-icon" />
+            <span class="appshell-module-label">@(_isArabic ? "بحث" : "Search")</span>
+            <kbd class="appshell-kbd">⌘K</kbd>
         </button>
 
-        <a class="appshell-user-pill"
-           href="/profile"
-           title="@(_userDisplayName ?? "Profile")">
-            @if (!string.IsNullOrEmpty(_userInitial))
-            {
-                <span class="appshell-user-initial">@_userInitial</span>
-            }
-            else
-            {
-                <Icon Name="user" Class="appshell-module-icon" />
-            }
-        </a>
+        @* Settings module link *@
+        @{
+            var settingsModule = AppShellModuleRegistry.Get(AppShellModuleRegistry.SettingsId);
+            var settingsActive = ActiveModuleId == AppShellModuleRegistry.SettingsId;
+        }
+        @if (settingsModule is not null)
+        {
+            <a class="appshell-module-btn appshell-module-btn--footer @(settingsActive ? "is-active" : "")"
+               href="@settingsModule.DefaultRoute"
+               aria-current="@(settingsActive ? "page" : null)">
+                <Icon Name="settings" Class="appshell-module-icon" />
+                <span class="appshell-module-label">@(_isArabic ? settingsModule.LabelAr : settingsModule.LabelEn)</span>
+            </a>
+        }
+
+        @* Logout *@
+        <button type="button" class="appshell-module-btn appshell-module-btn--footer appshell-module-btn--danger"
+                title="@(_isArabic ? "تسجيل الخروج" : "Log out")"
+                @onclick="LogoutAsync">
+            <Icon Name="log-out" Class="appshell-module-icon" />
+            <span class="appshell-module-label">@(_isArabic ? "تسجيل الخروج" : "Log out")</span>
+        </button>
     </div>
 </aside>
 
@@ -64,24 +79,15 @@
     private bool _isArabic =>
         CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
 
-    private string? _userInitial;
-    private string? _userDisplayName;
-
-    protected override async Task OnInitializedAsync()
-    {
-        var auth = await AuthState.GetAuthenticationStateAsync();
-        var user = auth.User;
-        if (user.Identity?.IsAuthenticated == true)
-        {
-            var name = user.Identity.Name ?? user.FindFirst("name")?.Value ?? "?";
-            _userDisplayName = name;
-            _userInitial = string.IsNullOrEmpty(name) ? "?" : char.ToUpperInvariant(name[0]).ToString();
-        }
-    }
-
     private async Task OpenCommandPaletteAsync()
     {
         try { await Js.InvokeVoidAsync("daftarxOpenCmdPalette"); }
         catch { /* JS not loaded yet — first paint, ignore */ }
+    }
+
+    private async Task LogoutAsync()
+    {
+        try { await Js.InvokeVoidAsync("daftarxLogout"); }
+        catch { Nav.NavigateTo("/logout", forceLoad: true); }
     }
 }
