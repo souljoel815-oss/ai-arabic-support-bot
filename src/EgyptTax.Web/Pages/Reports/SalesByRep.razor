@@ -23,7 +23,7 @@
 
 <h1>@(IsArabic ? "تقرير مبيعات المناديب" : "Sales by Representative")</h1>
 
-<div class="form-grid" style="max-width:560px; margin-bottom:16px;">
+<div class="form-grid" style="max-width:680px; margin-bottom:16px;">
     <label>
         <span>@(IsArabic ? "من تاريخ" : "From")</span>
         <input type="date" @bind="_from" @bind:after="ReloadAsync" />
@@ -31,6 +31,10 @@
     <label>
         <span>@(IsArabic ? "إلى تاريخ" : "To")</span>
         <input type="date" @bind="_to" @bind:after="ReloadAsync" />
+    </label>
+    <label style="grid-column:1 / -1;display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" @bind="_byTeam" @bind:after="ReloadAsync" />
+        <span>@(IsArabic ? "تجميع حسب الفريق (مع نسبة تحقيق الهدف)" : "Group by team (with target attainment %)")</span>
     </label>
 </div>
 
@@ -46,45 +50,130 @@
     return;
 }
 
-<table class="data-grid">
-    <thead>
-        <tr>
-            <th>@(IsArabic ? "المندوب" : "Rep")</th>
-            <th>@(IsArabic ? "البريد" : "Email")</th>
-            <th class="num">@(IsArabic ? "عدد الفواتير" : "Invoices")</th>
-            <th class="num">@(IsArabic ? "صافي المبيعات" : "Net sales")</th>
-            <th class="num">@(IsArabic ? "الضريبة" : "VAT")</th>
-            <th class="num">@(IsArabic ? "الإجمالي الكلي" : "Grand total")</th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var r in _rows)
-        {
+@if (!_byTeam)
+{
+    @* Per-rep view (original) *@
+    <table class="data-grid">
+        <thead>
             <tr>
-                <td>@(IsArabic ? r.NameAr : r.NameEn)</td>
-                <td><code>@r.Email</code></td>
-                <td class="num">@r.InvoiceCount</td>
-                <td class="num">@r.NetSales.ToString("F2")</td>
-                <td class="num">@r.VatTotal.ToString("F2")</td>
-                <td class="num"><strong>@r.GrandTotal.ToString("F2")</strong></td>
+                <th>@(IsArabic ? "المندوب" : "Rep")</th>
+                <th>@(IsArabic ? "البريد" : "Email")</th>
+                <th>@(IsArabic ? "الفريق" : "Team")</th>
+                <th class="num">@(IsArabic ? "عدد الفواتير" : "Invoices")</th>
+                <th class="num">@(IsArabic ? "صافي المبيعات" : "Net sales")</th>
+                <th class="num">@(IsArabic ? "الضريبة" : "VAT")</th>
+                <th class="num">@(IsArabic ? "الإجمالي الكلي" : "Grand total")</th>
             </tr>
-        }
-    </tbody>
-    <tfoot>
-        <tr>
-            <td colspan="2"><strong>@(IsArabic ? "الإجمالي" : "Total")</strong></td>
-            <td class="num"><strong>@_rows.Sum(r => r.InvoiceCount)</strong></td>
-            <td class="num"><strong>@_rows.Sum(r => r.NetSales).ToString("F2")</strong></td>
-            <td class="num"><strong>@_rows.Sum(r => r.VatTotal).ToString("F2")</strong></td>
-            <td class="num"><strong>@_rows.Sum(r => r.GrandTotal).ToString("F2")</strong></td>
-        </tr>
-    </tfoot>
-</table>
+        </thead>
+        <tbody>
+            @foreach (var r in _rows)
+            {
+                <tr>
+                    <td>@(IsArabic ? r.NameAr : r.NameEn)</td>
+                    <td><code>@r.Email</code></td>
+                    <td>@(r.TeamNameAr is null ? "—" : (IsArabic ? r.TeamNameAr : r.TeamNameEn))</td>
+                    <td class="num">@r.InvoiceCount</td>
+                    <td class="num">@r.NetSales.ToString("F2")</td>
+                    <td class="num">@r.VatTotal.ToString("F2")</td>
+                    <td class="num"><strong>@r.GrandTotal.ToString("F2")</strong></td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="3"><strong>@(IsArabic ? "الإجمالي" : "Total")</strong></td>
+                <td class="num"><strong>@_rows.Sum(r => r.InvoiceCount)</strong></td>
+                <td class="num"><strong>@_rows.Sum(r => r.NetSales).ToString("F2")</strong></td>
+                <td class="num"><strong>@_rows.Sum(r => r.VatTotal).ToString("F2")</strong></td>
+                <td class="num"><strong>@_rows.Sum(r => r.GrandTotal).ToString("F2")</strong></td>
+            </tr>
+        </tfoot>
+    </table>
+}
+else
+{
+    @* By-team view: group rep rows by SalesTeamId *@
+    var teamGroups = _rows
+        .GroupBy(r => r.TeamId)
+        .Select(g => new
+        {
+            TeamId = g.Key,
+            TeamNameAr = g.First().TeamNameAr ?? (IsArabic ? "غير معيّن" : "Unassigned"),
+            TeamNameEn = g.First().TeamNameEn ?? "Unassigned",
+            MonthlyTarget = g.First().TeamMonthlyTarget,
+            Reps = g.OrderByDescending(r => r.GrandTotal).ToList(),
+            NetSales = g.Sum(r => r.NetSales),
+            VatTotal = g.Sum(r => r.VatTotal),
+            GrandTotal = g.Sum(r => r.GrandTotal),
+            InvoiceCount = g.Sum(r => r.InvoiceCount),
+        })
+        .OrderByDescending(t => t.GrandTotal)
+        .ToList();
+
+    // Attainment % is grand_total / (target * months_in_range).
+    var months = Math.Max(1, ((_to.Year - _from.Year) * 12 + _to.Month - _from.Month) + 1);
+
+    @foreach (var team in teamGroups)
+    {
+        var teamTarget = team.MonthlyTarget * months;
+        var attainmentPct = teamTarget is decimal t && t > 0
+            ? (int)Math.Round(team.GrandTotal / t * 100m)
+            : (int?)null;
+        <h2 style="margin-top:20px;">
+            @(IsArabic ? team.TeamNameAr : team.TeamNameEn)
+            @if (attainmentPct is not null)
+            {
+                <span style="font-size:14px;font-weight:500;color:@(attainmentPct >= 100 ? "var(--success-text)" : attainmentPct >= 75 ? "var(--warning-text)" : "var(--danger-text)");margin-inline-start:12px;">
+                    @attainmentPct% @(IsArabic ? "من الهدف" : "of target")
+                    @if (teamTarget is decimal t2)
+                    {
+                        <text> (@team.GrandTotal.ToString("N0") / @t2.ToString("N0"))</text>
+                    }
+                </span>
+            }
+        </h2>
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "المندوب" : "Rep")</th>
+                    <th>@(IsArabic ? "البريد" : "Email")</th>
+                    <th class="num">@(IsArabic ? "عدد الفواتير" : "Invoices")</th>
+                    <th class="num">@(IsArabic ? "صافي المبيعات" : "Net sales")</th>
+                    <th class="num">@(IsArabic ? "الضريبة" : "VAT")</th>
+                    <th class="num">@(IsArabic ? "الإجمالي الكلي" : "Grand total")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in team.Reps)
+                {
+                    <tr>
+                        <td>@(IsArabic ? r.NameAr : r.NameEn)</td>
+                        <td><code>@r.Email</code></td>
+                        <td class="num">@r.InvoiceCount</td>
+                        <td class="num">@r.NetSales.ToString("F2")</td>
+                        <td class="num">@r.VatTotal.ToString("F2")</td>
+                        <td class="num">@r.GrandTotal.ToString("F2")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="2"><strong>@(IsArabic ? "إجمالي الفريق" : "Team total")</strong></td>
+                    <td class="num"><strong>@team.InvoiceCount</strong></td>
+                    <td class="num"><strong>@team.NetSales.ToString("F2")</strong></td>
+                    <td class="num"><strong>@team.VatTotal.ToString("F2")</strong></td>
+                    <td class="num"><strong>@team.GrandTotal.ToString("F2")</strong></td>
+                </tr>
+            </tfoot>
+        </table>
+    }
+}
 
 @code {
     private bool _loading = true;
     private DateTime _from = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
     private DateTime _to = DateTime.UtcNow.Date;
+    private bool _byTeam;     // v5 B.1 — toggles per-team grouping
     private List<RepRow> _rows = new();
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
@@ -98,8 +187,6 @@
         // Project the per-invoice rows we need then group + sum in
         // memory. EF's SQLite provider can't translate Sum() on
         // decimal columns, so we deliberately materialise first.
-        // Volumes per period are small (a few hundred invoices at
-        // most for an SMB); the round-trip stays cheap.
         var raw = await Db.Set<SalesInvoice>().AsNoTracking()
             .Where(i => i.State == DocumentState.Posted
                 && i.CreatedByUserId != null
@@ -125,16 +212,27 @@
             })
             .ToList();
 
-        // Bulk-load user display names so the table shows "Mahmoud" not a GUID.
+        // Bulk-load user display names + team membership so we can
+        // show team names + roll up per-team totals.
         var userIds = grouped.Select(r => r.UserId).ToArray();
         var users = await Db.Set<User>().AsNoTracking()
             .Where(u => userIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id);
 
+        var teamIds = users.Values
+            .Where(u => u.SalesTeamId is not null)
+            .Select(u => u.SalesTeamId!.Value)
+            .Distinct()
+            .ToArray();
+        var teams = await Db.Set<SalesTeam>().AsNoTracking()
+            .Where(t => teamIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id);
+
         _rows = grouped
             .Select(r =>
             {
                 var u = users.GetValueOrDefault(r.UserId);
+                var team = u?.SalesTeamId is { } tid ? teams.GetValueOrDefault(tid) : null;
                 return new RepRow(
                     UserId: r.UserId,
                     NameAr: u?.DisplayName.Arabic ?? r.UserId.ToString("D"),
@@ -143,7 +241,11 @@
                     InvoiceCount: r.Count,
                     NetSales: r.NetSales,
                     VatTotal: r.VatTotal,
-                    GrandTotal: r.GrandTotal);
+                    GrandTotal: r.GrandTotal,
+                    TeamId: u?.SalesTeamId,
+                    TeamNameAr: team?.Name.Arabic,
+                    TeamNameEn: team?.Name.English,
+                    TeamMonthlyTarget: team?.MonthlyTargetEgp);
             })
             .OrderByDescending(r => r.GrandTotal)
             .ToList();
@@ -159,5 +261,9 @@
         int InvoiceCount,
         decimal NetSales,
         decimal VatTotal,
-        decimal GrandTotal);
+        decimal GrandTotal,
+        Guid? TeamId,
+        string? TeamNameAr,
+        string? TeamNameEn,
+        decimal? TeamMonthlyTarget);
 }

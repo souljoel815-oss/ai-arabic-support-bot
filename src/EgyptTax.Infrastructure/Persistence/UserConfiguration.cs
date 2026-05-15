@@ -63,6 +63,12 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnName("commission_rate_percent")
             .HasColumnType("decimal(5,2)");
 
+        // v5 B.1 — sales-team membership (nullable FK; no CASCADE
+        // because we want soft-delete behaviour on teams via
+        // SalesTeamStatus.Inactive instead).
+        b.Property(u => u.SalesTeamId).HasColumnName("sales_team_id");
+        b.HasIndex(u => u.SalesTeamId).HasDatabaseName("ix_users_sales_team_id");
+
         b.Property(u => u.LastLoginAtUtc)
             .HasColumnName("last_login_at_utc")
             .HasColumnType("datetime2(3)");

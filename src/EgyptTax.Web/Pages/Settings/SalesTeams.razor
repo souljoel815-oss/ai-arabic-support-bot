@@ -1,0 +1,248 @@
+@page "/settings/sales-teams"
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.SharedKernel.Time
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IClock Clock
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 B.1 — Sales Teams management. Operator creates teams, sets
+    a monthly revenue target + manager, and assigns each rep to at
+    most one team. Per-team revenue rollup ships on
+    /reports/sales-by-rep via the "By team" toggle (B.1 step 2).
+*@
+
+<PageTitle>@(IsArabic ? "فرق المبيعات | DaftarX" : "Sales Teams | DaftarX")</PageTitle>
+
+<h1>@(IsArabic ? "فرق المبيعات" : "Sales teams")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "جمّع المناديب في فرق ووضع أهداف شهرية لمتابعة الأداء — التقرير في /reports/sales-by-rep بزر «حسب الفريق»."
+        : "Group reps into teams with monthly targets — see per-team rollups under /reports/sales-by-rep with the \"By team\" toggle.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="kpi-card kpi-info" role="status" style="margin:8px 0;">@_flash</div>
+}
+
+<section style="margin-top:18px;display:grid;grid-template-columns:minmax(0, 360px) 1fr;gap:24px;align-items:flex-start;">
+    @* Create form *@
+    <div class="form-grid">
+        <h2 style="margin-top:0;">@(IsArabic ? "فريق جديد" : "New team")</h2>
+        <label>
+            <span>@(IsArabic ? "الاسم (عربي) *" : "Name (Arabic) *")</span>
+            <input type="text" maxlength="120" @bind="_form.NameArabic" @bind:event="oninput" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "Name (English) *" : "Name (English) *")</span>
+            <input type="text" maxlength="120" @bind="_form.NameEnglish" @bind:event="oninput" />
+        </label>
+        <label>
+            <span>@(IsArabic ? "المدير (اختياري)" : "Manager (optional)")</span>
+            <select @bind="_form.ManagerUserId">
+                <option value="">— @(IsArabic ? "بدون" : "None") —</option>
+                @foreach (var u in _users)
+                {
+                    <option value="@u.Id">@(IsArabic ? u.DisplayName.Arabic : u.DisplayName.English) (@u.Email)</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>@(IsArabic ? "الهدف الشهري (ج.م، اختياري)" : "Monthly target (EGP, optional)")</span>
+            <input type="number" min="0" step="100" @bind="_form.MonthlyTargetEgp" />
+        </label>
+        <button type="button" class="btn-primary" @onclick="OnCreateAsync"
+                disabled="@(string.IsNullOrWhiteSpace(_form.NameArabic) || string.IsNullOrWhiteSpace(_form.NameEnglish))">
+            @(IsArabic ? "إضافة الفريق" : "Add team")
+        </button>
+    </div>
+
+    @* Existing teams + member-assignment table *@
+    <div>
+        <h2 style="margin-top:0;">@(IsArabic ? "الفرق الحالية" : "Existing teams") (@_teams.Count)</h2>
+        @if (_teams.Count == 0)
+        {
+            <p><em>@(IsArabic ? "ما فيش فرق بعد. أنشئ أول فريق على اليسار." : "No teams yet. Create one on the left.")</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead>
+                    <tr>
+                        <th>@(IsArabic ? "الاسم" : "Name")</th>
+                        <th>@(IsArabic ? "المدير" : "Manager")</th>
+                        <th class="num">@(IsArabic ? "الهدف الشهري" : "Monthly target")</th>
+                        <th class="num">@(IsArabic ? "الأعضاء" : "Members")</th>
+                        <th>@(IsArabic ? "الحالة" : "Status")</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in _teams)
+                    {
+                        var managerName = t.ManagerUserId is { } mid && _userById.TryGetValue(mid, out var mu)
+                            ? (IsArabic ? mu.DisplayName.Arabic : mu.DisplayName.English)
+                            : "—";
+                        var memberCount = _users.Count(u => u.SalesTeamId == t.Id);
+                        <tr>
+                            <td><strong>@(IsArabic ? t.Name.Arabic : t.Name.English)</strong></td>
+                            <td>@managerName</td>
+                            <td class="num">@(t.MonthlyTargetEgp?.ToString("N0") ?? "—")</td>
+                            <td class="num">@memberCount</td>
+                            <td>
+                                <span class="badge" style="background:@(t.Status == SalesTeamStatus.Active ? "var(--success-soft)" : "var(--neutral-soft)");color:@(t.Status == SalesTeamStatus.Active ? "var(--success-text)" : "var(--neutral-text)");padding:2px 8px;border-radius:6px;font-size:11px;">
+                                    @(t.Status == SalesTeamStatus.Active
+                                        ? (IsArabic ? "نشط" : "Active")
+                                        : (IsArabic ? "غير نشط" : "Inactive"))
+                                </span>
+                            </td>
+                            <td>
+                                <button type="button" class="btn-secondary" style="font-size:12px;" @onclick="@(() => OnToggleStatusAsync(t))">
+                                    @(t.Status == SalesTeamStatus.Active
+                                        ? (IsArabic ? "تعطيل" : "Deactivate")
+                                        : (IsArabic ? "تفعيل" : "Activate"))
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <h2 style="margin-top:32px;">@(IsArabic ? "تعيين المناديب" : "Assign reps")</h2>
+        @if (_users.Count == 0)
+        {
+            <p><em>@(IsArabic ? "ما فيش مستخدمين بعد." : "No users yet.")</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead>
+                    <tr>
+                        <th>@(IsArabic ? "المستخدم" : "User")</th>
+                        <th>@(IsArabic ? "البريد" : "Email")</th>
+                        <th>@(IsArabic ? "الفريق" : "Team")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in _users)
+                    {
+                        <tr>
+                            <td>@(IsArabic ? u.DisplayName.Arabic : u.DisplayName.English)</td>
+                            <td>@u.Email</td>
+                            <td>
+                                <select value="@(u.SalesTeamId?.ToString() ?? "")"
+                                        @onchange="@(e => OnAssignAsync(u.Id, e.Value?.ToString()))">
+                                    <option value="">— @(IsArabic ? "بدون فريق" : "Unassigned") —</option>
+                                    @foreach (var t in _teams.Where(t => t.Status == SalesTeamStatus.Active))
+                                    {
+                                        <option value="@t.Id">@(IsArabic ? t.Name.Arabic : t.Name.English)</option>
+                                    }
+                                </select>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</section>
+
+@code {
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<SalesTeam> _teams = new();
+    private List<User> _users = new();
+    private Dictionary<Guid, User> _userById = new();
+    private FormModel _form = new();
+    private string? _flash;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _teams = await db.Set<SalesTeam>().AsNoTracking()
+            .OrderByDescending(t => t.Status)
+            .ThenBy(t => t.Name.English)
+            .ToListAsync();
+        _users = await db.Set<User>().AsNoTracking()
+            .OrderBy(u => u.Email)
+            .ToListAsync();
+        _userById = _users.ToDictionary(u => u.Id);
+    }
+
+    private async Task OnCreateAsync()
+    {
+        _flash = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_form.NameArabic) || string.IsNullOrWhiteSpace(_form.NameEnglish))
+            {
+                _flash = Tr("الاسم بالعربي والإنجليزي مطلوب.", "Both Arabic and English name are required.");
+                return;
+            }
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var team = new SalesTeam(
+                new ArabicEnglishText(_form.NameArabic.Trim(), _form.NameEnglish.Trim()),
+                Clock.UtcNow);
+
+            if (Guid.TryParse(_form.ManagerUserId, out var managerId))
+            {
+                team.SetManager(managerId);
+            }
+            if (_form.MonthlyTargetEgp is decimal target && target > 0)
+            {
+                team.SetMonthlyTarget(target);
+            }
+
+            db.Add(team);
+            await db.SaveChangesAsync();
+            _form = new FormModel();
+            _flash = Tr("تم إنشاء الفريق.", "Team created.");
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+        }
+    }
+
+    private async Task OnToggleStatusAsync(SalesTeam team)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var live = await db.Set<SalesTeam>().FirstOrDefaultAsync(t => t.Id == team.Id);
+        if (live is null) return;
+        if (live.Status == SalesTeamStatus.Active) live.Deactivate();
+        else live.Reactivate();
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task OnAssignAsync(Guid userId, string? teamIdRaw)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var live = await db.Set<User>().FirstOrDefaultAsync(u => u.Id == userId);
+        if (live is null) return;
+        Guid? teamId = Guid.TryParse(teamIdRaw, out var t) ? t : null;
+        live.AssignToSalesTeam(teamId);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private sealed class FormModel
+    {
+        [Required, StringLength(120)] public string NameArabic  { get; set; } = "";
+        [Required, StringLength(120)] public string NameEnglish { get; set; } = "";
+        public string ManagerUserId { get; set; } = "";
+        public decimal? MonthlyTargetEgp { get; set; }
+    }
+}

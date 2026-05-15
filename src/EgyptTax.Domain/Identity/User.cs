@@ -32,6 +32,12 @@ public sealed class User
     /// </summary>
     public decimal? CommissionRatePercent { get; private set; }
 
+    /// <summary>v5 B.1 — Sales Team membership. Nullable so admins
+    /// / accountants stay unassigned. Drives the per-team revenue
+    /// rollup on <c>/reports/sales-by-rep</c> when the operator
+    /// toggles "By team."</summary>
+    public Guid? SalesTeamId { get; private set; }
+
     public DateTime? LastLoginAtUtc { get; private set; }
     public bool LastLoginSucceeded { get; private set; }
     public int FailedLoginCount { get; private set; }
@@ -87,6 +93,15 @@ public sealed class User
     }
 
     public bool RequiresMfa() => Roles.Any(r => r.RequiresMfa);
+
+    /// <summary>v5 B.1 — assign user to a sales team (or detach
+    /// when null). The application layer enforces that the team
+    /// exists + is Active before calling this.</summary>
+    public void AssignToSalesTeam(Guid? teamId)
+    {
+        if (teamId == Guid.Empty) teamId = null;
+        SalesTeamId = teamId;
+    }
 
     public void SetCommissionRate(decimal? ratePercent)
     {
