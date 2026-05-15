@@ -1,6 +1,7 @@
 @page "/payments/customer-receipts/new"
 @using EgyptTax.Application.Payments
 @using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.Invoices
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Domain.Workflow
 @using EgyptTax.Infrastructure.Payments
@@ -156,6 +157,12 @@ else
 }
 
 @code {
+    /// <summary>v5 E.2 — when present, comma-separated list of
+    /// SalesInvoice GUIDs that the operator multi-selected on the
+    /// invoice list. We pre-fill the customer + amount + auto-flag
+    /// these invoices for allocation in step 2.</summary>
+    [SupplyParameterFromQuery(Name = "invoices")] public string? PreselectedInvoices { get; set; }
+
     private List<Customer> _customers = new();
     private List<CashAccount> _cashAccounts = new();
     private Guid _customerId;
@@ -167,6 +174,7 @@ else
     private CustomerReceiptVoucher? _voucher;
     private IReadOnlyList<OutstandingInvoiceRow>? _outstanding;
     private readonly Dictionary<Guid, decimal> _allocateInputs = new();
+    private HashSet<Guid> _preselectedIds = new();   // v5 E.2
     private bool _busy;
     private string? _error;
 
@@ -181,6 +189,41 @@ else
         _cashAccountId = _cashAccounts.FirstOrDefault(a => a.IsDefault)?.Id
                        ?? _cashAccounts.FirstOrDefault()?.Id
                        ?? Guid.Empty;
+
+        // v5 E.2 — if we landed here from "Pay selected" on the
+        // invoice list, parse the bundle + pre-fill the form.
+        await TryApplyPreselectedInvoicesAsync();
+    }
+
+    private async Task TryApplyPreselectedInvoicesAsync()
+    {
+        if (string.IsNullOrWhiteSpace(PreselectedInvoices)) return;
+        var ids = PreselectedInvoices
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty)
+            .Where(g => g != Guid.Empty)
+            .ToList();
+        if (ids.Count == 0) return;
+
+        _preselectedIds = ids.ToHashSet();
+        var picked = await Db.Set<SalesInvoice>().AsNoTracking()
+            .Where(i => ids.Contains(i.Id))
+            .Select(i => new { i.Id, i.CustomerId, Grand = i.GrandTotal.Amount })
+            .ToListAsync();
+        if (picked.Count == 0) return;
+
+        var allocs = await Db.Set<PaymentAllocation>().AsNoTracking()
+            .Where(a => ids.Contains(a.TargetDocumentId)
+                && a.TargetDocumentType == DocumentType.SalesInvoice)
+            .Select(a => new { a.TargetDocumentId, Amt = a.AllocatedAmount.Amount })
+            .ToListAsync();
+        var paid = allocs
+            .GroupBy(a => a.TargetDocumentId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amt));
+
+        var totalOutstanding = picked.Sum(p => Math.Max(0m, p.Grand - paid.GetValueOrDefault(p.Id, 0m)));
+        _customerId = picked.First().CustomerId;
+        _grossAmount = decimal.Round(totalOutstanding, 2);
     }
 
     private async Task OnCreateDraft()
@@ -204,12 +247,13 @@ else
             _outstanding = await Query.ListOutstandingSalesInvoicesAsync(_customerId);
             // Pre-seed _allocateInputs so the @bind on the per-row
             // input doesn't throw KeyNotFoundException on first render.
-            // Razor's two-way bind READS the dictionary value before
-            // the user has a chance to write to it; without a seeded
-            // entry the read crashes the entire circuit.
             foreach (var inv in _outstanding)
             {
-                _allocateInputs.TryAdd(inv.InvoiceId, 0m);
+                // v5 E.2 — for invoices the operator pre-selected on
+                // the list, suggest the full outstanding amount so
+                // a single click per row lands the allocation.
+                var suggested = _preselectedIds.Contains(inv.InvoiceId) ? inv.OpenBalance.Amount : 0m;
+                _allocateInputs.TryAdd(inv.InvoiceId, suggested);
             }
         }
         catch (Exception ex) { _error = ex.Message; }

@@ -1,5 +1,6 @@
 @page "/invoices"
 @using EgyptTax.Application.Compliance.RiskScoring
+@using EgyptTax.Domain.Documents
 @using EgyptTax.Domain.Eta
 @using EgyptTax.Domain.Invoices
 @using EgyptTax.Domain.MasterData
@@ -51,9 +52,35 @@ else if (_invoices.Count == 0)
 }
 else
 {
+    @if (_selected.Count > 0)
+    {
+        <div class="kpi-card kpi-info" style="margin-bottom:12px;display:flex;align-items:center;gap:16px;justify-content:space-between;">
+            <span>
+                @(IsArabic ? "تم تحديد" : "Selected") <strong>@_selected.Count</strong>
+                @(IsArabic ? "فاتورة — إجمالي مستحق:" : "invoices — outstanding total:")
+                <strong>@SelectedOutstanding.ToString("N2") @(IsArabic ? "ج.م" : "EGP")</strong>
+                @if (SelectedCustomerError is not null)
+                {
+                    <span style="color:var(--danger);margin-inline-start:8px;">⚠ @SelectedCustomerError</span>
+                }
+            </span>
+            <div style="display:flex;gap:8px;">
+                <button type="button" class="btn-primary"
+                        disabled="@(SelectedCustomerError is not null)"
+                        @onclick="OnPaySelectedAsync">
+                    @(IsArabic ? "تسجيل دفعة جماعية" : "Pay selected") (@_selected.Count)
+                </button>
+                <button type="button" class="btn-secondary" @onclick="@(() => _selected.Clear())">
+                    @(IsArabic ? "إلغاء التحديد" : "Clear")
+                </button>
+            </div>
+        </div>
+    }
+
     <table class="data-grid">
         <thead>
             <tr>
+                <th style="width:32px;"></th>
                 <th>@(IsArabic ? "رقم المستند" : "Document #")</th>
                 <th>@(IsArabic ? "التاريخ" : "Date")</th>
                 <th>@(IsArabic ? "العميل" : "Customer")</th>
@@ -62,13 +89,22 @@ else
                 <th class="num">@(IsArabic ? "الإجمالي قبل الضريبة" : "Subtotal")</th>
                 <th class="num">@(IsArabic ? "الضريبة" : "VAT")</th>
                 <th class="num">@(IsArabic ? "الإجمالي" : "Grand total")</th>
+                <th class="num">@(IsArabic ? "المتبقي" : "Outstanding")</th>
                 <th></th>
             </tr>
         </thead>
         <tbody>
             @foreach (var row in Filtered)
             {
+                var canPay = row.Invoice.State == DocumentState.Posted && row.Outstanding > 0m;
                 <tr>
+                    <td>
+                        @if (canPay)
+                        {
+                            <input type="checkbox" checked="@_selected.Contains(row.Invoice.Id)"
+                                   @onchange="@(e => OnToggleSelect(row.Invoice.Id, e))" />
+                        }
+                    </td>
                     <td>@(row.Invoice.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)"))</td>
                     <td>@row.Invoice.DocumentDate.ToString("yyyy-MM-dd")</td>
                     <td>@row.CustomerName</td>
@@ -77,6 +113,16 @@ else
                     <td class="num">@row.Invoice.Subtotal.Amount.ToString("F2")</td>
                     <td class="num">@row.Invoice.VatTotal.Amount.ToString("F2")</td>
                     <td class="num">@row.Invoice.GrandTotal.Amount.ToString("F2")</td>
+                    <td class="num">
+                        @if (row.Outstanding > 0m)
+                        {
+                            <strong style="color:var(--warning-text);">@row.Outstanding.ToString("F2")</strong>
+                        }
+                        else if (row.Invoice.State == DocumentState.Posted)
+                        {
+                            <span style="color:var(--success-text);">✓</span>
+                        }
+                    </td>
                     <td>
                         @if (row.Invoice.State == DocumentState.Draft)
                         {
@@ -97,6 +143,48 @@ else
     private List<Row>? _invoices;
     private string _search = "";
     private string _stateFilter = "";
+
+    /// <summary>v5 E.2 — group-payment selection set. Operator
+    /// ticks rows on the list, "Pay selected" pre-fills a single
+    /// CRV draft.</summary>
+    private HashSet<Guid> _selected = new();
+
+    private decimal SelectedOutstanding =>
+        (_invoices ?? Enumerable.Empty<Row>())
+            .Where(r => _selected.Contains(r.Invoice.Id))
+            .Sum(r => r.Outstanding);
+
+    private string? SelectedCustomerError
+    {
+        get
+        {
+            if (_selected.Count <= 1) return null;
+            var rows = (_invoices ?? Enumerable.Empty<Row>())
+                .Where(r => _selected.Contains(r.Invoice.Id))
+                .ToList();
+            var distinctCust = rows.Select(r => r.Invoice.CustomerId).Distinct().Count();
+            if (distinctCust > 1)
+            {
+                return IsArabic
+                    ? "كل الفواتير المحددة لازم تكون لنفس العميل."
+                    : "All selected invoices must belong to the same customer.";
+            }
+            return null;
+        }
+    }
+
+    private void OnToggleSelect(Guid id, ChangeEventArgs e)
+    {
+        if (e.Value is bool b && b) _selected.Add(id);
+        else _selected.Remove(id);
+    }
+
+    private void OnPaySelectedAsync()
+    {
+        if (_selected.Count == 0 || SelectedCustomerError is not null) return;
+        var ids = string.Join(",", _selected);
+        Nav.NavigateTo($"/payments/customer-receipts/new?invoices={ids}");
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -143,6 +231,18 @@ else
             .Where(s => invoiceIds.Contains(s.SalesInvoiceId))
             .ToDictionaryAsync(s => s.SalesInvoiceId);
 
+        // v5 E.2 — outstanding balance per invoice (grand total minus
+        // applied payment allocations). Pull rows then sum in memory
+        // since SQLite can't translate decimal Sum.
+        var allocs = await Db.Set<PaymentAllocation>().AsNoTracking()
+            .Where(a => invoiceIds.Contains(a.TargetDocumentId)
+                && a.TargetDocumentType == DocumentType.SalesInvoice)
+            .Select(a => new { a.TargetDocumentId, Amt = a.AllocatedAmount.Amount })
+            .ToListAsync();
+        var paidByInvoice = allocs
+            .GroupBy(a => a.TargetDocumentId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amt));
+
         var nowUtc = DateTime.UtcNow;
         _invoices = rows
             .Select(i =>
@@ -153,7 +253,9 @@ else
                     Items: items,
                     EtaSubmission: etaSubmissions.GetValueOrDefault(i.Id),
                     NowUtc: nowUtc));
-                return new Row(i, customerName, findings);
+                var paid = paidByInvoice.GetValueOrDefault(i.Id, 0m);
+                var outstanding = Math.Max(0m, i.GrandTotal.Amount - paid);
+                return new Row(i, customerName, findings, outstanding);
             })
             .ToList();
     }
@@ -186,5 +288,5 @@ else
             $"sales-invoices-{DateTime.UtcNow:yyyyMMdd}.csv", b64, "text/csv");
     }
 
-    private sealed record Row(SalesInvoice Invoice, string CustomerName, IReadOnlyList<RiskFinding> RiskFindings);
+    private sealed record Row(SalesInvoice Invoice, string CustomerName, IReadOnlyList<RiskFinding> RiskFindings, decimal Outstanding);
 }
