@@ -1071,6 +1071,217 @@ E.9, E.7 = ~10 days = 2 weeks of work) and push the rest to v6.
 
 ---
 
+## 3.9. v5 Phase F — Second Manus pass (Odoo course extended)
+
+Source: Manus AI's *DaftarX Full Gap Analysis v2*, 2026-05-15
+(afternoon). Based on 37 Odoo training videos this time (vs. 21
+in the first pass — Courses 1, 2, 3 covering v17 + v19). Lists
+22 claimed gaps across 4 tiers totalling 75 working days of work.
+
+**Same critical-review discipline as §3.8.1 — verified each claim
+against the codebase before adding. Hit rate worse than the first
+pass.**
+
+### 3.9.1 Critical review — what Manus got wrong this round
+
+**9 of 22 claims were stale** (vs 4 of 12 in the first pass —
+the analyst is getting better at finding gaps but worse at
+reading the existing codebase):
+
+| Manus claim (v2) | Status | Evidence |
+|---|---|---|
+| 1.2 Fixed Asset Management — "Not present" | **Stale** | `Domain/Documents/FixedAsset.cs` ships full lifecycle (Draft → InService → Disposed); `Infrastructure/Documents/DepreciationEngine.cs` ships straight-line + mid/full month conventions; `BackgroundJobs/MonthlyDepreciationJob.cs` schedules monthly auto-posts. Probably the worst false-negative they've made — this is a multi-week feature they missed entirely. |
+| 2.4 Pricelists — "Not present" | **Stale** | Shipped today as **B.2** (`aa1d935`). `Domain/Pricing/Pricelist.cs` + `PricelistRule.cs` + customer FK + `/settings/pricelists` + `PricelistResolver` wired into invoice line. They wrote this analysis *while we were shipping it.* |
+| 3.3 Grouped Payment — "Not present" | **Stale** | Shipped today as **E.2** (`304e4a3`). `/invoices` multi-select + "Pay selected (N)" → pre-filled CRV. |
+| 3.6 Partner Ledger — "Partial" | **Stale (already fully ships)** | `Pages/MasterData/CustomerStatement.razor` + `SupplierStatement.razor` both ship the full ledger (date / type / ref / debit / credit / running balance). My §3.8.1 also misclassified this as "partial"; both wrong. |
+| 1.1 Cost Centers — "Not present" | **Partial-stale** | `Domain/MasterData/CostCenter.cs` ships; line-tagging exists on invoices via `cost_center_id`. What's *truly* missing is multi-dimensional analytic distribution (per-line allocation across multiple plans). Scope shrinks to "extend existing." |
+| 2.3 Reordering Rules — "Not present" | **Partial-stale** | `Domain/MasterData/ReorderRule.cs` ships; alert-only v1 (`/reorder-suggestions` daily job). What's *truly* missing is auto-PO generation. Scope = extend, not build. |
+| 2.5 Lock Dates — "Partial" | **Partial-stale** | `Domain/Periods/TaxPeriod.Lock()` ships; `/cockpit` enforces. What's *truly* missing is the year-end retained-earnings JV automation. Scope = small extension. |
+| 4.1 User Roles & Permissions — "Needs tiered" | **Stale** | `Domain/Identity/Role.cs` + `Permission.cs` + seeded roles (Administrator / Accountant / Bookkeeper / Approver / Auditor) per FR-001. |
+| 4.2 Cash Flow Statement — "Needs" | **Stale** | `Application/Reports/CashFlowReport.cs` + `/reports/cash-flow` route ship with bucketed direct-method output. |
+
+Net of v2's 22 claims: **9 stale (4 fully shipped, 3 partial-stale,
+2 with scope confusion), 13 verified real**. Of the 13 real, **6
+already mapped to existing Phase E items**:
+
+| Manus v2 item | Existing Phase E mapping |
+|---|---|
+| 1.3 Deferred Expenses | = E.11 |
+| 3.2 Customer Advances | = E.1 |
+| 3.4 Early Settlement Discounts | = E.8 |
+| 3.5 COA bulk import | = E.6 |
+| (others below) | = NEW Phase F |
+
+So **7 truly net-new gaps** become Phase F.
+
+### 3.9.2 Verified net-new gaps (Phase F)
+
+#### F.1 — Deferred Revenue (mirror of E.11)
+
+- **Pain:** Subscription / annual-maintenance / prepaid-training
+  invoices today recognize 12 months of revenue in month 1.
+  Mirror of E.11 Deferred Expenses.
+- **Complexity:** S (~2 days — shares 80% of E.11 infrastructure;
+  different account direction)
+- **MVP slice:**
+  - Same `DeferredEntry` aggregate from E.11 with
+    `Source = SalesInvoice` + a configured "Unearned Revenue"
+    liability account
+  - On invoice line with start/end dates: book DR AR / CR Unearned
+    Revenue (instead of DR AR / CR Income)
+  - Hangfire monthly sweep posts DR Unearned Revenue / CR Income
+- **Avoid:** Daily proration (monthly equal-split only).
+
+#### F.2 — Realized FX gain/loss on payment (cheaper of the two FX items)
+
+- **Pain:** Egyptian importers pay in USD/EUR. Today the
+  `CustomerReceiptVoucher` / `SupplierPaymentVoucher` posts
+  ignore the difference between invoice-date FX rate and
+  payment-date FX rate, leaving residual balances on AR/AP
+  that the operator clears manually.
+- **Complexity:** M (~3-4 days)
+- **Dependencies:** `ExchangeRate` entity (search if exists),
+  `CustomerReceiptVoucher`, `SupplierPaymentVoucher`,
+  configured FX gain + loss accounts on `Company`.
+- **MVP slice:**
+  - Add `Company.FxGainAccountCode` + `FxLossAccountCode` config
+  - On payment voucher post: if invoice currency ≠ EGP and
+    rates differ between invoice and payment dates, auto-emit a
+    third JV line balancing the difference to the FX account
+  - Hard-stop the post if FX accounts not configured + the
+    payment touches a foreign-currency invoice
+
+#### F.3 — Unrealized FX revaluation (period-end)
+
+- **Pain:** Period-end Balance Sheet reflects historical FX rates,
+  not current. The accountant manually computes the adjustment
+  + reversal-pair JV every month.
+- **Complexity:** M (~5 days, depends on F.2)
+- **MVP slice:**
+  - `/reports/fx-revaluation` page: lists all foreign-currency
+    accounts with foreign balance, historical rate book value,
+    current rate market value, adjustment delta
+  - "Create adjustment + reversal" button posts a JV pair
+    (current-period adjustment + auto-reversing JV dated 1st of
+    next period) so the headline GL stays clean
+
+#### F.4 — Fiscal Position (tax mapping by geography)
+
+- **Pain:** Egyptian exports = 0% VAT, free-zone customers =
+  exempt. Today the operator manually overrides the VAT category
+  on every export invoice line — error-prone.
+- **Complexity:** M (~5 days)
+- **MVP slice:**
+  - New `FiscalPosition` entity: name, optional country/state
+    auto-apply rule, `TaxMappings[]` (source VAT category →
+    destination VAT category, null = exempt)
+  - Add `Customer.FiscalPositionId` (nullable FK)
+  - On invoice line creation, if customer has a fiscal position
+    + the line's default VAT has a mapped destination, swap
+    the VAT to the destination automatically
+  - `/settings/fiscal-positions` CRUD page
+
+#### F.5 — Landed Cost (import cost allocation)
+
+- **Pain:** Importing a container of goods incurs shipping +
+  customs + insurance + clearance fees. These costs MUST roll
+  into the inventory cost basis (otherwise margins look fake).
+  Today the operator either expenses them straight (wrong) or
+  manually adjusts each item's avg cost (tedious).
+- **Complexity:** L (~8-10 days)
+- **Dependencies:** `WeightedAvgCostQuery` (E.4 shipped this).
+- **MVP slice:**
+  - `LandedCost` entity: vendor bill link + N
+    `LandedCostLine` rows (clearing account, amount, split method
+    ∈ {equal, by_qty, by_weight, by_volume, by_cost})
+  - Multi-select stock receipts to allocate against
+  - "Compute" button shows per-item cost adjustment
+  - "Validate" posts JV: DR Inventory Valuation / CR LC Clearing
+
+#### F.6 — Cost Centers full multi-dim distribution (extend shipped)
+
+- **Pain:** Cost centers exist but only as single-tag-per-line.
+  Real multi-branch businesses want "this expense is 30% Cairo
+  branch, 70% Alexandria branch."
+- **Complexity:** M (~5-6 days)
+- **MVP slice:**
+  - New `CostCenterAllocation` entity (per JE line, percentage
+    sum = 100)
+  - "Allocate" button on JE line opens a modal grid
+  - Reports filter by allocated cost-center percentage
+
+#### F.7 — Auto-PO from Reordering Rules (extend shipped)
+
+- **Pain:** Reorder rules surface alerts but don't generate the
+  PO. Operator copy-pastes from the alert page into the PO
+  form.
+- **Complexity:** S (~3 days)
+- **MVP slice:**
+  - Add "Generate PO" button on the reorder-suggestions page
+  - Group by vendor (one PO per vendor with all of vendor's
+    triggered items)
+  - Round to vendor packaging multiple
+
+#### F.8 — Year-end retained earnings JV (extend shipped)
+
+- **Pain:** At fiscal year close, the operator manually posts
+  the JV that moves all P&L account balances to "Retained
+  Earnings." Easy to forget; easy to mis-classify accounts.
+- **Complexity:** S (~3 days)
+- **MVP slice:**
+  - On `/cockpit`, add "Close fiscal year" wizard
+  - System builds a single JV: DR every revenue/expense account
+    by its YTD balance / CR Retained Earnings (with reverse
+    direction for expenses)
+  - Operator reviews the preview + posts; system locks the
+    period afterward
+
+### 3.9.3 Phase F sequencing + total
+
+Cheapest first per the discipline established in §3.8.3.
+
+| Order | Item | Effort | Bucket |
+|---|---|---|---|
+| 1 | F.1 Deferred Revenue (after E.11 ships) | 2d | Mirror of E.11 — ship together |
+| 2 | F.7 Auto-PO from Reorder | 3d | Extension of shipped feature |
+| 3 | F.8 Year-end retained earnings | 3d | Extension of shipped feature |
+| 4 | F.2 Realized FX | 4d | Multi-currency essentials |
+| 5 | F.4 Fiscal Position | 5d | Exporters / free-zone unblock |
+| 6 | F.6 Multi-dim cost-center distribution | 6d | Extension of shipped feature |
+| 7 | F.3 Unrealized FX | 5d | Depends on F.2 |
+| 8 | F.5 Landed Cost | 10d | Importers; biggest of the bunch |
+
+**Phase F total: ~38 working days (~7.5 weeks).**
+
+### 3.9.4 Where Phase F slots into v5 sequencing
+
+After Phase E completes. Same sequencing principle: ship the
+extension-of-shipped items (F.7, F.8, F.6) before the from-
+scratch items (F.5 Landed Cost). Operator can cherry-pick a
+"Phase F minimum bundle" of F.7 + F.8 + F.2 (~10 days) or go
+deep with the full ~7.5 weeks.
+
+Total v5 with Phase F included: **~25 weeks if shipped in full**
+(11 baseline + 7.5 E + 7.5 F). Operator picks the slice.
+
+### 3.9.5 Manus's deferred items (Tier 4)
+
+Manus's Tier 4 items I'm intentionally NOT adding even though
+they're real:
+
+- **Multi-Company / Branch Accounting** — single-tenant by
+  design (FR-005). Adds enormous complexity for a 1% segment of
+  the EG market. Stays in Anti-Roadmap (§5).
+- **Inventory Valuation method config (FIFO/Avg/Standard)** —
+  the system uses weighted-average implicitly (via E.4's cost
+  query). Switching methods is enterprise-only; defer until a
+  customer asks.
+- **Asset Stock Management (stock → asset transit)** — only
+  matters for companies that buy components in stock and assemble
+  them into capital assets. Niche; defer.
+
+---
+
 ## 4. v5 Phase C — Carryover from v4 §C
 
 These wait for a real customer ask. Three items previously on
@@ -1333,3 +1544,35 @@ Better hit-rate than the first Manus pass (where 4 of N items
 turned out to already ship) — likely because watching the Odoo
 course gave the analyst more concrete behaviors to map against
 ours, not just feature names.
+
+### 8.2 Third Manus pass — Full Gap Analysis v2 (2026-05-15 PM)
+
+A third Manus report dropped the same afternoon, this time based
+on 37 videos across Courses 1, 2, and 3 (Odoo v17 + v19, full
+basic-to-advanced range). Listed 22 gaps across 4 tiers, total
+estimated 75 working days. Same critical-review applied — see
+§3.9.1.
+
+Result: **9 of 22 stale (worst hit-rate yet)**, including a
+multi-week false-negative on Fixed Asset Management (the analyst
+missed `DepreciationEngine` + `MonthlyDepreciationJob` + the
+full Draft → InService → Disposed lifecycle that ships today).
+Two items the analyst flagged were *literally being shipped at
+the same time* (Pricelists / Grouped Payment).
+
+Of the 13 verified-real, 6 already mapped to existing Phase E
+items. **7 truly net-new gaps** became Phase F (§3.9):
+- F.1 Deferred Revenue (mirror of E.11)
+- F.2 Realized FX gain/loss
+- F.3 Unrealized FX revaluation
+- F.4 Fiscal Position
+- F.5 Landed Cost
+- F.6 Multi-dimensional cost-center distribution (extension)
+- F.7 Auto-PO from Reorder rules (extension)
+- F.8 Year-end retained earnings JV (extension)
+
+Lesson going forward: **the analysts produce more value as a
+"forcing function" for prioritization than as a discovery tool**
+— half their findings tend to already exist in the codebase. The
+discipline of running every claim through a verification agent
+before adding to the plan has paid off three times now.
