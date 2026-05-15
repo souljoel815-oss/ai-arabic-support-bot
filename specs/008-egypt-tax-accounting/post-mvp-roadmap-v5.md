@@ -729,6 +729,296 @@ What ships:
 
 ---
 
+## 3.8. v5 Phase E — Accountant-workflow gaps (Odoo course pass)
+
+Source: Manus AI's *Odoo 18 Accounting Full Course* gap analysis,
+2026-05-15. The analyst watched 21 of 76 lectures and listed 12
+"missing" workflows. **Before adding to this plan I verified each
+claim against the codebase** — same discipline as §1.1 — because
+the prior Manus review had a 33% stale-claim rate and adding
+unverified work would burn weeks shipping things that already
+ship.
+
+### 3.8.1 Critical review — what Manus got wrong this round
+
+| Manus claim | Status | Evidence |
+|---|---|---|
+| GL + Trial Balance reports missing | **Stale** | `Pages/Reports/GeneralLedger.razor` + `TrialBalance.razor` already render with date filters + drill-down; backed by `IGeneralLedgerReportQuery` + `ITrialBalanceReportQuery`. |
+| Inventory scrap workflow absent | **Partial** | `StockAdjustment` entity ships with reasons (Shrinkage / Damage / Recount / Other) and emits `StockMovement.Adjustment` rows. What's missing is the JE side — the adjustment doesn't currently book to a Loss-of-Inventory expense account. Scope is *wire JE emission*, not build the workflow. |
+| COA + Opening-Balance import missing | **Partial** | `OpeningBalances.razor` already lets the operator type opening balances for cash accounts and posts a balanced JE to "Opening Balance Equity (3000)". What's missing is *bulk CSV upload* + *full GL accounts* (today only cash). Scope shrinks to "extend the existing page," not "build from scratch." |
+| Customer Statement / Partner Ledger missing | **Partial** | `CustomerStatement.razor` ships at `/customers/{id}/statement` and shows the aging buckets. Manus calls this missing because Odoo's "Partner Ledger" shows full ledger lines (every invoice + receipt with running balance), not just the buckets. Scope = add a "Detailed view" toggle that lists the underlying transactions. |
+
+Net of the 12 claims: **9 genuinely missing, 3 partial (smaller
+than Manus estimated), 0 fully shipped**. Better hit-rate than
+the v4 Manus pass (where 4/N items were already done).
+
+### 3.8.2 Verified gaps — verbatim from the course pass
+
+These are real. Sized + sequenced honestly (not Manus's
+estimates, which assume from-scratch builds).
+
+#### E.1 — Customer advances as current liability (HIGH)
+
+- **Pain:** Egyptian construction / custom-manufacturing /
+  professional-services SMBs collect deposits up-front. Today
+  the operator either books the deposit as a `CustomerReceiptVoucher`
+  (which lands as a credit balance with no AR invoice to clear
+  against, polluting the customer ledger) or — worse — fakes a
+  draft invoice and posts it early (premature revenue
+  recognition; IFRS / EAS violation).
+- **Complexity:** M (~5 days)
+- **Dependencies:** New `CustomerAdvance` aggregate;
+  `Quotation` / `SalesOrder` (already shipped).
+- **MVP slice:**
+  - From a confirmed Quotation: "Request down payment" → enter
+    amount → creates a `CustomerAdvance` record + a draft invoice
+    that books to a new `2310 Customer Advances` liability account
+    (added to the EG seed COA).
+  - When the final sales invoice posts, the held advance
+    auto-applies as an AR offset (DR Customer Advances liability /
+    CR AR), surfacing the net balance owed.
+  - Customer Statement shows the advance as a credit row.
+- **Avoid:** Multi-currency advances. Partial draw-downs across
+  multiple invoices (one advance → one final invoice for v5).
+
+#### E.2 — Group payments (multi-invoice receipt) (HIGH)
+
+- **Pain:** Today every `CustomerReceiptVoucher` is one wire
+  transfer for one customer. When a customer pays 6 outstanding
+  invoices with one cheque, the operator has to either (a) create
+  6 separate vouchers (slow + bank reconciliation breaks because
+  the bank statement has one line) or (b) create one voucher
+  with the total + manually allocate it across the 6 invoices in
+  the existing per-voucher allocation grid. The grid handles
+  this — but the *entry path* is via "create voucher → search
+  invoices one by one." The Odoo flow inverts: from the invoice
+  list, multi-select 6 invoices → "Pay" → one voucher pre-loaded.
+- **Complexity:** S (~3 days, NOT 4d Manus estimated — the
+  underlying `PaymentAllocations` already handles N-to-1)
+- **Dependencies:** `CustomerReceiptVoucher.Allocations`
+  (already polymorphic).
+- **MVP slice:**
+  - On `/invoices`, add a checkbox column on rows where
+    `Status = Posted AND OutstandingBalance > 0`.
+  - "Pay selected (N)" button at the toolbar pre-fills the
+    `/payments/customer-receipts/new` page with the sum +
+    individual allocation lines.
+- **Avoid:** Cross-customer grouped receipts (each receipt is
+  still per-customer; mixing customers on one cheque is rare and
+  would complicate the AR ledger). Auto-detect of which invoices
+  the cheque amount matches (operator picks).
+
+#### E.3 — Purchase credit notes from a bill (MEDIUM)
+
+- **Pain:** `SalesInvoice.CreditNoteOfInvoiceId` exists; the
+  purchase side has no equivalent. When a supplier sends a credit
+  note, the operator has to manually post a `JournalVoucher` —
+  no audit-traceable link back to the original `PurchaseInvoice`.
+- **Complexity:** S (~3 days)
+- **Dependencies:** Existing `PurchaseInvoice`.
+- **MVP slice:**
+  - Add `PurchaseInvoice.CreditNoteOfPurchaseInvoiceId` (mirrors
+    sales side).
+  - "Issue purchase credit note" action on a posted bill →
+    pre-fills lines from the original (operator deletes
+    non-returned items, adjusts qty), posts as a separate
+    `PurchaseInvoice` with `IsCreditNote = true`.
+  - JE: DR Accounts Payable / CR Stock Interim (mirroring
+    `IssueCreditNoteCommand` on the sales side).
+
+#### E.4 — Inventory adjustment posts to expense account (MEDIUM)
+
+- **Pain:** `StockAdjustment` writes the inventory delta but
+  doesn't post the matching JE. Today the inventory shrinks on
+  the books only (`StockMovement.Adjustment`); the financial
+  ledger doesn't reflect the loss until someone manually posts a
+  matching JV. So `Inventory account != ledger inventory` until
+  reconciled.
+- **Complexity:** S (~2 days, NOT 4d Manus estimated — the
+  workflow exists; only the JE emit is missing)
+- **Dependencies:** `StockAdjustment` (shipped),
+  `JournalVoucher` (shipped).
+- **MVP slice:**
+  - When a `StockAdjustment` posts with reason ∈
+    {Damage, Shrinkage}, auto-emit a JV: DR `6140 Inventory Loss`
+    / CR `1410 Inventory Asset`, valued at the item's
+    weighted-avg cost (already computed for `/reports/stock-valuation`).
+  - For reason = Recount with positive delta: DR Inventory /
+    CR `4900 Inventory Gain`. Reason = Other: prompt for an
+    operator-supplied account.
+- **Avoid:** Per-location loss accounts (one global account is
+  enough). Variance categorization beyond the 4 reasons.
+
+#### E.5 — Cash transfers between accounts (MEDIUM)
+
+- **Pain:** Bank-to-bank or bank-to-cash transfers require a
+  manual `JournalVoucher`. Common daily operation that should be
+  one click.
+- **Complexity:** S (~2 days)
+- **Dependencies:** `CashAccount` (shipped), `JournalVoucher`.
+- **MVP slice:**
+  - `/cash-accounts/transfer` page: source account, destination
+    account, amount, date, optional memo.
+  - On submit: emit a balanced JV (DR destination cash account /
+    CR source cash account); both cash-account ledgers reflect
+    the transfer.
+  - Transfer history view filtered to JVs tagged
+    `TransferBetweenCashAccounts = true`.
+- **Avoid:** FX on the transfer (single-currency for v5).
+
+#### E.6 — COA + opening-balance bulk import (MEDIUM)
+
+- **Pain:** `OpeningBalances.razor` only handles cash accounts.
+  Migrating an existing business needs to import the full COA
+  trial balance.
+- **Complexity:** S (~3 days, NOT 4d Manus estimated — the seed
+  COA + the OpeningBalances page already exist; scope is
+  extending them)
+- **Dependencies:** `OpeningBalances.razor`, `JournalVoucher`.
+- **MVP slice:**
+  - Extend `OpeningBalances.razor` to list all accounts (not
+    just cash) with debit/credit input columns.
+  - Add a "Download template" button → CSV with one row per
+    seeded account; "Upload" parses + previews → operator
+    reviews → posts a single balanced JV stamped with the
+    opening date.
+  - Validation: if debits ≠ credits, surface the variance line
+    auto-routed to "Suspense — opening balance" so the operator
+    can fix without losing the partial work.
+- **Avoid:** Custom-account creation via the import (Egyptian
+  COA stays curated; operator adds custom accounts via the
+  master-data page first).
+
+#### E.7 — Partner Ledger detail toggle (MEDIUM)
+
+- **Pain:** `CustomerStatement.razor` shows aging buckets (0–30,
+  31–60, 61–90, 90+) but no underlying transactions. Operator
+  drilling into a dispute has to leave the statement, run GL with
+  a customer filter, and cross-reference manually.
+- **Complexity:** S (~2 days)
+- **Dependencies:** `CustomerStatement.razor`, `IGeneralLedgerReportQuery`.
+- **MVP slice:**
+  - Add a "Show transactions" toggle on the existing statement
+    page.
+  - When on, render a chronological list (date, doc#, type,
+    debit, credit, running balance) underneath the bucket
+    summary.
+  - Add a parallel `/suppliers/{id}/statement` page for the
+    payable side (today only customer-side ships).
+
+#### E.8 — Early settlement discount terms (MEDIUM)
+
+- **Pain:** `InvoiceSettings.DefaultPaymentTermsDays` is a
+  single-number field (Net N). No conditional-discount terms
+  like "2/10 Net 30." Egyptian wholesalers often offer/take
+  these to manage cash flow.
+- **Complexity:** M (~5 days — Manus's estimate is right here)
+- **Dependencies:** `CustomerReceiptVoucher`, `InvoiceSettings`.
+- **MVP slice:**
+  - New `PaymentTerm` master entity: name, net days, discount %,
+    discount window days. Replaces the single-number setting
+    (existing setting becomes the default `PaymentTerm`).
+  - On invoice creation, operator picks a `PaymentTerm`
+    (defaults to company default).
+  - On `CustomerReceiptVoucher` save, if `today <= invoice_date
+    + discount_window` and amount = subtotal × (1 − disc%), the
+    voucher auto-routes the discount to a new
+    `4910 Discount Given` account.
+- **Avoid:** Sliding-scale terms (2/10, 1/15, Net 30 — operator
+  picks one of two terms). Auto-suggestion of which discount
+  the customer earned (operator picks).
+
+#### E.9 — Owner withdrawals (Drawings) (LOW)
+
+- **Pain:** Owner-operated SMBs (vast majority of EG market)
+  routinely take cash out of the business for personal use.
+  Today this requires a manual JV with a free-text equity
+  account.
+- **Complexity:** XS (~1 day)
+- **Dependencies:** Equity COA (shipped).
+- **MVP slice:**
+  - Add `3210 Owner Drawings` to the seed COA.
+  - `/cash-accounts/{id}/drawings` action: amount, date, optional
+    memo → posts JV (DR Drawings / CR Cash).
+  - Drawings YTD shows on the equity section of the Balance
+    Sheet.
+
+#### E.10 — Recurring journal entry templates (LOW)
+
+- **Pain:** Month-end accruals (rent, utilities, salaries
+  pending payroll cut-off) repeat every period. Today the
+  operator types the same multi-line JV every month.
+- **Complexity:** S (~3 days)
+- **Dependencies:** `JournalVoucher`, `JournalVoucher.ReversesJournalVoucherId`
+  (shipped).
+- **MVP slice:**
+  - New `JournalTemplate` entity: name, schedule (monthly /
+    quarterly), auto-reverse flag, line definitions.
+  - On a date, operator clicks "Generate from template" → posts
+    a JV from the template lines stamped with current period.
+  - If `auto-reverse = true`, schedule the reversal JV for the
+    1st of the next month (uses existing `Hangfire` recurring
+    job).
+- **Avoid:** Auto-firing the templates without operator click —
+  every JV in the system today requires interactive confirmation
+  per FR-027; we keep that discipline.
+
+#### E.11 — Prepaid / deferred expense amortization (LOW)
+
+- **Pain:** Annual insurance, advance rent, prepaid
+  subscriptions all need monthly recognition. Today the operator
+  manually JV's each month.
+- **Complexity:** L (~2 weeks)
+- **Dependencies:** `FixedAsset` (similar shape — shipped),
+  `Hangfire` recurring job.
+- **MVP slice:**
+  - New `PrepaidExpense` aggregate: amount, recognition account,
+    start month, period count.
+  - On post, books DR Prepaid Expense Asset / CR Cash (or AP).
+  - Hangfire monthly sweep posts the unwind JV (DR Expense /
+    CR Prepaid Expense Asset) for `period_amount = total / N`.
+  - Detail page shows the schedule + remaining balance.
+- **Avoid:** Custom amortization curves (straight-line only).
+  Mid-life adjustment / write-down (issue a credit note to the
+  source bill instead).
+
+#### E.12 — Manufacturing / BOM (DEFERRED — confirmed)
+
+Manus correctly flags this as deep + deferred. Verified absent
+from the codebase. Stays in the **Anti-Roadmap** (§5) — won't
+build until 3+ trial customers are manufacturers.
+
+### 3.8.3 Phase E sequencing + total
+
+| Order | Item | Effort | Bucket |
+|---|---|---|---|
+| 1 | E.4 Inventory adjustment JE | 2d | Quick win — extends shipped feature |
+| 2 | E.2 Group payments | 3d | High op-frequency, low complexity |
+| 3 | E.5 Cash transfers | 2d | Daily-use convenience |
+| 4 | E.9 Owner drawings | 1d | Cheapest of the bunch |
+| 5 | E.7 Partner ledger detail | 2d | Read-side; ships on top of GL |
+| 6 | E.3 Purchase credit notes | 3d | Mirror of shipped sales path |
+| 7 | E.6 COA bulk-import extension | 3d | Migration unblocker |
+| 8 | E.1 Customer advances | 5d | Biggest single deal-closer |
+| 9 | E.8 Early settlement discounts | 5d | Wholesale-segment differentiator |
+| 10 | E.10 Recurring JV templates | 3d | Month-end cycle quality-of-life |
+| 11 | E.11 Prepaid amortization | 10d | Most complex; ship last |
+
+**Phase E total: ~39 working days (~7.5 weeks for one dev).**
+
+### 3.8.4 Where Phase E slots into the v5 sequencing
+
+Add as **after Phase B, before Phase D** in §6 sequencing.
+Rationale: Phase E is accountant-facing (depth) while Phase D is
+operations-facing (serial tracking + Gantt). The next operator
+demo will probably be to an accountant evaluating the system,
+not a foreman; Phase E directly addresses what they'll grade us
+on. This pushes the 11-week plan to **~18 weeks** if shipped in
+full, or operator can cherry-pick the top 5 (E.4, E.2, E.5,
+E.9, E.7 = ~10 days = 2 weeks of work) and push the rest to v6.
+
+---
+
 ## 4. v5 Phase C — Carryover from v4 §C
 
 These wait for a real customer ask. Three items previously on
@@ -791,7 +1081,10 @@ Realistic schedule for one developer (operator + AI-paired). The
 where the operator drives the new pages in a real browser,
 catches the cosmetic / UX issues that build-time + smoke tests
 miss, and signs off before the next phase starts. Phase D adds
-~6 weeks of dev time on top of the original 5-week plan.
+~6 weeks of dev time on top of the original 5-week plan; Phase E
+(if shipped in full) adds another ~7.5 weeks. The table below
+shows the original 11-week sequencing; Phase E lands **between
+B3 test pass and D.1** if the operator opts in (see §3.8.4).
 
 | Week | Focus | Deliverable |
 |---|---|---|
@@ -805,6 +1098,9 @@ miss, and signs off before the next phase starts. Phase D adds
 | 4 (½d) | **Phase B2 test pass** | Verify per-team revenue rollups + pricelist resolution on a real invoice |
 | 5 | B.3 | CRM send-email composer |
 | 5 (½d) | **Phase B3 test pass** | Send a real email; confirm thread shows in lead activity log |
+| (opt) | E.4, E.2, E.5, E.9, E.7 | Phase E "minimum bundle" — inventory adj JE + group payments + cash transfers + drawings + partner ledger detail (~10 days) |
+| (opt) | E.3, E.6, E.1, E.8, E.10, E.11 | Phase E full — purchase credit notes + COA bulk import + customer advances + early settlement discounts + recurring JV + prepaid amortization (~30 days) |
+| (opt ½d) | **Phase E test pass** | Operator-driven; focus on the JE side of every new entry-point (E.4 + E.5 + E.9 each emit a JV — verify postings) |
 | 6-7 | D.1 | Serial number tracking (entity, /items/{id}/serials, sales-line sub-grid, opt-in flag) |
 | 7 (½d) | **Phase D1 test pass** | Toggle TracksSerials on one item; receive 5 serials; sell 2; verify status transitions + statement |
 | 8-9 | D.2.1 + D.2.3 | Timesheets weekly grid + Gantt read-only chart |
@@ -963,3 +1259,25 @@ Where Manus surfaces real new value (not in the v4 plan):
 
 Net: ~7 weeks of useful work, not 8. The plan above ships in
 3-4 weeks of paired-with-AI development.
+
+### 8.1 Second Manus pass — Odoo course gap analysis (2026-05-15)
+
+A second Manus report landed in May tagged "12 gaps from the
+Odoo Accounting Full Course." Same critical-review discipline
+applied (verified each claim against the codebase before
+adding) — see §3.8.1 for the per-claim outcome.
+
+Result: **9 confirmed gaps, 3 partial (smaller scope than
+Manus estimated because the underlying infrastructure already
+ships), 0 fully shipped surprises.** All 9 verified items
+became Phase E (§3.8). The 3 partial items got a *reduced*
+scope baked into Phase E (E.4 inventory adjustment is 2 days
+not 4 because `StockAdjustment` already exists; E.6 COA import
+is 3 days not 4 because `OpeningBalances.razor` already exists;
+E.7 Partner Ledger is a toggle on `CustomerStatement.razor`,
+not a from-scratch report).
+
+Better hit-rate than the first Manus pass (where 4 of N items
+turned out to already ship) — likely because watching the Odoo
+course gave the analyst more concrete behaviors to map against
+ours, not just feature names.
