@@ -191,6 +191,7 @@ public static class AppShellModuleRegistry
                 new SubNavLink("VAT", "VAT categories", "/settings/vat-categories", "vat فئات", "percent"),
                 new SubNavLink("WHT", "WHT categories", "/settings/wht-categories", "wht فئات", "scissors"),
                 new SubNavLink("شروط الدفع", "Payment terms", "/settings/payment-terms", "payment term شرط دفع", "calendar"),
+                new SubNavLink("المواقف الضريبية", "Fiscal positions", "/settings/fiscal-positions", "fiscal position موقف ضريبي export", "globe"),
                 new SubNavLink("فئات المصروفات", "Expense categories", "/settings/expense-categories", "expense category فئة", "tag"),
                 new SubNavLink("طرق الدفع", "Payment methods", "/settings/payment-methods", "payment method طريقة", "credit-card"),
                 new SubNavLink("الحسابات النقدية", "Cash accounts", "/settings/cash-accounts", "cash account نقدي", "wallet"),

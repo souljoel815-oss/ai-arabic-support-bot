@@ -1,0 +1,202 @@
+@page "/settings/fiscal-positions"
+@using System.Globalization
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<PageTitle>@Tr("المواقف الضريبية | DaftarX", "Fiscal Positions | DaftarX")</PageTitle>
+
+<SettingsTabStrip Group="tax-setup" />
+
+<h1>@Tr("🌍 المواقف الضريبية", "🌍 Fiscal positions (F.4)")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "تجميعة قواعد ضريبية للعملاء حسب الجغرافيا: تصدير = 0%، عميل في المنطقة الحرة = معفى، عميل خليجي = ضريبة مختلفة. المرحلة دي: تعريف المواقف فقط — الإسناد التلقائي على بنود الفاتورة هييجي في تحديث لاحق.",
+        "Group tax rules for customers by geography: exports = 0%, free-zone = exempt, GCC = different VAT. This pass: master data only — auto-swap on invoice lines lands in a follow-up.")
+</p>
+
+@if (_flash is not null) { <div class="@_flashClass">@_flash</div> }
+@if (_loading) { <p>@Tr("جارٍ التحميل…", "Loading…")</p> return; }
+
+<section class="invoice-toolbar">
+    <button type="button" class="btn-primary" @onclick="StartCreate" disabled="@_editing">
+        + @Tr("موقف ضريبي جديد", "New fiscal position")
+    </button>
+</section>
+
+@if (_editing)
+{
+    <section class="form-grid" style="margin-top:16px;max-width:600px;">
+        <h2 style="margin:0 0 12px;">@(_editingId is null ? Tr("موقف ضريبي جديد", "New fiscal position") : Tr("تعديل", "Edit"))</h2>
+        <label>
+            <span>@Tr("الاسم (عربي)", "Name (Arabic)")</span>
+            <input type="text" @bind="_form.NameAr" placeholder="@Tr("مثال: تصدير - معفى", "e.g. Export - Exempt")" />
+        </label>
+        <label>
+            <span>@Tr("الاسم (إنجليزي)", "Name (English)")</span>
+            <input type="text" @bind="_form.NameEn" placeholder="e.g. Export - Zero rated" />
+        </label>
+        <label>
+            <span>@Tr("الوصف (اختياري)", "Description (optional)")</span>
+            <textarea rows="2" @bind="_form.Description"></textarea>
+        </label>
+        <label>
+            <span>@Tr("الدولة (اختياري — للاسناد التلقائي مستقبلاً)", "Country (optional — future auto-apply)")</span>
+            <input type="text" @bind="_form.CountryAutoApply" placeholder="@Tr("مثال: SA, AE, OM", "e.g. SA, AE, OM")" />
+        </label>
+        <div class="invoice-actions" style="margin-top:16px;">
+            <button type="button" class="btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ", "Save"))
+            </button>
+            <button type="button" class="btn-secondary" @onclick="@(() => _editing = false)">
+                @Tr("إلغاء", "Cancel")
+            </button>
+        </div>
+    </section>
+}
+
+@if (!_editing && _positions.Count > 0)
+{
+    <table class="data-grid" style="margin-top:16px;">
+        <thead>
+            <tr>
+                <th>@Tr("الاسم", "Name")</th>
+                <th>@Tr("الوصف", "Description")</th>
+                <th>@Tr("الدولة", "Country")</th>
+                <th>@Tr("الحالة", "Status")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var f in _positions)
+            {
+                <tr class="@(f.IsActive ? "" : "row-muted")">
+                    <td><strong>@(IsArabic ? f.Name.Arabic : f.Name.English)</strong></td>
+                    <td>@(f.Description ?? "—")</td>
+                    <td>@(f.CountryAutoApply ?? "—")</td>
+                    <td>
+                        @if (f.IsActive)
+                        { <span class="state-badge state-approved">@Tr("نشط", "Active")</span> }
+                        else
+                        { <span class="state-badge state-voided">@Tr("موقوف", "Inactive")</span> }
+                    </td>
+                    <td>
+                        <button type="button" @onclick="@(() => StartEdit(f))">@Tr("تعديل", "Edit")</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else if (!_editing)
+{
+    <p style="padding:32px 0;text-align:center;color:var(--text-muted);">
+        <em>@Tr("لا توجد مواقف ضريبية. ابدأ بإنشاء «تصدير 0%» للعملاء خارج مصر.",
+            "No fiscal positions. Start with \"Export 0%\" for non-Egyptian customers.")</em>
+    </p>
+}
+
+@code {
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private bool _loading = true;
+    private bool _editing;
+    private bool _saving;
+    private Guid? _editingId;
+    private FormModel _form = new();
+    private List<FiscalPosition> _positions = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _positions = await db.Set<FiscalPosition>().AsNoTracking()
+            .OrderByDescending(f => f.IsActive)
+            .ThenBy(f => f.Name.English).ToListAsync();
+        _loading = false;
+    }
+
+    private void StartCreate()
+    {
+        _editingId = null;
+        _form = new FormModel();
+        _editing = true;
+        _flash = null;
+    }
+
+    private void StartEdit(FiscalPosition f)
+    {
+        _editingId = f.Id;
+        _form = new FormModel
+        {
+            NameAr = f.Name.Arabic,
+            NameEn = f.Name.English,
+            Description = f.Description ?? "",
+            CountryAutoApply = f.CountryAutoApply ?? "",
+        };
+        _editing = true;
+        _flash = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _flash = null;
+        if (string.IsNullOrWhiteSpace(_form.NameAr) || string.IsNullOrWhiteSpace(_form.NameEn))
+        {
+            _flash = Tr("الاسم بالعربي والإنجليزي مطلوب.", "Arabic and English names required.");
+            _flashClass = "flash-error";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            if (_editingId is { } id)
+            {
+                var f = await db.Set<FiscalPosition>().FirstAsync(x => x.Id == id);
+                f.Update(new ArabicEnglishText(_form.NameAr, _form.NameEn),
+                    _form.Description, _form.CountryAutoApply);
+            }
+            else
+            {
+                db.Add(new FiscalPosition(
+                    new ArabicEnglishText(_form.NameAr, _form.NameEn),
+                    _form.Description,
+                    _form.CountryAutoApply,
+                    DateTime.UtcNow));
+            }
+            await db.SaveChangesAsync();
+            _flash = Tr("تم الحفظ.", "Saved.");
+            _flashClass = "flash-success";
+            _editing = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private sealed class FormModel
+    {
+        public string NameAr { get; set; } = "";
+        public string NameEn { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string CountryAutoApply { get; set; } = "";
+    }
+}
