@@ -84,6 +84,68 @@
     --t-med:  180ms ease;
 }
 
+/* ============================================================
+   v5 DP.5 — Leil dark theme
+   Overrides every surface / text / border token from :root above.
+   Activated by [data-theme="leil"] on the <html> element (set by
+   the inline boot script that reads the daftarx-theme cookie
+   before the first paint to avoid a light-flash on dark loads).
+   Brand + semantic colors stay close to the light values but
+   shifted slightly brighter where contrast against dark surfaces
+   would otherwise dip below WCAG AA.
+   ============================================================ */
+[data-theme="leil"] {
+    /* Surfaces: cool near-black instead of cool light */
+    --bg:           #0b0f19;
+    --bg-2:         #111827;
+    --surface:      #1f2937;
+    --surface-2:    #161e2c;
+    --border:       #334155;
+    --border-strong:#475569;
+    --text:         #f1f5f9;
+    --text-muted:   #94a3b8;
+    --text-subtle:  #64748b;
+
+    /* Brand — same hue, slightly lighter for contrast on dark surfaces */
+    --primary:      #3b82f6;
+    --primary-hover:#2563eb;
+    --primary-soft: #1e293b;
+    --primary-line: #1d4ed8;
+    --primary-accent:#60a5fa;
+
+    /* Semantic — brighter variants so badges read on dark bg */
+    --success:      #34d399;
+    --success-soft: #064e3b;
+    --success-text: #a7f3d0;
+    --warning:      #fbbf24;
+    --warning-soft: #78350f;
+    --warning-text: #fde68a;
+    --danger:       #f87171;
+    --danger-soft:  #7f1d1d;
+    --danger-text:  #fecaca;
+    --info:         #38bdf8;
+    --info-soft:    #075985;
+    --info-text:    #bae6fd;
+    --neutral:      #94a3b8;
+    --neutral-soft: #1e293b;
+    --neutral-text: #cbd5e1;
+
+    /* Focus ring stays accent-colored but with darker outer glow */
+    --shadow-focus: 0 0 0 3px rgba(96,165,250,0.32);
+    /* Soften shadows on dark — black-on-dark shadows are invisible */
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.30);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.30), 0 1px 2px rgba(0,0,0,0.20);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.20);
+    --shadow-lg: 0 12px 28px rgba(0,0,0,0.45), 0 4px 12px rgba(0,0,0,0.25);
+}
+/* The sidebar is already dark in the light theme; in Leil it
+   should subtly differentiate from the page background — slightly
+   lighter than the page bg so the eye reads it as "elevated". */
+[data-theme="leil"] .app-sidebar {
+    background: #0b0f19;
+    border-inline-end: 1px solid var(--border);
+}
+
 /* ---------- Reset / Base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
 

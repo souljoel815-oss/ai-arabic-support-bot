@@ -37,6 +37,14 @@
     <meta name="mobile-web-app-capable" content="yes" />
 
     <link rel="stylesheet" href="~/site.css" asp-append-version="true" />
+
+    @* v5 DP.5 — apply theme BEFORE first paint to avoid a
+       light-flash on dark loads. Inline + before any rendered
+       body content; the script runs synchronously. *@
+    <script src="~/js/theme-toggle.js" asp-append-version="true"></script>
+    <script>
+        try { window.daftarxApplyThemeOnLoad && window.daftarxApplyThemeOnLoad(); } catch (e) { }
+    </script>
 </head>
 <body class="@bodyClass">
     @RenderBody()

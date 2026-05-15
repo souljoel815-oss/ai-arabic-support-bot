@@ -11,9 +11,11 @@
 @using EgyptTax.Infrastructure.Persistence
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
 @inject NavigationManager Nav
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject AuthenticationStateProvider AuthState
+@inject IJSRuntime Js
 
 @code {
     private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
@@ -41,6 +43,17 @@
     private bool _sidebarOpen;
     private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
     private void CloseSidebar() => _sidebarOpen = false;
+
+    /// <summary>v5 DP.5 — current theme. Set by JS on first
+    /// render (reads cookie); flipped by the topbar toggle.</summary>
+    private string _currentTheme = "nahar";
+
+    private async Task ToggleThemeAsync()
+    {
+        _currentTheme = _currentTheme == "leil" ? "nahar" : "leil";
+        try { await Js.InvokeVoidAsync("daftarxSetTheme", _currentTheme); }
+        catch { /* JS not loaded yet — ignore; next click will work */ }
+    }
 
     /// <summary>Gux.1 — auto-expand the sidebar group containing the
     /// current page. Each group below calls <see cref="GroupOpen"/>
@@ -145,6 +158,26 @@
         catch
         {
             // Topbar context is decorative — never block layout if a query fails.
+        }
+    }
+
+    /// <summary>v5 DP.5 — read the current theme from JS so the
+    /// topbar toggle's icon (☀ / 🌙) matches what's actually
+    /// applied (might be from a cookie set in a previous session).</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var theme = await Js.InvokeAsync<string>("daftarxGetTheme");
+                if (!string.IsNullOrEmpty(theme) && theme != _currentTheme)
+                {
+                    _currentTheme = theme;
+                    StateHasChanged();
+                }
+            }
+            catch { /* JS not loaded yet */ }
         }
     }
 
@@ -398,6 +431,14 @@
                     </a>
                 }
             </span>
+
+            @* v5 DP.5 — theme toggle (Nahar light / Leil dark).
+               JS in /js/theme-toggle.js owns the cookie + applies. *@
+            <button type="button" class="topbar-btn theme-toggle-btn"
+                    @onclick="ToggleThemeAsync"
+                    title="@Tr("بدّل بين الفاتح والغامق", "Toggle light / dark")">
+                <span>@(_currentTheme == "leil" ? "☀" : "🌙")</span>
+            </button>
 
             @* Gux.10 — approvals as a notification bell, not a sidebar destination *@
             <a href="approvals" class="topbar-bell @(_pendingApprovalCount > 0 ? "has-unread" : "")"
