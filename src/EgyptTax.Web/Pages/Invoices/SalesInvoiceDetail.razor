@@ -42,6 +42,25 @@
     return;
 }
 
+@if (_invoice.State == DocumentState.Posted
+    && !_invoice.IsCreditNote
+    && _heldAdvancesTotal > 0)
+{
+    <div class="kpi-card kpi-info" style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+            <strong>💰 @(IsArabic ? "هذا العميل عنده دفعات مقدمة محتجزة" : "This customer has held advances")</strong><br />
+            <span style="font-size:13px;">
+                @(IsArabic
+                    ? $"{_heldAdvancesCount} دفعة بإجمالي {_heldAdvancesTotal:N2} ج.م — تقدر تطبّقها على هذه الفاتورة لتقليل المستحقات."
+                    : $"{_heldAdvancesCount} advances totaling {_heldAdvancesTotal:N2} EGP — apply against this invoice to reduce outstanding AR.")
+            </span>
+        </div>
+        <a href="/customer-advances" class="btn-primary">
+            @(IsArabic ? "اذهب لتطبيقها ←" : "Apply advances →")
+        </a>
+    </div>
+}
+
 <section class="invoice-header">
     <div><strong>@(IsArabic ? "التاريخ:" : "Date:")</strong> @_invoice.DocumentDate.ToString("yyyy-MM-dd")</div>
     <div><strong>@(IsArabic ? "الحالة:" : "State:")</strong> <StateBadge State="_invoice.State" /></div>
@@ -323,6 +342,8 @@
 
     private SalesInvoice? _invoice;
     private Customer? _customer;
+    private decimal _heldAdvancesTotal;
+    private int _heldAdvancesCount;
     private Dictionary<Guid, Item> _items = new();
     private EtaSubmission? _etaSubmission;
     private string? _seal;
@@ -539,6 +560,17 @@
 
         _customer = await Db.Set<Customer>().AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == _invoice.CustomerId);
+
+        // v5 E.1 — surface held customer advances so the operator
+        // sees there's pre-paid money sitting in 2310 that can be
+        // applied against this invoice.
+        var heldAmounts = await Db.Set<EgyptTax.Domain.MasterData.CustomerAdvance>().AsNoTracking()
+            .Where(a => a.CustomerId == _invoice.CustomerId
+                && a.Status == EgyptTax.Domain.MasterData.CustomerAdvanceStatus.Held)
+            .Select(a => a.Amount.Amount)
+            .ToListAsync();
+        _heldAdvancesCount = heldAmounts.Count;
+        _heldAdvancesTotal = heldAmounts.Sum();
 
         _latestApproval = await Db.Set<ApprovalRequest>().AsNoTracking()
             .Where(r => r.DocumentId == _invoice.Id)
