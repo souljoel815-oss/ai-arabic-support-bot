@@ -475,6 +475,111 @@ remaining two are real new work:
 
 ---
 
+## 3.6. v5 Design Polish — operator-pulled subset (~2 weeks)
+
+The operator surfaced two design docs (2026-05-15): a full design
+system (Manus AI) targeting React/TSX naming conventions, and a
+navigation redesign reducing the sidebar from "30+ links" to 8
+top-level groups. Honest reading on the codebase:
+
+* The design tokens / colors / spacing / RTL rules / motion specs
+  are framework-agnostic and apply directly to the Blazor app.
+* The "30+ links" strawman is unfair — the live sidebar has **83
+  links across 6 collapsible groups** (verified). The proposal's
+  real win is consolidating to 8 top-level groups + adding the
+  smart behaviors (Cmd+K palette, contextual notifications,
+  recent/favorites).
+* Several flagged "gaps" already ship: RTL works, CSS tokens
+  exist, sidebar IS already grouped + collapsible, status colors
+  drive components.
+
+The operator picked the **high-ROI subset** (~2 weeks) over the
+full 6-week redesign:
+
+### DP.1 — Toast notification system (2d)
+
+- **Pain:** Inline `flash-success` / `flash-error` divs scattered
+  across 100+ pages; no consistent feedback channel for async
+  events (background jobs finishing, webhook fires).
+- **MVP slice:** Singleton `ToastService` that pages inject;
+  fixed bottom-right (LTR) / bottom-left (RTL) container in
+  `MainLayout.razor` that subscribes + renders 1..N toasts; auto-
+  dismiss after 5s; success / error / warn / info variants
+  matching the design system's color tokens.
+- **Avoid:** Action buttons in toasts. Toast queueing past 5
+  visible. Animations longer than 300ms.
+
+### DP.2 — Sidebar consolidation (83→~22 links in 8 groups, 2-3d)
+
+- **Pain:** Current sidebar lists 83 links — most users only need
+  6-8 of them. Cognitive overload on first login.
+- **MVP slice:** Reorganise `MainLayout.razor` into the 8 groups
+  per the navigation redesign doc:
+  - الرئيسية (Dashboard)
+  - المبيعات (Sales: invoices + quotations + receipts + leads)
+  - المشتريات (Purchases: bills + supplier-payments + expenses)
+  - المخزون (Inventory: items + adjustments + reorder)
+  - جهات الاتصال (Contacts: customers + suppliers)
+  - نقطة البيع (POS — direct link, no sub-items)
+  - التقارير (Reports: P&L, BS, GL, Cash Flow, Aging, Cost Centers)
+  - الإعدادات (Settings: company, CoA, tax, currencies, API
+    keys, bank import, users, webhooks, quotation templates)
+- Pages move only at the *navigation tree* level — no URLs
+  change, so existing bookmarks / saved links keep working.
+- **Avoid:** Renaming any pages. Restructuring the URL space.
+  Deleting any pages from the app — just hiding less-used ones
+  inside their group.
+
+### DP.3 — Cmd+K command palette (3d)
+
+- **Pain:** Power users want to jump straight to any page +
+  trigger any common action without sidebar-hunting.
+- **MVP slice:** Global keyboard shortcut (Ctrl+K / ⌘K) opens a
+  centered modal with a search input + filtered list of:
+  - Every page route + its label (Ar+En)
+  - Common quick-create actions ("+ فاتورة جديدة", "+ مصروف
+    جديد", "+ عميل جديد")
+  - Recent customer / item lookups (top 10 from a
+    `RecentNavigations` cookie)
+- Type-to-filter matches across both languages; Enter navigates
+  / Esc closes.
+- **Avoid:** Fuzzy matching beyond simple prefix-contains
+  (lib-free; we don't need a Levenshtein dependency). AI-powered
+  search. Action history beyond cookie.
+
+### DP.4 — Mobile bottom tab bar (2d)
+
+- **Pain:** PWA installs but the desktop sidebar consumes a
+  third of a phone screen. No proper mobile nav.
+- **MVP slice:** Below 768px width, hide the sidebar and render
+  a fixed 5-tab bottom bar: Dashboard / Sales / [Quick-create
+  FAB] / Reports / Settings. The "More" overflow opens a sheet
+  with the remaining 4 groups.
+- **Avoid:** Per-tab badges (defer until counters exist).
+  Animated transitions between tabs (the page swap is enough).
+
+### DP.5 — Dark theme (Leil) + theme toggle (~1w)
+
+- **Pain:** Single light theme; operator-requested dark mode
+  for late-night accountants (a real Egyptian SMB pattern).
+- **MVP slice:** Add a `[data-theme="leil"]` selector that
+  overrides every CSS variable in `site.css`'s `:root` block
+  with the Leil palette from §2.2 of the design system. Theme
+  toggle in the user menu (top bar) writes the preference to a
+  cookie + applies on subsequent renders. Visual QA pass across
+  the top 20 pages to fix any inline-color leaks (e.g., hard-
+  coded `#000` in templates instead of `var(--text)`).
+- **Avoid:** Dhahabi (gold) + HighContrast themes — defer until
+  customer pull. Auto-switching by OS preference (operator
+  picks explicitly). Per-page theme overrides.
+
+**Design Polish total: ~2 weeks. Order: DP.1 → DP.2 → DP.3 → DP.4 → DP.5.**
+
+After DP.5 ships, **resume v5 Phase A2** (A.2 stock valuation +
+A.6 POS sessions) per §6 sequencing, then Phase B + D as planned.
+
+---
+
 ## 4. v5 Phase C — Carryover from v4 §C
 
 These wait for a real customer ask. Three items previously on
