@@ -4,6 +4,8 @@
 @inject ITrialBalanceReportQuery ReportQuery
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<SettingsTabStrip Group="accounting-reports" />
+
 <h1>@(IsArabic ? "ميزان المراجعة" : "Trial balance (FR-024)")</h1>
 
 <form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>

@@ -7,6 +7,8 @@
 @inject AppDbContext Db
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<SettingsTabStrip Group="tax-setup" />
+
 <h1>@(IsArabic ? "إعدادات السنة المالية (للقراءة فقط)" : "Fiscal year settings (read-only)")</h1>
 
 <p>

@@ -5,7 +5,7 @@
 @inject IWhtLifecycleDashboardQuery Query
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
-<a href="/wht" class="btn-secondary">← @(IsArabic ? "العودة إلى اللوحة" : "Back to dashboard")</a>
+<SettingsTabStrip Group="wht" />
 
 <h1>@(IsArabic ? "إقرارات نموذج 41" : "Form 41 filings (FR-046)")</h1>
 

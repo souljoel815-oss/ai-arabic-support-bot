@@ -14,6 +14,8 @@
 @implements IDisposable
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<SettingsTabStrip Group="eta" />
+
 <h1>@(IsArabic ? "لوحة الامتثال للضرائب الإلكترونية" : "ETA Compliance Dashboard")</h1>
 
 @* D3 — sandbox-mode banner. The current ETA submission path runs

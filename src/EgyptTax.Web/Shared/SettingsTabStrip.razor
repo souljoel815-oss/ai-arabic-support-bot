@@ -18,29 +18,83 @@
 
     private static readonly Tab[] TaxSetupTabs =
     {
-        new("/settings/tax-periods",   "الفترات الضريبية", "Tax periods"),
-        new("/settings/vat-categories", "فئات الضريبة",     "VAT categories"),
+        new("/settings/tax-periods",     "الفترات الضريبية", "Tax periods"),
+        new("/settings/fiscal-year",     "السنة المالية",   "Fiscal year"),
+        new("/settings/vat-categories",  "فئات الضريبة",     "VAT categories"),
+        new("/settings/wht-categories",  "فئات الخصم",      "WHT categories"),
     };
 
     private static readonly Tab[] MoneyTabs =
     {
         new("/settings/payment-methods",  "طرق الدفع",         "Payment methods"),
         new("/settings/cash-accounts",    "الخزائن والبنوك",    "Cashboxes & banks"),
+        new("/currencies",                "العملات",          "Currencies"),
         new("/settings/opening-balances", "الأرصدة الافتتاحية", "Opening balances"),
+    };
+
+    private static readonly Tab[] PricingTabs =
+    {
+        new("/settings/quotation-templates", "قوالب عروض الأسعار", "Quotation templates"),
+        new("/settings/pricelists",          "قوائم الأسعار",      "Pricelists"),
+        new("/settings/sales-teams",         "فرق المبيعات",        "Sales teams"),
+    };
+
+    private static readonly Tab[] EtaTabs =
+    {
+        new("/eta-dashboard",       "لوحة ETA",         "ETA dashboard"),
+        new("/eta-inbox",           "الصندوق الوارد",   "Inbox"),
+        new("/eta-export",          "تصدير",           "Export"),
+        new("/eta-wizard",          "معالج الإعداد",    "Setup wizard"),
+    };
+
+    private static readonly Tab[] WhtTabs =
+    {
+        new("/wht",                 "الخصم من المنبع",      "WHT overview"),
+        new("/wht/form41",          "نموذج 41",           "Form 41"),
+        new("/wht/inbound",         "استيراد WHT الوارد", "Inbound import"),
+        new("/certificates",        "الشهادات",            "Certificates"),
+    };
+
+    private static readonly Tab[] AccountingReportsTabs =
+    {
+        new("/reports/trial-balance",  "ميزان المراجعة",   "Trial balance"),
+        new("/reports/general-ledger", "دفتر الأستاذ",     "General ledger"),
+        new("/reports/profit-loss",    "قائمة الدخل",      "P&L"),
+        new("/reports/balance-sheet",  "الميزانية",        "Balance sheet"),
+        new("/reports/cash-flow",      "التدفقات النقدية", "Cash flow"),
+        new("/reports/cost-centers",   "مراكز التكلفة",    "Cost centers"),
+    };
+
+    private static readonly Tab[] TaxReportsTabs =
+    {
+        new("/reports/vat-monthly",     "VAT الشهري",          "Monthly VAT"),
+        new("/reports/turnover-tax",    "ضريبة رقم الأعمال",   "Turnover tax"),
+        new("/reports/taxable-income",  "الدخل الخاضع",        "Taxable income"),
+        new("/penalty-shield",          "درع الغرامات",         "Penalty shield"),
     };
 
     private Tab[] Tabs => Group switch
     {
-        "tax-setup" => TaxSetupTabs,
-        "money"     => MoneyTabs,
-        _           => Array.Empty<Tab>(),
+        "tax-setup"          => TaxSetupTabs,
+        "money"              => MoneyTabs,
+        "pricing"            => PricingTabs,
+        "eta"                => EtaTabs,
+        "wht"                => WhtTabs,
+        "accounting-reports" => AccountingReportsTabs,
+        "tax-reports"        => TaxReportsTabs,
+        _                    => Array.Empty<Tab>(),
     };
 
     private string GroupTitle => Group switch
     {
-        "tax-setup" => IsArabic ? "إعداد الضرائب" : "Tax setup",
-        "money"     => IsArabic ? "نقدية وبنوك" : "Money & banks",
-        _           => "",
+        "tax-setup"          => IsArabic ? "إعداد الضرائب"          : "Tax setup",
+        "money"              => IsArabic ? "نقدية وبنوك"            : "Money & banks",
+        "pricing"            => IsArabic ? "التسعير والمبيعات"      : "Pricing & sales",
+        "eta"                => IsArabic ? "الفاتورة الإلكترونية"   : "E-invoicing",
+        "wht"                => IsArabic ? "الخصم من المنبع"        : "Withholding tax",
+        "accounting-reports" => IsArabic ? "التقارير المحاسبية"    : "Accounting reports",
+        "tax-reports"        => IsArabic ? "التقارير الضريبية"     : "Tax reports",
+        _                    => "",
     };
 
     private bool IsActive(string path)

@@ -8,6 +8,8 @@
 @inject NavigationManager Nav
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<SettingsTabStrip Group="tax-setup" />
+
 <h1>@(IsArabic ? "فئات الخصم" : "WHT categories (FR-045)")</h1>
 
 <p>

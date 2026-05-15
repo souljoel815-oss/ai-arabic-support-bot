@@ -5,6 +5,8 @@
 @inject IVatMonthlyReportQuery ReportQuery
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<SettingsTabStrip Group="tax-reports" />
+
 <h1>@(IsArabic ? "تقرير ضريبة القيمة المضافة الشهري" : "Monthly VAT report (FR-021)")</h1>
 
 <form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>

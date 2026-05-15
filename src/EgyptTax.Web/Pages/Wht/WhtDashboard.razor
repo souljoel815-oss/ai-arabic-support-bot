@@ -5,6 +5,8 @@
 @inject IWhtLifecycleDashboardQuery Query
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<SettingsTabStrip Group="wht" />
+
 <h1>@(IsArabic ? "دورة حياة الخصم" : "WHT lifecycle (FR-047)")</h1>
 
 <form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
