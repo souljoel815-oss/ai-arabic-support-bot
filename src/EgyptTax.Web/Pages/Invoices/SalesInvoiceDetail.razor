@@ -25,6 +25,13 @@
 @inject IJSRuntime Js
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(IsArabic ? "الفواتير" : "Invoices", "/invoices"),
+    new Breadcrumb.BreadcrumbItem(
+        _invoice is null ? (IsArabic ? "..." : "...") : (_invoice.DocumentNumber ?? (IsArabic ? "(مسودة)" : "(draft)")),
+        null)
+})" />
+
 <h1>@(IsArabic
     ? $"فاتورة مبيعات {(_invoice is null ? "(جارٍ التحميل)" : (_invoice.DocumentNumber ?? $"({_invoice.State})"))}"
     : $"Sales invoice {(_invoice is null ? "(loading)" : (_invoice.DocumentNumber ?? $"({_invoice.State})"))}")</h1>

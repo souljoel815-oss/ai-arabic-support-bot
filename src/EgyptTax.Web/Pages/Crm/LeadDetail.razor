@@ -30,6 +30,11 @@
     return;
 }
 
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(Tr("الفرص البيعية", "Sales Pipeline"), "/leads"),
+    new Breadcrumb.BreadcrumbItem(_lead.Name.Display(IsArabic ? Language.Ar : Language.En), null)
+})" />
+
 <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;">
     <div>
         <h1 style="margin-bottom:4px;">@_lead.Name.Display(IsArabic ? Language.Ar : Language.En)</h1>

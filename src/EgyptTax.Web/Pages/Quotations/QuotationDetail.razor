@@ -31,6 +31,11 @@
     return;
 }
 
+<Breadcrumb Crumbs="@(new[] {
+    new Breadcrumb.BreadcrumbItem(Tr("عروض الأسعار", "Quotations"), "/quotations"),
+    new Breadcrumb.BreadcrumbItem(_quotation.QuotationNumber ?? Tr("(مسودة)", "(draft)"), null)
+})" />
+
 <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;">
     <div>
         <h1 style="margin-bottom:4px;">

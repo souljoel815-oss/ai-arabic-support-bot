@@ -1,0 +1,36 @@
+@*
+    v5 UI Sprint 2 — premium breadcrumb. Used on detail pages
+    to anchor the user in the navigation tree.
+
+    Usage:
+      <Breadcrumb Crumbs="@(new BreadcrumbItem[] {
+          new(\"الفواتير\", \"/invoices\"),
+          new(\"INV-2026-0042\", null) // last has no URL = current page
+      })" />
+*@
+
+<nav class="dx-breadcrumb" aria-label="breadcrumb">
+    @for (int i = 0; i < Crumbs.Length; i++)
+    {
+        var c = Crumbs[i];
+        var isLast = i == Crumbs.Length - 1;
+        if (c.Url is not null && !isLast)
+        {
+            <a class="dx-breadcrumb-link" href="@c.Url">@c.Label</a>
+        }
+        else
+        {
+            <span class="dx-breadcrumb-current">@c.Label</span>
+        }
+        @if (!isLast)
+        {
+            <span class="dx-breadcrumb-sep" aria-hidden="true">›</span>
+        }
+    }
+</nav>
+
+@code {
+    [Parameter, EditorRequired] public BreadcrumbItem[] Crumbs { get; set; } = Array.Empty<BreadcrumbItem>();
+
+    public sealed record BreadcrumbItem(string Label, string? Url);
+}

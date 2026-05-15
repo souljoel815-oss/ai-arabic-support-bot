@@ -2132,3 +2132,37 @@ a.dx-action-row .dx-action-cta {
 .appshell .kanban-card-date {
     color: var(--dx-text-subtle);
 }
+
+/* ============================================================
+   Breadcrumb (detail pages)
+   ============================================================ */
+.dx-breadcrumb {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 13px;
+    margin: 0 0 14px;
+    color: var(--dx-text-muted);
+}
+.dx-breadcrumb-link {
+    color: var(--dx-text-muted);
+    text-decoration: none;
+    padding: 3px 8px;
+    border-radius: 6px;
+    transition: color 150ms ease, background 150ms ease;
+}
+.dx-breadcrumb-link:hover {
+    color: var(--dx-gold-bright);
+    background: var(--dx-bg-hover);
+}
+.dx-breadcrumb-current {
+    color: var(--dx-text);
+    font-weight: 600;
+    padding: 3px 8px;
+}
+.dx-breadcrumb-sep {
+    color: var(--dx-text-subtle);
+    font-size: 12px;
+    user-select: none;
+}
