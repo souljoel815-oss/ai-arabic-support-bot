@@ -493,6 +493,11 @@ builder.Services.AddSingleton<EgyptTax.Infrastructure.Api.ApiKeyRateLimiter>();
 builder.Services.AddHttpClient("WebhookDispatcher");
 builder.Services.AddSingleton<EgyptTax.Infrastructure.Api.WebhookDispatcher>();
 
+// v5 DP.1 — toast notification service. Scoped so each Blazor
+// circuit (one per tab) gets its own toast stack; the
+// ToastContainer in MainLayout subscribes + renders.
+builder.Services.AddScoped<EgyptTax.Web.Shared.Toasts.ToastService>();
+
 // v3 §11 #8 — eSignature service: request + verify + record
 // magic-link signatures on quotations / invoices.
 builder.Services.AddScoped<EgyptTax.Infrastructure.Signatures.SignatureService>();

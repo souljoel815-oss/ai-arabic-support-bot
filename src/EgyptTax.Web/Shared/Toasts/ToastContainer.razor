@@ -1,0 +1,91 @@
+@using EgyptTax.Web.Shared.Toasts
+@implements IDisposable
+@inject ToastService Toasts
+
+@*
+    v5 DP.1 — fixed-position container that subscribes to ToastService
+    and renders the active stack. Single instance lives in MainLayout
+    so every page reaches it via the same singleton-per-circuit
+    Scoped service. Each toast self-dismisses after 5s.
+*@
+
+<div class="toast-container" aria-live="polite" aria-atomic="false">
+    @foreach (var toast in Toasts.Active)
+    {
+        var t = toast;
+        <div class="toast toast-@KindClass(t.Kind)" role="status" key="@t.Id">
+            <div class="toast-icon">@KindGlyph(t.Kind)</div>
+            <div class="toast-body">
+                @if (!string.IsNullOrWhiteSpace(t.Title))
+                {
+                    <div class="toast-title">@t.Title</div>
+                }
+                <div class="toast-message">@t.Message</div>
+            </div>
+            <button type="button" class="toast-dismiss" aria-label="Dismiss"
+                    @onclick="() => Toasts.Dismiss(t.Id)">×</button>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly Dictionary<Guid, System.Threading.Timer> _timers = new();
+
+    protected override void OnInitialized()
+    {
+        Toasts.OnChange += HandleChange;
+    }
+
+    private void HandleChange()
+    {
+        // Schedule auto-dismiss for any new toast we haven't timed yet.
+        foreach (var t in Toasts.Active)
+        {
+            if (!_timers.ContainsKey(t.Id))
+            {
+                var id = t.Id;
+                _timers[id] = new System.Threading.Timer(_ =>
+                {
+                    InvokeAsync(() =>
+                    {
+                        Toasts.Dismiss(id);
+                        if (_timers.TryGetValue(id, out var timer))
+                        {
+                            timer.Dispose();
+                            _timers.Remove(id);
+                        }
+                    });
+                }, null, Toast.AutoDismissMilliseconds, System.Threading.Timeout.Infinite);
+            }
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Toasts.OnChange -= HandleChange;
+        foreach (var timer in _timers.Values)
+        {
+            timer.Dispose();
+        }
+        _timers.Clear();
+    }
+
+    private static string KindClass(ToastKind k) => k switch
+    {
+        ToastKind.Success => "success",
+        ToastKind.Error => "error",
+        ToastKind.Warn => "warn",
+        ToastKind.Info => "info",
+        _ => "info",
+    };
+
+    private static string KindGlyph(ToastKind k) => k switch
+    {
+        ToastKind.Success => "✓",
+        ToastKind.Error => "✕",
+        ToastKind.Warn => "⚠",
+        ToastKind.Info => "ℹ",
+        _ => "ℹ",
+    };
+}
