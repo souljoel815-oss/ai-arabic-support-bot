@@ -124,5 +124,17 @@ internal sealed class CompanyConfiguration : IEntityTypeConfiguration<Company>
             .HasColumnName("require_pos_session")
             .IsRequired()
             .HasDefaultValue(false);
+
+        // v5 F.2 — FX gain/loss GL account codes (nullable; null
+        // → ResolvedFx*AccountCode() returns the EG-COA defaults
+        // 4920 / 6920).
+        b.Property(c => c.FxGainAccountCode)
+            .HasColumnName("fx_gain_account_code")
+            .HasMaxLength(32)
+            .IsUnicode(false);
+        b.Property(c => c.FxLossAccountCode)
+            .HasColumnName("fx_loss_account_code")
+            .HasMaxLength(32)
+            .IsUnicode(false);
     }
 }

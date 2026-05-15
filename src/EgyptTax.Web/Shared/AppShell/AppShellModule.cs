@@ -129,6 +129,7 @@ public static class AppShellModuleRegistry
                 new SubNavLink("المطابقة البنكية", "Bank reconciliation", "/payments/bank-statements", "bank statement كشف", "landmark"),
                 new SubNavLink("تحويل أموال", "Fund transfer", "/cash-transfer", "fund transfer تحويل", "arrow-right"),
                 new SubNavLink("مسحوبات المالك", "Owner drawings", "/owner-drawings", "owner drawings مسحوبات", "wallet"),
+                new SubNavLink("تسوية فروق العملة", "FX adjustment", "/accounting/fx-adjustment", "fx fx-adjustment فروق عملة realized", "scale"),
                 new SubNavLink("الدفعات غير المخصصة", "Unmatched payments", "/payments/unmatched", "unmatched payment دفعة", "alert-triangle"),
                 new SubNavLink("مراكز التكلفة", "Cost centers", "/cost-centers", "cost center مركز تكلفة", "tag"),
                 new SubNavLink("سجل التدقيق", "Audit log", "/audit-log", "audit log سجل تدقيق", "shield-check"),

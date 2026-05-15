@@ -48,6 +48,19 @@ public sealed class Company
     /// behaviour). Operator opts in via /settings/company.</summary>
     public bool RequirePosSession { get; private set; }
 
+    /// <summary>v5 F.2 — GL account code the FX-adjustment page
+    /// credits when the operator records a foreign-currency gain
+    /// (payment-rate-EGP &gt; invoice-rate-EGP). Null = use the
+    /// EG-COA default "4920". Operator can override per their
+    /// chart-of-accounts naming.</summary>
+    public string? FxGainAccountCode { get; private set; }
+
+    /// <summary>v5 F.2 — GL account code the FX-adjustment page
+    /// debits when the operator records a foreign-currency loss
+    /// (payment-rate-EGP &lt; invoice-rate-EGP). Null = use the
+    /// EG-COA default "6920".</summary>
+    public string? FxLossAccountCode { get; private set; }
+
     private Company() { }
 
     public Company(
@@ -98,6 +111,25 @@ public sealed class Company
 
     /// <summary>v5 A.6 — toggle the POS-sessions requirement.</summary>
     public void UpdateRequirePosSession(bool require) => RequirePosSession = require;
+
+    /// <summary>v5 F.2 — set or clear the FX gain/loss GL account
+    /// codes. Pass null to restore the EG-COA defaults
+    /// (4920 / 6920). Validates that codes (when present) are
+    /// non-empty trimmed strings.</summary>
+    public void UpdateFxAccounts(string? gainCode, string? lossCode)
+    {
+        FxGainAccountCode = string.IsNullOrWhiteSpace(gainCode) ? null : gainCode.Trim();
+        FxLossAccountCode = string.IsNullOrWhiteSpace(lossCode) ? null : lossCode.Trim();
+    }
+
+    /// <summary>v5 F.2 — convenience: returns the FxGain code or
+    /// the EG-COA default. Used by the FX-adjustment posting
+    /// path so a fresh install works without configuration.</summary>
+    public string ResolvedFxGainAccountCode() =>
+        string.IsNullOrWhiteSpace(FxGainAccountCode) ? "4920" : FxGainAccountCode!;
+
+    public string ResolvedFxLossAccountCode() =>
+        string.IsNullOrWhiteSpace(FxLossAccountCode) ? "6920" : FxLossAccountCode!;
 }
 
 /// <summary>v4 C.9 — visual variants of the sales-invoice PDF.

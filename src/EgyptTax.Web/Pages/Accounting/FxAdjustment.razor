@@ -1,0 +1,370 @@
+@page "/accounting/fx-adjustment"
+@using System.Globalization
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+@*
+    v5 F.2 v1 — manual FX adjustment. Operator records a foreign-
+    currency gain or loss against a counterparty (customer or
+    supplier) by typing the foreign amount + invoice rate +
+    payment rate. System computes the EGP delta + posts a
+    balanced JV to the configured FX gain / loss account.
+
+    NB: Auto-trigger on payment (per the original Manus spec)
+    requires multi-currency invoices/payments which the codebase
+    doesn't ship today. This v1 covers the GL outcome (the
+    accountant gets the right Balance Sheet) without touching
+    the 145-page invoice/payment surface. Auto-trigger lands
+    when multi-currency does.
+*@
+
+<PageTitle>@(IsArabic ? "تسوية فروق العملة | DaftarX" : "FX adjustment | DaftarX")</PageTitle>
+
+<h1>@(IsArabic ? "تسوية فروق العملة" : "FX adjustment")</h1>
+<p class="page-subtitle">
+    @(IsArabic
+        ? "سجل ربح أو خسارة فرق عملة على فاتورة بالعملة الأجنبية. النظام بيقيّد القيد المتوازن تلقائياً للحساب الموجّب أو الخاسر."
+        : "Record a foreign-currency gain or loss on an invoice. The system posts a balanced JV to the configured FX account.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" role="status" style="margin:8px 0;">@_flash</div>
+}
+
+<section style="display:grid;grid-template-columns:minmax(0, 460px) 1fr;gap:24px;align-items:flex-start;margin-top:18px;">
+    <div class="form-grid">
+        <h2 style="margin-top:0;">@(IsArabic ? "تسوية جديدة" : "New adjustment")</h2>
+
+        <label>
+            <span>@(IsArabic ? "نوع الطرف *" : "Counterparty type *")</span>
+            <select @bind="_form.PartyKind">
+                <option value="customer">@(IsArabic ? "عميل (مستحقات مدينة)" : "Customer (receivable)")</option>
+                <option value="supplier">@(IsArabic ? "مورد (مستحقات دائنة)" : "Supplier (payable)")</option>
+            </select>
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "العملة *" : "Currency *")</span>
+            <select @bind="_form.CurrencyCode">
+                <option value="">— @(IsArabic ? "اختر —" : "Choose —")</option>
+                @foreach (var c in _currencies.Where(c => !c.IsBase))
+                {
+                    <option value="@c.Code">@c.Code (@(IsArabic ? c.NameAr : c.NameEn))</option>
+                }
+            </select>
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "المبلغ بالعملة الأجنبية *" : "Amount (foreign currency) *")</span>
+            <input type="number" min="0.01" step="0.01" @bind="_form.ForeignAmount" />
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "سعر الصرف يوم الفاتورة *" : "Exchange rate at invoice *")</span>
+            <input type="number" min="0.0001" step="0.0001" @bind="_form.InvoiceRate" />
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "سعر الصرف يوم السداد *" : "Exchange rate at payment *")</span>
+            <input type="number" min="0.0001" step="0.0001" @bind="_form.PaymentRate" />
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "تاريخ التسوية *" : "Adjustment date *")</span>
+            <input type="date" @bind="_form.Date" />
+        </label>
+
+        <label>
+            <span>@(IsArabic ? "مرجع الفاتورة (نص حر، اختياري)" : "Invoice reference (free text, optional)")</span>
+            <input type="text" maxlength="100" @bind="_form.InvoiceRef" />
+        </label>
+
+        @if (_form.ForeignAmount > 0m && _form.InvoiceRate > 0m && _form.PaymentRate > 0m)
+        {
+            var invoiceEgp = decimal.Round(_form.ForeignAmount * _form.InvoiceRate, 2);
+            var paymentEgp = decimal.Round(_form.ForeignAmount * _form.PaymentRate, 2);
+            var delta = paymentEgp - invoiceEgp;
+            var isGain = delta > 0m
+                ? (_form.PartyKind == "customer")    // customer paid more EGP than expected
+                : (_form.PartyKind != "customer");   // supplier was paid less EGP than expected
+            var direction = delta switch
+            {
+                > 0m when _form.PartyKind == "customer" => IsArabic ? "ربح عملة" : "FX gain",
+                < 0m when _form.PartyKind == "customer" => IsArabic ? "خسارة عملة" : "FX loss",
+                > 0m when _form.PartyKind == "supplier" => IsArabic ? "خسارة عملة" : "FX loss",
+                < 0m when _form.PartyKind == "supplier" => IsArabic ? "ربح عملة" : "FX gain",
+                _ => IsArabic ? "لا فرق" : "No difference",
+            };
+            <div class="kpi-card kpi-info" style="margin-top:8px;">
+                <div style="font-size:13px;color:var(--text-muted);">@(IsArabic ? "المعاينة" : "Preview")</div>
+                <div>@(IsArabic ? "بالـ EGP يوم الفاتورة:" : "EGP at invoice:") <strong>@invoiceEgp.ToString("N2")</strong></div>
+                <div>@(IsArabic ? "بالـ EGP يوم السداد:" : "EGP at payment:") <strong>@paymentEgp.ToString("N2")</strong></div>
+                <div>@(IsArabic ? "الفرق:" : "Delta:") <strong style="color:@(isGain ? "var(--success-text)" : "var(--danger-text)");">
+                    @delta.ToString("+N2;-N2;0") — @direction
+                </strong></div>
+            </div>
+        }
+
+        <button type="button" class="btn-primary" @onclick="OnPostAsync"
+                disabled="@(_busy || !CanPost())">
+            @(_busy ? (IsArabic ? "جارٍ الترحيل…" : "Posting…") : (IsArabic ? "ترحيل التسوية" : "Post adjustment"))
+        </button>
+    </div>
+
+    <div>
+        <h2 style="margin-top:0;">@(IsArabic ? "آخر التسويات" : "Recent adjustments") (@_recent.Count)</h2>
+        @if (_recent.Count == 0)
+        {
+            <p><em>@(IsArabic ? "ما فيش تسويات بعد." : "No adjustments yet.")</em></p>
+        }
+        else
+        {
+            <table class="data-grid">
+                <thead>
+                    <tr>
+                        <th>@(IsArabic ? "التاريخ" : "Date")</th>
+                        <th>@(IsArabic ? "النوع" : "Type")</th>
+                        <th class="num">@(IsArabic ? "الفرق (EGP)" : "Delta (EGP)")</th>
+                        <th>@(IsArabic ? "المرجع" : "Reference")</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _recent)
+                    {
+                        <tr>
+                            <td>@r.Date.ToString("yyyy-MM-dd")</td>
+                            <td>@r.TypeLabel</td>
+                            <td class="num"><strong style="color:@(r.IsGain ? "var(--success-text)" : "var(--danger-text)");">
+                                @r.DeltaEgp.ToString(r.IsGain ? "+N2" : "-N2")
+                            </strong></td>
+                            <td><small>@r.Reference</small></td>
+                            <td><a href="/journals/@r.JournalId">@(IsArabic ? "القيد" : "JV")</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</section>
+
+@code {
+    /// <summary>Marker prefix used in JV narration so the recent-
+    /// adjustments list can find prior FX adjustment JVs without
+    /// a dedicated entity.</summary>
+    private const string FxMarker = "[FX-ADJ]";
+
+    /// <summary>EG-COA convention for the AR control account
+    /// (customer balance). Used to balance the customer side of
+    /// the FX adjustment when the operator hasn't picked a
+    /// specific receivable account.</summary>
+    private const string ArControlCode = "1210";
+    private const string ApControlCode = "2110";
+
+    private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private List<EgyptTax.Domain.Settings.Currency> _currencies = new();
+    private Company? _company;
+    private FormModel _form = new();
+    private List<AdjustmentRow> _recent = new();
+    private bool _busy;
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _currencies = await Db.Set<EgyptTax.Domain.Settings.Currency>().AsNoTracking()
+            .Where(c => c.IsActive)
+            .OrderByDescending(c => c.IsBase)
+            .ThenBy(c => c.Code)
+            .ToListAsync();
+        _company = await Db.Set<Company>().AsNoTracking().FirstOrDefaultAsync();
+
+        var recentJvIds = await Db.Set<JournalVoucher>().AsNoTracking()
+            .Where(j => j.Narration.English.StartsWith(FxMarker)
+                || j.Narration.Arabic.StartsWith(FxMarker))
+            .OrderByDescending(j => j.Date)
+            .Take(50)
+            .Select(j => j.Id)
+            .ToListAsync();
+        var jvs = await Db.Set<JournalVoucher>().AsNoTracking()
+            .Where(j => recentJvIds.Contains(j.Id))
+            .Include(j => j.Lines)
+            .ToListAsync();
+
+        var gainCode = _company?.ResolvedFxGainAccountCode() ?? "4920";
+        _recent = jvs
+            .OrderByDescending(j => j.Date)
+            .Select(j =>
+            {
+                // The JV touches one of: 4920 (gain credit),
+                // 6920 (loss debit). Detect by which one has a
+                // non-zero amount.
+                var fxLine = j.Lines.FirstOrDefault(l =>
+                    l.AccountCode == gainCode || l.AccountCode == "6920" || l.AccountCode == "4920");
+                var isGain = fxLine?.AccountCode == gainCode || fxLine?.AccountCode == "4920";
+                var amt = fxLine is null ? 0m
+                    : (isGain ? fxLine.Credit.Amount : fxLine.Debit.Amount);
+                var typeLabel = isGain
+                    ? (IsArabic ? "ربح عملة" : "FX gain")
+                    : (IsArabic ? "خسارة عملة" : "FX loss");
+                return new AdjustmentRow(
+                    JournalId: j.Id,
+                    Date: j.Date,
+                    TypeLabel: typeLabel,
+                    IsGain: isGain,
+                    DeltaEgp: amt,
+                    Reference: IsArabic ? j.Narration.Arabic : j.Narration.English);
+            })
+            .ToList();
+    }
+
+    private bool CanPost() =>
+        !string.IsNullOrWhiteSpace(_form.CurrencyCode)
+        && _form.ForeignAmount > 0m
+        && _form.InvoiceRate > 0m
+        && _form.PaymentRate > 0m
+        && _form.InvoiceRate != _form.PaymentRate;
+
+    private async Task OnPostAsync()
+    {
+        _busy = true;
+        _flash = null;
+        try
+        {
+            if (!CanPost())
+            {
+                _flash = Tr("املأ كل الحقول وتأكد إن سعرَي الصرف مختلفين.",
+                    "Fill all fields and ensure the rates differ.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId() ?? Guid.Empty;
+            if (userId == Guid.Empty)
+            {
+                _flash = Tr("تعذّر تحديد المستخدم.", "Could not resolve current user.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+
+            var invoiceEgp = decimal.Round(_form.ForeignAmount * _form.InvoiceRate, 2);
+            var paymentEgp = decimal.Round(_form.ForeignAmount * _form.PaymentRate, 2);
+            var deltaEgp = paymentEgp - invoiceEgp;
+            var deltaAbs = Math.Abs(deltaEgp);
+            if (deltaAbs == 0m)
+            {
+                _flash = Tr("لا يوجد فرق — مفيش تسوية محتاجة.", "No delta — no adjustment needed.");
+                _flashClass = "kpi-card kpi-info";
+                return;
+            }
+
+            var company = await Db.Set<Company>().AsNoTracking().FirstOrDefaultAsync()
+                ?? throw new InvalidOperationException("Company not configured.");
+            var fxGainCode = company.ResolvedFxGainAccountCode();
+            var fxLossCode = company.ResolvedFxLossAccountCode();
+            var partyControlCode = _form.PartyKind == "customer" ? ArControlCode : ApControlCode;
+
+            // Determine direction:
+            //   customer + delta > 0 → customer paid more EGP than expected
+            //     → close out the AR (CR 1210) and book the gain (CR 4920)
+            //     → DR? we DR the receivable account because it had MORE
+            //       receivable than the foreign-amount-at-invoice-rate
+            //     Actually: the AR row was at invoice-rate-EGP; the cash
+            //     settled at payment-rate-EGP > invoice-rate-EGP. To clean
+            //     the AR and post the gain:
+            //       DR 1210 (raise AR by delta)  CR 4920 (gain)
+            //   customer + delta < 0 → customer paid less EGP → loss
+            //       DR 6920 (loss)  CR 1210 (lower AR by |delta|)
+            //   supplier + delta > 0 → we paid more EGP than expected → loss
+            //       DR 6920  CR 2110
+            //   supplier + delta < 0 → we paid less EGP → gain
+            //       DR 2110  CR 4920
+            string drCode, crCode;
+            decimal drAmt, crAmt;
+            bool isGain;
+            if (_form.PartyKind == "customer")
+            {
+                if (deltaEgp > 0m)
+                { drCode = ArControlCode; crCode = fxGainCode; isGain = true; }
+                else
+                { drCode = fxLossCode; crCode = ArControlCode; isGain = false; }
+            }
+            else // supplier
+            {
+                if (deltaEgp > 0m)
+                { drCode = fxLossCode; crCode = ApControlCode; isGain = false; }
+                else
+                { drCode = ApControlCode; crCode = fxGainCode; isGain = true; }
+            }
+            drAmt = deltaAbs;
+            crAmt = deltaAbs;
+
+            var refTag = string.IsNullOrWhiteSpace(_form.InvoiceRef) ? "" : $" [{_form.InvoiceRef.Trim()}]";
+            var typeAr = isGain ? "ربح عملة" : "خسارة عملة";
+            var typeEn = isGain ? "FX gain" : "FX loss";
+            var narrAr = $"{FxMarker}{refTag}: {typeAr} — {_form.CurrencyCode} {_form.ForeignAmount:N2} @ {_form.InvoiceRate:0.####} → {_form.PaymentRate:0.####}";
+            var narrEn = $"{FxMarker}{refTag}: {typeEn} — {_form.CurrencyCode} {_form.ForeignAmount:N2} @ {_form.InvoiceRate:0.####} → {_form.PaymentRate:0.####}";
+            var memo = IsArabic ? narrAr : narrEn;
+
+            var amount = MoneyEgp.From(deltaAbs);
+            var jv = JournalVoucher.CreateManual(
+                date: _form.Date,
+                narration: new ArabicEnglishText(narrAr, narrEn),
+                createdByUserId: userId,
+                createdAtUtc: DateTime.UtcNow,
+                lines: new[]
+                {
+                    (drCode, amount,        MoneyEgp.Zero, memo),
+                    (crCode, MoneyEgp.Zero, amount,        memo),
+                });
+            Db.Add(jv);
+            await Db.SaveChangesAsync();
+
+            _flash = Tr($"تم تسجيل تسوية {deltaAbs:N2} ج.م ({(isGain ? "ربح" : "خسارة")}).",
+                       $"Recorded {deltaAbs:N2} EGP {(isGain ? "gain" : "loss")}.");
+            _flashClass = "kpi-card kpi-info";
+            _form = new FormModel();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private sealed class FormModel
+    {
+        public string PartyKind { get; set; } = "customer";
+        public string CurrencyCode { get; set; } = "";
+        public decimal ForeignAmount { get; set; }
+        public decimal InvoiceRate { get; set; }
+        public decimal PaymentRate { get; set; }
+        public DateOnly Date { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
+        public string InvoiceRef { get; set; } = "";
+    }
+
+    private sealed record AdjustmentRow(
+        Guid JournalId,
+        DateOnly Date,
+        string TypeLabel,
+        bool IsGain,
+        decimal DeltaEgp,
+        string Reference);
+}
