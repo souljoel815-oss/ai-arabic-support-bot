@@ -85,5 +85,7 @@ internal sealed class ItemConfiguration : IEntityTypeConfiguration<Item>
         // v5 F.5 v2 — physical attributes for landed-cost weight/volume splits.
         b.Property(i => i.WeightKg).HasColumnName("weight_kg").HasColumnType("decimal(10,3)");
         b.Property(i => i.VolumeM3).HasColumnName("volume_m3").HasColumnType("decimal(10,4)");
+        // v5 UI Sprint 3 (POS rebuild) — optional thumbnail URL.
+        b.Property(i => i.ImageUrl).HasColumnName("image_url").HasMaxLength(500);
     }
 }

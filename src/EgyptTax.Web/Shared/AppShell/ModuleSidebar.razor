@@ -16,9 +16,14 @@
 
 <aside class="appshell-modules" aria-label="@(_isArabic ? "الوحدات" : "Modules")">
     @* Logo block *@
+    @* v5 brand mark — full DaftarX logo image. Falls back to the
+       legacy "D" + text combo if /images/daftarx-logo.png is missing
+       (onerror unhides the children so no broken-image icon shows). *@
     <a class="appshell-modules-logo" href="/" title="DaftarX" aria-label="DaftarX">
-        <span class="appshell-logo-d">D</span>
-        <span class="appshell-logo-text">DaftarX</span>
+        <img class="appshell-logo-img" src="/images/daftarx-logo.png" alt="DaftarX"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex';this.nextElementSibling.nextElementSibling.style.display='inline';" />
+        <span class="appshell-logo-d" style="display:none;">D</span>
+        <span class="appshell-logo-text" style="display:none;">DaftarX</span>
     </a>
 
     @* Main module buttons (all except settings) *@

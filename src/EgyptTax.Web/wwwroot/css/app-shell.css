@@ -154,6 +154,20 @@
     transform: translateY(-1px);
 }
 
+/* v5 brand image — the full DaftarX logo (icon + wordmark). Saved
+   at /images/daftarx-logo.png. Square so the stacked icon + text
+   reads at usable size; centered inside the sidebar column. */
+.appshell-logo-img {
+    width: 100%;
+    max-width: 110px;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    object-fit: contain;
+    object-position: center;
+    display: block;
+    margin: 0 auto;
+}
+
 .appshell-logo-d {
     position: relative;
     display: flex;
@@ -2993,6 +3007,16 @@ a.dx-action-row .dx-action-cta {
 }
 .appshell .pos-item-card:active {
     transform: translateY(0) !important;
+}
+/* v5 UI Sprint 3 — fixed-aspect thumbnail at the top of each POS tile.
+   Falls back to a placeholder square when Item.ImageUrl is null so the
+   grid stays uniform regardless of how many items have photos. */
+.appshell .pos-item-thumb {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: var(--dx-radius-sm);
+    margin-bottom: 6px;
+    overflow: hidden;
 }
 .appshell .pos-item-code {
     font-size: 11px;

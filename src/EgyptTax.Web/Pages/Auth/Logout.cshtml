@@ -8,8 +8,10 @@
 <div class="auth-page-shell">
     <div class="auth-page-card" style="text-align:center;">
         <div class="auth-brand" style="justify-content:center;">
-            <div class="auth-brand-mark">DX</div>
-            <div class="auth-brand-name">DaftarX</div>
+            <img class="auth-brand-img" src="/images/daftarx-logo.png" alt="DaftarX"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='grid';this.nextElementSibling.nextElementSibling.style.display='block';" />
+            <div class="auth-brand-mark" style="display:none;">DX</div>
+            <div class="auth-brand-name" style="display:none;">DaftarX</div>
         </div>
         <h1>@(IsArabic ? "جارٍ تسجيل الخروج…" : "Signing out…")</h1>
         <p>@(IsArabic ? "إعادة التوجيه إلى صفحة الدخول." : "Redirecting to the sign-in page.")</p>

@@ -41,6 +41,17 @@
         <span>@Tr("الحجم لكل وحدة (م³)", "Volume per unit (m³)")</span>
         <input type="number" step="0.0001" min="0" @bind="_volumeM3" placeholder="@Tr("اختياري", "optional")" />
     </label>
+    @* v5 UI Sprint 3 — POS thumbnail URL. *@
+    <label>
+        <span>@Tr("رابط الصورة (لـPOS)", "Image URL (for POS tile)")</span>
+        <input type="url" @bind="_imageUrl" placeholder="https://..." />
+    </label>
+    @if (!string.IsNullOrWhiteSpace(_imageUrl))
+    {
+        <div style="margin-top:8px;">
+            <img src="@_imageUrl" alt="" style="max-width:120px;max-height:120px;border:1px solid var(--border);border-radius:8px;" />
+        </div>
+    }
     <div class="invoice-actions" style="margin-top:14px;">
         <button type="button" class="btn-primary" @onclick="OnSaveAsync" disabled="@_saving">
             @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ", "Save"))
@@ -62,6 +73,7 @@
     private Item? _item;
     private decimal? _weightKg;
     private decimal? _volumeM3;
+    private string? _imageUrl;
     private string? _flash;
     private string _flassClass = "flash-success";
 
@@ -72,6 +84,7 @@
         {
             _weightKg = _item.WeightKg;
             _volumeM3 = _item.VolumeM3;
+            _imageUrl = _item.ImageUrl;
         }
         _loading = false;
     }
@@ -84,6 +97,7 @@
         {
             var live = await Db.Set<Item>().FirstAsync(i => i.Id == _item.Id);
             live.SetPhysicalAttributes(_weightKg, _volumeM3);
+            live.SetImageUrl(_imageUrl);
             await Db.SaveChangesAsync();
             _item = live;
             _flash = Tr("تم الحفظ.", "Saved.");

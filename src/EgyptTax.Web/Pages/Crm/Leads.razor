@@ -3,6 +3,7 @@
 @using EgyptTax.Domain.MasterData
 @using EgyptTax.Infrastructure.Persistence
 @using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
@@ -35,8 +36,37 @@
         "Track prospects before they become customers. Move each one through the stages; on Won, click \"Convert to customer\" and a quotation opens pre-filled.")
 </p>
 
-<div class="invoice-toolbar">
+<div class="invoice-toolbar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
     <a href="/leads/new" class="btn-primary">@Tr("+ فرصة جديدة", "+ New lead")</a>
+    @* v5 UI Sprint 5 v2 — filter chips. Click a chip to narrow the
+       kanban. Multi-select: assignee + date can stack. Chips set
+       _filter* state which the FilteredLeads property reads. *@
+    <span style="margin-inline-start:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <strong style="font-size:12px;color:var(--text-muted);">@Tr("تصفية:", "Filter:")</strong>
+        <button type="button" class="@ChipClass(_filterMineOnly)" style="@ChipStyle(_filterMineOnly, false)"
+                @onclick="ToggleMine">
+            👤 @Tr("بتاعتي", "Mine")
+        </button>
+        <button type="button" class="@ChipClass(_filterDateRange == "overdue")" style="@ChipStyle(_filterDateRange == "overdue", true)"
+                @onclick="ToggleOverdue">
+            ⚠ @Tr("متأخرة", "Overdue")
+        </button>
+        <button type="button" class="@ChipClass(_filterDateRange == "this-month")" style="@ChipStyle(_filterDateRange == "this-month", false)"
+                @onclick="ToggleThisMonth">
+            📅 @Tr("هذا الشهر", "This month")
+        </button>
+        <button type="button" class="@ChipClass(_filterValueTier == "high")" style="@ChipStyle(_filterValueTier == "high", false)"
+                @onclick="ToggleHighValue">
+            💎 @Tr("قيمة > 50 ألف", "Value > 50K")
+        </button>
+        @if (HasAnyFilter())
+        {
+            <button type="button" style="font-size:11px;padding:4px 8px;background:transparent;border:0;color:var(--text-muted);cursor:pointer;text-decoration:underline;"
+                    @onclick="ClearFilters">
+                @Tr("مسح الكل", "Clear all")
+            </button>
+        }
+    </span>
 </div>
 
 @if (_loading)
@@ -70,7 +100,7 @@
 <div class="kanban-grid">
     @foreach (var stage in _activeStages)
     {
-        var stageLeads = _leads.Where(l => l.Stage == stage).ToList();
+        var stageLeads = FilteredLeads.Where(l => l.Stage == stage).ToList();
         var stageValue = stageLeads.Sum(l => l.ExpectedValueEgp ?? 0m);
         <div class="kanban-col">
             <div class="kanban-col-head">
@@ -85,8 +115,21 @@
                 @foreach (var lead in stageLeads)
                 {
                     var displayName = lead.Name.Display(IsArabic ? Language.Ar : Language.En);
+                    @* v5 UI Sprint 5 — derive a probability % per stage and
+                       a status dot color so the operator can scan the
+                       kanban + see which deals are warming up. *@
+                    var prob = StageProbability(lead.Stage);
+                    var dotColor = prob >= 60 ? "#16a34a" : (prob >= 30 ? "#eab308" : "#dc2626");
+                    var lastActivityUtc = lead.Activities.Count > 0
+                        ? lead.Activities.Max(a => a.OccurredAtUtc)
+                        : lead.CreatedAtUtc;
+                    var daysSinceActivity = (int)Math.Floor((DateTime.UtcNow - lastActivityUtc).TotalDays);
                     <a href="/leads/@lead.Id" class="kanban-card">
-                        <div class="kanban-card-name">@displayName</div>
+                        <div class="kanban-card-name" style="display:flex;align-items:center;gap:6px;">
+                            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:@dotColor;flex-shrink:0;"></span>
+                            <span style="flex:1;">@displayName</span>
+                            <span style="font-size:11px;font-weight:600;padding:2px 6px;border-radius:10px;background:var(--bg-2);color:var(--text-muted);">@prob%</span>
+                        </div>
                         @if (!string.IsNullOrEmpty(lead.CompanyName))
                         {
                             <div class="kanban-card-meta">@lead.CompanyName</div>
@@ -105,6 +148,16 @@
                                 }
                             </div>
                         }
+                        <div class="kanban-card-activity" style="font-size:11px;color:var(--text-muted);margin-top:6px;">
+                            @if (daysSinceActivity == 0)
+                            {
+                                @Tr("نشاط اليوم", "Active today")
+                            }
+                            else
+                            {
+                                @Tr($"آخر نشاط منذ {daysSinceActivity} يوم", $"Active {daysSinceActivity}d ago")
+                            }
+                        </div>
                     </a>
                 }
                 @if (stageLeads.Count == 0)
@@ -139,6 +192,65 @@
 }
 
 @code {
+    // v5 UI Sprint 5 v2 — filter-chip state. _filterDateRange + _filterValueTier
+    // are single-value enums (only one date OR value tier active at a time);
+    // _filterMineOnly stacks with the others.
+    private bool _filterMineOnly;
+    private string _filterDateRange = ""; // "" | "overdue" | "this-month"
+    private string _filterValueTier = ""; // "" | "high"
+
+    private void ClearFilters()
+    {
+        _filterMineOnly = false;
+        _filterDateRange = "";
+        _filterValueTier = "";
+    }
+
+    private bool HasAnyFilter() => _filterMineOnly || _filterDateRange != "" || _filterValueTier != "";
+
+    private void ToggleMine() => _filterMineOnly = !_filterMineOnly;
+    private void ToggleOverdue() => _filterDateRange = _filterDateRange == "overdue" ? "" : "overdue";
+    private void ToggleThisMonth() => _filterDateRange = _filterDateRange == "this-month" ? "" : "this-month";
+    private void ToggleHighValue() => _filterValueTier = _filterValueTier == "high" ? "" : "high";
+
+    private static string ChipClass(bool active) => active ? "lead-chip is-active" : "lead-chip";
+
+    private static string ChipStyle(bool active, bool danger)
+    {
+        var bg = active ? (danger ? "#fef2f2" : "var(--accent-bg)") : "transparent";
+        var color = active ? (danger ? "#dc2626" : "var(--accent-text)") : "var(--text)";
+        return $"font-size:12px;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:{bg};color:{color};cursor:pointer;";
+    }
+
+    private IEnumerable<Lead> FilteredLeads
+    {
+        get
+        {
+            IEnumerable<Lead> q = _leads;
+            if (_filterMineOnly && _currentUserId != Guid.Empty)
+            {
+                q = q.Where(l => l.AssignedToUserId == _currentUserId);
+            }
+            if (_filterDateRange == "overdue")
+            {
+                var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+                q = q.Where(l => l.ExpectedCloseDate is { } d && d < today);
+            }
+            else if (_filterDateRange == "this-month")
+            {
+                var today = DateTime.UtcNow.Date;
+                var monthStart = new DateOnly(today.Year, today.Month, 1);
+                var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+                q = q.Where(l => l.ExpectedCloseDate is { } d && d >= monthStart && d <= monthEnd);
+            }
+            if (_filterValueTier == "high")
+            {
+                q = q.Where(l => (l.ExpectedValueEgp ?? 0m) > 50000m);
+            }
+            return q;
+        }
+    }
+
     private bool _loading = true;
     private List<Lead> _leads = new();
 
@@ -151,10 +263,17 @@
         LeadStage.Won,
     };
 
+    private Guid _currentUserId = Guid.Empty;
+
     protected override async Task OnInitializedAsync()
     {
+        // v5 UI Sprint 5 v2 — capture current user for the "Mine" filter chip.
+        var authState = await Auth.GetAuthenticationStateAsync();
+        _currentUserId = authState.User.UserId() ?? Guid.Empty;
+
         _leads = await Db.Set<Lead>()
             .AsNoTracking()
+            .Include(l => l.Activities)
             .OrderByDescending(l => l.CreatedAtUtc)
             .Take(500)
             .ToListAsync();
@@ -170,6 +289,21 @@
         LeadStage.Won => Tr("✓ مكسب", "✓ Won"),
         LeadStage.Lost => Tr("مفقود", "Lost"),
         _ => s.ToString(),
+    };
+
+    /// <summary>v5 UI Sprint 5 — derive a deal-probability % per stage.
+    /// Lead doesn't carry a per-deal probability column today; deriving
+    /// from stage gives the operator a directional signal without a
+    /// schema change. Standard Sales-pipeline percentages.</summary>
+    private static int StageProbability(LeadStage s) => s switch
+    {
+        LeadStage.New => 10,
+        LeadStage.Qualified => 30,
+        LeadStage.ProposalSent => 50,
+        LeadStage.Negotiation => 75,
+        LeadStage.Won => 100,
+        LeadStage.Lost => 0,
+        _ => 0,
     };
 
     private int WinRatePct()

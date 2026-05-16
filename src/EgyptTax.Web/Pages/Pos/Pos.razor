@@ -125,6 +125,14 @@
             @foreach (var item in FilteredItems)
             {
                 <button type="button" class="pos-item-card" @onclick="() => AddToCart(item)">
+                    @* v5 UI Sprint 3 — image thumbnail when ImageUrl set,
+                       otherwise a placeholder square so the grid stays uniform. *@
+                    <div class="pos-item-thumb"
+                         style="@(string.IsNullOrWhiteSpace(item.ImageUrl)
+                            ? "background:var(--bg-2);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:24px;"
+                            : $"background-image:url('{item.ImageUrl}');background-size:cover;background-position:center;")">
+                        @if (string.IsNullOrWhiteSpace(item.ImageUrl)) { <span>📦</span> }
+                    </div>
                     <div class="pos-item-code">@item.Code</div>
                     <div class="pos-item-name">@item.Name.Display(IsArabic ? Language.Ar : Language.En)</div>
                     @if (_priceSuggestions.TryGetValue(item.Id, out var p))
@@ -195,14 +203,47 @@
             <div class="pos-total-row pos-grand"><span>@Tr("الإجمالي", "Total")</span><span>@_grandTotal.ToString("N2")</span></div>
         </div>
 
-        @* v5 A.5 — split payment: 1+ rows, sum must == grand total *@
-        @if (_cart.Count > 0)
+        @* v5 UI Sprint 3 — 3-button payment block (نقدي / بطاقة / تقسيم).
+           Default mode shows the trio; "تقسيم" expands the v5 A.5
+           multi-row split editor underneath for the rare case. *@
+        @if (_cart.Count > 0 && !_splitMode)
+        {
+            <div class="pos-pay-trio" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;border-top:1px solid var(--border);padding-top:10px;margin-top:8px;">
+                <button type="button" class="pos-pay-btn pos-pay-cash"
+                        style="padding:18px 8px;border-radius:10px;border:0;background:#16a34a;color:#fff;font-size:14px;font-weight:600;cursor:pointer;"
+                        disabled="@(_busy)"
+                        @onclick="() => OnQuickChargeAsync(PaymentMethod.Cash)">
+                    💵<br/>@Tr("نقدي", "Cash")
+                </button>
+                <button type="button" class="pos-pay-btn pos-pay-card"
+                        style="padding:18px 8px;border-radius:10px;border:0;background:#2563eb;color:#fff;font-size:14px;font-weight:600;cursor:pointer;"
+                        disabled="@(_busy)"
+                        @onclick="() => OnQuickChargeAsync(PaymentMethod.BankTransfer)">
+                    💳<br/>@Tr("بطاقة", "Card")
+                </button>
+                <button type="button" class="pos-pay-btn pos-pay-split"
+                        style="padding:18px 8px;border-radius:10px;border:0;background:#ea580c;color:#fff;font-size:14px;font-weight:600;cursor:pointer;"
+                        disabled="@(_busy)"
+                        @onclick="() => { _splitMode = true; RecalcPayments(); }">
+                    ✂️<br/>@Tr("تقسيم", "Split")
+                </button>
+            </div>
+        }
+
+        @* v5 A.5 — split payment: 1+ rows, sum must == grand total. Now
+           gated behind the "تقسيم" button so the common single-method
+           path stays one-click. *@
+        @if (_cart.Count > 0 && _splitMode)
         {
             <div class="pos-payments" style="border-top:1px solid var(--border);padding:8px 0;margin:8px 0;">
                 <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-                    <strong style="font-size:13px;">@Tr("الدفع", "Payment")</strong>
-                    <button type="button" class="btn-secondary" style="font-size:11px;padding:2px 6px;"
-                            @onclick="AddPayment">+ @Tr("طريقة دفع", "method")</button>
+                    <strong style="font-size:13px;">@Tr("تقسيم الدفع", "Split payment")</strong>
+                    <div style="display:flex;gap:4px;">
+                        <button type="button" class="btn-secondary" style="font-size:11px;padding:2px 6px;"
+                                @onclick="AddPayment">+ @Tr("طريقة دفع", "method")</button>
+                        <button type="button" class="btn-secondary" style="font-size:11px;padding:2px 6px;"
+                                @onclick="() => _splitMode = false">← @Tr("رجوع", "back")</button>
+                    </div>
                 </div>
                 @for (var i = 0; i < _payments.Count; i++)
                 {
@@ -230,6 +271,11 @@
                         @(_paymentMatch ? " ✓" : "")
                     </strong>
                 </div>
+                <button type="button" class="btn-primary pos-charge" style="margin-top:8px;width:100%;"
+                        disabled="@(_busy || !_paymentMatch)"
+                        @onclick="OnChargeAsync">
+                    @(_busy ? Tr("جارٍ…", "Charging…") : Tr($"💳 احصل {_grandTotal:N2} ج.م", $"💳 Charge {_grandTotal:N2} EGP"))
+                </button>
             </div>
         }
 
@@ -237,12 +283,6 @@
         {
             <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
         }
-
-        <button type="button" class="btn-primary pos-charge"
-                disabled="@(_cart.Count == 0 || _busy || !_paymentMatch)"
-                @onclick="OnChargeAsync">
-            @(_busy ? Tr("جارٍ…", "Charging…") : Tr($"💳 احصل {_grandTotal:N2} ج.م", $"💳 Charge {_grandTotal:N2} EGP"))
-        </button>
     </aside>
 </div>
 
@@ -279,6 +319,9 @@
     private List<CartPayment> _payments = new() { new CartPayment { Method = PaymentMethod.Cash } };
     private decimal _paymentSum;
     private bool _paymentMatch;
+    // v5 UI Sprint 3 — Split mode toggles between the 3-button quick
+    // payment trio (default) and the multi-row split editor.
+    private bool _splitMode;
 
     private sealed class CartLine
     {
@@ -392,7 +435,7 @@
     }
 
     private void Remove(CartLine line) { _cart.Remove(line); _flash = null; Recalc(); }
-    private void ClearCart() { _cart.Clear(); _flash = null; Recalc(); }
+    private void ClearCart() { _cart.Clear(); _flash = null; _splitMode = false; Recalc(); }
 
     private void Recalc()
     {
@@ -436,6 +479,21 @@
         if (_payments.Count <= 1) return;
         _payments.RemoveAt(idx);
         RecalcPayments();
+    }
+
+    /// <summary>v5 UI Sprint 3 — single-button payment path. Collapses
+    /// the cart to a single payment row at the full grand-total and
+    /// fires the regular charge flow. The split editor stays available
+    /// behind the "تقسيم" button for mixed-method sales.</summary>
+    private async Task OnQuickChargeAsync(PaymentMethod method)
+    {
+        if (_cart.Count == 0 || _busy) return;
+        _payments = new List<CartPayment>
+        {
+            new CartPayment { Method = method, Amount = _grandTotal },
+        };
+        RecalcPayments();
+        await OnChargeAsync();
     }
 
     private async Task OnChargeAsync()
@@ -538,6 +596,7 @@
         // v5 A.5 — reset payment rows to a single Cash row so the
         // next sale starts clean.
         _payments = new List<CartPayment> { new CartPayment { Method = PaymentMethod.Cash } };
+        _splitMode = false;
         Recalc();
     }
 }

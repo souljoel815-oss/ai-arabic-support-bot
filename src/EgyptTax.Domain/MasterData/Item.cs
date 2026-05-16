@@ -68,6 +68,12 @@ public sealed class Item
     public decimal? WeightKg { get; private set; }
     public decimal? VolumeM3 { get; private set; }
 
+    /// <summary>v5 UI Sprint 3 (POS rebuild) — optional image URL for
+    /// the POS tile-grid thumbnails + invoice line previews. Stored as
+    /// a string so the operator can paste a CDN URL or upload via a
+    /// separate Files endpoint later. Null = render placeholder tile.</summary>
+    public string? ImageUrl { get; private set; }
+
     /// <summary>
     /// FR-035 / Differentiator 1 — ETA's GS1-style item code from
     /// the regulator's master commodity list (assigned per item by
@@ -207,6 +213,13 @@ public sealed class Item
             throw new ArgumentOutOfRangeException(nameof(volumeM3), "Volume cannot be negative.");
         WeightKg = weightKg;
         VolumeM3 = volumeM3;
+    }
+
+    /// <summary>v5 UI Sprint 3 — set the POS thumbnail URL. Pass null
+    /// or whitespace to clear (placeholder tile rendered instead).</summary>
+    public void SetImageUrl(string? imageUrl)
+    {
+        ImageUrl = string.IsNullOrWhiteSpace(imageUrl) ? null : imageUrl.Trim();
     }
 
     /// <summary>

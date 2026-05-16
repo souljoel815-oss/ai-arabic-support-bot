@@ -736,6 +736,15 @@ body.auth-page {
     box-shadow: var(--shadow-sm);
 }
 
+/* v5 brand image — full DaftarX logo on the auth pages. Larger than
+   the sidebar so it's the visual anchor of the login card. */
+.auth-page-card .auth-brand-img {
+    width: 100px;
+    height: 100px;
+    object-fit: contain;
+    display: block;
+}
+
 .auth-page-card .auth-brand-name {
     font-size: 18px;
     font-weight: 700;

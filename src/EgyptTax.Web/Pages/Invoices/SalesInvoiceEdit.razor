@@ -59,13 +59,26 @@
 <section class="form-grid">
     <fieldset>
         <legend>@(IsArabic ? "بيانات الفاتورة" : "Header")</legend>
+        @* v5 UI Sprint 4 — customer picker with inline search filter +
+           "+ عميل جديد" shortcut. Native <select> handles big lists fast;
+           the search input narrows the rendered options for fast typing. *@
         <label>
-            <span>@(IsArabic ? "العميل" : "Customer")</span>
+            <span style="display:flex;justify-content:space-between;align-items:baseline;">
+                <span>@(IsArabic ? "العميل" : "Customer")</span>
+                <a href="/customers" target="_blank" rel="noopener"
+                   style="font-size:11px;color:var(--accent-text);text-decoration:none;"
+                   title="@(IsArabic ? "افتح صفحة العملاء في تبويب جديد لإضافة عميل، ثم ارجع وحدّث القائمة." : "Open Customers in a new tab to add one, then refresh.")">
+                    + @(IsArabic ? "عميل جديد" : "New customer")
+                </a>
+            </span>
+            <input type="search" @bind="_customerSearch" @bind:event="oninput"
+                   placeholder="@(IsArabic ? "ابحث بالكود أو الاسم…" : "Search by code or name…")"
+                   style="margin-bottom:4px;" />
             <select @bind="_customerId">
                 <option value="@Guid.Empty">@(IsArabic ? "— اختر —" : "— choose —")</option>
-                @foreach (var c in _customers)
+                @foreach (var c in FilteredCustomers)
                 {
-                    <option value="@c.Id">@c.Code — @c.Name.English</option>
+                    <option value="@c.Id">@c.Code — @(IsArabic ? c.Name.Arabic : c.Name.English)</option>
                 }
             </select>
         </label>
@@ -322,17 +335,46 @@
     <div class="grand"><strong>@(IsArabic ? "الإجمالي الكلي:" : "Grand total:")</strong> <span class="num">@TotalGrand.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
 </section>
 
-<div class="form-actions">
-    <button type="button" @onclick="SaveDraftAsync">@(IsArabic ? "حفظ المسودة" : "Save draft")</button>
+@* v5 UI Sprint 4 — invoice editor footer with the 3-button color
+   treatment from the mockup: Save draft (gray), Send to customer
+   (blue, opens the invoice detail with the email composer), Post / ETA
+   submission (orange-gold, the actual atomic post that auto-fires the
+   ETA submission). The third button replaces the old "إرسال للضرائب"
+   label since DaftarX posts to ETA atomically with the ledger post —
+   the operator never has a separate "Send to ETA" step. *@
+<div class="form-actions" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px;">
+    <button type="button" class="invoice-btn-save"
+            style="padding:10px 20px;border-radius:8px;border:1px solid var(--border);background:var(--bg-2);color:var(--text);font-weight:600;cursor:pointer;"
+            @onclick="SaveDraftAsync">
+        💾 @(IsArabic ? "حفظ كمسودة" : "Save draft")
+    </button>
+    @if (_invoice is not null)
+    {
+        <a href="/invoices/@_invoice.Id"
+           class="invoice-btn-send-customer"
+           style="padding:10px 20px;border-radius:8px;border:0;background:#2563eb;color:#fff;font-weight:600;text-decoration:none;display:inline-block;">
+            📧 @(IsArabic ? "إرسال للعميل" : "Send to customer")
+        </a>
+    }
     @if (_requiresApproval)
     {
-        <button type="button" @onclick="SubmitForApprovalAsync" disabled="@(!CanPost)">@(IsArabic ? "إرسال للاعتماد" : "Submit for approval")</button>
+        <button type="button" class="invoice-btn-post"
+                style="padding:10px 20px;border-radius:8px;border:0;background:#ea580c;color:#fff;font-weight:600;cursor:pointer;opacity:@(CanPost ? "1" : "0.5");"
+                @onclick="SubmitForApprovalAsync" disabled="@(!CanPost)">
+            ✓ @(IsArabic ? "إرسال للاعتماد" : "Submit for approval")
+        </button>
     }
     else
     {
-        <button type="button" @onclick="PostAsync" disabled="@(!CanPost)">@(IsArabic ? "ترحيل" : "Post")</button>
+        <button type="button" class="invoice-btn-post"
+                style="padding:10px 20px;border-radius:8px;border:0;background:#ea580c;color:#fff;font-weight:600;cursor:pointer;opacity:@(CanPost ? "1" : "0.5");"
+                @onclick="PostAsync" disabled="@(!CanPost)">
+            🚀 @(IsArabic ? "ترحيل + إرسال للضرائب" : "Post + ETA submission")
+        </button>
     }
-    <a href="/invoices">@(IsArabic ? "إلغاء" : "Cancel")</a>
+    <a href="/invoices" style="margin-inline-start:auto;color:var(--text-muted);text-decoration:none;font-size:13px;">
+        @(IsArabic ? "← إلغاء" : "← Cancel")
+    </a>
 </div>
 @if (_requiresApproval)
 {
@@ -355,6 +397,20 @@
     private bool _requiresApproval;
     private Guid _currentUserId;
     private List<Customer> _customers = new();
+    // v5 UI Sprint 4 — typeahead filter for the customer dropdown.
+    private string _customerSearch = "";
+    private IEnumerable<Customer> FilteredCustomers
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_customerSearch)) return _customers;
+            var term = _customerSearch.Trim();
+            return _customers.Where(c =>
+                c.Code.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || c.Name.Arabic.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || c.Name.English.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+    }
     private List<Item> _items = new();
     private List<VatCategory> _vatCategories = new();
     private List<PaymentTerm> _paymentTerms = new();
