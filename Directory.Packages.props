@@ -61,6 +61,10 @@
     <PackageVersion Include="Tesseract" Version="5.2.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Desktop shell (Photino — native window hosting Kestrel)">
+    <PackageVersion Include="Photino.NET" Version="3.2.3" />
+  </ItemGroup>
+
   <ItemGroup Label="WiX 5 installer (T247)">
     <PackageVersion Include="WixToolset.Firewall.wixext" Version="5.0.2" />
     <PackageVersion Include="WixToolset.Util.wixext" Version="5.0.2" />

@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>EgyptTax.Desktop</RootNamespace>
+    <AssemblyName>DaftarX</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>false</UseWindowsForms>
+    <UseWPF>false</UseWPF>
+    <ApplicationIcon Condition="Exists('..\EgyptTax.Web\wwwroot\favicon.ico')">..\EgyptTax.Web\wwwroot\favicon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Photino.NET" />
+  </ItemGroup>
+
+  <!-- We do NOT take a code reference on the Web project — Desktop
+       launches EgyptTax.Web.exe as a child process so the web and
+       desktop modes share one binary. ReferenceOutputAssembly=false
+       makes MSBuild build the Web project but skip copying its DLLs
+       into Desktop's bin. We then post-build copy the Web publish
+       output beside Desktop.exe so the launcher can find it. -->
+  <ItemGroup>
+    <ProjectReference Include="..\EgyptTax.Web\EgyptTax.Web.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <!-- Copy the freshly-built Web binaries into Desktop/bin/{Cfg}/net8.0-windows/web/
+       so the launcher can find EgyptTax.Web.exe regardless of CWD. -->
+  <Target Name="CopyWebBinariesNextToDesktop" AfterTargets="Build">
+    <ItemGroup>
+      <_WebFiles Include="..\EgyptTax.Web\bin\$(Configuration)\net8.0\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WebFiles)"
+          DestinationFiles="@(_WebFiles->'$(OutDir)web\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_WebFiles)' != ''" />
+  </Target>
+
+</Project>
