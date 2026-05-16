@@ -31,10 +31,19 @@
   </ItemGroup>
 
   <!-- Copy the freshly-built Web binaries into Desktop/bin/{Cfg}/net8.0-windows/web/
-       so the launcher can find EgyptTax.Web.exe regardless of CWD. -->
+       so the launcher can find EgyptTax.Web.exe regardless of CWD.
+
+       Excludes runtime artefacts that don't belong in a bundle:
+         - daftarx.db / .db-shm / .db-wal — the operator's SQLite DB
+           (PortableFirstRun creates it on first run; bundling a copy
+           with a partially-applied migration causes startup to fail).
+         - logs/ — runtime Serilog output.
+         - *.pdb is fine to ship (helps stack traces). -->
   <Target Name="CopyWebBinariesNextToDesktop" AfterTargets="Build">
     <ItemGroup>
-      <_WebFiles Include="..\EgyptTax.Web\bin\$(Configuration)\net8.0\**\*.*" />
+      <_WebFiles Include="..\EgyptTax.Web\bin\$(Configuration)\net8.0\**\*.*"
+                 Exclude="..\EgyptTax.Web\bin\$(Configuration)\net8.0\daftarx.db*;
+                          ..\EgyptTax.Web\bin\$(Configuration)\net8.0\logs\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(_WebFiles)"
           DestinationFiles="@(_WebFiles->'$(OutDir)web\%(RecursiveDir)%(Filename)%(Extension)')"

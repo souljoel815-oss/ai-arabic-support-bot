@@ -75,6 +75,23 @@ internal static class PortableFirstRun
         var historyExists = await TableExistsAsync(db, "__EFMigrationsHistory");
         var legacySchemaExists = await TableExistsAsync(db, "roles");
 
+        // Truly-fresh DB (no history, no schema): call
+        // EnsureCreatedAsync first so EF builds the schema from the
+        // CURRENT model — its SQLite type-mapper turns nvarchar(max)
+        // into TEXT, datetime2(3) into TEXT, binary(32) into BLOB,
+        // etc. MigrateAsync alone would try to execute the
+        // SQL-Server-flavoured strings inside Up() and choke on the
+        // very first migration with "near 'max': syntax error".
+        // After EnsureCreated we fall through to the legacy-backfill
+        // branch below which stamps every assembly migration as
+        // applied so MigrateAsync becomes a no-op now but still runs
+        // any NEW migration added later.
+        if (!historyExists && !legacySchemaExists)
+        {
+            await db.Database.EnsureCreatedAsync();
+            legacySchemaExists = true;
+        }
+
         // One-time legacy conversion: schema present but no migration
         // history (DB was created via the old EnsureCreated path).
         // Backfill history with all migrations that exist in the
