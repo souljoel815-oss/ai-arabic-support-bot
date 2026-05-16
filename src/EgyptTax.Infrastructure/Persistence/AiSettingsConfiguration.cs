@@ -17,6 +17,12 @@ internal sealed class AiSettingsConfiguration : IEntityTypeConfiguration<AiSetti
         b.Property(x => x.ModelName).HasColumnName("model_name")
             .HasMaxLength(100).IsUnicode(false).IsRequired();
         b.Property(x => x.MonthlyBudgetEgp).HasColumnName("monthly_budget_egp").IsRequired();
+        // v5 — Groq chat provider columns (parallel to Anthropic).
+        b.Property(x => x.ChatProvider).HasColumnName("chat_provider")
+            .HasConversion<string>().HasMaxLength(16).IsRequired();
+        b.Property(x => x.GroqModelName).HasColumnName("groq_model_name")
+            .HasMaxLength(100).IsUnicode(false).IsRequired();
+        b.Property(x => x.EncryptedGroqApiKey).HasColumnName("encrypted_groq_api_key").HasMaxLength(2000);
     }
 }
 

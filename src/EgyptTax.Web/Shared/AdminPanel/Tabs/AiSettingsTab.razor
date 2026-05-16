@@ -25,11 +25,11 @@
 }
 
 <section class="ai-settings-tab">
-    <h2>@(IsArabic ? "الذكاء الاصطناعي (Claude)" : "AI (Claude)")</h2>
+    <h2>@(IsArabic ? "الذكاء الاصطناعي (Groq)" : "AI (Groq)")</h2>
     <p class="page-subtitle">
         @(IsArabic
-            ? "بيستخدم Claude من Anthropic لاستخراج بيانات الإيصالات تلقائياً (M.1) والإجابة على أسئلتك المحاسبية بالعربي (M.2). محتاج مفتاح API من console.anthropic.com — التكلفة تقريبية: 0.20 جنيه لكل إيصال OCR."
-            : "Uses Claude from Anthropic for receipt OCR (M.1) and Arabic NL accounting queries (M.2). Needs an API key from console.anthropic.com — rough cost: ~0.20 EGP per receipt scan.")
+            ? "بيستخدم Groq + Llama 4 Scout (multimodal) لاستخراج بيانات الإيصالات تلقائياً (M.1) والإجابة على أسئلتك المحاسبية بالعربي (M.2). محتاج مفتاح API من console.groq.com."
+            : "Uses Groq + Llama 4 Scout (multimodal) for receipt OCR (M.1) and Arabic NL accounting queries (M.2). Needs an API key from console.groq.com.")
     </p>
 
     @if (_flash is not null)
@@ -44,34 +44,36 @@
         </label>
 
         <label style="grid-column:span 2;">
-            <span>@(IsArabic ? "مفتاح Anthropic API" : "Anthropic API key")</span>
-            <input type="password" @bind="_apiKey" placeholder="@_apiKeyHint" autocomplete="off" />
+            <span>@(IsArabic ? "مفتاح Groq API" : "Groq API key")</span>
+            <input type="password" @bind="_groqApiKey" placeholder="@_groqApiKeyHint" autocomplete="off" />
             <em style="font-size:12px;color:var(--muted);">
                 @(IsArabic
-                    ? "احصل عليه من console.anthropic.com → Settings → API Keys. مش هيتعرض في أي مكان بعد ما تحفظ."
-                    : "Get one from console.anthropic.com → Settings → API Keys. It's encrypted at rest and never displayed again.")
+                    ? "احصل عليه من console.groq.com → API Keys. مشفّر عند الحفظ ومش هيتعرض تاني."
+                    : "Get one from console.groq.com → API Keys. Encrypted at rest; never displayed again.")
             </em>
         </label>
 
         <label>
-            <span>@(IsArabic ? "نموذج Claude" : "Claude model")</span>
-            <select @bind="_modelName">
-                <option value="claude-haiku-4-5-20251001">Haiku 4.5 (recommended — fastest + cheapest)</option>
-                <option value="claude-sonnet-4-6">Sonnet 4.6 (smarter, ~3× cost)</option>
-                <option value="claude-opus-4-7">Opus 4.7 (smartest, ~10× cost)</option>
+            <span>@(IsArabic ? "نموذج Groq" : "Groq model")</span>
+            <select @bind="_groqModelName">
+                <option value="meta-llama/llama-4-scout-17b-16e-instruct">Llama 4 Scout 17B (multimodal — recommended)</option>
+                <option value="meta-llama/llama-4-maverick-17b-128e-instruct">Llama 4 Maverick 17B (multimodal, larger context)</option>
+                <option value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile (text-only — OCR will fail)</option>
             </select>
         </label>
 
-        <label>
-            <span>@(IsArabic ? "الميزانية الشهرية المقدرة (ج.م)" : "Monthly budget cap (EGP)")</span>
-            <input type="number" min="50" max="100000" step="50" @bind="_monthlyBudget" />
-            <em style="font-size:12px;color:var(--muted);">
-                @(IsArabic
-                    ? "للعرض فقط في v1 (مش بيمنع الاستخدام بعد التجاوز)."
-                    : "Informational in v1 (does not block calls past the cap).")
-            </em>
-        </label>
     </div>
+    <p class="page-subtitle" style="font-size:12px;margin-top:6px;">
+        ✨ @(IsArabic
+            ? "Groq API مجاني للاستخدام الشخصي (rate-limited). مفيش حد ميزانية."
+            : "Groq's API is free for personal use (rate-limited). No budget cap needed.")
+    </p>
+
+    @* Anthropic fields are intentionally hidden — operator picked Groq.
+       Domain still has the columns so a power user can flip via SQL,
+       but the UI is single-provider clean. _chatProvider is locked to
+       Groq below so the save flow takes the Groq branch. *@
+    @{ _chatProvider = AiChatProvider.Groq; }
 
     <div class="invoice-actions" style="margin-top:16px;">
         <button type="button" class="btn-primary" disabled="@_saving" @onclick="OnSaveAsync">
@@ -79,11 +81,10 @@
         </button>
     </div>
 
-    @* Monthly cost meter — sums tokens across receipt scans + chat
-       logs in the current calendar month, converts via Haiku 4.5
-       pricing × 50 EGP/USD. Display-only. *@
+    @* v5 — usage meter (no cost since Groq is free). Just call count
+       + token totals for visibility into volume / rate-limit safety. *@
     <h3 style="margin-top:24px;">
-        @(IsArabic ? "تكلفة هذا الشهر" : "This month's cost")
+        @(IsArabic ? "استخدام هذا الشهر" : "This month's usage")
     </h3>
     <div class="kpi-grid kpi-grid-3" style="margin-bottom:8px;">
         <div class="kpi-card kpi-info">
@@ -95,12 +96,6 @@
             <div class="kpi-value" style="font-size:14px;">
                 @_monthInputTokens / @_monthOutputTokens
             </div>
-        </div>
-        <div class="kpi-card @(_monthEgp > _monthlyBudget ? "kpi-warn" : "kpi-info")">
-            <div class="kpi-label">
-                @(IsArabic ? $"التكلفة من أصل {_monthlyBudget} ج.م" : $"Cost vs {_monthlyBudget} EGP cap")
-            </div>
-            <div class="kpi-value">~ @_monthEgp.ToString("N2") @(IsArabic ? "ج.م" : "EGP")</div>
         </div>
     </div>
     <p class="page-subtitle" style="font-size:12px;margin-top:0;">
@@ -159,6 +154,12 @@
     private string _modelName = "claude-haiku-4-5-20251001";
     private int _monthlyBudget = 500;
 
+    // v5 — Groq chat provider state.
+    private AiChatProvider _chatProvider = AiChatProvider.Anthropic;
+    private string _groqApiKey = "";
+    private string _groqApiKeyHint = "";
+    private string _groqModelName = "meta-llama/llama-4-scout-17b-16e-instruct";
+
     private List<ReceiptScan> _recentScans = new();
     private int _monthCallCount;
     private int _monthInputTokens;
@@ -174,6 +175,14 @@
         _apiKey = "";
         _apiKeyHint = string.IsNullOrEmpty(s.EncryptedApiKey)
             ? Tr("sk-ant-api03-…", "sk-ant-api03-…")
+            : Tr("(محفوظ — اتركه فارغاً للإبقاء عليه)", "(stored — leave blank to keep)");
+
+        // v5 — Groq side
+        _chatProvider = s.ChatProvider;
+        _groqModelName = s.GroqModelName;
+        _groqApiKey = "";
+        _groqApiKeyHint = string.IsNullOrEmpty(s.EncryptedGroqApiKey)
+            ? Tr("gsk_…", "gsk_…")
             : Tr("(محفوظ — اتركه فارغاً للإبقاء عليه)", "(stored — leave blank to keep)");
 
         _recentScans = await Db.Set<ReceiptScan>()
@@ -241,10 +250,36 @@
                 s.Disable();
             }
 
+            // v5 — Groq side: when the operator switches chat provider
+            // to Groq we encrypt the typed key (or keep the stored one
+            // if the field is blank) and persist the chosen model.
+            if (_chatProvider == AiChatProvider.Groq)
+            {
+                var encryptedGroqKey = string.IsNullOrWhiteSpace(_groqApiKey)
+                    ? (s.EncryptedGroqApiKey ?? "")
+                    : Protector.Encrypt(_groqApiKey);
+                if (string.IsNullOrEmpty(encryptedGroqKey))
+                {
+                    _flash = Tr("أدخل مفتاح Groq API قبل اختيار Groq كمزوّد.",
+                               "Enter a Groq API key before picking Groq as the chat provider.");
+                    _flashClass = "kpi-card kpi-error";
+                    return;
+                }
+                s.ConfigureGroq(
+                    encryptedKey: string.IsNullOrWhiteSpace(_groqApiKey) ? null : encryptedGroqKey,
+                    modelName: _groqModelName);
+            }
+            else
+            {
+                s.SwitchChatProvider(AiChatProvider.Anthropic);
+            }
+
             await Db.SaveChangesAsync();
 
             _apiKey = "";
             _apiKeyHint = Tr("(محفوظ — اتركه فارغاً للإبقاء عليه)", "(stored — leave blank to keep)");
+            _groqApiKey = "";
+            _groqApiKeyHint = Tr("(محفوظ — اتركه فارغاً للإبقاء عليه)", "(stored — leave blank to keep)");
             _flash = Tr("✓ تم الحفظ.", "✓ Saved.");
             _flashClass = "kpi-card kpi-info";
         }

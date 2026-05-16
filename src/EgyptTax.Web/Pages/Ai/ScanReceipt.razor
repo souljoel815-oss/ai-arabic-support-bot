@@ -26,8 +26,8 @@
 <h1>@Tr("📷 مسح إيصال", "📷 Scan Receipt")</h1>
 <p class="page-subtitle">
     @Tr(
-        "ارفع صورة أو PDF للإيصال — Claude بيقرأها بالعربي ويستخرج التاريخ، البائع، المبلغ، الضريبة، والفئة في حوالي 5 ثوان. مفيش حد بيعمل ده بالعربي في مصر دلوقتي.",
-        "Upload a receipt image or PDF — Claude reads it in Arabic and extracts the date, vendor, amount, VAT, and category in about 5 seconds. No Egyptian competitor offers this in Arabic.")
+        "ارفع صورة أو PDF للإيصال — دفترك بيقرأها بالعربي ويستخرج التاريخ، البائع، المبلغ، الضريبة، والفئة في حوالي 5 ثوان. مفيش حد بيعمل ده بالعربي في مصر دلوقتي.",
+        "Upload a receipt image or PDF — DaftarX reads it in Arabic and extracts the date, vendor, amount, VAT, and category in about 5 seconds. No Egyptian competitor offers this in Arabic.")
 </p>
 
 <section class="form-section">
@@ -37,14 +37,27 @@
             "JPG / PNG / PDF · حجم أقصى 5 ميجا · أفضل النتائج لما تكون الصورة واضحة وغير مائلة.",
             "JPG / PNG / PDF · 5 MB max · best results with a clear, upright photo.")
     </p>
-    <InputFile OnChange="OnFileSelectedAsync" accept=".jpg,.jpeg,.png,.pdf,image/*"
-               disabled="@_busy" />
+    @* Styled file picker — InputFile renders an unstyled native
+       <input type="file">; wrap it with a label so the visible chrome
+       is a real button. The hidden <InputFile> sits inside the label
+       and the label's click forwards to it. *@
+    <label class="scan-receipt-upload @(_busy ? "is-busy" : "")">
+        <InputFile OnChange="OnFileSelectedAsync"
+                   accept=".jpg,.jpeg,.png,.pdf,image/*"
+                   disabled="@_busy"
+                   style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" />
+        <span class="scan-receipt-upload-icon">📤</span>
+        <span class="scan-receipt-upload-text">
+            <strong>@Tr("اختر صورة أو PDF", "Choose image or PDF")</strong>
+            <em>@Tr("JPG / PNG / PDF · 5 MB كحد أقصى", "JPG / PNG / PDF · 5 MB max")</em>
+        </span>
+    </label>
 </section>
 
 @if (_busy)
 {
     <div class="kpi-card kpi-info" style="margin-top:16px;padding:14px;">
-        @Tr("⏳ Claude بيقرأ الإيصال… (عادةً 3-8 ثوان)", "⏳ Claude is reading the receipt… (usually 3-8 seconds)")
+        @Tr("⏳ دفترك بيقرأ الإيصال… (عادةً 3-8 ثوان)", "⏳ DaftarX is reading the receipt… (usually 3-8 seconds)")
     </div>
 }
 

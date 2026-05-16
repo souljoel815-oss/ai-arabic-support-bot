@@ -50,6 +50,7 @@
     </PackageReference>
     <PackageReference Include="Dapper" />
     <PackageReference Include="QuestPDF" />
+    <PackageReference Include="PdfPig" />
     <PackageReference Include="QRCoder" />
     <PackageReference Include="Otp.NET" />
     <PackageReference Include="Konscious.Security.Cryptography.Argon2" />

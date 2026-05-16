@@ -45,6 +45,13 @@ public sealed class User
     /// per-entry on the timesheet grid.</summary>
     public decimal? HourlyRateEgp { get; private set; }
 
+    /// <summary>v5 — free-text "remember this about me" notes the user
+    /// supplies to the AI chat assistant. Loaded into every NL query's
+    /// system prompt so the assistant has persistent context across
+    /// sessions ("I'm a sales rep at Company X. I usually ask about
+    /// commissions. Show by rep, not by team.").</summary>
+    public string? AiMemoryNotes { get; private set; }
+
     public DateTime? LastLoginAtUtc { get; private set; }
     public bool LastLoginSucceeded { get; private set; }
     public int FailedLoginCount { get; private set; }
@@ -126,6 +133,13 @@ public sealed class User
             throw new ArgumentOutOfRangeException(nameof(ratePercent),
                 "Hourly rate cannot be negative.");
         HourlyRateEgp = ratePercent;
+    }
+
+    /// <summary>v5 — set the AI chat persistent-memory notes. Empty
+    /// string / whitespace is normalized to null (no memory loaded).</summary>
+    public void SetAiMemoryNotes(string? notes)
+    {
+        AiMemoryNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
     }
 
     public void DisableMfa()

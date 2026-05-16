@@ -18,19 +18,34 @@ public sealed class AiSettings
 {
     public Guid Id { get; init; } = Guid.NewGuid();
 
-    /// <summary>Off by default — operator must paste an Anthropic API key + flip on.</summary>
+    /// <summary>Off by default — operator must paste an API key + flip on.</summary>
     public bool Enabled { get; private set; }
 
-    /// <summary>Ciphertext blob from IDataProtector. Never plaintext.</summary>
+    /// <summary>Ciphertext blob from IDataProtector. Never plaintext.
+    /// Used for the <see cref="ChatProvider"/>'s API key (Anthropic OR Groq).</summary>
     public string? EncryptedApiKey { get; private set; }
 
     /// <summary>
-    /// Claude model to use for both vision (M.1) and chat (M.2).
-    /// Default: claude-haiku-4-5 — best price/quality for receipt
-    /// OCR + short-form Arabic NL queries; Sonnet/Opus are
-    /// over-spec for these tasks.
+    /// Claude model used for OCR (M.1 — vision) and, when
+    /// <see cref="ChatProvider"/> == Anthropic, also for the NL
+    /// chat queries (M.2). Default: claude-haiku-4-5.
     /// </summary>
     public string ModelName { get; private set; } = "claude-haiku-4-5-20251001";
+
+    /// <summary>v5 — provider for the NL chat queries (M.2). OCR
+    /// always uses Anthropic because Groq's Llama 4 Scout is text-only;
+    /// when the operator picks Groq for chat, the OCR path falls back
+    /// to the legacy Anthropic key if also configured.</summary>
+    public AiChatProvider ChatProvider { get; private set; } = AiChatProvider.Anthropic;
+
+    /// <summary>v5 — Groq chat model id (e.g. "meta-llama/llama-4-scout-17b-16e-instruct").
+    /// Ignored when <see cref="ChatProvider"/> == Anthropic.</summary>
+    public string GroqModelName { get; private set; } = "meta-llama/llama-4-scout-17b-16e-instruct";
+
+    /// <summary>v5 — separate encrypted key for Groq, kept distinct from
+    /// <see cref="EncryptedApiKey"/> so swapping providers doesn't wipe
+    /// the other vendor's key. Operator can paste either + toggle.</summary>
+    public string? EncryptedGroqApiKey { get; private set; }
 
     /// <summary>Soft cap (informational; not enforced in v1). EGP/month estimated cost.</summary>
     public int MonthlyBudgetEgp { get; private set; } = 500;
@@ -50,10 +65,30 @@ public sealed class AiSettings
         Enabled = true;
     }
 
+    /// <summary>v5 — configure the Groq chat provider. Separate key
+    /// from Anthropic so both can coexist (OCR on Anthropic, chat on
+    /// Groq). Pass <paramref name="encryptedKey"/> = null/empty to
+    /// keep the existing stored key (re-saving without re-typing).</summary>
+    public void ConfigureGroq(string? encryptedKey, string modelName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+        if (!string.IsNullOrWhiteSpace(encryptedKey))
+        {
+            EncryptedGroqApiKey = encryptedKey;
+        }
+        GroqModelName = modelName.Trim();
+        ChatProvider = AiChatProvider.Groq;
+        Enabled = true;
+    }
+
+    /// <summary>v5 — switch chat back to Anthropic without wiping the
+    /// stored Groq key (operator can flip back later).</summary>
+    public void SwitchChatProvider(AiChatProvider provider) => ChatProvider = provider;
+
     public void Disable()
     {
         Enabled = false;
-        // Don't wipe the key — operator may toggle back on.
+        // Don't wipe keys — operator may toggle back on.
     }
 
     public void UpdateModelOnly(string modelName)
@@ -61,4 +96,10 @@ public sealed class AiSettings
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
         ModelName = modelName.Trim();
     }
+}
+
+public enum AiChatProvider
+{
+    Anthropic,
+    Groq,
 }

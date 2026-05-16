@@ -1,0 +1,139 @@
+@page "/ai-memory"
+@using System.Globalization
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+@*
+    v5 — per-user persistent "remember this about me" notes for the
+    AI chat assistant. Notes are loaded into every NlQueryHandler
+    system prompt so the model has stable context across sessions
+    (e.g. "I'm a sales rep, I usually ask about commissions, show
+    me reports by rep not by team").
+
+    Per-user (NOT org-wide) — each operator edits their own notes.
+*@
+
+<PageTitle>@Tr("ذاكرة دفترك | DaftarX", "DaftarX memory | DaftarX")</PageTitle>
+
+<h1>@Tr("ذاكرة دفترك (المساعد الذكي)", "DaftarX memory (AI assistant)")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "اكتب أي حاجة عايز المساعد الذكي يفتكرها عنك في كل محادثة (دورك، تفضيلاتك، التقارير اللي بتسأل عليها كثير، إلخ). الكلام ده بيتحط في توجيهات المساعد قبل كل سؤال.",
+        "Write anything you want the AI assistant to remember about you across sessions (your role, preferences, reports you ask about often, etc.). It's prepended to the assistant's system prompt for every question.")
+</p>
+
+@if (_flash is not null)
+{
+    <div class="@_flashClass" style="margin:8px 0;">@_flash</div>
+}
+
+@if (_loading)
+{
+    <p>@Tr("جارٍ التحميل…", "Loading…")</p>
+}
+else
+{
+    <div class="form-grid" style="max-width:760px;">
+        <label style="grid-column:span 2;">
+            <span>@Tr("ملاحظات الذاكرة (حتى 2000 حرف)", "Memory notes (up to 2000 characters)")</span>
+            <textarea rows="10" maxlength="2000" @bind="_notes"
+                      placeholder="@Tr(
+                          "مثال: أنا مندوب مبيعات في شركة الفيوم. بسأل كثير عن العمولات والفواتير المتأخرة. عايز التقارير تظهرلي بالمندوب مش بالفريق.",
+                          "Example: I'm a sales rep at Fayoum Corp. I often ask about commissions and overdue invoices. Show reports by rep, not by team.")"
+                      style="font-family:inherit;width:100%;direction:@(IsArabic ? "rtl" : "ltr");"></textarea>
+            <em style="font-size:12px;color:var(--muted);">
+                @Tr(
+                    "اتركها فاضية لمسح الذاكرة. مفيش حد عاميديك إلا اللي بتكتبه هنا — البرنامج لا يتعقب نشاطك تلقائياً.",
+                    "Leave empty to clear memory. The assistant only knows what you type here — no implicit tracking.")
+            </em>
+            <em style="font-size:12px;color:var(--muted);">
+                @($"{(_notes ?? "").Length} / 2000")
+            </em>
+        </label>
+    </div>
+
+    <div class="invoice-actions" style="margin-top:16px;">
+        <button type="button" class="btn-primary" disabled="@_saving" @onclick="OnSaveAsync">
+            @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ", "Save"))
+        </button>
+        <button type="button" class="btn-secondary" disabled="@(_saving || string.IsNullOrEmpty(_notes))"
+                @onclick="OnClearAsync">
+            @Tr("مسح الذاكرة", "Clear memory")
+        </button>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _loading = true;
+    private bool _saving;
+    private Guid? _userId;
+    private string _notes = "";
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null) { _loading = false; return; }
+        var state = await AuthState;
+        var idClaim = state.User.FindFirst("user_id")?.Value
+            ?? state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(idClaim, out var uid))
+        {
+            _flash = Tr("لم نتمكن من تحديد المستخدم.", "Could not identify the current user.");
+            _flashClass = "kpi-card kpi-error";
+            _loading = false;
+            return;
+        }
+        _userId = uid;
+        var notes = await Db.Set<User>().AsNoTracking()
+            .Where(u => u.Id == uid)
+            .Select(u => u.AiMemoryNotes)
+            .FirstOrDefaultAsync();
+        _notes = notes ?? "";
+        _loading = false;
+    }
+
+    private async Task OnSaveAsync()
+    {
+        if (_userId is null) return;
+        _saving = true;
+        _flash = null;
+        try
+        {
+            var user = await Db.Set<User>().FirstOrDefaultAsync(u => u.Id == _userId);
+            if (user is null)
+            {
+                _flash = Tr("المستخدم غير موجود.", "User not found.");
+                _flashClass = "kpi-card kpi-error";
+                return;
+            }
+            user.SetAiMemoryNotes(_notes);
+            await Db.SaveChangesAsync();
+            _flash = Tr("✓ تم الحفظ.", "✓ Saved.");
+            _flashClass = "kpi-card kpi-info";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task OnClearAsync()
+    {
+        _notes = "";
+        await OnSaveAsync();
+    }
+
+    private static bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private static string Tr(string ar, string en) => IsArabic ? ar : en;
+}

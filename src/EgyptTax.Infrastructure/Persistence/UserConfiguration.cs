@@ -73,6 +73,10 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         b.Property(u => u.HourlyRateEgp)
             .HasColumnName("hourly_rate_egp")
             .HasColumnType("decimal(10,2)");
+        // v5 — AI chat persistent-memory notes.
+        b.Property(u => u.AiMemoryNotes)
+            .HasColumnName("ai_memory_notes")
+            .HasMaxLength(2000);
 
         b.Property(u => u.LastLoginAtUtc)
             .HasColumnName("last_login_at_utc")

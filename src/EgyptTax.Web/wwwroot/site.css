@@ -3570,6 +3570,23 @@ a.btn-secondary .ic {
     padding: 4px 8px;
 }
 .ai-chat-close:hover { color: var(--text, #111); }
+.ai-chat-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.ai-chat-memory-link {
+    font-size: 12px;
+    color: var(--muted, #6b7280);
+    text-decoration: none;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border, #e5e7eb);
+}
+.ai-chat-memory-link:hover {
+    color: var(--text, #111);
+    background: var(--surface-2, #f3f4f6);
+}
 .ai-chat-body {
     flex: 1;
     overflow-y: auto;

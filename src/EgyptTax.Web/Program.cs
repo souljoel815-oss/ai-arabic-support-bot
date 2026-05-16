@@ -475,7 +475,12 @@ builder.Services.AddScoped<EgyptTax.Infrastructure.Quotations.QuotationService>(
 // AppDbContext per-request).
 builder.Services.AddSingleton<EgyptTax.Infrastructure.Ai.AnthropicApiKeyProtector>();
 builder.Services.AddHttpClient<EgyptTax.Infrastructure.Ai.AnthropicVisionClient>();
+// v5 — Groq client for the M.2 NL-query path. Llama 4 Scout is
+// text-only, so OCR (M.1) stays on Anthropic.
+builder.Services.AddHttpClient<EgyptTax.Infrastructure.Ai.GroqChatClient>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.OcrReceiptHandler>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.AiContextSnapshotProvider>();
+builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.AiToolbox>();
 builder.Services.AddScoped<EgyptTax.Infrastructure.Ai.NlQueryHandler>();
 // v4 A.4 — short-lived stash that carries the original receipt
 // image bytes from /scan-receipt to /expenses/new so the saved

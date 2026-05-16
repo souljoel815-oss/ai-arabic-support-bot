@@ -51,6 +51,7 @@ public sealed class OcrReceiptHandler
     private readonly SettingsRepository _settings;
     private readonly AnthropicApiKeyProtector _protector;
     private readonly AnthropicVisionClient _client;
+    private readonly GroqChatClient _groq;
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly IClock _clock;
     private readonly ILogger<OcrReceiptHandler> _log;
@@ -59,6 +60,7 @@ public sealed class OcrReceiptHandler
         SettingsRepository settings,
         AnthropicApiKeyProtector protector,
         AnthropicVisionClient client,
+        GroqChatClient groq,
         IDbContextFactory<AppDbContext> dbFactory,
         IClock clock,
         ILogger<OcrReceiptHandler> log)
@@ -66,6 +68,7 @@ public sealed class OcrReceiptHandler
         _settings = settings;
         _protector = protector;
         _client = client;
+        _groq = groq;
         _dbFactory = dbFactory;
         _clock = clock;
         _log = log;
@@ -79,32 +82,112 @@ public sealed class OcrReceiptHandler
         CancellationToken ct = default)
     {
         var ai = await _settings.GetAiSettingsAsync(ct);
-        if (!ai.Enabled || string.IsNullOrWhiteSpace(ai.EncryptedApiKey))
+        if (!ai.Enabled)
         {
             return OcrResult.Failure(
-                "AI features are disabled. Configure the Anthropic API key in Settings → AI first.");
+                "AI features are disabled. Configure a provider in Settings → AI first.");
+        }
+        // v5 — route OCR by ChatProvider too. Llama 4 Scout is
+        // multimodal (text + vision), so a single Groq config covers
+        // both chat and receipt OCR. When ChatProvider = Anthropic we
+        // fall back to the legacy AnthropicVisionClient.
+        var providerKeyRaw = ai.ChatProvider == AiChatProvider.Groq
+            ? ai.EncryptedGroqApiKey
+            : ai.EncryptedApiKey;
+        if (string.IsNullOrWhiteSpace(providerKeyRaw))
+        {
+            return OcrResult.Failure(
+                $"AI is set to {ai.ChatProvider} but no API key is configured for it. Open Settings → AI.");
         }
 
-        AnthropicVisionClient.VisionResult? rawResult = null;
+        string assistantText = "";
+        string rawJson = "";
+        int inputTokens = 0;
+        int outputTokens = 0;
         Extracted? extracted = null;
         string? errorMessage = null;
 
         try
         {
-            var apiKey = _protector.Decrypt(ai.EncryptedApiKey);
-            rawResult = await _client.SendVisionMessageAsync(
-                apiKey: apiKey,
-                modelName: ai.ModelName,
-                imageBytes: imageBytes,
-                imageMimeType: mimeType,
-                textPrompt: ExtractionPrompt,
-                maxTokens: 1024,
-                ct: ct);
+            var apiKey = _protector.Decrypt(providerKeyRaw);
+            // v5 — PDF branch. Llama 4 Scout vision can't decode PDFs;
+            // for native (text-based) PDFs we extract text via PdfPig
+            // and route through the chat path with a text prompt. For
+            // scanned PDFs the extraction returns empty and we surface
+            // a clear "convert to image first" error.
+            if (string.Equals(mimeType, "application/pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                var pdfText = ExtractPdfText(imageBytes);
+                if (string.IsNullOrWhiteSpace(pdfText))
+                {
+                    throw new InvalidOperationException(
+                        "PDF appears to be scanned (no extractable text layer). Export the page as JPG/PNG and re-upload.");
+                }
+                var userMessage = $"النص المستخرج من الإيصال:\n\n{pdfText}\n\n---\nطبّق التعليمات أعلاه واستخرج الـ JSON.";
+                if (ai.ChatProvider == AiChatProvider.Groq)
+                {
+                    var groqResult = await _groq.SendChatMessageAsync(
+                        apiKey: apiKey,
+                        modelName: ai.GroqModelName,
+                        systemPrompt: ExtractionPrompt,
+                        userMessage: userMessage,
+                        maxTokens: 1024,
+                        ct: ct);
+                    assistantText = groqResult.AssistantText;
+                    rawJson = groqResult.RawResponseJson;
+                    inputTokens = groqResult.InputTokens;
+                    outputTokens = groqResult.OutputTokens;
+                }
+                else
+                {
+                    var anthropicResult = await _client.SendChatMessageAsync(
+                        apiKey: apiKey,
+                        modelName: ai.ModelName,
+                        systemPrompt: ExtractionPrompt,
+                        userMessage: userMessage,
+                        maxTokens: 1024,
+                        ct: ct);
+                    assistantText = anthropicResult.AssistantText;
+                    rawJson = anthropicResult.RawResponseJson;
+                    inputTokens = anthropicResult.InputTokens;
+                    outputTokens = anthropicResult.OutputTokens;
+                }
+            }
+            else if (ai.ChatProvider == AiChatProvider.Groq)
+            {
+                var groqResult = await _groq.SendVisionMessageAsync(
+                    apiKey: apiKey,
+                    modelName: ai.GroqModelName,
+                    imageBytes: imageBytes,
+                    imageMimeType: mimeType,
+                    textPrompt: ExtractionPrompt,
+                    maxTokens: 1024,
+                    ct: ct);
+                assistantText = groqResult.AssistantText;
+                rawJson = groqResult.RawResponseJson;
+                inputTokens = groqResult.InputTokens;
+                outputTokens = groqResult.OutputTokens;
+            }
+            else
+            {
+                var anthropicResult = await _client.SendVisionMessageAsync(
+                    apiKey: apiKey,
+                    modelName: ai.ModelName,
+                    imageBytes: imageBytes,
+                    imageMimeType: mimeType,
+                    textPrompt: ExtractionPrompt,
+                    maxTokens: 1024,
+                    ct: ct);
+                assistantText = anthropicResult.AssistantText;
+                rawJson = anthropicResult.RawResponseJson;
+                inputTokens = anthropicResult.InputTokens;
+                outputTokens = anthropicResult.OutputTokens;
+            }
 
-            extracted = TryParseExtraction(rawResult.AssistantText);
+            extracted = TryParseExtraction(assistantText);
             if (extracted is null)
             {
-                errorMessage = "Claude returned text that didn't match the expected JSON shape.";
+                errorMessage = $"{ai.ChatProvider} returned text that didn't match the expected JSON shape.";
             }
         }
         catch (Exception ex)
@@ -123,14 +206,14 @@ public sealed class OcrReceiptHandler
                 fileName: fileName,
                 mimeType: mimeType,
                 fileSizeBytes: imageBytes.LongLength,
-                rawResponseJson: rawResult?.RawResponseJson ?? "",
+                rawResponseJson: rawJson,
                 extractedVendor: extracted?.Vendor,
                 extractedDate: extracted?.Date,
                 extractedTotalEgp: extracted?.TotalEgp,
                 extractedVatEgp: extracted?.VatEgp,
                 extractedCategory: extracted?.Category,
-                inputTokens: rawResult?.InputTokens ?? 0,
-                outputTokens: rawResult?.OutputTokens ?? 0,
+                inputTokens: inputTokens,
+                outputTokens: outputTokens,
                 errorMessage: errorMessage));
             await db.SaveChangesAsync(ct);
         }
@@ -146,8 +229,34 @@ public sealed class OcrReceiptHandler
             totalEgp: extracted.TotalEgp,
             vatEgp: extracted.VatEgp,
             category: extracted.Category,
-            inputTokens: rawResult!.InputTokens,
-            outputTokens: rawResult.OutputTokens);
+            inputTokens: inputTokens,
+            outputTokens: outputTokens);
+    }
+
+    /// <summary>v5 — extract text from a native PDF using PdfPig. Returns
+    /// the concatenated text of all pages, separated by form-feed for
+    /// boundary clarity. Returns empty string for scanned/image-only PDFs
+    /// (no text layer), which the caller turns into a friendly error.</summary>
+    private static string ExtractPdfText(byte[] pdfBytes)
+    {
+        try
+        {
+            using var ms = new MemoryStream(pdfBytes);
+            using var doc = UglyToad.PdfPig.PdfDocument.Open(ms);
+            var sb = new System.Text.StringBuilder();
+            foreach (var page in doc.GetPages())
+            {
+                sb.Append(page.Text);
+                sb.Append('\f');
+            }
+            return sb.ToString().Trim();
+        }
+        catch
+        {
+            // Corrupted PDF, encrypted PDF, or PdfPig can't parse —
+            // surface as empty so the caller throws a clean error.
+            return "";
+        }
     }
 
     private static Extracted? TryParseExtraction(string assistantText)

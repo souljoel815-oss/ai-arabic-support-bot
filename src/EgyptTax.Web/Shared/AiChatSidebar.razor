@@ -1,3 +1,4 @@
+@using System.Globalization
 @using EgyptTax.Infrastructure.Ai
 @using Microsoft.AspNetCore.Components.Authorization
 @inject NlQueryHandler Chat
@@ -29,9 +30,16 @@
             <header class="ai-chat-head">
                 <strong>
                     <Icon Name="zap" />
-                    @Tr("اسأل دفترك (Claude)", "Ask DaftarX (Claude)")
+                    @Tr("اسأل دفترك", "Ask DaftarX")
                 </strong>
-                <button type="button" class="ai-chat-close" @onclick="Close" aria-label="@Tr("إغلاق", "Close")">×</button>
+                <span class="ai-chat-head-actions">
+                    <a href="/ai-memory" class="ai-chat-memory-link"
+                       title="@Tr("ذاكرة المساعد", "AI memory")"
+                       @onclick="Close">
+                        @Tr("الذاكرة", "Memory")
+                    </a>
+                    <button type="button" class="ai-chat-close" @onclick="Close" aria-label="@Tr("إغلاق", "Close")">×</button>
+                </span>
             </header>
 
             <div class="ai-chat-body">
@@ -91,6 +99,7 @@
     private bool _busy;
     private string _input = "";
     private Guid? _userId;
+    private string? _userRoleHint;
 
     private readonly List<ChatMessage> _messages = new();
 
@@ -119,6 +128,10 @@
             var idClaim = state.User.FindFirst("user_id")?.Value
                 ?? state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (Guid.TryParse(idClaim, out var uid)) _userId = uid;
+            // v5 — capture role hint so the model gives role-aware
+            // answers (e.g. sales rep vs. accountant get different
+            // suggestions on the same question).
+            _userRoleHint = state.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
         }
     }
 
@@ -141,7 +154,12 @@
 
         try
         {
-            var result = await Chat.AskAsync(question, _userId);
+            // v5 — pass the operator's current path + role so the
+            // model can give context-aware answers (memory of past
+            // turns is pulled server-side by AskAsync).
+            var currentPath = new Uri(Nav.Uri).AbsolutePath;
+            var result = await Chat.AskAsync(question, _userId,
+                currentUrl: currentPath, userRoleHint: _userRoleHint);
             if (result.Ok)
             {
                 _messages.Add(new ChatMessage("assistant", result.Reply ?? "", result.OpenUrl, result.OpenLabel));
@@ -160,4 +178,8 @@
     }
 
     private sealed record ChatMessage(string Role, string Text, string? OpenUrl, string? OpenLabel);
+
+    private static bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private static string Tr(string ar, string en) => IsArabic ? ar : en;
 }
