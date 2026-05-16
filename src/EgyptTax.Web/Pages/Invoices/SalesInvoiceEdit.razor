@@ -23,6 +23,7 @@
 @inject DocumentApprovalHandler ApprovalHandler
 @inject SettingsRepository Settings
 @inject PricelistResolver Pricelist
+@inject EgyptTax.Infrastructure.Tax.FiscalPositionResolver FiscalPositions
 @inject AuthenticationStateProvider Auth
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
@@ -116,8 +117,44 @@
                     {
                         var item = _items.FirstOrDefault(x => x.Id == line.ItemId);
                         var vat = _vatCategories.FirstOrDefault(v => v.Id == line.VatCategoryId);
+                        var lineId = line.Id; var lineQty = (int)Math.Round(line.Quantity);
                         <tr>
-                            <td>@(item?.Code ?? "?") — @(item?.Name.English ?? "")</td>
+                            <td>
+                                @(item?.Code ?? "?") — @(item?.Name.English ?? "")
+                                @* v5 F.6 v2 — show the line's cost-center tag inline. *@
+                                @if (line.CostCenterId != Guid.Empty)
+                                {
+                                    var cc = _costCenters.FirstOrDefault(c => c.Id == line.CostCenterId);
+                                    if (cc is not null)
+                                    {
+                                        <span style="font-size:11px;color:var(--text-muted);margin-inline-start:8px;">
+                                            🏷 @cc.Code
+                                        </span>
+                                    }
+                                }
+                                @* v5 D.1 v2 — serial picker entry for items with TracksSerials. *@
+                                @if (item?.TracksSerials == true)
+                                {
+                                    var pickedCount = line.SerialIds.Count;
+                                    var allOk = pickedCount == lineQty;
+                                    <button type="button"
+                                            class="@(allOk ? "btn-secondary" : "btn-secondary")"
+                                            style="font-size:11px;margin-inline-start:8px;color:@(allOk ? "var(--success-text)" : "var(--warning-text)");"
+                                            @onclick="() => OpenSerialPickerAsync(lineId, line.ItemId)">
+                                        🔢 @(IsArabic ? "أرقام تسلسلية" : "Serials") @pickedCount/@lineQty
+                                    </button>
+                                }
+                                @* v5 F.6 v2 phase 2 — split editor. Only available
+                                   on saved lines (line.Id matches an _invoice.Lines entry). *@
+                                @if (_invoice is not null && _invoice.Lines.Any(x => x.Id == lineId))
+                                {
+                                    <button type="button" class="btn-secondary"
+                                            style="font-size:11px;margin-inline-start:8px;"
+                                            @onclick="() => _splittingForLine = (_splittingForLine == lineId ? null : lineId)">
+                                        🌐 @(IsArabic ? "توزيع" : "Split")
+                                    </button>
+                                }
+                            </td>
                             <td class="num">@line.Quantity.ToString("0.##")</td>
                             <td class="num">@line.UnitPrice.ToString("F2")</td>
                             <td>@(vat?.Code ?? "?") (@(vat?.RatePercent.ToString("0.##") ?? "?")%)</td>
@@ -126,6 +163,63 @@
                             <td class="num">@line.LineTotal.ToString("F2")</td>
                             <td><button type="button" @onclick="() => RemoveLine(idx)">@(IsArabic ? "إزالة" : "Remove")</button></td>
                         </tr>
+                        @if (_splittingForLine == lineId)
+                        {
+                            <tr>
+                                <td colspan="8" style="background:var(--bg-2);">
+                                    <div style="padding:10px 14px;">
+                                        <strong>@(IsArabic ? "🌐 توزيع متعدد المراكز للسطر" : "🌐 Split allocation for this line")</strong>
+                                        <CostCenterSplitEditor
+                                            SourceType="EgyptTax.Domain.MasterData.CostCenterAllocationSourceType.SalesInvoiceLine"
+                                            SourceLineId="@lineId"
+                                            TotalAmount="@line.LineSubtotal"
+                                            CostCenters="@_costCenters" />
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                        @if (_pickingSerialsForLine == lineId)
+                        {
+                            var available = _availableSerialsCache.TryGetValue(line.ItemId, out var list) ? list : new();
+                            <tr>
+                                <td colspan="8" style="background:var(--bg-2);">
+                                    <div style="padding:10px 14px;">
+                                        <strong>@(IsArabic ? "اختر أرقاماً تسلسلية في المخزن" : "Pick in-stock serials")</strong>
+                                        <span style="font-size:12px;color:var(--text-muted);margin-inline-start:8px;">
+                                            (@line.SerialIds.Count / @lineQty)
+                                        </span>
+                                        @if (available.Count == 0)
+                                        {
+                                            <p style="margin:8px 0 0;font-size:12px;"><em>
+                                                @(IsArabic ? "ما فيش أرقام في المخزن لهذا الصنف. ضيف الأرقام من /items/{id}/serials أولاً." :
+                                                  "No InStock serials for this item. Add serials at /items/{id}/serials first.")
+                                            </em></p>
+                                        }
+                                        else
+                                        {
+                                            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;max-height:240px;overflow-y:auto;">
+                                                @foreach (var s in available)
+                                                {
+                                                    var sid = s.Id;
+                                                    var picked = line.SerialIds.Contains(sid);
+                                                    <label style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:@(picked ? "var(--accent-bg)" : "transparent");font-size:12px;font-family:monospace;">
+                                                        <input type="checkbox" checked="@picked"
+                                                               @onchange="(e) => OnToggleSerial(lineId, sid, (bool)(e.Value ?? false))" />
+                                                        @s.SerialNumber
+                                                    </label>
+                                                }
+                                            </div>
+                                        }
+                                        <div style="margin-top:10px;">
+                                            <button type="button" class="btn-secondary" style="font-size:12px;"
+                                                    @onclick="() => _pickingSerialsForLine = null">
+                                                @(IsArabic ? "تم" : "Done")
+                                            </button>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
                     }
                 </tbody>
             </table>
@@ -150,6 +244,12 @@
                 @_pricelistHint
             </div>
         }
+        @if (_fiscalPositionHint is not null)
+        {
+            <div style="grid-column:1 / -1;font-size:12px;color:var(--warning-text);margin-top:-4px;margin-bottom:8px;">
+                ⚖ @_fiscalPositionHint
+            </div>
+        }
         <label>
             <span>@(IsArabic ? "الكمية" : "Quantity")</span>
             <input type="number" step="0.01" min="0.01" @bind="_newLineQty" />
@@ -168,6 +268,22 @@
                 }
             </select>
         </label>
+        @if (_costCenters.Count > 0)
+        {
+            @* v5 F.6 v2 — per-line cost-center tag (single-tag here;
+               multi-allocation editor lives on the line list once line
+               is saved, mirroring the Expense pattern). *@
+            <label>
+                <span>@(IsArabic ? "مركز التكلفة (اختياري)" : "Cost center (optional)")</span>
+                <select @bind="_newLineCostCenterId">
+                    <option value="@Guid.Empty">— @(IsArabic ? "بدون" : "none") —</option>
+                    @foreach (var cc in _costCenters)
+                    {
+                        <option value="@cc.Id">@cc.Code — @(IsArabic ? cc.Name.Arabic : cc.Name.English)</option>
+                    }
+                </select>
+            </label>
+        }
         <button type="button" @onclick="AddLine">@(IsArabic ? "إضافة بند" : "Add line")</button>
     </fieldset>
 
@@ -253,9 +369,25 @@
     private decimal _newLineUnitPrice;
     private Guid _newLineVatId;
 
+    // v5 D.1 v2 — serial-picker state. _pickingSerialsForLine holds
+    // the DraftLine.Id whose inline picker is currently open (null
+    // = none). _availableSerialsCache memoises InStock serial lists
+    // per item so toggling rows is instant.
+    private Guid? _pickingSerialsForLine;
+    private Dictionary<Guid, List<EgyptTax.Domain.MasterData.ItemSerial>> _availableSerialsCache = new();
+
+    // v5 F.6 v2 — per-line cost-center tag captured at line-add time.
+    // Sticky across consecutive Add-line clicks (operator usually wants
+    // every line on the same CC). _costCenters loaded in OnInitialized.
+    private Guid _newLineCostCenterId = Guid.Empty;
+    private List<CostCenter> _costCenters = new();
+    // v5 F.6 v2 phase 2 — which DraftLine.Id has the split editor open.
+    private Guid? _splittingForLine;
+
     /// <summary>v5 B.2 — set when the operator picks an item and a
     /// pricelist rule applies; cleared between line entries.</summary>
     private string? _pricelistHint;
+    private string? _fiscalPositionHint;
 
     private string _discountMode = "none";
     private decimal _discountPercent;
@@ -270,6 +402,9 @@
             .Where(c => c.Status == CustomerStatus.Active).OrderBy(c => c.Code).ToListAsync();
         _items = await Db.Set<Item>().AsNoTracking().OrderBy(i => i.Code).ToListAsync();
         _vatCategories = await Db.Set<VatCategory>().AsNoTracking().OrderBy(v => v.Code).ToListAsync();
+        _costCenters = await Db.Set<CostCenter>().AsNoTracking()
+            .Where(c => c.Status == CostCenterStatus.Active)
+            .OrderBy(c => c.Code).ToListAsync();
         _paymentTerms = await Db.Set<PaymentTerm>().AsNoTracking()
             .Where(t => t.IsActive)
             .OrderByDescending(t => t.IsDefault).ThenBy(t => t.NetDays).ToListAsync();
@@ -297,7 +432,14 @@
                 _paymentTermId = _invoice.PaymentTermId ?? Guid.Empty;
                 _lines = _invoice.Lines
                     .Select(l => new DraftLine(l.Id, l.ItemId, l.Quantity, l.UnitPrice.Amount, l.VatCategoryId, l.VatRatePercent,
-                        l.LineSubtotal.Amount, l.LineVat.Amount, l.LineTotal.Amount))
+                        l.LineSubtotal.Amount, l.LineVat.Amount, l.LineTotal.Amount)
+                    {
+                        // v5 D.1 v2 — restore previously-picked serials so the
+                        // operator sees the count badge correctly on edit.
+                        SerialIds = l.GetSoldSerialIds().ToList(),
+                        // v5 F.6 v2 — restore the line's cost-center tag.
+                        CostCenterId = l.CostCenterId ?? Guid.Empty,
+                    })
                     .ToList();
                 if (_invoice.InvoiceLevelDiscountPercent > 0)
                 {
@@ -350,15 +492,58 @@
             VatRatePercent: vat.RatePercent,
             LineSubtotal: subtotal,
             LineVat: lineVat,
-            LineTotal: subtotal + lineVat));
+            LineTotal: subtotal + lineVat)
+        {
+            CostCenterId = _newLineCostCenterId,
+        });
 
         _newLineItemId = Guid.Empty;
         _newLineQty = 1m;
         _newLineUnitPrice = 0m;
         _newLineVatId = Guid.Empty;
+        // _newLineCostCenterId stays sticky — operator usually wants
+        // every line on the same CC. They can clear it manually.
     }
 
     private void RemoveLine(int index) => _lines.RemoveAt(index);
+
+    /// <summary>v5 D.1 v2 — open the inline serial picker for one
+    /// line. Loads InStock serials for that item on first use and
+    /// caches per-item so toggling is instant.</summary>
+    private async Task OpenSerialPickerAsync(Guid lineId, Guid itemId)
+    {
+        if (!_availableSerialsCache.ContainsKey(itemId))
+        {
+            // Pull InStock serials + any already picked on this draft
+            // line (so an in-progress pick whose serial got reserved
+            // elsewhere doesn't disappear from the list).
+            var line = _lines.FirstOrDefault(l => l.Id == lineId);
+            var pickedNow = line?.SerialIds ?? new List<Guid>();
+            var rows = await Db.Set<EgyptTax.Domain.MasterData.ItemSerial>().AsNoTracking()
+                .Where(s => s.ItemId == itemId
+                    && (s.Status == EgyptTax.Domain.MasterData.ItemSerialStatus.InStock
+                        || s.Status == EgyptTax.Domain.MasterData.ItemSerialStatus.Reserved
+                        || pickedNow.Contains(s.Id)))
+                .OrderBy(s => s.SerialNumber)
+                .ToListAsync();
+            _availableSerialsCache[itemId] = rows;
+        }
+        _pickingSerialsForLine = lineId;
+    }
+
+    private void OnToggleSerial(Guid lineId, Guid serialId, bool selected)
+    {
+        var line = _lines.FirstOrDefault(l => l.Id == lineId);
+        if (line is null) return;
+        if (selected)
+        {
+            if (!line.SerialIds.Contains(serialId)) line.SerialIds.Add(serialId);
+        }
+        else
+        {
+            line.SerialIds.Remove(serialId);
+        }
+    }
 
     /// <summary>v5 B.2 — when the operator picks an item, resolve
     /// the unit price via the customer's pricelist (if any) and
@@ -368,28 +553,62 @@
     private async Task OnNewLineItemChangedAsync()
     {
         _pricelistHint = null;
+        _fiscalPositionHint = null;
         if (_newLineItemId == Guid.Empty || _customerId == Guid.Empty) return;
 
         var item = _items.FirstOrDefault(i => i.Id == _newLineItemId);
         if (item is null) return;
 
+        // Pricelist resolution → unit price
         var listPrice = item.DefaultUnitPriceEgp ?? 0m;
         var resolution = await Pricelist.ResolveAsync(_customerId, _newLineItemId, listPrice);
-
-        // Only overwrite the unit-price field when we actually
-        // found a rule OR the item has a list price set; never
-        // wipe an operator-typed price with 0.
         if (resolution.AppliedRule is not null || item.DefaultUnitPriceEgp is not null)
         {
             _newLineUnitPrice = resolution.UnitPriceEgp;
         }
-
         if (resolution.AppliedRule is not null && resolution.AppliedPricelistName is { } plName)
         {
             var name = IsArabic ? plName.Arabic : plName.English;
             _pricelistHint = IsArabic
                 ? $"السعر معدّل من قائمة الأسعار «{name}»"
                 : $"Price applied from pricelist \"{name}\"";
+        }
+
+        // v5 F.4 — Fiscal position auto-swap. The customer's
+        // FiscalPositionId may map the line's default VAT to a
+        // different category (export 0%, free zone exempt). Resolve
+        // and pre-fill _newLineVatId so the operator sees the
+        // mapped category before adding the line.
+        var fpResolution = await FiscalPositions.ResolveAsync(
+            _customerId, item.DefaultVatCategoryId);
+        if (fpResolution.AppliedMapping is not null && fpResolution.AppliedPosition is { } pos)
+        {
+            var posName = IsArabic ? pos.Name.Arabic : pos.Name.English;
+            if (fpResolution.IsExempt)
+            {
+                // Mapping says "no destination" → swap the line to the
+                // seeded EXEMPT category (rate 0%, non-recoverable). If
+                // the operator deleted the seed, fall back to any 0%
+                // category so the line still posts with no VAT charge.
+                var exemptCat = _vatCategories.FirstOrDefault(v => v.Code == "EXEMPT")
+                    ?? _vatCategories.FirstOrDefault(v => v.RatePercent == 0m);
+                if (exemptCat is not null)
+                {
+                    _newLineVatId = exemptCat.Id;
+                }
+                _fiscalPositionHint = IsArabic
+                    ? $"معفى من الضريبة حسب «{posName}»."
+                    : $"VAT-exempt per \"{posName}\".";
+            }
+            else
+            {
+                _newLineVatId = fpResolution.ResolvedVatCategoryId;
+                var resolvedCat = _vatCategories.FirstOrDefault(v => v.Id == fpResolution.ResolvedVatCategoryId);
+                var catLabel = resolvedCat?.Code ?? "";
+                _fiscalPositionHint = IsArabic
+                    ? $"الضريبة بُدِّلت إلى «{catLabel}» حسب «{posName}»."
+                    : $"VAT swapped to \"{catLabel}\" per \"{posName}\".";
+            }
         }
     }
 
@@ -411,8 +630,13 @@
             _invoice = SalesInvoice.CreateDraft(_customerId, customer.TaxProfile, _documentDate, creatorId);
             foreach (var line in _lines)
             {
-                _invoice.AddLine(line.ItemId, line.Quantity, MoneyEgp.From(line.UnitPrice),
-                    line.VatCategoryId, line.VatRatePercent);
+                var siLine = _invoice.AddLine(line.ItemId, line.Quantity, MoneyEgp.From(line.UnitPrice),
+                    line.VatCategoryId, line.VatRatePercent,
+                    costCenterId: line.CostCenterId == Guid.Empty ? null : line.CostCenterId);
+                if (line.SerialIds.Count > 0)
+                {
+                    siLine.SetSoldSerialIds(line.SerialIds);
+                }
             }
             ApplyDiscount(_invoice);
             _invoice.SetPaymentTerm(_paymentTermId == Guid.Empty ? null : _paymentTermId);
@@ -423,20 +647,60 @@
             // Sync the existing draft's lines.
             var existingIds = _invoice.Lines.Select(l => l.Id).ToHashSet();
             var newIds = _lines.Select(l => l.Id).ToHashSet();
-            foreach (var lineId in existingIds.Where(id => !newIds.Contains(id)))
+            foreach (var lineId in existingIds.Where(id => !newIds.Contains(id)).ToList())
             {
                 _invoice.RemoveLine(lineId);
+                // v5 F.6 v2 phase 2 — drop orphaned cost-center
+                // allocations for the deleted line so the report
+                // doesn't carry dead rows in master.cost_center_allocations.
+                var orphans = await Db.Set<CostCenterAllocation>()
+                    .Where(a => a.SourceType == CostCenterAllocationSourceType.SalesInvoiceLine
+                        && a.SourceLineId == lineId)
+                    .ToListAsync();
+                Db.Set<CostCenterAllocation>().RemoveRange(orphans);
             }
             foreach (var line in _lines.Where(l => !existingIds.Contains(l.Id)))
             {
-                _invoice.AddLine(line.ItemId, line.Quantity, MoneyEgp.From(line.UnitPrice),
-                    line.VatCategoryId, line.VatRatePercent);
+                var siLine = _invoice.AddLine(line.ItemId, line.Quantity, MoneyEgp.From(line.UnitPrice),
+                    line.VatCategoryId, line.VatRatePercent,
+                    costCenterId: line.CostCenterId == Guid.Empty ? null : line.CostCenterId);
+                if (line.SerialIds.Count > 0)
+                {
+                    siLine.SetSoldSerialIds(line.SerialIds);
+                }
+            }
+            // v5 D.1 v2 — also sync serial picks for already-existing lines
+            // (operator may have toggled serials on a previously-saved line
+            // without removing it).
+            foreach (var line in _lines.Where(l => existingIds.Contains(l.Id)))
+            {
+                var siLine = _invoice.Lines.FirstOrDefault(x => x.Id == line.Id);
+                if (siLine is null) continue;
+                var prev = siLine.GetSoldSerialIds();
+                if (!prev.SequenceEqual(line.SerialIds))
+                {
+                    siLine.SetSoldSerialIds(line.SerialIds);
+                }
             }
             ApplyDiscount(_invoice);
             _invoice.SetPaymentTerm(_paymentTermId == Guid.Empty ? null : _paymentTermId);
         }
 
         await Db.SaveChangesAsync();
+        // v5 F.6 v2 phase 2 — refresh DraftLine list from the persisted
+        // SalesInvoiceLines so each DraftLine.Id matches its underlying
+        // row's Id. The Split editor needs that match to anchor its
+        // CostCenterAllocation rows. Without this refresh, lines added
+        // in the current session keep their fresh client-side Guids and
+        // the Split button never appears.
+        _lines = _invoice.Lines
+            .Select(l => new DraftLine(l.Id, l.ItemId, l.Quantity, l.UnitPrice.Amount, l.VatCategoryId, l.VatRatePercent,
+                l.LineSubtotal.Amount, l.LineVat.Amount, l.LineTotal.Amount)
+            {
+                SerialIds = l.GetSoldSerialIds().ToList(),
+                CostCenterId = l.CostCenterId ?? Guid.Empty,
+            })
+            .ToList();
         ShowFlash(IsArabic
             ? $"تم حفظ المسودة (الإجمالي قبل الضريبة {_invoice.Subtotal.Amount:F2} ← الإجمالي الكلي {_invoice.GrandTotal.Amount:F2})."
             : $"Saved draft (subtotal {_invoice.Subtotal.Amount:F2} → grand total {_invoice.GrandTotal.Amount:F2}).");
@@ -449,6 +713,23 @@
         {
             ShowFlash(IsArabic ? "لا يوجد شيء للترحيل." : "Nothing to post.", error: true);
             return;
+        }
+        // v5 D.1 v2 — block post when a serial-tracked line doesn't have
+        // serials picked for every unit. Operators can still SaveDraft
+        // with partial picks and come back later.
+        foreach (var line in _lines)
+        {
+            var item = _items.FirstOrDefault(i => i.Id == line.ItemId);
+            if (item?.TracksSerials != true) continue;
+            var needed = (int)Math.Round(line.Quantity);
+            if (line.SerialIds.Count != needed)
+            {
+                ShowFlash(IsArabic
+                    ? $"الصنف {item.Code} يتطلب {needed} رقم تسلسلي، أنت اخترت {line.SerialIds.Count}. افتح زر «أرقام تسلسلية» على البند وكمل الاختيار قبل الترحيل."
+                    : $"Item {item.Code} needs {needed} serial(s); you've picked {line.SerialIds.Count}. Click the Serials button on the line to finish.",
+                    error: true);
+                return;
+            }
         }
         await SaveDraftAsync();
         if (_invoice is null)
@@ -578,5 +859,15 @@
         decimal VatRatePercent,
         decimal LineSubtotal,
         decimal LineVat,
-        decimal LineTotal);
+        decimal LineTotal)
+    {
+        /// <summary>v5 D.1 v2 — serial GUIDs the operator picked for
+        /// this line (only relevant when the item has TracksSerials).
+        /// Mutable list so the inline serial picker can edit in place.</summary>
+        public List<Guid> SerialIds { get; init; } = new();
+
+        /// <summary>v5 F.6 v2 — optional per-line cost-center tag.
+        /// Guid.Empty = none; serialised to null on AddLine.</summary>
+        public Guid CostCenterId { get; init; } = Guid.Empty;
+    }
 }

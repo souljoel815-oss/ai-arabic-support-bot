@@ -1,0 +1,400 @@
+@page "/landed-costs/new"
+@page "/landed-costs/{Id:guid}/edit"
+@using System.Globalization
+@using EgyptTax.Application.Inventory
+@using EgyptTax.Domain.Inventory
+@using EgyptTax.Domain.Purchases
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Inventory
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject LandedCostComputeService Compute
+@inject ValidateLandedCostHandler Validator
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<PageTitle>@Tr("تكلفة استيراد | DaftarX", "Landed cost | DaftarX")</PageTitle>
+
+<h1>@Tr("📦 تكلفة استيراد (F.5)", "📦 Landed cost (F.5)")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "وزّع تكاليف الشحن والجمارك والتأمين على بنود فاتورة شراء معينة. لما توافق، التكلفة هتدخل على متوسط تكلفة الصنف وتظهر في تقييم المخزون.",
+        "Distribute shipping, customs, insurance, clearance fees across selected purchase-invoice lines. On Validate, the costs roll into each item's weighted-average cost and surface in stock valuation.")
+</p>
+
+@if (_flash is not null) { <div class="@_flashClass">@_flash</div> }
+@if (_loading) { <p>@Tr("جارٍ التحميل…", "Loading…")</p> return; }
+
+@if (_lc is null)
+{
+    <section class="form-grid" style="max-width:560px;">
+        <h2>@Tr("سند جديد", "New voucher")</h2>
+        <label>
+            <span>@Tr("التاريخ", "Date")</span>
+            <input type="date" @bind="_form.Date" />
+        </label>
+        <label>
+            <span>@Tr("طريقة التوزيع", "Split method")</span>
+            <select @bind="_form.SplitMethod">
+                <option value="@LandedCostSplitMethod.ByCost">@Tr("نسبة من التكلفة (افتراضي)", "By cost (default)")</option>
+                <option value="@LandedCostSplitMethod.ByQty">@Tr("نسبة من الكمية", "By quantity")</option>
+                <option value="@LandedCostSplitMethod.ByWeight">@Tr("نسبة من الوزن (كجم)", "By weight (kg)")</option>
+                <option value="@LandedCostSplitMethod.ByVolume">@Tr("نسبة من الحجم (م³)", "By volume (m³)")</option>
+                <option value="@LandedCostSplitMethod.Equal">@Tr("بالتساوي", "Equal split")</option>
+            </select>
+        </label>
+        <label>
+            <span>@Tr("ملاحظة (اختياري)", "Note (optional)")</span>
+            <textarea rows="2" @bind="_form.Note" placeholder="@Tr("شحنة كونتينر شهر مايو", "May container shipment")"></textarea>
+        </label>
+        <div class="invoice-actions" style="margin-top:14px;">
+            <button type="button" class="btn-primary" @onclick="OnCreateDraftAsync" disabled="@_busy">
+                @(_busy ? Tr("جارٍ الحفظ…", "Saving…") : Tr("إنشاء مسودة ← المتابعة", "Create draft → continue"))
+            </button>
+        </div>
+    </section>
+    return;
+}
+
+@if (_lc.State != LandedCostState.Draft)
+{
+    <div class="kpi-card kpi-info" style="padding:14px;">
+        @Tr($"السند {_lc.DocumentNumber} مرحَّل ولا يقبل تعديل.",
+            $"Voucher {_lc.DocumentNumber} is validated and not editable.")
+    </div>
+    <p>
+        <a href="/journals?periodStart=@_lc.DocumentDate.ToString("yyyy-MM-dd")">
+            ← @Tr("اعرض القيد المُرحَّل", "View posted journal entry")
+        </a>
+    </p>
+    return;
+}
+
+@* === Step 1: cost lines === *@
+<section style="margin-top:18px;">
+    <h2>@Tr("الخطوة 1 — تكاليف الاستيراد", "Step 1 — Import costs")</h2>
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>@Tr("حساب التسوية", "Clearing account")</th>
+                <th>@Tr("الوصف", "Description")</th>
+                <th class="num">@Tr("المبلغ", "Amount")</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var l in _lc.Lines)
+            {
+                var lineId = l.Id;
+                <tr>
+                    <td><code>@l.ClearingAccountCode</code></td>
+                    <td>@(l.Description ?? "")</td>
+                    <td class="num">@l.Amount.Amount.ToString("F2") @Tr("ج.م.", "EGP")</td>
+                    <td><button type="button" style="font-size:11px;" @onclick="() => OnRemoveCostLineAsync(lineId)">×</button></td>
+                </tr>
+            }
+            <tr style="background:var(--bg-2);">
+                <td><input type="text" placeholder="5300" @bind="_newCostAccount" style="width:100px;" /></td>
+                <td><input type="text" placeholder="@Tr("شحن — Maersk", "Shipping — Maersk")" @bind="_newCostDescription" style="width:100%;" /></td>
+                <td class="num"><input type="number" step="0.01" min="0.01" @bind="_newCostAmount" style="width:120px;" /></td>
+                <td><button type="button" class="btn-primary" style="font-size:12px;" @onclick="OnAddCostLineAsync">+</button></td>
+            </tr>
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="2" style="text-align:end;"><strong>@Tr("إجمالي التكاليف:", "Total costs:")</strong></td>
+                <td class="num"><strong>@_lc.TotalCost().Amount.ToString("F2") @Tr("ج.م.", "EGP")</strong></td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+</section>
+
+@* === Step 2: pick target purchase-invoice lines === *@
+<section style="margin-top:18px;">
+    <h2>@Tr("الخطوة 2 — اختر بنود فاتورة الشراء", "Step 2 — Pick target purchase-invoice lines")</h2>
+    @if (_purchaseLines.Count == 0)
+    {
+        <p><em>@Tr("لا توجد بنود فاتورة شراء مرحلة في آخر 90 يوم.", "No posted purchase-invoice lines in the last 90 days.")</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>@Tr("الفاتورة", "Invoice")</th>
+                    <th>@Tr("الصنف", "Item")</th>
+                    <th class="num">@Tr("الكمية", "Qty")</th>
+                    <th class="num">@Tr("سعر الوحدة", "Unit price")</th>
+                    <th class="num">@Tr("التكلفة", "Cost")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var pl in _purchaseLines)
+                {
+                    var lineId = pl.LineId;
+                    <tr>
+                        <td><input type="checkbox" checked="@_selectedLineIds.Contains(lineId)"
+                                   @onchange="(e) => OnToggleSelection(lineId, (bool)(e.Value ?? false))" /></td>
+                        <td><code>@pl.InvoiceNumber</code></td>
+                        <td>@pl.ItemLabel</td>
+                        <td class="num">@pl.Quantity.ToString("F2")</td>
+                        <td class="num">@pl.UnitPrice.ToString("F2")</td>
+                        <td class="num">@(pl.Quantity * pl.UnitPrice).ToString("F2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+@* === Step 3: compute + validate === *@
+<section style="margin-top:18px;">
+    <h2>@Tr("الخطوة 3 — حساب التوزيع وموافقة", "Step 3 — Compute & validate")</h2>
+    <div class="invoice-actions">
+        <button type="button" class="btn-secondary" @onclick="OnComputeAsync"
+                disabled="@(_busy || _lc.Lines.Count == 0 || _selectedLineIds.Count == 0)">
+            @Tr("حساب التوزيع", "Compute split")
+        </button>
+    </div>
+    @if (_lc.Allocations.Count > 0)
+    {
+        <table class="data-grid" style="margin-top:10px;">
+            <thead>
+                <tr>
+                    <th>@Tr("بند فاتورة الشراء", "Target line")</th>
+                    <th class="num">@Tr("القيمة المضافة", "Allocated")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in _lc.Allocations)
+                {
+                    var label = _purchaseLines.FirstOrDefault(p => p.LineId == a.PurchaseInvoiceLineId);
+                    <tr>
+                        <td>@(label is null ? a.PurchaseInvoiceLineId.ToString("N").Substring(0, 8) : $"{label.InvoiceNumber} — {label.ItemLabel}")</td>
+                        <td class="num">@a.AllocatedAmount.Amount.ToString("F2")</td>
+                    </tr>
+                }
+                <tr style="background:var(--bg-2);">
+                    <td style="text-align:end;"><strong>@Tr("الإجمالي:", "Total:")</strong></td>
+                    <td class="num"><strong>@_lc.TotalAllocated().Amount.ToString("F2")</strong></td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="invoice-actions" style="margin-top:14px;">
+            <button type="button" class="btn-primary" @onclick="OnValidateAsync" disabled="@_busy">
+                @Tr("موافقة وترحيل القيد", "Validate & post journal entry")
+            </button>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private bool _loading = true;
+    private bool _busy;
+    private LandedCost? _lc;
+    private FormModel _form = new();
+    private List<PurchaseLineRow> _purchaseLines = new();
+    private HashSet<Guid> _selectedLineIds = new();
+    private string _newCostAccount = "";
+    private string _newCostDescription = "";
+    private decimal _newCostAmount;
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        try
+        {
+            if (Id is { } id)
+            {
+                _lc = await Db.Set<LandedCost>()
+                    .Include(x => x.Lines)
+                    .Include(x => x.Allocations)
+                    .FirstOrDefaultAsync(x => x.Id == id);
+                if (_lc is not null)
+                {
+                    _selectedLineIds = _lc.Allocations.Select(a => a.PurchaseInvoiceLineId).ToHashSet();
+                    await LoadPurchaseLinesAsync();
+                }
+            }
+            else
+            {
+                _lc = null;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadPurchaseLinesAsync()
+    {
+        var since = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-90));
+        // Pull recent posted purchase-invoice lines that have an item
+        // attached (skip expense-category bill lines — landed cost
+        // only makes sense on stock items).
+        var rows = await (
+            from p in Db.Set<PurchaseInvoice>().AsNoTracking()
+            where p.State == DocumentState.Posted && p.DateReceived >= since
+            from l in p.Lines
+            where l.ItemId != null
+            select new
+            {
+                LineId = l.Id,
+                InvoiceNumber = p.DocumentNumber!,
+                ItemId = l.ItemId!.Value,
+                Qty = l.Quantity,
+                Unit = l.UnitPrice.Amount,
+            }
+        ).ToListAsync();
+        // v3 §11 — Item.Code/Name lookup for the label.
+        var itemIds = rows.Select(r => r.ItemId).Distinct().ToList();
+        var items = await Db.Set<EgyptTax.Domain.MasterData.Item>().AsNoTracking()
+            .Where(i => itemIds.Contains(i.Id))
+            .Select(i => new { i.Id, i.Code, i.Name })
+            .ToListAsync();
+        var itemLabel = items.ToDictionary(
+            i => i.Id,
+            i => $"{i.Code} — {(IsArabic ? i.Name.Arabic : i.Name.English)}");
+        _purchaseLines = rows
+            .Select(r => new PurchaseLineRow(
+                LineId: r.LineId,
+                InvoiceNumber: r.InvoiceNumber,
+                ItemLabel: itemLabel.GetValueOrDefault(r.ItemId, "?"),
+                Quantity: r.Qty,
+                UnitPrice: r.Unit))
+            .OrderByDescending(r => r.InvoiceNumber)
+            .ToList();
+    }
+
+    private async Task OnCreateDraftAsync()
+    {
+        _flash = null; _busy = true;
+        try
+        {
+            var draft = LandedCost.CreateDraft(
+                DateOnly.FromDateTime(_form.Date),
+                _form.SplitMethod,
+                _form.Note);
+            Db.Add(draft);
+            await Db.SaveChangesAsync();
+            Nav.NavigateTo($"/landed-costs/{draft.Id}/edit", forceLoad: true);
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "flash-error"; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnAddCostLineAsync()
+    {
+        if (_lc is null) return;
+        _flash = null; _busy = true;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_newCostAccount))
+            {
+                _flash = Tr("اكتب كود الحساب.", "Enter the clearing-account code.");
+                _flashClass = "flash-error"; return;
+            }
+            if (_newCostAmount <= 0m)
+            {
+                _flash = Tr("المبلغ لازم يكون موجب.", "Amount must be positive.");
+                _flashClass = "flash-error"; return;
+            }
+            var live = await Db.Set<LandedCost>().Include(x => x.Lines).Include(x => x.Allocations)
+                .FirstAsync(x => x.Id == _lc.Id);
+            live.AddCostLine(_newCostAccount, MoneyEgp.From(_newCostAmount), _newCostDescription);
+            await Db.SaveChangesAsync();
+            _newCostAccount = ""; _newCostDescription = ""; _newCostAmount = 0m;
+            _lc = live;
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "flash-error"; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnRemoveCostLineAsync(Guid lineId)
+    {
+        if (_lc is null) return;
+        _busy = true;
+        try
+        {
+            var live = await Db.Set<LandedCost>().Include(x => x.Lines).Include(x => x.Allocations)
+                .FirstAsync(x => x.Id == _lc.Id);
+            live.RemoveCostLine(lineId);
+            await Db.SaveChangesAsync();
+            _lc = live;
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "flash-error"; }
+        finally { _busy = false; }
+    }
+
+    private void OnToggleSelection(Guid lineId, bool selected)
+    {
+        if (selected) _selectedLineIds.Add(lineId);
+        else _selectedLineIds.Remove(lineId);
+    }
+
+    private async Task OnComputeAsync()
+    {
+        if (_lc is null) return;
+        _flash = null; _busy = true;
+        try
+        {
+            var live = await Db.Set<LandedCost>().Include(x => x.Lines).Include(x => x.Allocations)
+                .FirstAsync(x => x.Id == _lc.Id);
+            var allocs = await Compute.ComputeAsync(live, _selectedLineIds);
+            live.SetAllocations(allocs);
+            await Db.SaveChangesAsync();
+            _lc = live;
+            _flash = Tr("تم الحساب.", "Computed.");
+            _flashClass = "flash-success";
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "flash-error"; }
+        finally { _busy = false; }
+    }
+
+    private async Task OnValidateAsync()
+    {
+        if (_lc is null) return;
+        _flash = null; _busy = true;
+        try
+        {
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId() ?? Guid.Empty;
+            var posted = await Validator.HandleAsync(
+                new ValidateLandedCostCommand(_lc.Id, userId));
+            Nav.NavigateTo($"/journals?periodStart={posted.DocumentDate:yyyy-MM-dd}");
+        }
+        catch (Exception ex) { _flash = ex.Message; _flashClass = "flash-error"; }
+        finally { _busy = false; }
+    }
+
+    private sealed class FormModel
+    {
+        public DateTime Date { get; set; } = DateTime.UtcNow.Date;
+        public LandedCostSplitMethod SplitMethod { get; set; } = LandedCostSplitMethod.ByCost;
+        public string Note { get; set; } = "";
+    }
+
+    private sealed record PurchaseLineRow(
+        Guid LineId,
+        string InvoiceNumber,
+        string ItemLabel,
+        decimal Quantity,
+        decimal UnitPrice);
+}

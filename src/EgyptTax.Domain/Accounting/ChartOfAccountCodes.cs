@@ -105,4 +105,19 @@ public static class ChartOfAccountCodes
     /// The following fiscal year starts with revenue + expense
     /// balances at zero — that's the entire purpose of the close.</summary>
     public const string RetainedEarnings = "3100";
+
+    /// <summary>v5 E.8 — contra-revenue account debited when a
+    /// customer pays less than the invoice amount because they took
+    /// an early-payment discount. Recorded at receipt time on the
+    /// CustomerReceiptVoucher (not at invoice time — invoice-time
+    /// discounts already net into SalesRevenue via the line-discount
+    /// columns). Reduces gross sales on the income statement.</summary>
+    public const string SalesDiscountTaken = "4910";
+
+    /// <summary>v5 F.5 — inventory asset. Debited by landed-cost
+    /// allocations (shipping, customs, insurance, clearance fees
+    /// rolled into the cost basis of imported goods). For v5 F.5 v1
+    /// we treat all inventory as one bucket; per-item-class accounts
+    /// are a v6 concern.</summary>
+    public const string Inventory = "1300";
 }

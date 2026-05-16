@@ -140,8 +140,77 @@
     <a href="/expenses">@(IsArabic ? "إلغاء" : "Cancel")</a>
 </EditForm>
 
-@if (!_isNew && _expense is not null)
+@* v5 F.6 — multi-dim split allocation editor. Opt-in: only shown
+    after the expense has been saved at least once (we need _expense.Id
+    as the SourceLineId). Single-tag dropdown above stays the simple
+    path; this section is for "30% Cairo / 70% Alexandria" cases. *@
+@if (!_isNew && _expense is not null && _expense.State == DocumentState.Draft)
 {
+    <section class="form-grid" style="margin-top:18px;border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+        <h2 style="margin:0 0 6px;">
+            @(IsArabic ? "🌐 توزيع متعدد المراكز (F.6)" : "🌐 Split allocation across cost centers (F.6)")
+        </h2>
+        <p class="page-subtitle" style="font-size:12px;margin:0 0 10px;">
+            @(IsArabic
+                ? "لما المصروف يتقسم على أكتر من مركز تكلفة (مثلاً ٣٠٪ القاهرة و٧٠٪ الإسكندرية). لو ساحبة سطر واحد في الجدول ده، التوزيع يحلّ محل التاج المفرد فوق."
+                : "Use this when the expense splits across multiple cost centers (e.g. 30% Cairo / 70% Alexandria). If you save any rows here, this distribution overrides the single-tag dropdown above on reports.")
+        </p>
+        @if (_allocFlash is not null) { <div class="@_allocFlashClass">@_allocFlash</div> }
+        <table class="data-grid" style="font-size:13px;">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "مركز التكلفة" : "Cost center")</th>
+                    <th class="num" style="width:120px;">@(IsArabic ? "النسبة %" : "Percent %")</th>
+                    <th class="num" style="width:140px;">@(IsArabic ? "المبلغ المخصص" : "Allocated amount")</th>
+                    <th style="width:60px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (int i = 0; i < _allocRows.Count; i++)
+                {
+                    var idx = i;
+                    var row = _allocRows[idx];
+                    var allocAmount = Math.Round(_form.Amount * row.Percent / 100m, 2);
+                    <tr>
+                        <td>
+                            <select @bind="row.CostCenterId">
+                                <option value="@Guid.Empty">— @(IsArabic ? "اختر —" : "Choose —")</option>
+                                @foreach (var cc in _costCenters)
+                                {
+                                    <option value="@cc.Id">@cc.Code — @(IsArabic ? cc.Name.Arabic : cc.Name.English)</option>
+                                }
+                            </select>
+                        </td>
+                        <td class="num"><input type="number" step="0.01" min="0.01" max="100" @bind="row.Percent" /></td>
+                        <td class="num">@allocAmount.ToString("F2")</td>
+                        <td><button type="button" style="font-size:11px;" @onclick="() => RemoveAllocRow(idx)">×</button></td>
+                    </tr>
+                }
+                <tr style="background:var(--bg-2);">
+                    <td colspan="2"><button type="button" @onclick="AddAllocRow">+ @(IsArabic ? "أضف سطر" : "Add row")</button></td>
+                    <td class="num">
+                        <strong>@(IsArabic ? "الإجمالي:" : "Total:")</strong>
+                        <strong style="color:@(IsAllocSumValid() ? "var(--success-text)" : "var(--warning-text)");">
+                            @_allocRows.Sum(r => r.Percent).ToString("F2")%
+                        </strong>
+                    </td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="invoice-actions" style="margin-top:10px;">
+            <button type="button" class="btn-primary" @onclick="OnSaveAllocationsAsync" disabled="@_allocSaving">
+                @(_allocSaving ? (IsArabic ? "جارٍ الحفظ…" : "Saving…") : (IsArabic ? "حفظ التوزيع" : "Save split"))
+            </button>
+            @if (_allocRows.Count == 0 && _hasSavedAllocations)
+            {
+                <button type="button" class="btn-secondary" @onclick="OnSaveAllocationsAsync" disabled="@_allocSaving">
+                    @(IsArabic ? "مسح التوزيع — رجوع للتاج المفرد" : "Clear split — revert to single tag")
+                </button>
+            }
+        </div>
+    </section>
+
     <section class="upload-section">
         <h2>@(IsArabic ? "المرفقات (FR-016 — مطلوبة عند القابلية للخصم)" : "Attachments (FR-016 — required if deductible)")</h2>
         @if (_attachments.Count == 0)
@@ -180,6 +249,13 @@
     private string? _flash;
     private string _flashClass = "flash-success";
     private bool _uploading;
+
+    // v5 F.6 — multi-dim cost-center allocation editor state.
+    private List<AllocRow> _allocRows = new();
+    private string? _allocFlash;
+    private string _allocFlashClass = "flash-success";
+    private bool _allocSaving;
+    private bool _hasSavedAllocations;
 
     // G3.2 — receipt OCR scan state
     private bool _ocrRunning;
@@ -225,6 +301,9 @@
                     .Where(a => a.DocumentId == _expense.Id
                         && a.DocumentType == DocumentType.Expense)
                     .OrderBy(a => a.UploadedAtUtc).ToListAsync();
+
+                // v5 F.6 — load existing split allocations (if any).
+                await LoadAllocationsAsync(_expense.Id);
             }
         }
         else
@@ -588,5 +667,111 @@
         // v3 §11 #3 — Guid.Empty means "not tagged"; SetCostCenter
         // normalises that to null when persisting.
         public Guid CostCenterId { get; set; } = Guid.Empty;
+    }
+
+    // v5 F.6 — one row in the split-allocation editor. Percent is
+    // entered as a decimal 0–100; on save we convert to basis points
+    // (× 100, rounded to int) so the persisted sum is exact.
+    private sealed class AllocRow
+    {
+        public Guid CostCenterId { get; set; } = Guid.Empty;
+        public decimal Percent { get; set; }
+    }
+
+    private void AddAllocRow() => _allocRows.Add(new AllocRow());
+
+    private void RemoveAllocRow(int index)
+    {
+        if (index >= 0 && index < _allocRows.Count) _allocRows.RemoveAt(index);
+    }
+
+    private bool IsAllocSumValid()
+    {
+        if (_allocRows.Count == 0) return true; // zero rows = clear/no split
+        var sum = _allocRows.Sum(r => r.Percent);
+        return Math.Abs(sum - 100m) < 0.01m;
+    }
+
+    private async Task OnSaveAllocationsAsync()
+    {
+        if (_expense is null) return;
+        _allocFlash = null;
+        _allocSaving = true;
+        try
+        {
+            // Validate: distinct cost centers, all > 0, sum = 100 (or all empty for clear)
+            if (_allocRows.Count > 0)
+            {
+                if (_allocRows.Any(r => r.CostCenterId == Guid.Empty))
+                {
+                    _allocFlash = IsArabic ? "اختر مركز تكلفة لكل سطر." : "Pick a cost center for each row.";
+                    _allocFlashClass = "flash-error";
+                    return;
+                }
+                if (_allocRows.Any(r => r.Percent <= 0m))
+                {
+                    _allocFlash = IsArabic ? "النسبة لازم تكون موجبة." : "Percent must be positive.";
+                    _allocFlashClass = "flash-error";
+                    return;
+                }
+                if (_allocRows.Select(r => r.CostCenterId).Distinct().Count() != _allocRows.Count)
+                {
+                    _allocFlash = IsArabic ? "كل مركز تكلفة لازم يتذكر مرة واحدة فقط." : "Each cost center may only appear once.";
+                    _allocFlashClass = "flash-error";
+                    return;
+                }
+                if (!IsAllocSumValid())
+                {
+                    _allocFlash = IsArabic ? "مجموع النسب لازم يساوي 100%." : "Percentages must sum to 100%.";
+                    _allocFlashClass = "flash-error";
+                    return;
+                }
+            }
+
+            // Replace existing allocations atomically. Delete-then-insert
+            // is fine inside a single SaveChanges; the indexed source-line
+            // lookup returns at most a few rows in practice.
+            var existing = await Db.Set<CostCenterAllocation>()
+                .Where(a => a.SourceType == CostCenterAllocationSourceType.Expense
+                    && a.SourceLineId == _expense.Id)
+                .ToListAsync();
+            Db.Set<CostCenterAllocation>().RemoveRange(existing);
+
+            foreach (var row in _allocRows)
+            {
+                // Convert percent (0..100 as decimal) to basis points (0..10000 int).
+                var bp = (int)Math.Round(row.Percent * 100m, MidpointRounding.AwayFromZero);
+                Db.Add(new CostCenterAllocation(
+                    CostCenterAllocationSourceType.Expense,
+                    _expense.Id,
+                    row.CostCenterId,
+                    bp));
+            }
+            await Db.SaveChangesAsync();
+            _hasSavedAllocations = _allocRows.Count > 0;
+            _allocFlash = IsArabic ? "تم حفظ التوزيع." : "Split saved.";
+            _allocFlashClass = "flash-success";
+        }
+        catch (Exception ex)
+        {
+            _allocFlash = ex.Message;
+            _allocFlashClass = "flash-error";
+        }
+        finally
+        {
+            _allocSaving = false;
+        }
+    }
+
+    private async Task LoadAllocationsAsync(Guid expenseId)
+    {
+        var existing = await Db.Set<CostCenterAllocation>().AsNoTracking()
+            .Where(a => a.SourceType == CostCenterAllocationSourceType.Expense
+                && a.SourceLineId == expenseId)
+            .ToListAsync();
+        _allocRows = existing
+            .Select(a => new AllocRow { CostCenterId = a.CostCenterId, Percent = a.PercentBp / 100m })
+            .ToList();
+        _hasSavedAllocations = _allocRows.Count > 0;
     }
 }

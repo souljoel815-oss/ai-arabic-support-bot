@@ -124,6 +124,7 @@ internal static class StartupSeed
             (Id: new Guid("11111111-1111-4111-8111-000000000006"), Code: "SPV", NameAr: "إيصال دفع لمورد",     NameEn: "Supplier payment voucher", Type: DocumentType.SupplierPaymentVoucher),
             (Id: new Guid("11111111-1111-4111-8111-000000000007"), Code: "CRV", NameAr: "إيصال قبض من عميل",   NameEn: "Customer receipt voucher", Type: DocumentType.CustomerReceiptVoucher),
             (Id: new Guid("11111111-1111-4111-8111-000000000008"), Code: "FA",  NameAr: "أصل ثابت",            NameEn: "Fixed asset",              Type: DocumentType.FixedAsset),
+            (Id: new Guid("11111111-1111-4111-8111-000000000009"), Code: "LC",  NameAr: "تكلفة استيراد",       NameEn: "Landed cost",              Type: DocumentType.LandedCost),
         };
         var seriesAdded = 0;
         foreach (var s in defaultSeries)

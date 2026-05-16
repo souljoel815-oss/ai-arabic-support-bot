@@ -69,6 +69,11 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         b.Property(u => u.SalesTeamId).HasColumnName("sales_team_id");
         b.HasIndex(u => u.SalesTeamId).HasDatabaseName("ix_users_sales_team_id");
 
+        // v5 D.2.1 — default hourly billing rate for timesheets.
+        b.Property(u => u.HourlyRateEgp)
+            .HasColumnName("hourly_rate_egp")
+            .HasColumnType("decimal(10,2)");
+
         b.Property(u => u.LastLoginAtUtc)
             .HasColumnName("last_login_at_utc")
             .HasColumnType("datetime2(3)");

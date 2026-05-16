@@ -45,9 +45,27 @@
             <button type="button" class="btn-secondary" @onclick="@(() => ChangeStatusAsync(ProjectStatus.OnHold))">@Tr("تعليق", "Hold")</button>
             <button type="button" class="btn-secondary" @onclick="@(() => ChangeStatusAsync(ProjectStatus.Completed))">@Tr("إكمال", "Complete")</button>
         }
+        <a href="/projects/@_project.Id/pnl" class="btn-secondary">📊 @Tr("الربح والخسارة", "P&L")</a>
+        <a href="/projects/@_project.Id/gantt" class="btn-secondary">📅 @Tr("جانت", "Gantt")</a>
         <a href="/projects" class="btn-secondary">@Tr("الرجوع", "Back")</a>
     </div>
 </div>
+
+@* v5 D.2.2 — link the project to a cost-center so the P&L page
+   can roll up revenue/direct costs/expenses tagged with that CC. *@
+<section class="form-grid" style="margin-top:14px;max-width:480px;">
+    <label>
+        <span>@Tr("مركز التكلفة المربوط (للربح والخسارة)", "Linked cost center (for P&L)")</span>
+        <select value="@(_project.LinkedCostCenterId?.ToString() ?? "")"
+                @onchange="@(e => OnLinkCostCenterAsync(e.Value?.ToString()))">
+            <option value="">— @Tr("بدون", "None") —</option>
+            @foreach (var cc in _costCenters)
+            {
+                <option value="@cc.Id">@cc.Code — @(IsArabic ? cc.Name.Arabic : cc.Name.English)</option>
+            }
+        </select>
+    </label>
+</section>
 
 @if (_flash is not null)
 {
@@ -57,7 +75,7 @@
 <section class="form-section" style="margin-top:16px;">
     <h2>@Tr("المهام", "Tasks")</h2>
 
-    <div class="form-grid" style="grid-template-columns:1fr auto auto auto auto auto;">
+    <div class="form-grid" style="grid-template-columns:1fr auto auto auto auto auto auto;">
         <input type="text" @bind="_newTaskTitle" @bind:event="oninput"
                placeholder="@Tr("عنوان المهمة", "Task title")" maxlength="300" />
         <select @bind="_newTaskAssignee">
@@ -67,6 +85,10 @@
                 <option value="@u.Id">@u.DisplayName.Display(IsArabic ? Language.Ar : Language.En)</option>
             }
         </select>
+        @* v5 D.2.3 — schedule range: start + due. Both optional;
+           Gantt only shows tasks with both. *@
+        <input type="date" @bind="_newTaskStart" placeholder="@Tr("بدء (جانت)", "Start (Gantt)")"
+               title="@Tr("تاريخ البدء — لازم للظهور في جانت", "Start date — required to appear in Gantt")" />
         <input type="date" @bind="_newTaskDue" />
         @* v5 A.3 — priority + optional parent (one-level sub-tasks) *@
         <select @bind="_newTaskPriority" title="@Tr("الأولوية", "Priority")">
@@ -172,10 +194,12 @@
     private Project? _project;
     private List<User> _users = new();
     private Dictionary<Guid, User> _userLookup = new();
+    private List<CostCenter> _costCenters = new();
 
     private string _newTaskTitle = "";
     private Guid _newTaskAssignee = Guid.Empty;
     private DateTime? _newTaskDue;
+    private DateTime? _newTaskStart;
     private TaskPriority _newTaskPriority = TaskPriority.Normal;
     private Guid _newTaskParent = Guid.Empty;
 
@@ -188,7 +212,21 @@
             .Where(u => u.Status == UserStatus.Active)
             .OrderBy(u => u.DisplayName.English).ToListAsync();
         _userLookup = _users.ToDictionary(u => u.Id);
+        _costCenters = await Db.Set<CostCenter>().AsNoTracking()
+            .Where(c => c.Status == CostCenterStatus.Active)
+            .OrderBy(c => c.Code).ToListAsync();
         _loading = false;
+    }
+
+    private async Task OnLinkCostCenterAsync(string? rawId)
+    {
+        if (_project is null) return;
+        Guid? cid = Guid.TryParse(rawId, out var g) ? g : null;
+        var live = await Db.Set<Project>().FirstOrDefaultAsync(p => p.Id == _project.Id);
+        if (live is null) return;
+        live.LinkCostCenter(cid);
+        await Db.SaveChangesAsync();
+        _project = await Db.Set<Project>().Include(p => p.Tasks).FirstAsync(p => p.Id == _project.Id);
     }
 
     private async Task OnAddTaskAsync()
@@ -196,14 +234,22 @@
         if (string.IsNullOrWhiteSpace(_newTaskTitle)) return;
         try
         {
-            _project!.AddTask(_newTaskTitle.Trim(),
+            var newTask = _project!.AddTask(_newTaskTitle.Trim(),
                 _newTaskAssignee == Guid.Empty ? null : _newTaskAssignee,
                 _newTaskDue.HasValue ? DateOnly.FromDateTime(_newTaskDue.Value) : null,
                 priority: _newTaskPriority,
                 parentTaskId: _newTaskParent == Guid.Empty ? null : _newTaskParent);
+            // v5 D.2.3 — pin the start date so the Gantt chart can plot the task.
+            if (_newTaskStart.HasValue)
+            {
+                newTask.SetSchedule(
+                    DateOnly.FromDateTime(_newTaskStart.Value),
+                    _newTaskDue.HasValue ? DateOnly.FromDateTime(_newTaskDue.Value) : null);
+            }
             await Db.SaveChangesAsync();
             _newTaskTitle = "";
             _newTaskDue = null;
+            _newTaskStart = null;
             _newTaskAssignee = Guid.Empty;
             _newTaskPriority = TaskPriority.Normal;
             _newTaskParent = Guid.Empty;

@@ -911,6 +911,13 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("nvarchar(16)")
                         .HasColumnName("state");
 
+                    b.ComplexProperty<Dictionary<string, object>>("DiscountTakenAmount", "EgyptTax.Domain.Documents.CustomerReceiptVoucher.DiscountTakenAmount#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("discount_taken_amount");
+                        });
+
                     b.ComplexProperty<Dictionary<string, object>>("GrossReceiptAmount", "EgyptTax.Domain.Documents.CustomerReceiptVoucher.GrossReceiptAmount#MoneyEgp", b1 =>
                         {
                             b1.Property<decimal>("Amount")
@@ -1993,6 +2000,10 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("int")
                         .HasColumnName("failed_login_count");
 
+                    b.Property<decimal?>("HourlyRateEgp")
+                        .HasColumnType("decimal(10,2)")
+                        .HasColumnName("hourly_rate_egp");
+
                     b.Property<DateTime?>("LastLoginAtUtc")
                         .HasColumnType("datetime2(3)")
                         .HasColumnName("last_login_at_utc");
@@ -2069,6 +2080,128 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasDatabaseName("ix_users_sales_team_id");
 
                     b.ToTable("users", "identity");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Inventory.LandedCost", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateOnly>("DocumentDate")
+                        .HasColumnType("date")
+                        .HasColumnName("document_date");
+
+                    b.Property<string>("DocumentNumber")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("document_number");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("note");
+
+                    b.Property<string>("SplitMethod")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("split_method");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("state");
+
+                    b.Property<DateTime?>("ValidatedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("validated_at_utc");
+
+                    b.Property<Guid?>("ValidatedByUserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("validated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentDate")
+                        .HasDatabaseName("ix_landed_costs_document_date");
+
+                    b.HasIndex("DocumentNumber")
+                        .HasDatabaseName("ix_landed_costs_document_number")
+                        .HasFilter("[document_number] IS NOT NULL");
+
+                    b.ToTable("landed_costs", "inventory");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Inventory.LandedCostAllocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("LandedCostId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("landed_cost_id");
+
+                    b.Property<Guid>("PurchaseInvoiceLineId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("purchase_invoice_line_id");
+
+                    b.ComplexProperty<Dictionary<string, object>>("AllocatedAmount", "EgyptTax.Domain.Inventory.LandedCostAllocation.AllocatedAmount#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("allocated_amount");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LandedCostId")
+                        .HasDatabaseName("ix_landed_cost_allocations_landed_cost_id");
+
+                    b.HasIndex("PurchaseInvoiceLineId")
+                        .HasDatabaseName("ix_landed_cost_allocations_pi_line_id");
+
+                    b.ToTable("landed_cost_allocations", "inventory");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Inventory.LandedCostLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ClearingAccountCode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("clearing_account_code");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("description");
+
+                    b.Property<Guid>("LandedCostId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("landed_cost_id");
+
+                    b.ComplexProperty<Dictionary<string, object>>("Amount", "EgyptTax.Domain.Inventory.LandedCostLine.Amount#MoneyEgp", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasColumnType("decimal(19,2)")
+                                .HasColumnName("amount");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LandedCostId")
+                        .HasDatabaseName("ix_landed_cost_lines_landed_cost_id");
+
+                    b.ToTable("landed_cost_lines", "inventory");
                 });
 
             modelBuilder.Entity("EgyptTax.Domain.Invoices.InvoiceWhatsAppDispatch", b =>
@@ -2403,6 +2536,11 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.Property<Guid>("SalesInvoiceId")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("sales_invoice_id");
+
+                    b.Property<string>("SerialIdsJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)")
+                        .HasColumnName("serial_ids_json");
 
                     b.Property<Guid>("VatCategoryId")
                         .HasColumnType("uniqueidentifier")
@@ -2752,6 +2890,45 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.ToTable("cost_centers", "master_data");
                 });
 
+            modelBuilder.Entity("EgyptTax.Domain.MasterData.CostCenterAllocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CostCenterId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("cost_center_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<int>("PercentBp")
+                        .HasColumnType("int")
+                        .HasColumnName("percent_bp");
+
+                    b.Property<Guid>("SourceLineId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("source_line_id");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasColumnName("source_type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CostCenterId")
+                        .HasDatabaseName("ix_cost_center_allocations_cost_center_id");
+
+                    b.HasIndex("SourceType", "SourceLineId")
+                        .HasDatabaseName("ix_cost_center_allocations_source");
+
+                    b.ToTable("cost_center_allocations", "master");
+                });
+
             modelBuilder.Entity("EgyptTax.Domain.MasterData.Customer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2778,6 +2955,10 @@ namespace EgyptTax.Infrastructure.Migrations
                         .IsUnicode(false)
                         .HasColumnType("varchar(254)")
                         .HasColumnName("email");
+
+                    b.Property<Guid?>("FiscalPositionId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("fiscal_position_id");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(32)
@@ -2890,6 +3071,9 @@ namespace EgyptTax.Infrastructure.Migrations
 
                     b.HasIndex("DefaultPricelistId")
                         .HasDatabaseName("ix_customers_default_pricelist_id");
+
+                    b.HasIndex("FiscalPositionId")
+                        .HasDatabaseName("ix_customers_fiscal_position_id");
 
                     b.ToTable("customers", "master");
                 });
@@ -3154,6 +3338,18 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasColumnName("tracks_lots");
 
+                    b.Property<bool>("TracksSerials")
+                        .HasColumnType("bit")
+                        .HasColumnName("tracks_serials");
+
+                    b.Property<decimal?>("VolumeM3")
+                        .HasColumnType("decimal(10,4)")
+                        .HasColumnName("volume_m3");
+
+                    b.Property<decimal?>("WeightKg")
+                        .HasColumnType("decimal(10,3)")
+                        .HasColumnName("weight_kg");
+
                     b.ComplexProperty<Dictionary<string, object>>("Name", "EgyptTax.Domain.MasterData.Item.Name#ArabicEnglishText", b1 =>
                         {
                             b1.Property<string>("Arabic")
@@ -3225,6 +3421,65 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasDatabaseName("ux_item_lots_item_lot_code");
 
                     b.ToTable("item_lots", "master_data");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.MasterData.ItemSerial", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid?>("CurrentCustomerId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("current_customer_id");
+
+                    b.Property<Guid?>("CurrentLocationId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("current_location_id");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("item_id");
+
+                    b.Property<DateTime?>("LastStatusChangeAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("last_status_change_at_utc");
+
+                    b.Property<Guid?>("LotId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("lot_id");
+
+                    b.Property<string>("SerialNumber")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("serial_number");
+
+                    b.Property<Guid?>("SoldOnSalesInvoiceId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("sold_on_sales_invoice_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_item_serials_status");
+
+                    b.HasIndex("ItemId", "SerialNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_item_serials_item_serial");
+
+                    b.ToTable("item_serials", "master");
                 });
 
             modelBuilder.Entity("EgyptTax.Domain.MasterData.ItemStockByLocation", b =>
@@ -3988,6 +4243,10 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("date")
                         .HasColumnName("end_date");
 
+                    b.Property<Guid?>("LinkedCostCenterId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("linked_cost_center_id");
+
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date")
                         .HasColumnName("start_date");
@@ -4018,6 +4277,9 @@ namespace EgyptTax.Infrastructure.Migrations
                     b.HasIndex("Code")
                         .IsUnique()
                         .HasDatabaseName("ux_projects_code");
+
+                    b.HasIndex("LinkedCostCenterId")
+                        .HasDatabaseName("ix_projects_linked_cost_center_id");
 
                     b.ToTable("projects", "projects");
                 });
@@ -4058,6 +4320,10 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("project_id");
 
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -4079,6 +4345,60 @@ namespace EgyptTax.Infrastructure.Migrations
                         .HasDatabaseName("ix_project_tasks_project_id");
 
                     b.ToTable("project_tasks", "projects");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Projects.TimesheetEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Billable")
+                        .HasColumnType("bit")
+                        .HasColumnName("billable");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2(3)")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<DateOnly>("EntryDate")
+                        .HasColumnType("date")
+                        .HasColumnName("entry_date");
+
+                    b.Property<decimal>("HourlyRateEgp")
+                        .HasColumnType("decimal(10,2)")
+                        .HasColumnName("hourly_rate_egp");
+
+                    b.Property<decimal>("Hours")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("hours");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("note");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("project_id");
+
+                    b.Property<Guid?>("ProjectTaskId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("project_task_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId")
+                        .HasDatabaseName("ix_timesheet_entries_project_id");
+
+                    b.HasIndex("UserId", "EntryDate")
+                        .HasDatabaseName("ix_timesheet_entries_user_date");
+
+                    b.ToTable("timesheet_entries", "projects");
                 });
 
             modelBuilder.Entity("EgyptTax.Domain.Purchases.PurchaseInvoice", b =>
@@ -6172,6 +6492,24 @@ namespace EgyptTax.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("EgyptTax.Domain.Inventory.LandedCostAllocation", b =>
+                {
+                    b.HasOne("EgyptTax.Domain.Inventory.LandedCost", null)
+                        .WithMany("Allocations")
+                        .HasForeignKey("LandedCostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Inventory.LandedCostLine", b =>
+                {
+                    b.HasOne("EgyptTax.Domain.Inventory.LandedCost", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("LandedCostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("EgyptTax.Domain.Invoices.RecurringInvoiceTemplateLine", b =>
                 {
                     b.HasOne("EgyptTax.Domain.Invoices.RecurringInvoiceTemplate", null)
@@ -6349,6 +6687,13 @@ namespace EgyptTax.Infrastructure.Migrations
             modelBuilder.Entity("EgyptTax.Domain.Documents.SupplierPaymentVoucher", b =>
                 {
                     b.Navigation("Allocations");
+                });
+
+            modelBuilder.Entity("EgyptTax.Domain.Inventory.LandedCost", b =>
+                {
+                    b.Navigation("Allocations");
+
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("EgyptTax.Domain.Invoices.RecurringInvoiceTemplate", b =>

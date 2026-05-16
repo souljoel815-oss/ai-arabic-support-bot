@@ -1,0 +1,303 @@
+@page "/timesheets/me"
+@page "/timesheets/me/{WeekStart}"
+@using System.Globalization
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Domain.Projects
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using EgyptTax.Web.Auth
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject AuthenticationStateProvider Auth
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@Tr("جدولي الزمني | DaftarX", "My timesheet | DaftarX")</PageTitle>
+
+<SettingsTabStrip Group="timesheets" />
+
+<h1>⏱ @Tr("جدولي الزمني", "My timesheet")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "سجّل ساعات العمل اليومية لكل مشروع. الإجمالي اليومي محصور بـ 16 ساعة عشان نتجنب الأخطاء.",
+        "Log daily hours per project. Daily totals are capped at 16 hours to catch typos.")
+</p>
+
+@if (_flash is not null) { <div class="@_flashClass">@_flash</div> }
+@if (_loading) { <p>@Tr("جارٍ التحميل…", "Loading…")</p> return; }
+
+<div class="invoice-toolbar" style="gap:12px;flex-wrap:wrap;">
+    <a href="/timesheets/me/@_weekStart.AddDays(-7).ToString("yyyy-MM-dd")" class="btn-secondary">
+        ← @Tr("الأسبوع السابق", "Previous week")
+    </a>
+    <strong style="align-self:center;">
+        @_weekStart.ToString("yyyy-MM-dd") → @_weekStart.AddDays(6).ToString("yyyy-MM-dd")
+    </strong>
+    <a href="/timesheets/me/@_weekStart.AddDays(7).ToString("yyyy-MM-dd")" class="btn-secondary">
+        @Tr("الأسبوع التالي", "Next week") →
+    </a>
+    <a href="/timesheets/me" class="btn-secondary">@Tr("هذا الأسبوع", "This week")</a>
+    @if (_userRate is not null)
+    {
+        <span style="align-self:center;font-size:12px;color:var(--text-muted);">
+            @Tr("سعر الساعة الافتراضي:", "Default hourly rate:") <strong>@_userRate?.ToString("F2") @Tr("ج.م.", "EGP")</strong>
+        </span>
+    }
+</div>
+
+@if (_userRate is null or 0m)
+{
+    <div class="kpi-card kpi-warning" style="padding:14px;margin-top:10px;">
+        @Tr("⚠ مفيش سعر ساعة افتراضي محدد. كل بند هتحتاج تحدد له السعر يدوياً، أو روح صفحة المستخدمين واضبط الافتراضي.",
+            "⚠ No default hourly rate set on your profile. Each entry will need a manual rate, or set the default on the Users page.")
+    </div>
+}
+
+<table class="data-grid" style="margin-top:14px;font-size:13px;">
+    <thead>
+        <tr>
+            <th>@Tr("المشروع", "Project")</th>
+            @foreach (var d in WeekDates)
+            {
+                <th class="num" style="min-width:64px;">
+                    <div>@d.ToString("ddd", IsArabic ? new CultureInfo("ar-EG") : CultureInfo.InvariantCulture)</div>
+                    <div style="font-size:11px;color:var(--text-muted);">@d.ToString("MM-dd")</div>
+                </th>
+            }
+            <th class="num">@Tr("الإجمالي", "Total")</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var p in _projects)
+        {
+            <tr>
+                <td><code>@p.Code</code> — @(IsArabic ? p.Name.Arabic : p.Name.English)</td>
+                @foreach (var d in WeekDates)
+                {
+                    var key = (p.Id, d);
+                    var cellHours = _cells.TryGetValue(key, out var h) ? h : 0m;
+                    var pid = p.Id; var date = d;
+                    <td class="num">
+                        <input type="number" step="0.25" min="0" max="24" style="width:60px;"
+                               value="@(cellHours == 0m ? "" : cellHours.ToString("F2"))"
+                               @onchange="@(e => _cells[key] = decimal.TryParse(e.Value?.ToString(), out var v) ? v : 0m)" />
+                    </td>
+                }
+                <td class="num"><strong>@WeekDates.Sum(d => _cells.TryGetValue((p.Id, d), out var h) ? h : 0m).ToString("F2")</strong></td>
+            </tr>
+        }
+        <tr style="background:var(--bg-2);">
+            <td><strong>@Tr("إجمالي اليوم", "Daily total")</strong></td>
+            @foreach (var d in WeekDates)
+            {
+                var dayTotal = _projects.Sum(p => _cells.TryGetValue((p.Id, d), out var h) ? h : 0m);
+                <td class="num">
+                    <strong style="color:@(dayTotal > 16m ? "var(--warning-text)" : "var(--text-strong)");">
+                        @dayTotal.ToString("F2")
+                    </strong>
+                </td>
+            }
+            <td class="num">
+                <strong>@_projects.Sum(p => WeekDates.Sum(d => _cells.TryGetValue((p.Id, d), out var h) ? h : 0m)).ToString("F2")</strong>
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+<section class="form-grid" style="margin-top:14px;max-width:520px;">
+    <label>
+        <span>@Tr("سعر الساعة لهذا الأسبوع (سيُطبَّق على البنود الجديدة فقط)", "Hourly rate for this week (applied to new entries only)")</span>
+        <input type="number" step="0.01" min="0" @bind="_overrideRate" placeholder="@_userRate?.ToString("F2")" />
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" @bind="_billable" /> @Tr("ساعات قابلة للفوترة", "Billable hours")
+    </label>
+</section>
+
+<div class="invoice-actions" style="margin-top:14px;">
+    <button type="button" class="btn-primary" @onclick="OnSaveAsync" disabled="@_saving">
+        @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ الأسبوع", "Save week"))
+    </button>
+    <a href="/timesheets/team" class="btn-secondary">@Tr("📋 عرض الفريق", "📋 Team view")</a>
+</div>
+
+@code {
+    [Parameter] public string? WeekStart { get; set; }
+
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private bool _loading = true;
+    private bool _saving;
+    private DateOnly _weekStart;
+    private Guid _userId;
+    private decimal? _userRate;
+    private decimal? _overrideRate;
+    private bool _billable = true;
+    private List<Project> _projects = new();
+    // Key: (projectId, date) → hours
+    private Dictionary<(Guid, DateOnly), decimal> _cells = new();
+    // Existing entry ids per (projectId, date) so we update in place.
+    private Dictionary<(Guid, DateOnly), Guid> _existingIds = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    private IEnumerable<DateOnly> WeekDates =>
+        Enumerable.Range(0, 7).Select(i => _weekStart.AddDays(i));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        try
+        {
+            _weekStart = ParseWeekStart(WeekStart);
+            var auth = await Auth.GetAuthenticationStateAsync();
+            _userId = auth.User.UserId() ?? Guid.Empty;
+            if (_userId == Guid.Empty)
+            {
+                _flash = Tr("غير مسجَّل دخول.", "Not signed in.");
+                _flashClass = "flash-error";
+                _loading = false;
+                return;
+            }
+            var me = await Db.Set<User>().AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == _userId);
+            _userRate = me?.HourlyRateEgp;
+            _projects = await Db.Set<Project>().AsNoTracking()
+                .Where(p => p.Status == ProjectStatus.Active || p.Status == ProjectStatus.Planning)
+                .OrderBy(p => p.Code).ToListAsync();
+            await LoadCellsAsync();
+        }
+        finally { _loading = false; }
+    }
+
+    private static DateOnly ParseWeekStart(string? raw)
+    {
+        DateOnly d;
+        if (DateOnly.TryParseExact(raw, "yyyy-MM-dd",
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out d))
+        {
+            // Normalize to Monday of that week.
+        }
+        else
+        {
+            d = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        }
+        var dow = (int)d.DayOfWeek;
+        var diffToMonday = (dow == 0 ? -6 : 1 - dow);
+        return d.AddDays(diffToMonday);
+    }
+
+    private async Task LoadCellsAsync()
+    {
+        var weekEnd = _weekStart.AddDays(6);
+        var rows = await Db.Set<TimesheetEntry>().AsNoTracking()
+            .Where(t => t.UserId == _userId
+                && t.EntryDate >= _weekStart && t.EntryDate <= weekEnd)
+            .ToListAsync();
+        _cells.Clear();
+        _existingIds.Clear();
+        foreach (var r in rows)
+        {
+            // Aggregate hours when multiple rows exist for same cell
+            // (rare — task-level rows). Display sum, edit collapses.
+            var key = (r.ProjectId, r.EntryDate);
+            _cells[key] = (_cells.TryGetValue(key, out var h) ? h : 0m) + r.Hours;
+            // Last-id wins for the back-pointer; v1 doesn't surface
+            // task-level edits.
+            _existingIds[key] = r.Id;
+        }
+    }
+
+    private async Task OnSaveAsync()
+    {
+        _flash = null; _saving = true;
+        try
+        {
+            // Validate per-day cap.
+            foreach (var d in WeekDates)
+            {
+                var dayTotal = _projects.Sum(p => _cells.TryGetValue((p.Id, d), out var h) ? h : 0m);
+                if (dayTotal > 16m)
+                {
+                    _flash = Tr($"إجمالي ساعات يوم {d:yyyy-MM-dd} = {dayTotal:F2} ساعة، أكتر من 16 ساعة المسموحة.",
+                        $"Day {d:yyyy-MM-dd} totals {dayTotal:F2} hours — exceeds the 16-hour cap.");
+                    _flashClass = "flash-error";
+                    return;
+                }
+            }
+            var rateForNew = _overrideRate ?? _userRate ?? 0m;
+            if (_billable && rateForNew <= 0m)
+            {
+                _flash = Tr("الساعات القابلة للفوترة لازم سعر ساعة موجب.",
+                    "Billable hours require a positive hourly rate.");
+                _flashClass = "flash-error";
+                return;
+            }
+
+            // Reload existing entries (tracked) so we can update in
+            // place. Delete-then-insert would lose the row's CreatedAt.
+            var weekEnd = _weekStart.AddDays(6);
+            var existing = await Db.Set<TimesheetEntry>()
+                .Where(t => t.UserId == _userId
+                    && t.EntryDate >= _weekStart && t.EntryDate <= weekEnd)
+                .ToListAsync();
+            var byKey = existing.ToLookup(t => (t.ProjectId, t.EntryDate));
+
+            foreach (var p in _projects)
+            {
+                foreach (var d in WeekDates)
+                {
+                    var hours = _cells.TryGetValue((p.Id, d), out var h) ? h : 0m;
+                    var existingForCell = byKey[(p.Id, d)].ToList();
+                    if (hours > 0m)
+                    {
+                        // v1: collapse to a single entry per cell. If
+                        // multiple rows exist (task-level legacy), keep
+                        // the first, delete the rest, update the kept.
+                        TimesheetEntry kept;
+                        if (existingForCell.Count == 0)
+                        {
+                            kept = new TimesheetEntry(
+                                _userId, d, p.Id, projectTaskId: null,
+                                hours: hours, billable: _billable && rateForNew > 0m,
+                                hourlyRateEgp: rateForNew);
+                            Db.Add(kept);
+                        }
+                        else
+                        {
+                            kept = existingForCell[0];
+                            kept.Update(hours, _billable && kept.HourlyRateEgp > 0m,
+                                kept.HourlyRateEgp, kept.Note);
+                            for (int i = 1; i < existingForCell.Count; i++)
+                            {
+                                Db.Set<TimesheetEntry>().Remove(existingForCell[i]);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Cell cleared — remove all rows for this cell.
+                        foreach (var e in existingForCell)
+                        {
+                            Db.Set<TimesheetEntry>().Remove(e);
+                        }
+                    }
+                }
+            }
+            await Db.SaveChangesAsync();
+            _flash = Tr("تم الحفظ.", "Saved.");
+            _flashClass = "flash-success";
+            await LoadCellsAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally { _saving = false; }
+    }
+}

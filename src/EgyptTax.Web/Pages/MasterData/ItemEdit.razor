@@ -1,0 +1,99 @@
+@page "/items/{Id:guid}/edit"
+@using System.Globalization
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<PageTitle>@Tr("تعديل صنف | DaftarX", "Edit item | DaftarX")</PageTitle>
+
+@if (_loading) { <p>@Tr("جارٍ التحميل…", "Loading…")</p> return; }
+@if (_item is null) { <p>@Tr("الصنف مش موجود.", "Item not found.")</p> return; }
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+        <h1 style="margin-bottom:4px;">✎ @Tr("تعديل صنف", "Edit item")</h1>
+        <p class="page-subtitle" style="margin:0;">
+            <code>@_item.Code</code> · @(IsArabic ? _item.Name.Arabic : _item.Name.English)
+        </p>
+    </div>
+    <a href="/items" class="btn-secondary">← @Tr("الرجوع للأصناف", "Back to items")</a>
+</div>
+
+@if (_flash is not null) { <div class="@_flassClass" style="margin-top:10px;">@_flash</div> }
+
+<section class="form-grid" style="max-width:520px;margin-top:16px;">
+    <h2 style="margin:0 0 6px;">@Tr("📦 الخصائص الفيزيائية (لتوزيع تكلفة الاستيراد)",
+        "📦 Physical attributes (for landed-cost weight/volume splits)")</h2>
+    <p class="page-subtitle" style="font-size:12px;margin:0 0 12px;">
+        @Tr(
+            "املأ الوزن والحجم لكل وحدة عشان طرق توزيع التكاليف ByWeight و ByVolume تشتغل. الأصناف الخدمية تقدر تسيبها فاضية.",
+            "Fill per-unit weight + volume so the ByWeight / ByVolume landed-cost splits work. Service items can leave these blank.")
+    </p>
+    <label>
+        <span>@Tr("الوزن لكل وحدة (كجم)", "Weight per unit (kg)")</span>
+        <input type="number" step="0.001" min="0" @bind="_weightKg" placeholder="@Tr("اختياري", "optional")" />
+    </label>
+    <label>
+        <span>@Tr("الحجم لكل وحدة (م³)", "Volume per unit (m³)")</span>
+        <input type="number" step="0.0001" min="0" @bind="_volumeM3" placeholder="@Tr("اختياري", "optional")" />
+    </label>
+    <div class="invoice-actions" style="margin-top:14px;">
+        <button type="button" class="btn-primary" @onclick="OnSaveAsync" disabled="@_saving">
+            @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ", "Save"))
+        </button>
+        <a href="/items/@_item.Id/serials" class="btn-secondary">🔢 @Tr("الأرقام التسلسلية", "Serials")</a>
+        <a href="/items/@_item.Id/lots" class="btn-secondary">🧪 @Tr("الدفعات", "Lots")</a>
+    </div>
+</section>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private bool _loading = true;
+    private bool _saving;
+    private Item? _item;
+    private decimal? _weightKg;
+    private decimal? _volumeM3;
+    private string? _flash;
+    private string _flassClass = "flash-success";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _item = await Db.Set<Item>().AsNoTracking().FirstOrDefaultAsync(i => i.Id == Id);
+        if (_item is not null)
+        {
+            _weightKg = _item.WeightKg;
+            _volumeM3 = _item.VolumeM3;
+        }
+        _loading = false;
+    }
+
+    private async Task OnSaveAsync()
+    {
+        if (_item is null) return;
+        _flash = null; _saving = true;
+        try
+        {
+            var live = await Db.Set<Item>().FirstAsync(i => i.Id == _item.Id);
+            live.SetPhysicalAttributes(_weightKg, _volumeM3);
+            await Db.SaveChangesAsync();
+            _item = live;
+            _flash = Tr("تم الحفظ.", "Saved.");
+            _flassClass = "flash-success";
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flassClass = "flash-error";
+        }
+        finally { _saving = false; }
+    }
+}

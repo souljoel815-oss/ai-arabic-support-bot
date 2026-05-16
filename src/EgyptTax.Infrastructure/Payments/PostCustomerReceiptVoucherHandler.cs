@@ -129,6 +129,14 @@ public sealed class PostCustomerReceiptVoucherHandler
             voucher.ApplyCustomerWhtCertificate(MoneyEgp.From(amount), cert.Id);
         }
 
+        // v5 E.8 — early-payment discount routes to 4910 contra-revenue.
+        // Apply BEFORE MarkPosted so the voucher's NetCash + JE lines
+        // reflect the discount split.
+        if (command.EarlyPaymentDiscountAmount is { } discount && discount > 0m)
+        {
+            voucher.ApplyEarlyPaymentDiscount(MoneyEgp.From(discount));
+        }
+
         voucher.MarkPosted(documentNumber, command.PostedByUserId, nowUtc);
 
         if (_journalEmitter is not null)
@@ -161,6 +169,8 @@ public sealed class PostCustomerReceiptVoucherHandler
                 "yyyy-MM-dd", CultureInfo.InvariantCulture),
             payment_method = voucher.PaymentMethod.ToString(),
             gross_egp = voucher.GrossReceiptAmount.Amount,
+            wht_receivable_egp = voucher.WhtReceivableAmount.Amount,
+            discount_taken_egp = voucher.DiscountTakenAmount.Amount,
             net_cash_received_egp = voucher.NetCashReceived.Amount,
         });
 
@@ -170,6 +180,6 @@ public sealed class PostCustomerReceiptVoucherHandler
     private static string BuildPayloadJson(CustomerReceiptVoucher v)
     {
         var inv = CultureInfo.InvariantCulture;
-        return $$"""{"voucher_id":"{{v.Id:D}}","customer_id":"{{v.CustomerId:D}}","document_number":"{{v.DocumentNumber}}","receipt_date":"{{v.ReceiptDate:yyyy-MM-dd}}","payment_method":"{{v.PaymentMethod}}","gross_egp":{{v.GrossReceiptAmount.Amount.ToString("F2", inv)}},"wht_receivable_egp":{{v.WhtReceivableAmount.Amount.ToString("F2", inv)}},"net_cash_received_egp":{{v.NetCashReceived.Amount.ToString("F2", inv)}},"allocation_count":{{v.Allocations.Count}}}""";
+        return $$"""{"voucher_id":"{{v.Id:D}}","customer_id":"{{v.CustomerId:D}}","document_number":"{{v.DocumentNumber}}","receipt_date":"{{v.ReceiptDate:yyyy-MM-dd}}","payment_method":"{{v.PaymentMethod}}","gross_egp":{{v.GrossReceiptAmount.Amount.ToString("F2", inv)}},"wht_receivable_egp":{{v.WhtReceivableAmount.Amount.ToString("F2", inv)}},"discount_taken_egp":{{v.DiscountTakenAmount.Amount.ToString("F2", inv)}},"net_cash_received_egp":{{v.NetCashReceived.Amount.ToString("F2", inv)}},"allocation_count":{{v.Allocations.Count}}}""";
     }
 }

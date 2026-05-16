@@ -1,0 +1,163 @@
+@page "/timesheets/team"
+@using System.Globalization
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Domain.Projects
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<PageTitle>@Tr("الجداول الزمنية للفريق | DaftarX", "Team timesheets | DaftarX")</PageTitle>
+
+<SettingsTabStrip Group="timesheets" />
+
+<h1>📋 @Tr("الجداول الزمنية للفريق", "Team timesheets")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "اعرض ساعات الفريق المسجَّلة عبر المشاريع. ارشِّح بالمستخدم أو المشروع أو المدة.",
+        "Review team-logged hours across projects. Filter by user, project, or date range.")
+</p>
+
+<div class="invoice-toolbar" style="gap:12px;flex-wrap:wrap;">
+    <label>@Tr("من", "From") <input type="date" @bind="_from" @bind:after="ReloadAsync" /></label>
+    <label>@Tr("إلى", "To") <input type="date" @bind="_to" @bind:after="ReloadAsync" /></label>
+    <label>
+        @Tr("المستخدم", "User")
+        <select @bind="_userId" @bind:after="ReloadAsync">
+            <option value="@Guid.Empty">— @Tr("الكل", "all") —</option>
+            @foreach (var u in _users)
+            {
+                <option value="@u.Id">@(IsArabic ? u.DisplayName.Arabic : u.DisplayName.English)</option>
+            }
+        </select>
+    </label>
+    <label>
+        @Tr("المشروع", "Project")
+        <select @bind="_projectId" @bind:after="ReloadAsync">
+            <option value="@Guid.Empty">— @Tr("الكل", "all") —</option>
+            @foreach (var p in _projects)
+            {
+                <option value="@p.Id">@p.Code — @(IsArabic ? p.Name.Arabic : p.Name.English)</option>
+            }
+        </select>
+    </label>
+</div>
+
+@if (_loading) { <p>@Tr("جارٍ التحميل…", "Loading…")</p> return; }
+
+@if (_rows.Count == 0)
+{
+    <p style="margin-top:14px;"><em>@Tr("ما فيش بنود تطابق المرشحات.", "No entries match the current filters.")</em></p>
+    return;
+}
+
+<table class="data-grid" style="margin-top:14px;">
+    <thead>
+        <tr>
+            <th>@Tr("المستخدم", "User")</th>
+            <th>@Tr("المشروع", "Project")</th>
+            <th class="num">@Tr("الساعات", "Hours")</th>
+            <th class="num">@Tr("الفوترة", "Billable")</th>
+            <th class="num">@Tr("الإجمالي بالجنيه", "Total EGP")</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var r in _rows)
+        {
+            <tr>
+                <td>@r.UserName</td>
+                <td><code>@r.ProjectCode</code> — @r.ProjectName</td>
+                <td class="num">@r.Hours.ToString("F2")</td>
+                <td class="num">@r.BillableHours.ToString("F2")</td>
+                <td class="num">@r.AmountEgp.ToString("F2")</td>
+            </tr>
+        }
+        <tr style="background:var(--bg-2);">
+            <td colspan="2" style="text-align:end;"><strong>@Tr("الإجمالي:", "Total:")</strong></td>
+            <td class="num"><strong>@_rows.Sum(r => r.Hours).ToString("F2")</strong></td>
+            <td class="num"><strong>@_rows.Sum(r => r.BillableHours).ToString("F2")</strong></td>
+            <td class="num"><strong>@_rows.Sum(r => r.AmountEgp).ToString("F2")</strong></td>
+        </tr>
+    </tbody>
+</table>
+
+@code {
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private bool _loading = true;
+    private DateTime _from = DateTime.UtcNow.Date.AddDays(-30);
+    private DateTime _to = DateTime.UtcNow.Date;
+    private Guid _userId = Guid.Empty;
+    private Guid _projectId = Guid.Empty;
+    private List<User> _users = new();
+    private List<Project> _projects = new();
+    private List<Row> _rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _users = await Db.Set<User>().AsNoTracking()
+            .Where(u => u.Status == UserStatus.Active)
+            .OrderBy(u => u.DisplayName.English).ToListAsync();
+        _projects = await Db.Set<Project>().AsNoTracking()
+            .OrderBy(p => p.Code).ToListAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var fromDate = DateOnly.FromDateTime(_from);
+            var toDate = DateOnly.FromDateTime(_to);
+
+            // Materialise then aggregate client-side so the SQL stays
+            // SQLite-portable (no decimal sums in SQL).
+            var query = Db.Set<TimesheetEntry>().AsNoTracking()
+                .Where(t => t.EntryDate >= fromDate && t.EntryDate <= toDate);
+            if (_userId != Guid.Empty) query = query.Where(t => t.UserId == _userId);
+            if (_projectId != Guid.Empty) query = query.Where(t => t.ProjectId == _projectId);
+
+            var raw = await query
+                .Select(t => new
+                {
+                    t.UserId, t.ProjectId, t.Hours, t.Billable,
+                    Amount = t.Hours * t.HourlyRateEgp,
+                })
+                .ToListAsync();
+
+            var userLookup = _users.ToDictionary(u => u.Id);
+            var projectLookup = _projects.ToDictionary(p => p.Id);
+
+            _rows = raw
+                .GroupBy(x => (x.UserId, x.ProjectId))
+                .Select(g =>
+                {
+                    var u = userLookup.TryGetValue(g.Key.UserId, out var uu) ? uu : null;
+                    var p = projectLookup.TryGetValue(g.Key.ProjectId, out var pp) ? pp : null;
+                    return new Row(
+                        UserName: u is null ? "?" : (IsArabic ? u.DisplayName.Arabic : u.DisplayName.English),
+                        ProjectCode: p?.Code ?? "?",
+                        ProjectName: p is null ? "?" : (IsArabic ? p.Name.Arabic : p.Name.English),
+                        Hours: g.Sum(x => x.Hours),
+                        BillableHours: g.Where(x => x.Billable).Sum(x => x.Hours),
+                        AmountEgp: g.Sum(x => x.Amount));
+                })
+                .OrderByDescending(r => r.AmountEgp)
+                .ToList();
+        }
+        finally { _loading = false; }
+    }
+
+    private sealed record Row(
+        string UserName,
+        string ProjectCode,
+        string ProjectName,
+        decimal Hours,
+        decimal BillableHours,
+        decimal AmountEgp);
+}

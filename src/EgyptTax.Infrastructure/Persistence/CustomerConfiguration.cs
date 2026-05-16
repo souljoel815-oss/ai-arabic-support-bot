@@ -87,6 +87,13 @@ internal sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
         b.Property(c => c.DefaultPricelistId).HasColumnName("default_pricelist_id");
         b.HasIndex(c => c.DefaultPricelistId).HasDatabaseName("ix_customers_default_pricelist_id");
 
+        // v5 F.4 — fiscal position FK (nullable). Same no-CASCADE
+        // pattern as pricelist; FiscalPosition.Deactivate() keeps
+        // the historical assignment but the resolver skips inactive
+        // positions at invoice-line-add time.
+        b.Property(c => c.FiscalPositionId).HasColumnName("fiscal_position_id");
+        b.HasIndex(c => c.FiscalPositionId).HasDatabaseName("ix_customers_fiscal_position_id");
+
         b.ComplexProperty(
             c => c.TaxProfile,
             t =>

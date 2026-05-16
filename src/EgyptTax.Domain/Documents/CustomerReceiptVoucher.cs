@@ -43,7 +43,14 @@ public sealed class CustomerReceiptVoucher
     /// from this receipt. Zero at Phase 9 cut.</summary>
     public MoneyEgp WhtReceivableAmount { get; private set; } = MoneyEgp.Zero;
 
-    /// <summary>Cash actually received = Gross − WhtReceivable.</summary>
+    /// <summary>v5 E.8 — early-payment discount the customer took on
+    /// this receipt. The settled AR is the GROSS amount (allocations
+    /// must equal Gross), but Cash received is Gross − WHT − Discount.
+    /// At post time the discount routes to <c>4910 Sales Discount
+    /// Taken</c> as a contra-revenue debit.</summary>
+    public MoneyEgp DiscountTakenAmount { get; private set; } = MoneyEgp.Zero;
+
+    /// <summary>Cash actually received = Gross − WhtReceivable − DiscountTaken.</summary>
     public MoneyEgp NetCashReceived { get; private set; } = MoneyEgp.Zero;
 
     /// <summary>FR-052 / US7 — back-pointer to the customer-issued
@@ -198,8 +205,47 @@ public sealed class CustomerReceiptVoucher
             );
         }
         WhtReceivableAmount = whtReceivableAmount;
-        NetCashReceived = MoneyEgp.From(GrossReceiptAmount.Amount - whtReceivableAmount.Amount);
+        RecomputeNetCash();
         CustomerWhtCertificateId = customerWhtCertificateId;
+    }
+
+    /// <summary>v5 E.8 — record the early-payment discount the
+    /// customer took on this receipt. Splits the gross into
+    /// cash + WHT + discount. Discount routes to 4910 contra-revenue
+    /// at post time. Allowed only while still in Draft.</summary>
+    public void ApplyEarlyPaymentDiscount(MoneyEgp discountTakenAmount)
+    {
+        if (State != DocumentState.Draft)
+        {
+            throw new InvalidOperationException(
+                $"Cannot apply discount to receipt voucher {Id}: state {State} is not Draft."
+            );
+        }
+        if (discountTakenAmount.Amount < 0m)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(discountTakenAmount),
+                "Discount amount cannot be negative."
+            );
+        }
+        var nonCashTotal = WhtReceivableAmount.Amount + discountTakenAmount.Amount;
+        if (nonCashTotal > GrossReceiptAmount.Amount)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(discountTakenAmount),
+                $"Discount {discountTakenAmount.Amount:F2} + WHT {WhtReceivableAmount.Amount:F2} cannot exceed gross receipt {GrossReceiptAmount.Amount:F2}."
+            );
+        }
+        DiscountTakenAmount = discountTakenAmount;
+        RecomputeNetCash();
+    }
+
+    private void RecomputeNetCash()
+    {
+        NetCashReceived = MoneyEgp.From(
+            GrossReceiptAmount.Amount
+            - WhtReceivableAmount.Amount
+            - DiscountTakenAmount.Amount);
     }
 
     public void MarkPosted(string documentNumber, Guid postedByUserId, DateTime postedAtUtc)

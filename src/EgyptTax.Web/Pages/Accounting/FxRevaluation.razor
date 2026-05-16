@@ -1,0 +1,262 @@
+@page "/reports/fx-revaluation"
+@using System.Globalization
+@using EgyptTax.Domain.Accounting
+@using EgyptTax.Domain.Documents
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using EgyptTax.Web.Auth
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuthenticationStateProvider Auth
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<PageTitle>@Tr("تقييم العملة الأجنبية | DaftarX", "FX Revaluation | DaftarX")</PageTitle>
+
+<h1>@Tr("📊 تقييم العملة الأجنبية (F.3 — يدوي v1)", "📊 FX Revaluation (F.3 — manual v1)")</h1>
+<p class="page-subtitle">
+    @Tr(
+        "في نهاية الفترة، الأرصدة الأجنبية في الميزانية ما زالت مقيّمة بسعرها التاريخي. الصفحة دي بتحسب الفارق بين القيمة الدفترية والقيمة السوقية بسعر النهاية، وبتسجل قيدين: قيد تسوية بتاريخ نهاية الفترة + قيد عكسي بتاريخ أول الشهر اللي بعده عشان الميزان يبدأ الشهر الجديد نظيف.",
+        "At period-end, foreign-currency balances on the balance sheet still sit at their historical rates. This page computes the gap between book value (historical rate) and market value (period-end rate), and posts a pair of JVs: a period-end adjustment + a 1st-of-next-period auto-reversal so the new period's trial balance starts clean.")
+</p>
+<p style="font-size:12px;color:var(--text-muted);">
+    ⚠ @Tr(
+        "النسخة دي يدوية: انت بتدخل الرصيد والأسعار. الإصدار التلقائي اللي بيقرأ الأرصدة من الـAR/AP بالعملة الأصلية بيتطلب تخطيط multi-currency على مستوى الفاتورة (لسه مش متاح).",
+        "v1 is manual: you enter the balance + rates. The auto version that reads AR/AP balances in their original currency needs per-document currency support (foundational, not yet available).")
+</p>
+
+@if (_flash is not null) { <div class="@_flashClass" style="padding:14px;margin:10px 0;">@_flash</div> }
+
+<EditForm Model="@_form" OnValidSubmit="OnSubmitAsync">
+    <DataAnnotationsValidator />
+    <fieldset>
+        <legend>@Tr("بيانات إعادة التقييم", "Revaluation inputs")</legend>
+        <div class="form-grid" style="grid-template-columns:repeat(2, 1fr);gap:12px;">
+            <label>
+                <span>@Tr("تاريخ نهاية الفترة", "Period-end date")</span>
+                <input type="date" @bind="_form.PeriodEnd" />
+            </label>
+            <label>
+                <span>@Tr("كود العملة (ISO)", "Currency code (ISO)")</span>
+                <input type="text" @bind="_form.CurrencyCode" maxlength="3" placeholder="USD" style="text-transform:uppercase;" />
+            </label>
+            <label>
+                <span>@Tr("الرصيد بالعملة الأجنبية", "Foreign balance")</span>
+                <input type="number" step="0.01" @bind="_form.ForeignAmount" />
+            </label>
+            <label>
+                <span>@Tr("نوع الرصيد", "Balance type")</span>
+                <select @bind="_form.BalanceKind">
+                    <option value="asset">@Tr("أصل (مدين بطبيعته — AR / نقد أجنبي)", "Asset (debit-natural — AR / FX cash)")</option>
+                    <option value="liability">@Tr("التزام (دائن بطبيعته — AP / قرض أجنبي)", "Liability (credit-natural — AP / FX loan)")</option>
+                </select>
+            </label>
+            <label>
+                <span>@Tr("كود حساب الرصيد", "Balance GL account code")</span>
+                <input type="text" @bind="_form.BalanceAccountCode" maxlength="16" placeholder="@(_form.BalanceKind == "asset" ? "1210" : "2110")" />
+            </label>
+            <label>
+                <span>@Tr("السعر التاريخي (متوسط دفتري)", "Historical rate (book avg)")</span>
+                <input type="number" step="0.0001" @bind="_form.HistoricalRate" />
+            </label>
+            <label>
+                <span>@Tr("سعر نهاية الفترة (السوقي)", "Period-end rate (market)")</span>
+                <input type="number" step="0.0001" @bind="_form.CurrentRate" />
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" @bind="_form.PostReversal" />
+                <span>@Tr("سجّل قيد عكسي بتاريخ أول الشهر التالي", "Also post auto-reversal dated 1st of next period")</span>
+            </label>
+        </div>
+    </fieldset>
+
+    @{
+        var book = _form.ForeignAmount * _form.HistoricalRate;
+        var market = _form.ForeignAmount * _form.CurrentRate;
+        var deltaRaw = market - book;
+        // For asset (debit-natural): positive delta = unrealized gain (CR 4925).
+        // For liability (credit-natural): positive delta = balance grows = unrealized LOSS
+        // (we owe more EGP for the same foreign amount).
+        var isAsset = _form.BalanceKind == "asset";
+        var delta = decimal.Round(deltaRaw, 2, MidpointRounding.ToEven);
+        var isGain = isAsset ? delta > 0m : delta < 0m;
+        var hasDelta = delta != 0m;
+    }
+
+    <fieldset style="margin-top:14px;">
+        <legend>@Tr("الناتج المحسوب", "Computed result")</legend>
+        <table class="data-grid" style="max-width:520px;">
+            <tbody>
+                <tr><th style="text-align:start;">@Tr("القيمة الدفترية", "Book value")</th><td class="num">@book.ToString("F2") @Tr("ج.م.", "EGP")</td></tr>
+                <tr><th style="text-align:start;">@Tr("القيمة السوقية", "Market value")</th><td class="num">@market.ToString("F2") @Tr("ج.م.", "EGP")</td></tr>
+                <tr style="background:var(--bg-2);">
+                    <th style="text-align:start;">
+                        @Tr("الفرق (تسوية)", "Delta (adjustment)")
+                        @if (hasDelta)
+                        {
+                            <span style="font-size:11px;color:var(--text-muted);margin-inline-start:6px;">
+                                @(isGain ? Tr("→ ربح غير محقق", "→ unrealized gain") : Tr("→ خسارة غير محققة", "→ unrealized loss"))
+                            </span>
+                        }
+                    </th>
+                    <td class="num" style="color:@(isGain ? "var(--success-text)" : (hasDelta ? "var(--warning-text)" : "var(--text-muted)"));">
+                        <strong>@delta.ToString("F2") @Tr("ج.م.", "EGP")</strong>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </fieldset>
+
+    <p style="margin-top:14px;">
+        <button type="submit" class="btn-primary" disabled="@(_busy || !hasDelta)">
+            @(_busy ? Tr("جارٍ التسجيل…", "Posting…") : Tr("تسجيل قيد التسوية", "Post adjustment JV(s)"))
+        </button>
+        <a href="/journals?periodStart=@_form.PeriodEnd.ToString("yyyy-MM-dd")" class="btn-secondary">
+            @Tr("اعرض القيود الأخيرة", "View recent journals")
+        </a>
+    </p>
+</EditForm>
+
+@code {
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private const string FxRevalMarker = "[FX-REVAL]";
+
+    private FormModel _form = new();
+    private string? _flash;
+    private string _flashClass = "kpi-card kpi-info";
+    private bool _busy;
+
+    private async Task OnSubmitAsync()
+    {
+        _flash = null; _busy = true;
+        try
+        {
+            var book = _form.ForeignAmount * _form.HistoricalRate;
+            var market = _form.ForeignAmount * _form.CurrentRate;
+            var delta = decimal.Round(market - book, 2, MidpointRounding.ToEven);
+            if (delta == 0m)
+            {
+                _flash = Tr("لا يوجد فرق — مفيش تسوية محتاجة.", "No delta — no adjustment needed.");
+                _flashClass = "kpi-card kpi-info";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(_form.CurrencyCode) || _form.CurrencyCode.Length != 3)
+            {
+                _flash = Tr("اكتب كود عملة مكون من 3 أحرف (USD، EUR، …).", "Enter a 3-char currency code (USD, EUR, …).");
+                _flashClass = "kpi-card kpi-error"; return;
+            }
+            if (string.IsNullOrWhiteSpace(_form.BalanceAccountCode))
+            {
+                _flash = Tr("اكتب كود حساب الرصيد.", "Enter the balance GL account code.");
+                _flashClass = "kpi-card kpi-error"; return;
+            }
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var company = await db.Set<Company>().AsNoTracking().FirstOrDefaultAsync()
+                ?? throw new InvalidOperationException("Company not configured.");
+            var fxGainCode = company.ResolvedFxGainAccountCode();
+            var fxLossCode = company.ResolvedFxLossAccountCode();
+
+            var auth = await Auth.GetAuthenticationStateAsync();
+            var userId = auth.User.UserId() ?? Guid.Empty;
+
+            var isAsset = _form.BalanceKind == "asset";
+            var positiveDelta = delta > 0m;
+            // Asset + positive: balance grows → DR balance / CR gain
+            // Asset + negative: balance shrinks → DR loss / CR balance
+            // Liab + positive: liability grows → DR loss / CR balance
+            // Liab + negative: liability shrinks → DR balance / CR gain
+            string drCode, crCode;
+            bool isGain;
+            if (isAsset)
+            {
+                if (positiveDelta) { drCode = _form.BalanceAccountCode.Trim(); crCode = fxGainCode; isGain = true; }
+                else { drCode = fxLossCode; crCode = _form.BalanceAccountCode.Trim(); isGain = false; }
+            }
+            else
+            {
+                if (positiveDelta) { drCode = fxLossCode; crCode = _form.BalanceAccountCode.Trim(); isGain = false; }
+                else { drCode = _form.BalanceAccountCode.Trim(); crCode = fxGainCode; isGain = true; }
+            }
+            var amount = MoneyEgp.From(Math.Abs(delta));
+            var ccy = _form.CurrencyCode.Trim().ToUpperInvariant();
+            var typeAr = isGain ? "ربح غير محقق" : "خسارة غير محققة";
+            var typeEn = isGain ? "Unrealized FX gain" : "Unrealized FX loss";
+            var narrAr = $"{FxRevalMarker}: {typeAr} — {ccy} {_form.ForeignAmount:N2} @ {_form.HistoricalRate:0.####} → {_form.CurrentRate:0.####} (نهاية {_form.PeriodEnd:yyyy-MM-dd})";
+            var narrEn = $"{FxRevalMarker}: {typeEn} — {ccy} {_form.ForeignAmount:N2} @ {_form.HistoricalRate:0.####} → {_form.CurrentRate:0.####} (period-end {_form.PeriodEnd:yyyy-MM-dd})";
+            var memo = IsArabic ? narrAr : narrEn;
+
+            var adjJv = JournalVoucher.CreateManual(
+                date: _form.PeriodEnd,
+                narration: new ArabicEnglishText(narrAr, narrEn),
+                createdByUserId: userId,
+                createdAtUtc: DateTime.UtcNow,
+                lines: new[]
+                {
+                    (drCode, amount,        MoneyEgp.Zero, memo),
+                    (crCode, MoneyEgp.Zero, amount,        memo),
+                });
+            db.Add(adjJv);
+
+            // v5 F.3 v1 — auto-reversal so the trial balance for the new
+            // period starts clean. Dated 1st of the month AFTER the
+            // period end. Mirror's swap of DR/CR.
+            if (_form.PostReversal)
+            {
+                var reversalDate = new DateOnly(
+                    _form.PeriodEnd.Year + (_form.PeriodEnd.Month == 12 ? 1 : 0),
+                    _form.PeriodEnd.Month == 12 ? 1 : _form.PeriodEnd.Month + 1,
+                    1);
+                var reversalNarrAr = $"{FxRevalMarker} (عكسي): {typeAr} — {ccy} عكس قيد {_form.PeriodEnd:yyyy-MM-dd}";
+                var reversalNarrEn = $"{FxRevalMarker} (reversal): {typeEn} — {ccy} reversing {_form.PeriodEnd:yyyy-MM-dd}";
+                var reversalMemo = IsArabic ? reversalNarrAr : reversalNarrEn;
+                var reversalJv = JournalVoucher.CreateManual(
+                    date: reversalDate,
+                    narration: new ArabicEnglishText(reversalNarrAr, reversalNarrEn),
+                    createdByUserId: userId,
+                    createdAtUtc: DateTime.UtcNow,
+                    lines: new[]
+                    {
+                        (crCode, amount,        MoneyEgp.Zero, reversalMemo),
+                        (drCode, MoneyEgp.Zero, amount,        reversalMemo),
+                    });
+                db.Add(reversalJv);
+            }
+
+            await db.SaveChangesAsync();
+
+            var pairLabel = _form.PostReversal
+                ? Tr("تسوية + قيد عكسي", "adjustment + reversal")
+                : Tr("تسوية فقط", "adjustment only");
+            _flash = Tr(
+                $"تم تسجيل {pairLabel} ({Math.Abs(delta):N2} ج.م، {(isGain ? "ربح" : "خسارة")} غير محقق).",
+                $"Posted {pairLabel} ({Math.Abs(delta):N2} EGP unrealized {(isGain ? "gain" : "loss")}).");
+            _flashClass = "kpi-card kpi-info";
+            _form = new FormModel { PeriodEnd = _form.PeriodEnd };
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "kpi-card kpi-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private sealed class FormModel
+    {
+        public DateOnly PeriodEnd { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        public string CurrencyCode { get; set; } = "USD";
+        public decimal ForeignAmount { get; set; }
+        public string BalanceKind { get; set; } = "asset";
+        public string BalanceAccountCode { get; set; } = "1210";
+        public decimal HistoricalRate { get; set; }
+        public decimal CurrentRate { get; set; }
+        public bool PostReversal { get; set; } = true;
+    }
+}

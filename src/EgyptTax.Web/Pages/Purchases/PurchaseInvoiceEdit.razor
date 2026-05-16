@@ -107,13 +107,53 @@
                         var line = _form.Lines[idx];
                         <tr>
                             <td>@(idx + 1)</td>
-                            <td>@DescribeLine(line)</td>
+                            <td>
+                                @DescribeLine(line)
+                                @* v5 F.6 v2 — show the line's cost-center tag inline. *@
+                                @if (line.CostCenterId != Guid.Empty)
+                                {
+                                    var cc = _costCenters.FirstOrDefault(c => c.Id == line.CostCenterId);
+                                    if (cc is not null)
+                                    {
+                                        <span style="font-size:11px;color:var(--text-muted);margin-inline-start:8px;">
+                                            🏷 @cc.Code
+                                        </span>
+                                    }
+                                }
+                                @* v5 F.6 v2 phase 2 — split editor toggle. Only on
+                                   saved lines (FormLine.SavedLineId populated). *@
+                                @if (line.SavedLineId != Guid.Empty)
+                                {
+                                    var sid = line.SavedLineId;
+                                    <button type="button" class="btn-secondary"
+                                            style="font-size:11px;margin-inline-start:8px;"
+                                            @onclick="() => _splittingForLine = (_splittingForLine == sid ? null : sid)">
+                                        🌐 @(IsArabic ? "توزيع" : "Split")
+                                    </button>
+                                }
+                            </td>
                             <td>@DescribeVat(line.VatCategoryId)</td>
                             <td class="num">@line.Quantity.ToString("0.##")</td>
                             <td class="num">@line.UnitPrice.ToString("F2")</td>
                             <td>@(line.DeductibleFlag ? (IsArabic ? "نعم" : "yes") : (IsArabic ? "لا" : "no"))</td>
                             <td><button type="button" @onclick="() => _form.Lines.RemoveAt(idx)">@(IsArabic ? "حذف" : "Remove")</button></td>
                         </tr>
+                        @if (line.SavedLineId != Guid.Empty && _splittingForLine == line.SavedLineId)
+                        {
+                            var lineNetAmount = decimal.Round(line.Quantity * line.UnitPrice, 2, MidpointRounding.ToEven);
+                            <tr>
+                                <td colspan="7" style="background:var(--bg-2);">
+                                    <div style="padding:10px 14px;">
+                                        <strong>@(IsArabic ? "🌐 توزيع متعدد المراكز للسطر" : "🌐 Split allocation for this line")</strong>
+                                        <CostCenterSplitEditor
+                                            SourceType="EgyptTax.Domain.MasterData.CostCenterAllocationSourceType.PurchaseInvoiceLine"
+                                            SourceLineId="@line.SavedLineId"
+                                            TotalAmount="@lineNetAmount"
+                                            CostCenters="@_costCenters" />
+                                    </div>
+                                </td>
+                            </tr>
+                        }
                     }
                 </tbody>
             </table>
@@ -177,6 +217,21 @@
             <span>@(IsArabic ? "قابل للخصم (ضريبة المدخلات قابلة للاسترداد)" : "Deductible (input VAT recoverable)")</span>
             <InputCheckbox @bind-Value="_newLine.DeductibleFlag" />
         </label>
+        @if (_costCenters.Count > 0)
+        {
+            @* v5 F.6 v2 — per-line cost-center tag (single-tag here;
+               sticky across consecutive Add-line clicks). *@
+            <label>
+                <span>@(IsArabic ? "مركز التكلفة (اختياري)" : "Cost center (optional)")</span>
+                <InputSelect @bind-Value="_newLine.CostCenterId">
+                    <option value="@Guid.Empty">— @(IsArabic ? "بدون" : "none") —</option>
+                    @foreach (var cc in _costCenters)
+                    {
+                        <option value="@cc.Id">@cc.Code — @(IsArabic ? cc.Name.Arabic : cc.Name.English)</option>
+                    }
+                </InputSelect>
+            </label>
+        }
         <button type="button" @onclick="OnAddLine">@(IsArabic ? "إضافة بند" : "Add line")</button>
     </fieldset>
 
@@ -220,6 +275,10 @@
     private List<Item> _items = new();
     private List<DeductibleExpenseCategory> _categories = new();
     private List<VatCategory> _vatCategories = new();
+    // v5 F.6 v2 — cost-center dropdown source. Active centers only.
+    private List<CostCenter> _costCenters = new();
+    // v5 F.6 v2 phase 2 — which saved PurchaseInvoiceLine.Id has the split editor open.
+    private Guid? _splittingForLine;
     private List<Attachment> _attachments = new();
     private FormModel _form = new();
     private NewLineModel _newLine = new();
@@ -242,6 +301,9 @@
             .OrderBy(c => c.Code).ToListAsync();
         _vatCategories = await Db.Set<VatCategory>().AsNoTracking()
             .OrderBy(v => v.Code).ToListAsync();
+        _costCenters = await Db.Set<CostCenter>().AsNoTracking()
+            .Where(c => c.Status == CostCenterStatus.Active)
+            .OrderBy(c => c.Code).ToListAsync();
 
         if (!_isNew)
         {
@@ -257,6 +319,7 @@
                 _form.Lines = _invoice.Lines
                     .Select(l => new FormLine
                     {
+                        SavedLineId = l.Id,
                         ItemId = l.ItemId,
                         ExpenseCategoryId = l.ExpenseCategoryId,
                         VatCategoryId = l.VatCategoryId,
@@ -264,6 +327,7 @@
                         UnitPrice = l.UnitPrice.Amount,
                         VatRatePercent = l.VatRatePercent,
                         DeductibleFlag = l.DeductibleFlag,
+                        CostCenterId = l.CostCenterId ?? Guid.Empty,
                     }).ToList();
                 _attachments = await Db.Set<Attachment>()
                     .AsNoTracking()
@@ -313,8 +377,13 @@
             Quantity = _newLine.Quantity,
             UnitPrice = _newLine.UnitPrice,
             DeductibleFlag = _newLine.DeductibleFlag,
+            CostCenterId = _newLine.CostCenterId,
         });
-        _newLine = new NewLineModel();
+        // v5 F.6 v2 — preserve sticky CC selection across consecutive
+        // Add-line clicks (operator usually wants every line on the
+        // same CC). Reset everything else.
+        var stickyCc = _newLine.CostCenterId;
+        _newLine = new NewLineModel { CostCenterId = stickyCc };
         _flash = null;
     }
 
@@ -343,7 +412,8 @@
             foreach (var l in _form.Lines)
             {
                 draft.AddLine(l.ItemId, l.ExpenseCategoryId, l.Quantity,
-                    MoneyEgp.From(l.UnitPrice), l.VatCategoryId, l.VatRatePercent, l.DeductibleFlag);
+                    MoneyEgp.From(l.UnitPrice), l.VatCategoryId, l.VatRatePercent, l.DeductibleFlag,
+                    costCenterId: l.CostCenterId == Guid.Empty ? null : l.CostCenterId);
             }
             Db.Add(draft);
             await Db.SaveChangesAsync();
@@ -351,24 +421,62 @@
             return;
         }
 
-        // Edit existing draft: load + remove existing lines, replay
-        // current form lines, save. Aggregate-level state machine
-        // gates editing on Draft so we don't need a separate guard.
+        // Edit existing draft. v5 F.6 v2 phase 2 — diff-based update
+        // (mirror of SalesInvoiceEdit) so existing line ids survive
+        // edits, which keeps any CostCenterAllocation rows linked.
+        // Previously this path did delete-then-reinsert, which gave
+        // every line a fresh id and orphaned the operator's split work.
         var live = await Db.Set<PurchaseInvoice>()
             .Include(p => p.Lines)
             .FirstAsync(p => p.Id == _invoice!.Id);
         live.UpdateSupplierInvoiceNumber(_form.SupplierInvoiceNumber);
         live.UpdateDateReceived(dateReceived);
-        foreach (var existing in live.Lines.Select(l => l.Id).ToList())
+
+        var existingIds = live.Lines.Select(l => l.Id).ToHashSet();
+        var keptIds = _form.Lines
+            .Where(l => l.SavedLineId != Guid.Empty)
+            .Select(l => l.SavedLineId).ToHashSet();
+        // Remove only lines the operator dropped from the form.
+        foreach (var droppedId in existingIds.Where(id => !keptIds.Contains(id)).ToList())
         {
-            live.RemoveLine(existing);
+            live.RemoveLine(droppedId);
+            // Drop orphaned cost-center allocations for the deleted line.
+            var orphans = await Db.Set<CostCenterAllocation>()
+                .Where(a => a.SourceType == CostCenterAllocationSourceType.PurchaseInvoiceLine
+                    && a.SourceLineId == droppedId)
+                .ToListAsync();
+            Db.Set<CostCenterAllocation>().RemoveRange(orphans);
         }
-        foreach (var l in _form.Lines)
+        // Add only the lines that aren't already in DB.
+        foreach (var l in _form.Lines.Where(l => l.SavedLineId == Guid.Empty))
         {
             live.AddLine(l.ItemId, l.ExpenseCategoryId, l.Quantity,
-                MoneyEgp.From(l.UnitPrice), l.VatCategoryId, l.VatRatePercent, l.DeductibleFlag);
+                MoneyEgp.From(l.UnitPrice), l.VatCategoryId, l.VatRatePercent, l.DeductibleFlag,
+                costCenterId: l.CostCenterId == Guid.Empty ? null : l.CostCenterId);
         }
+        // NB: existing-line edits (qty/unit-price changes on lines the
+        // operator kept) aren't supported in v1 — the form treats kept
+        // FormLines as immutable. PurchaseInvoiceLine doesn't expose
+        // mutators today; the operator must Remove + re-Add for changes.
+
         await Db.SaveChangesAsync();
+
+        // Refresh FormLine list with the freshly-persisted Ids so any
+        // newly-added lines pick up their SavedLineId for the Split button.
+        _invoice = live;
+        _form.Lines = live.Lines
+            .Select(l => new FormLine
+            {
+                SavedLineId = l.Id,
+                ItemId = l.ItemId,
+                ExpenseCategoryId = l.ExpenseCategoryId,
+                VatCategoryId = l.VatCategoryId,
+                Quantity = l.Quantity,
+                UnitPrice = l.UnitPrice.Amount,
+                VatRatePercent = l.VatRatePercent,
+                DeductibleFlag = l.DeductibleFlag,
+                CostCenterId = l.CostCenterId ?? Guid.Empty,
+            }).ToList();
 
         _flash = IsArabic ? "تم حفظ المسودة." : "Draft saved.";
         _flashClass = "flash-success";
@@ -451,6 +559,13 @@
 
     private sealed class FormLine
     {
+        // v5 F.6 v2 phase 2 — when this FormLine was loaded from a
+        // persisted PurchaseInvoiceLine, SavedLineId is the underlying
+        // row's Guid. Empty for lines added in the current session that
+        // haven't been saved yet (split editor needs a saved Id, so
+        // those lines hide the Split button until the invoice is saved
+        // and the page reloads).
+        public Guid SavedLineId { get; set; } = Guid.Empty;
         public Guid? ItemId { get; set; }
         public Guid? ExpenseCategoryId { get; set; }
         public Guid VatCategoryId { get; set; }
@@ -458,6 +573,8 @@
         public decimal Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public bool DeductibleFlag { get; set; }
+        // v5 F.6 v2 — optional per-line cost-center tag.
+        public Guid CostCenterId { get; set; } = Guid.Empty;
     }
 
     private sealed class NewLineModel
@@ -469,5 +586,7 @@
         public decimal Quantity { get; set; } = 1m;
         public decimal UnitPrice { get; set; }
         public bool DeductibleFlag { get; set; } = true;
+        // v5 F.6 v2 — sticky CC selection across consecutive Add-line clicks.
+        public Guid CostCenterId { get; set; } = Guid.Empty;
     }
 }

@@ -39,6 +39,12 @@ internal sealed class SalesInvoiceLineConfiguration : IEntityTypeConfiguration<S
         b.HasIndex(l => l.CostCenterId)
             .HasDatabaseName("ix_sales_invoice_lines_cost_center");
 
+        // v5 D.1 v2 — JSON array of ItemSerial.Id values consumed by
+        // this line (only populated for items with TracksSerials = true).
+        b.Property(l => l.SerialIdsJson)
+            .HasColumnName("serial_ids_json")
+            .HasMaxLength(4000);
+
         b.ComplexProperty(
             l => l.LineSubtotal,
             p =>

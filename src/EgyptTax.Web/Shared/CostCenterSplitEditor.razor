@@ -1,0 +1,199 @@
+@*
+    v5 F.6 v2 — reusable split-allocation editor for any source line
+    that supports CostCenterAllocation (Expense, SalesInvoiceLine,
+    PurchaseInvoiceLine). Parents pass:
+      • SourceType  — the allocation source-type enum
+      • SourceLineId — the persisted source-line GUID (must exist in DB)
+      • TotalAmount  — the line/document base amount (for the per-row
+                       "allocated" display column)
+      • CostCenters  — pre-loaded active centers list (parent already
+                       fetches these for its own dropdowns)
+      • OnAfterSave  — optional callback so the parent can refresh
+                       UI state (e.g. an indicator badge on the row)
+    Validation: distinct CCs, all percent > 0, sum = 100%. Save
+    replaces existing rows for the source-line atomically.
+*@
+@using System.Globalization
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+
+@if (SourceLineId == Guid.Empty)
+{
+    <p style="font-size:12px;color:var(--text-muted);">
+        @Tr("احفظ السطر أولاً لتقدر تقسّم التوزيع.", "Save the line first, then you can split the allocation.")
+    </p>
+    return;
+}
+
+<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--bg-2);">
+    @if (_flash is not null)
+    {
+        <div class="@_flashClass" style="margin-bottom:10px;">@_flash</div>
+    }
+    <table class="data-grid" style="font-size:13px;">
+        <thead>
+            <tr>
+                <th>@Tr("مركز التكلفة", "Cost center")</th>
+                <th class="num" style="width:120px;">@Tr("النسبة %", "Percent %")</th>
+                <th class="num" style="width:140px;">@Tr("المبلغ", "Allocated")</th>
+                <th style="width:60px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @for (int i = 0; i < _rows.Count; i++)
+            {
+                var idx = i;
+                var row = _rows[idx];
+                var allocAmount = Math.Round(TotalAmount * row.Percent / 100m, 2);
+                <tr>
+                    <td>
+                        <select @bind="row.CostCenterId">
+                            <option value="@Guid.Empty">— @Tr("اختر —", "Choose —")</option>
+                            @foreach (var cc in CostCenters)
+                            {
+                                <option value="@cc.Id">@cc.Code — @(IsArabic ? cc.Name.Arabic : cc.Name.English)</option>
+                            }
+                        </select>
+                    </td>
+                    <td class="num"><input type="number" step="0.01" min="0.01" max="100" @bind="row.Percent" /></td>
+                    <td class="num">@allocAmount.ToString("F2")</td>
+                    <td><button type="button" style="font-size:11px;" @onclick="() => RemoveRow(idx)">×</button></td>
+                </tr>
+            }
+            <tr style="background:var(--bg-1);">
+                <td colspan="2"><button type="button" @onclick="AddRow">+ @Tr("أضف سطر", "Add row")</button></td>
+                <td class="num">
+                    <strong>@Tr("الإجمالي:", "Total:")</strong>
+                    <strong style="color:@(IsSumValid() ? "var(--success-text)" : "var(--warning-text)");">
+                        @_rows.Sum(r => r.Percent).ToString("F2")%
+                    </strong>
+                </td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+    <div class="invoice-actions" style="margin-top:10px;">
+        <button type="button" class="btn-primary" @onclick="OnSaveAsync" disabled="@_saving">
+            @(_saving ? Tr("جارٍ الحفظ…", "Saving…") : Tr("حفظ التوزيع", "Save split"))
+        </button>
+        @if (_rows.Count == 0 && _hasSavedRows)
+        {
+            <button type="button" class="btn-secondary" @onclick="OnSaveAsync" disabled="@_saving">
+                @Tr("مسح التوزيع — رجوع للتاج المفرد", "Clear split — revert to single tag")
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public CostCenterAllocationSourceType SourceType { get; set; }
+    [Parameter, EditorRequired] public Guid SourceLineId { get; set; }
+    [Parameter] public decimal TotalAmount { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<CostCenter> CostCenters { get; set; } = Array.Empty<CostCenter>();
+    [Parameter] public EventCallback OnAfterSave { get; set; }
+
+    private List<AllocRow> _rows = new();
+    private bool _hasSavedRows;
+    private bool _saving;
+    private string? _flash;
+    private string _flashClass = "flash-success";
+    private Guid _loadedFor = Guid.Empty;
+
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (SourceLineId == Guid.Empty || SourceLineId == _loadedFor) return;
+        _loadedFor = SourceLineId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var existing = await Db.Set<CostCenterAllocation>().AsNoTracking()
+            .Where(a => a.SourceType == SourceType && a.SourceLineId == SourceLineId)
+            .ToListAsync();
+        _rows = existing
+            .Select(a => new AllocRow { CostCenterId = a.CostCenterId, Percent = a.PercentBp / 100m })
+            .ToList();
+        _hasSavedRows = _rows.Count > 0;
+    }
+
+    private void AddRow() => _rows.Add(new AllocRow());
+
+    private void RemoveRow(int index)
+    {
+        if (index >= 0 && index < _rows.Count) _rows.RemoveAt(index);
+    }
+
+    private bool IsSumValid()
+    {
+        if (_rows.Count == 0) return true;
+        var sum = _rows.Sum(r => r.Percent);
+        return Math.Abs(sum - 100m) < 0.01m;
+    }
+
+    private async Task OnSaveAsync()
+    {
+        _flash = null; _saving = true;
+        try
+        {
+            if (_rows.Count > 0)
+            {
+                if (_rows.Any(r => r.CostCenterId == Guid.Empty))
+                {
+                    _flash = Tr("اختر مركز تكلفة لكل سطر.", "Pick a cost center for each row.");
+                    _flashClass = "flash-error"; return;
+                }
+                if (_rows.Any(r => r.Percent <= 0m))
+                {
+                    _flash = Tr("النسبة لازم تكون موجبة.", "Percent must be positive.");
+                    _flashClass = "flash-error"; return;
+                }
+                if (_rows.Select(r => r.CostCenterId).Distinct().Count() != _rows.Count)
+                {
+                    _flash = Tr("كل مركز تكلفة لازم يتذكر مرة واحدة فقط.", "Each cost center may only appear once.");
+                    _flashClass = "flash-error"; return;
+                }
+                if (!IsSumValid())
+                {
+                    _flash = Tr("مجموع النسب لازم يساوي 100%.", "Percentages must sum to 100%.");
+                    _flashClass = "flash-error"; return;
+                }
+            }
+
+            var existing = await Db.Set<CostCenterAllocation>()
+                .Where(a => a.SourceType == SourceType && a.SourceLineId == SourceLineId)
+                .ToListAsync();
+            Db.Set<CostCenterAllocation>().RemoveRange(existing);
+
+            foreach (var row in _rows)
+            {
+                var bp = (int)Math.Round(row.Percent * 100m, MidpointRounding.AwayFromZero);
+                Db.Add(new CostCenterAllocation(SourceType, SourceLineId, row.CostCenterId, bp));
+            }
+            await Db.SaveChangesAsync();
+            _hasSavedRows = _rows.Count > 0;
+            _flash = Tr("تم حفظ التوزيع.", "Split saved.");
+            _flashClass = "flash-success";
+            if (OnAfterSave.HasDelegate) await OnAfterSave.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally { _saving = false; }
+    }
+
+    private sealed class AllocRow
+    {
+        public Guid CostCenterId { get; set; } = Guid.Empty;
+        public decimal Percent { get; set; }
+    }
+}

@@ -57,6 +57,15 @@ internal sealed class CustomerReceiptVoucherConfiguration
                     .HasColumnType("decimal(19,2)")
                     .IsRequired()
         );
+        // v5 E.8 — early-payment discount the customer took.
+        b.ComplexProperty(
+            v => v.DiscountTakenAmount,
+            p =>
+                p.Property(x => x.Amount)
+                    .HasColumnName("discount_taken_amount")
+                    .HasColumnType("decimal(19,2)")
+                    .IsRequired()
+        );
         b.ComplexProperty(
             v => v.NetCashReceived,
             p =>

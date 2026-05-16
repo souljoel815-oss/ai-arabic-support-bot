@@ -1,0 +1,296 @@
+@page "/items/{Id:guid}/serials"
+@using System.Globalization
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<PageTitle>@Tr("الأرقام التسلسلية | DaftarX", "Serials | DaftarX")</PageTitle>
+
+@if (_loading) { <p>@Tr("جارٍ التحميل…", "Loading…")</p> return; }
+@if (_item is null) { <p>@Tr("الصنف مش موجود.", "Item not found.")</p> return; }
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+        <h1 style="margin-bottom:4px;">🔢 @Tr("أرقام تسلسلية", "Serial numbers")</h1>
+        <p class="page-subtitle" style="margin:0;">
+            <code>@_item.Code</code> · @(IsArabic ? _item.Name.Arabic : _item.Name.English)
+        </p>
+    </div>
+    <a href="/items" class="btn-secondary">← @Tr("الرجوع للأصناف", "Back to items")</a>
+</div>
+
+@if (_flash is not null) { <div class="@_flashClass" style="margin-top:10px;">@_flash</div> }
+
+<section class="form-grid" style="max-width:520px;margin-top:14px;">
+    <label style="display:flex;align-items:center;gap:10px;">
+        <input type="checkbox" checked="@_item.TracksSerials" @onchange="OnToggleTrackingAsync" />
+        <span>@Tr("تفعيل تتبع الأرقام التسلسلية لهذا الصنف", "Enable serial tracking for this item")</span>
+    </label>
+    @if (!_item.TracksSerials)
+    {
+        <p style="font-size:12px;color:var(--text-muted);">
+            @Tr("لما تفعّله، تقدر تسجّل أرقام تسلسلية للوحدات الفردية. لو في كميات بدون تتبع، هتفضل ظاهرة في الجرد العام.",
+                "Once enabled, you can log per-unit serials. Existing untracked stock stays in the general inventory count.")
+        </p>
+    }
+</section>
+
+@if (!_item.TracksSerials)
+{
+    return;
+}
+
+@* === Add new serials === *@
+<section style="margin-top:18px;">
+    <h2>@Tr("استلام / إضافة أرقام", "Receive / add serials")</h2>
+    <p class="page-subtitle" style="font-size:12px;">
+        @Tr("ألصق أرقاماً تسلسلية، واحد في كل سطر. النظام هيتجاهل الأرقام المكررة (نفس الرقم على نفس الصنف).",
+            "Paste serial numbers one per line. Duplicates (same serial on the same item) are skipped.")
+    </p>
+    <textarea rows="4" style="width:100%;font-family:monospace;font-size:13px;"
+              @bind="_newSerialsBlob" placeholder="SN-001&#10;SN-002&#10;SN-003"></textarea>
+    <div class="invoice-actions" style="margin-top:8px;">
+        <button type="button" class="btn-primary" @onclick="OnAddSerialsAsync" disabled="@_busy">
+            @(_busy ? Tr("جارٍ الإضافة…", "Adding…") : Tr("إضافة بحالة «في المخزن»", "Add as InStock"))
+        </button>
+    </div>
+</section>
+
+@* === Filters === *@
+<section style="margin-top:18px;">
+    <div class="invoice-toolbar" style="gap:12px;flex-wrap:wrap;">
+        <label>
+            @Tr("الحالة", "Status")
+            <select @bind="_statusFilter" @bind:after="ReloadSerialsAsync">
+                <option value="">— @Tr("الكل", "all") —</option>
+                @foreach (var s in Enum.GetValues<ItemSerialStatus>())
+                {
+                    <option value="@s">@StatusLabel(s)</option>
+                }
+            </select>
+        </label>
+        <label>
+            @Tr("بحث", "Search")
+            <input type="text" @bind="_searchTerm" @bind:event="oninput" @bind:after="ReloadSerialsAsync"
+                   placeholder="SN-..." />
+        </label>
+        <span style="align-self:center;font-size:12px;color:var(--text-muted);">
+            @_serials.Count @Tr("سطر", "rows")
+        </span>
+    </div>
+</section>
+
+@if (_serials.Count == 0)
+{
+    <p style="margin-top:14px;"><em>@Tr("ما فيش أرقام تطابق المرشحات.", "No serials match the current filters.")</em></p>
+    return;
+}
+
+<table class="data-grid" style="margin-top:14px;">
+    <thead>
+        <tr>
+            <th>@Tr("الرقم التسلسلي", "Serial #")</th>
+            <th>@Tr("الحالة", "Status")</th>
+            <th>@Tr("العميل", "Customer")</th>
+            <th>@Tr("الفاتورة", "Invoice")</th>
+            <th>@Tr("آخر تغيير", "Last change")</th>
+            <th>@Tr("إجراءات", "Actions")</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var s in _serials)
+        {
+            var sid = s.Id;
+            <tr>
+                <td><code>@s.SerialNumber</code></td>
+                <td><span class="state-badge @StatusBadgeClass(s.Status)">@StatusLabel(s.Status)</span></td>
+                <td>@(s.CurrentCustomerId is { } c && _customerNames.TryGetValue(c, out var cn) ? cn : "—")</td>
+                <td>@(s.SoldOnSalesInvoiceId is { } i && _invoiceNumbers.TryGetValue(i, out var inum) ? inum : "—")</td>
+                <td>@(s.LastStatusChangeAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                <td style="display:flex;gap:4px;flex-wrap:wrap;">
+                    @if (s.Status == ItemSerialStatus.InStock)
+                    {
+                        <button type="button" style="font-size:11px;" @onclick="() => OnReserveAsync(sid)">@Tr("احجز", "Reserve")</button>
+                        <button type="button" style="font-size:11px;" @onclick="() => OnMarkDamagedAsync(sid)">@Tr("تالف", "Damaged")</button>
+                    }
+                    @if (s.Status == ItemSerialStatus.Sold)
+                    {
+                        <button type="button" style="font-size:11px;" @onclick="() => OnMarkReturnedAsync(sid)">@Tr("مرتجع", "Returned")</button>
+                    }
+                    @if (s.Status == ItemSerialStatus.Returned || s.Status == ItemSerialStatus.Damaged)
+                    {
+                        <button type="button" style="font-size:11px;" @onclick="() => OnRestoreAsync(sid)">@Tr("ارجاع للمخزن", "Restore")</button>
+                        <button type="button" style="font-size:11px;" @onclick="() => OnWriteOffAsync(sid)">@Tr("استبعاد", "Write off")</button>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private bool _loading = true;
+    private bool _busy;
+    private Item? _item;
+    private List<ItemSerial> _serials = new();
+    private string _newSerialsBlob = "";
+    private string _statusFilter = "";
+    private string _searchTerm = "";
+    private Dictionary<Guid, string> _customerNames = new();
+    private Dictionary<Guid, string> _invoiceNumbers = new();
+    private string? _flash;
+    private string _flashClass = "flash-success";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _item = await Db.Set<Item>().AsNoTracking().FirstOrDefaultAsync(i => i.Id == Id);
+        if (_item is not null && _item.TracksSerials)
+        {
+            await ReloadSerialsAsync();
+        }
+        _loading = false;
+    }
+
+    private async Task ReloadSerialsAsync()
+    {
+        var query = Db.Set<ItemSerial>().AsNoTracking()
+            .Where(s => s.ItemId == Id);
+        if (Enum.TryParse<ItemSerialStatus>(_statusFilter, out var st))
+        {
+            query = query.Where(s => s.Status == st);
+        }
+        if (!string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            var term = _searchTerm.Trim();
+            query = query.Where(s => s.SerialNumber.Contains(term));
+        }
+        _serials = await query
+            .OrderByDescending(s => s.LastStatusChangeAtUtc ?? s.CreatedAtUtc)
+            .Take(500)
+            .ToListAsync();
+
+        var custIds = _serials.Where(s => s.CurrentCustomerId.HasValue)
+            .Select(s => s.CurrentCustomerId!.Value).Distinct().ToList();
+        _customerNames = custIds.Count == 0 ? new()
+            : await Db.Set<Customer>().AsNoTracking()
+                .Where(c => custIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id,
+                    c => IsArabic ? c.Name.Arabic : c.Name.English);
+        var invIds = _serials.Where(s => s.SoldOnSalesInvoiceId.HasValue)
+            .Select(s => s.SoldOnSalesInvoiceId!.Value).Distinct().ToList();
+        _invoiceNumbers = invIds.Count == 0 ? new()
+            : await Db.Set<EgyptTax.Domain.Invoices.SalesInvoice>().AsNoTracking()
+                .Where(i => invIds.Contains(i.Id) && i.DocumentNumber != null)
+                .ToDictionaryAsync(i => i.Id, i => i.DocumentNumber!);
+    }
+
+    private async Task OnToggleTrackingAsync(ChangeEventArgs e)
+    {
+        if (_item is null) return;
+        var enable = (bool)(e.Value ?? false);
+        var live = await Db.Set<Item>().FirstAsync(i => i.Id == Id);
+        live.SetTracksSerials(enable);
+        await Db.SaveChangesAsync();
+        _item = live;
+        if (enable) await ReloadSerialsAsync();
+    }
+
+    private async Task OnAddSerialsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newSerialsBlob)) return;
+        _flash = null; _busy = true;
+        try
+        {
+            var raws = _newSerialsBlob
+                .Split(new[] { '\n', '\r', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(s => s.Length > 0)
+                .Distinct()
+                .ToList();
+            if (raws.Count == 0) return;
+
+            var existing = await Db.Set<ItemSerial>()
+                .Where(s => s.ItemId == Id && raws.Contains(s.SerialNumber))
+                .Select(s => s.SerialNumber)
+                .ToListAsync();
+            var existingSet = existing.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var added = 0;
+            foreach (var raw in raws)
+            {
+                if (existingSet.Contains(raw)) continue;
+                Db.Add(new ItemSerial(Id, raw));
+                added++;
+            }
+            if (added > 0)
+            {
+                await Db.SaveChangesAsync();
+            }
+            var skipped = raws.Count - added;
+            _flash = Tr($"تم إضافة {added}، تم تجاهل {skipped} (مكررة).",
+                $"Added {added}, skipped {skipped} (duplicate).");
+            _flashClass = "flash-success";
+            _newSerialsBlob = "";
+            await ReloadSerialsAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task TransitionAsync(Guid serialId, Action<ItemSerial> mutate)
+    {
+        var live = await Db.Set<ItemSerial>().FirstOrDefaultAsync(s => s.Id == serialId);
+        if (live is null) return;
+        try
+        {
+            mutate(live);
+            await Db.SaveChangesAsync();
+            await ReloadSerialsAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message; _flashClass = "flash-error";
+        }
+    }
+
+    private Task OnReserveAsync(Guid sid) => TransitionAsync(sid, s => s.Reserve(DateTime.UtcNow));
+    private Task OnMarkReturnedAsync(Guid sid) => TransitionAsync(sid, s => s.MarkReturned(DateTime.UtcNow));
+    private Task OnMarkDamagedAsync(Guid sid) => TransitionAsync(sid, s => s.MarkDamaged(DateTime.UtcNow));
+    private Task OnRestoreAsync(Guid sid) => TransitionAsync(sid, s => s.RestoreToStock(DateTime.UtcNow));
+    private Task OnWriteOffAsync(Guid sid) => TransitionAsync(sid, s => s.WriteOff(DateTime.UtcNow));
+
+    private string StatusLabel(ItemSerialStatus s) => s switch
+    {
+        ItemSerialStatus.InStock => Tr("في المخزن", "In stock"),
+        ItemSerialStatus.Reserved => Tr("محجوز", "Reserved"),
+        ItemSerialStatus.Sold => Tr("مباع", "Sold"),
+        ItemSerialStatus.Returned => Tr("مرتجع", "Returned"),
+        ItemSerialStatus.Damaged => Tr("تالف", "Damaged"),
+        ItemSerialStatus.WrittenOff => Tr("مستبعد", "Written off"),
+        _ => s.ToString(),
+    };
+
+    private static string StatusBadgeClass(ItemSerialStatus s) => s switch
+    {
+        ItemSerialStatus.InStock => "state-approved",
+        ItemSerialStatus.Reserved => "state-submitted",
+        ItemSerialStatus.Sold => "state-posted",
+        ItemSerialStatus.Returned => "state-draft",
+        ItemSerialStatus.Damaged or ItemSerialStatus.WrittenOff => "state-voided",
+        _ => "state-draft",
+    };
+}

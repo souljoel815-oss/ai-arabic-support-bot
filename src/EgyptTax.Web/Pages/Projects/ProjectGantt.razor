@@ -1,0 +1,248 @@
+@page "/projects/{Id:guid}/gantt"
+@using System.Globalization
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Domain.Projects
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using TaskStatus_ = EgyptTax.Domain.Projects.TaskStatus_
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@Tr("جانت | DaftarX", "Gantt | DaftarX")</PageTitle>
+
+@if (_loading) { <p>@Tr("جارٍ التحميل…", "Loading…")</p> return; }
+@if (_project is null) { <p>@Tr("المشروع مش موجود.", "Project not found.")</p> return; }
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+        <h1 style="margin-bottom:4px;">📅 @Tr("جانت", "Gantt")</h1>
+        <p class="page-subtitle" style="margin:0;">
+            <code>@_project.Code</code> · @(IsArabic ? _project.Name.Arabic : _project.Name.English)
+        </p>
+    </div>
+    <a href="/projects/@_project.Id" class="btn-secondary">← @Tr("الرجوع للمشروع", "Back to project")</a>
+</div>
+
+<div class="invoice-toolbar" style="margin-top:14px;gap:12px;flex-wrap:wrap;">
+    <label>
+        @Tr("التكبير", "Zoom")
+        <select @bind="_zoom" @bind:after="OnZoomChanged">
+            <option value="@ZoomLevel.Week">@Tr("أسبوع", "Week")</option>
+            <option value="@ZoomLevel.Month">@Tr("شهر", "Month")</option>
+            <option value="@ZoomLevel.Quarter">@Tr("ربع سنة", "Quarter")</option>
+        </select>
+    </label>
+    <label>
+        @Tr("ابدأ من", "Window start")
+        <input type="date" @bind="_windowStart" @bind:after="ReloadAsync" />
+    </label>
+</div>
+
+@if (_visibleTasks.Count == 0)
+{
+    <p style="margin-top:14px;"><em>
+        @Tr("ما فيش مهام بتواريخ بدء/انتهاء في النافذة دي. حدد التواريخ على المهام في صفحة المشروع.",
+            "No tasks with start/due dates in this window. Set dates on the tasks via the project page.")
+    </em></p>
+    return;
+}
+
+@{
+    var totalDays = (int)(_windowEnd.DayNumber - WindowStart.DayNumber) + 1;
+    var dayWidthPx = _zoom switch
+    {
+        ZoomLevel.Week => 48,
+        ZoomLevel.Month => 18,
+        _ => 6,
+    };
+    var chartWidthPx = totalDays * dayWidthPx;
+    var rowHeightPx = 28;
+    var labelColPx = 240;
+    var headerHeightPx = 36;
+    var totalHeightPx = headerHeightPx + _visibleTasks.Count * rowHeightPx;
+}
+
+<div style="margin-top:14px;border:1px solid var(--border);border-radius:8px;overflow:auto;">
+    <div style="position:relative;width:@(labelColPx + chartWidthPx)px;height:@(totalHeightPx)px;background:var(--bg-1);">
+        @* === Header: day / week / month columns === *@
+        <div style="position:absolute;top:0;left:0;width:@(labelColPx)px;height:@(headerHeightPx)px;background:var(--surface);border-inline-end:1px solid var(--border);display:flex;align-items:center;padding:0 12px;font-weight:600;">
+            @Tr("المهمة", "Task")
+        </div>
+        @{
+            var monthMarkers = BuildMonthMarkers();
+        }
+        @foreach (var (dayOffset, label) in monthMarkers)
+        {
+            <div style="position:absolute;top:0;left:@(labelColPx + dayOffset * dayWidthPx)px;height:@(headerHeightPx)px;display:flex;align-items:center;padding:0 6px;font-size:11px;color:var(--text-muted);border-inline-start:1px solid var(--border);">
+                @label
+            </div>
+        }
+        @* Today marker *@
+        @{
+            var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        }
+        @if (today >= WindowStart && today <= _windowEnd)
+        {
+            var todayOffset = (int)(today.DayNumber - WindowStart.DayNumber);
+            <div style="position:absolute;top:@(headerHeightPx)px;left:@(labelColPx + todayOffset * dayWidthPx)px;width:2px;height:@(_visibleTasks.Count * rowHeightPx)px;background:var(--warning-text);opacity:0.6;z-index:2;" title="@today.ToString("yyyy-MM-dd")"></div>
+        }
+
+        @* === Rows === *@
+        @for (int i = 0; i < _visibleTasks.Count; i++)
+        {
+            var t = _visibleTasks[i];
+            var rowTop = headerHeightPx + i * rowHeightPx;
+            var indent = t.IsSubTask ? 18 : 0;
+            var startOffset = (int)(t.Start.DayNumber - WindowStart.DayNumber);
+            var spanDays = (int)(t.End.DayNumber - t.Start.DayNumber) + 1;
+            var barLeft = labelColPx + startOffset * dayWidthPx;
+            var barWidth = Math.Max(spanDays * dayWidthPx - 2, 12);
+            var barColor = StatusColor(t.Status);
+
+            <div style="position:absolute;top:@(rowTop)px;left:0;width:@(labelColPx)px;height:@(rowHeightPx)px;display:flex;align-items:center;padding-inline-start:@(12 + indent)px;font-size:12px;border-inline-end:1px solid var(--border);border-block-end:1px solid var(--border);">
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    @(t.IsSubTask ? "↳ " : "")@t.Title
+                </span>
+            </div>
+            <div style="position:absolute;top:@(rowTop)px;left:@(labelColPx)px;width:@(chartWidthPx)px;height:@(rowHeightPx)px;border-block-end:1px solid var(--border);"></div>
+            <div style="position:absolute;top:@(rowTop + 5)px;left:@(barLeft)px;width:@(barWidth)px;height:@(rowHeightPx - 10)px;background:@(barColor);border-radius:4px;display:flex;align-items:center;padding:0 6px;font-size:11px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                 title="@t.Title — @t.Start.ToString("yyyy-MM-dd") → @t.End.ToString("yyyy-MM-dd")">
+                @t.Start.ToString("MM-dd") → @t.End.ToString("MM-dd")
+            </div>
+        }
+    </div>
+</div>
+
+<p style="font-size:12px;color:var(--text-muted);margin-top:10px;">
+    🟦 @Tr("قيد التنفيذ", "In progress") &nbsp; 🟩 @Tr("منتهية", "Done") &nbsp;
+    ⬜ @Tr("لم تبدأ", "Todo") &nbsp; 🟥 @Tr("معلَّقة", "Blocked")
+</p>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private bool _loading = true;
+    private Project? _project;
+    private List<ProjectTask> _allTasks = new();
+    private List<TaskRow> _visibleTasks = new();
+    private DateTime _windowStart = DateTime.UtcNow.Date.AddDays(-14);
+    private DateOnly _windowEnd;
+    private ZoomLevel _zoom = ZoomLevel.Week;
+
+    private DateOnly WindowStart => DateOnly.FromDateTime(_windowStart);
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _project = await Db.Set<Project>().AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == Id);
+            if (_project is null) return;
+            _allTasks = await Db.Set<ProjectTask>().AsNoTracking()
+                .Where(t => t.ProjectId == Id)
+                .OrderBy(t => t.ParentTaskId == null ? 0 : 1)
+                .ThenBy(t => t.CreatedAtUtc)
+                .ToListAsync();
+            ComputeWindow();
+            BuildVisibleTasks();
+        }
+        finally { _loading = false; }
+    }
+
+    private void OnZoomChanged() => BuildVisibleTasks();
+
+    private void ComputeWindow()
+    {
+        var windowDays = _zoom switch
+        {
+            ZoomLevel.Week => 14,
+            ZoomLevel.Month => 60,
+            _ => 180,
+        };
+        _windowEnd = WindowStart.AddDays(windowDays - 1);
+    }
+
+    private void BuildVisibleTasks()
+    {
+        ComputeWindow();
+        // Visible tasks: must have at least StartDate AND DueDate, and
+        // overlap the window. Render top-level first, then sub-tasks
+        // immediately under their parent.
+        bool Overlaps(DateOnly s, DateOnly e) =>
+            !(e < WindowStart || s > _windowEnd);
+
+        var rows = new List<TaskRow>();
+        foreach (var t in _allTasks.Where(t => t.ParentTaskId is null))
+        {
+            if (t.StartDate is { } ts && t.DueDate is { } te && Overlaps(ts, te))
+            {
+                rows.Add(new TaskRow(t.Id, t.Title, ts, te, t.Status, IsSubTask: false));
+            }
+            foreach (var c in _allTasks.Where(c => c.ParentTaskId == t.Id))
+            {
+                if (c.StartDate is { } cs && c.DueDate is { } ce && Overlaps(cs, ce))
+                {
+                    rows.Add(new TaskRow(c.Id, c.Title, cs, ce, c.Status, IsSubTask: true));
+                }
+            }
+        }
+        // Orphan sub-tasks (parent not visible) — still show.
+        var renderedIds = rows.Select(r => r.Id).ToHashSet();
+        foreach (var t in _allTasks.Where(t => !renderedIds.Contains(t.Id)
+            && t.StartDate is not null && t.DueDate is not null))
+        {
+            if (Overlaps(t.StartDate!.Value, t.DueDate!.Value))
+            {
+                rows.Add(new TaskRow(t.Id, t.Title, t.StartDate.Value, t.DueDate.Value, t.Status, IsSubTask: t.ParentTaskId is not null));
+            }
+        }
+        _visibleTasks = rows;
+    }
+
+    private List<(int DayOffset, string Label)> BuildMonthMarkers()
+    {
+        var totalDays = (int)(_windowEnd.DayNumber - WindowStart.DayNumber) + 1;
+        var markers = new List<(int, string)>();
+        // Header label cadence: Week → every Monday; Month → every 7 days; Quarter → every month-start.
+        var step = _zoom switch
+        {
+            ZoomLevel.Week => 1,           // every day
+            ZoomLevel.Month => 7,          // every week
+            _ => 30,                       // approximate month
+        };
+        for (int d = 0; d < totalDays; d += step)
+        {
+            var date = WindowStart.AddDays(d);
+            var label = _zoom switch
+            {
+                ZoomLevel.Week => date.ToString("MM-dd"),
+                ZoomLevel.Month => date.ToString("MM-dd"),
+                _ => date.ToString("yyyy-MM"),
+            };
+            markers.Add((d, label));
+        }
+        return markers;
+    }
+
+    private static string StatusColor(TaskStatus_ s) => s switch
+    {
+        TaskStatus_.InProgress => "#3b82f6",  // blue
+        TaskStatus_.Done => "#16a34a",        // green
+        TaskStatus_.Blocked => "#dc2626",     // red
+        _ => "#94a3b8",                       // gray
+    };
+
+    private enum ZoomLevel { Week, Month, Quarter }
+
+    private sealed record TaskRow(Guid Id, string Title, DateOnly Start, DateOnly End, TaskStatus_ Status, bool IsSubTask);
+}

@@ -333,6 +333,32 @@ public sealed class PostSalesInvoiceHandler
             await _journalEmitter.EmitForSalesInvoiceAsync(invoice, nowUtc, cancellationToken);
         }
 
+        // v5 D.1 v2 — for every line whose item has TracksSerials and
+        // the operator pre-selected serial ids on the line form,
+        // transition each ItemSerial row to Sold and back-point the
+        // customer + invoice. Loaded eagerly so we don't issue a query
+        // per serial; per-row MarkSold is a domain transition that
+        // throws if the serial isn't InStock/Reserved (operator gets a
+        // useful error rather than a silent stuck-state).
+        var allSerialIds = invoice.Lines
+            .SelectMany(l => l.GetSoldSerialIds())
+            .Distinct()
+            .ToList();
+        if (allSerialIds.Count > 0)
+        {
+            var serials = await _db.Set<EgyptTax.Domain.MasterData.ItemSerial>()
+                .Where(s => allSerialIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id, cancellationToken);
+            foreach (var line in invoice.Lines)
+            {
+                foreach (var serialId in line.GetSoldSerialIds())
+                {
+                    if (!serials.TryGetValue(serialId, out var serial)) continue;
+                    serial.MarkSold(invoice.CustomerId, invoice.Id, nowUtc);
+                }
+            }
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
 
         await _auditLog.AppendAsync(

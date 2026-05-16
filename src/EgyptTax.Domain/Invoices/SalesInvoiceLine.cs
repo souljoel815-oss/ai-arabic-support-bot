@@ -27,6 +27,16 @@ public sealed class SalesInvoiceLine
     /// the operator sees the data-quality gap).</summary>
     public Guid? CostCenterId { get; init; }
 
+    /// <summary>v5 D.1 v2 — JSON-serialised array of <c>ItemSerial.Id</c>
+    /// values that this line consumes. Populated when the operator picks
+    /// serials on the line during invoice editing for items with
+    /// <c>Item.TracksSerials = true</c>. On post, the
+    /// <c>PostSalesInvoiceHandler</c> transitions each listed serial to
+    /// <c>Sold</c> and back-points the customer + invoice id. Stored as
+    /// JSON (not a separate child entity) because the list is short
+    /// (typically 1–N where N = quantity) and never queried independently.</summary>
+    public string? SerialIdsJson { get; private set; }
+
     /// <summary>
     /// VAT rate active on the document_date — captured here at line
     /// creation so the recompute on post is deterministic against the
@@ -103,6 +113,47 @@ public sealed class SalesInvoiceLine
         VatRatePercent = vatRatePercent;
         CostCenterId = costCenterId == Guid.Empty ? null : costCenterId;
         Recompute();
+    }
+
+    /// <summary>v5 D.1 v2 — set the list of <see cref="EgyptTax.Domain.MasterData.ItemSerial"/>
+    /// ids that this line consumes. Replaces the previous list verbatim.
+    /// Pass <c>null</c> or an empty enumerable to clear. The aggregate
+    /// stores the GUIDs as a JSON array to keep the schema flat.</summary>
+    public void SetSoldSerialIds(IEnumerable<Guid>? serialIds)
+    {
+        if (serialIds is null)
+        {
+            SerialIdsJson = null;
+            return;
+        }
+        var list = serialIds
+            .Where(g => g != Guid.Empty)
+            .Distinct()
+            .ToList();
+        SerialIdsJson = list.Count == 0
+            ? null
+            : System.Text.Json.JsonSerializer.Serialize(list);
+    }
+
+    /// <summary>v5 D.1 v2 — read the previously-stored serial ids.
+    /// Returns an empty list when none were set. Caller is the
+    /// <c>PostSalesInvoiceHandler</c>; the line itself never needs
+    /// to reason about serial state.</summary>
+    public IReadOnlyList<Guid> GetSoldSerialIds()
+    {
+        if (string.IsNullOrWhiteSpace(SerialIdsJson)) return Array.Empty<Guid>();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<Guid>>(SerialIdsJson)
+                ?? (IReadOnlyList<Guid>)Array.Empty<Guid>();
+        }
+        catch
+        {
+            // Corrupted or hand-edited JSON — return empty rather than
+            // crash the post path. The audit log already records the
+            // raw column on save.
+            return Array.Empty<Guid>();
+        }
     }
 
     /// <summary>

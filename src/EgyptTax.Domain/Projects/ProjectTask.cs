@@ -16,6 +16,12 @@ public sealed class ProjectTask
     public DateTime CreatedAtUtc { get; init; } = DateTime.UtcNow;
     public DateTime? CompletedAtUtc { get; private set; }
 
+    /// <summary>v5 D.2.3 — earliest day the task is scheduled to start.
+    /// Nullable: tasks without a start date are skipped from the
+    /// Gantt chart (still visible on the kanban board). When set,
+    /// must be ≤ <see cref="DueDate"/> if both are populated.</summary>
+    public DateOnly? StartDate { get; private set; }
+
     /// <summary>v5 A.3 — task priority. Drives the kanban-column
     /// sort (Urgent first, then High, Normal, Low) so the most
     /// important work surfaces at the top of each column. Defaults
@@ -67,6 +73,20 @@ public sealed class ProjectTask
         {
             ParentTaskId = np == Guid.Empty ? null : np;
         }
+    }
+
+    /// <summary>v5 D.2.3 — set the planned schedule range. Pass
+    /// nullables to clear; both populated must be in chronological
+    /// order.</summary>
+    public void SetSchedule(DateOnly? startDate, DateOnly? dueDate)
+    {
+        if (startDate is { } s && dueDate is { } d && s > d)
+        {
+            throw new ArgumentException(
+                $"StartDate {s:yyyy-MM-dd} cannot be after DueDate {d:yyyy-MM-dd}.");
+        }
+        StartDate = startDate;
+        DueDate = dueDate;
     }
 
     public void MoveTo(TaskStatus_ status)

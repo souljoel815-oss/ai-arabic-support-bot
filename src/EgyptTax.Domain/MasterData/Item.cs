@@ -50,6 +50,24 @@ public sealed class Item
     /// they want historical batches recorded.</summary>
     public bool TracksLots { get; private set; }
 
+    /// <summary>v5 D.1 — opt-in flag for per-unit serial-number
+    /// tracking. Pharmacies dispensing meds and electronics retailers
+    /// selling laptops with warranty coverage need to know which
+    /// exact serial each customer received. When true, the operator
+    /// manages serials via <c>/items/{id}/serials</c>; v1 ships
+    /// manual lifecycle (InStock → Sold). Auto-binding on sales
+    /// invoice line / stock receive is v2.</summary>
+    public bool TracksSerials { get; private set; }
+
+    /// <summary>v5 F.5 v2 — physical attributes used by LandedCost
+    /// split methods <c>ByWeight</c> and <c>ByVolume</c>. Nullable so
+    /// items that don't carry weight/volume (services, intangibles)
+    /// stay untouched; the split methods skip lines whose item has
+    /// the relevant attribute null. Weight in kilograms, volume in
+    /// cubic meters — typical units on import paperwork.</summary>
+    public decimal? WeightKg { get; private set; }
+    public decimal? VolumeM3 { get; private set; }
+
     /// <summary>
     /// FR-035 / Differentiator 1 — ETA's GS1-style item code from
     /// the regulator's master commodity list (assigned per item by
@@ -173,6 +191,23 @@ public sealed class Item
     /// worth the extra data entry; existing ItemLot rows stay
     /// (they're informational once tracking is off).</summary>
     public void SetTracksLots(bool tracks) => TracksLots = tracks;
+
+    /// <summary>v5 D.1 — toggle per-unit serial tracking. Existing
+    /// quantity-on-hand stays as-is; the operator backfills
+    /// in-stock serials via the management page after flipping on.</summary>
+    public void SetTracksSerials(bool tracks) => TracksSerials = tracks;
+
+    /// <summary>v5 F.5 v2 — set the per-unit physical attributes used
+    /// by landed-cost weight/volume splits. Pass null to clear.</summary>
+    public void SetPhysicalAttributes(decimal? weightKg, decimal? volumeM3)
+    {
+        if (weightKg is < 0m)
+            throw new ArgumentOutOfRangeException(nameof(weightKg), "Weight cannot be negative.");
+        if (volumeM3 is < 0m)
+            throw new ArgumentOutOfRangeException(nameof(volumeM3), "Volume cannot be negative.");
+        WeightKg = weightKg;
+        VolumeM3 = volumeM3;
+    }
 
     /// <summary>
     /// P1.6 — record that the operator submitted a code request to

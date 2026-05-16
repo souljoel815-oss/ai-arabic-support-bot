@@ -61,36 +61,116 @@
 
 @if (!_editing && _positions.Count > 0)
 {
-    <table class="data-grid" style="margin-top:16px;">
-        <thead>
-            <tr>
-                <th>@Tr("الاسم", "Name")</th>
-                <th>@Tr("الوصف", "Description")</th>
-                <th>@Tr("الدولة", "Country")</th>
-                <th>@Tr("الحالة", "Status")</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var f in _positions)
-            {
-                <tr class="@(f.IsActive ? "" : "row-muted")">
-                    <td><strong>@(IsArabic ? f.Name.Arabic : f.Name.English)</strong></td>
-                    <td>@(f.Description ?? "—")</td>
-                    <td>@(f.CountryAutoApply ?? "—")</td>
-                    <td>
-                        @if (f.IsActive)
-                        { <span class="state-badge state-approved">@Tr("نشط", "Active")</span> }
-                        else
-                        { <span class="state-badge state-voided">@Tr("موقوف", "Inactive")</span> }
-                    </td>
-                    <td>
-                        <button type="button" @onclick="@(() => StartEdit(f))">@Tr("تعديل", "Edit")</button>
-                    </td>
+    @foreach (var f in _positions)
+    {
+        var assignedCount = _customers.Count(c => c.FiscalPositionId == f.Id);
+        <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;background:var(--surface);">
+            <header style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
+                <div>
+                    <strong style="font-size:15px;">@(IsArabic ? f.Name.Arabic : f.Name.English)</strong>
+                    <span style="font-size:11px;color:var(--text-muted);margin-inline-start:8px;">
+                        @assignedCount @Tr("عميل", "customers") · @f.Mappings.Count @Tr("قاعدة ضريبة", "tax rules")
+                        @if (f.CountryAutoApply is not null)
+                        { <text> · @f.CountryAutoApply</text> }
+                    </span>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <span class="state-badge @(f.IsActive ? "state-approved" : "state-voided")">
+                        @(f.IsActive ? Tr("نشط", "Active") : Tr("موقوف", "Inactive"))
+                    </span>
+                    <button type="button" @onclick="@(() => StartEdit(f))">@Tr("تعديل", "Edit")</button>
+                    <button type="button" @onclick="@(() => OnToggleActiveAsync(f))">
+                        @(f.IsActive ? Tr("تعطيل", "Deactivate") : Tr("تفعيل", "Activate"))
+                    </button>
+                </div>
+            </header>
+
+            @* Tax mappings editor *@
+            <table class="data-grid" style="font-size:13px;">
+                <thead>
+                    <tr>
+                        <th>@Tr("الفئة الضريبية الأصلية", "Source VAT category")</th>
+                        <th>@Tr("الفئة البديلة", "Destination")</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in f.Mappings)
+                    {
+                        var srcLabel = _vatById.TryGetValue(m.SourceVatCategoryId, out var src) ? src.Code : m.SourceVatCategoryId.ToString("N").Substring(0,8);
+                        var dstLabel = m.DestinationVatCategoryId is { } dstId
+                            && _vatById.TryGetValue(dstId, out var dst)
+                            ? dst.Code
+                            : Tr("معفى — لا قيد ضريبة", "Exempt — no VAT line");
+                        <tr>
+                            <td>@srcLabel</td>
+                            <td>@dstLabel</td>
+                            <td><button type="button" style="font-size:11px;" @onclick="@(() => OnRemoveMappingAsync(f.Id, m.Id))">×</button></td>
+                        </tr>
+                    }
+                    <tr style="background:var(--bg-2);">
+                        <td>
+                            <select @bind="@_mappingForm[f.Id].SourceVatId">
+                                <option value="">— @Tr("اختر —", "Choose —")</option>
+                                @foreach (var v in _vatCategories)
+                                {
+                                    <option value="@v.Id">@v.Code (@(IsArabic ? v.Name.Arabic : v.Name.English))</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <select @bind="@_mappingForm[f.Id].DestinationVatId">
+                                <option value="exempt">— @Tr("معفى (مفيش ضريبة)", "Exempt (no VAT)") —</option>
+                                @foreach (var v in _vatCategories)
+                                {
+                                    <option value="@v.Id">@v.Code (@(IsArabic ? v.Name.Arabic : v.Name.English))</option>
+                                }
+                            </select>
+                        </td>
+                        <td><button type="button" class="btn-primary" style="font-size:12px;" @onclick="@(() => OnAddMappingAsync(f.Id))">+</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @* Customer-assignment grid *@
+    <h2 style="margin-top:32px;">@Tr("تعيين المواقف للعملاء", "Assign to customers")</h2>
+    @if (_customers.Count == 0)
+    {
+        <p><em>@Tr("ما فيش عملاء بعد.", "No customers yet.")</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@Tr("الكود", "Code")</th>
+                    <th>@Tr("الاسم", "Name")</th>
+                    <th>@Tr("الموقف الضريبي", "Fiscal position")</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var c in _customers)
+                {
+                    <tr>
+                        <td><code>@c.Code</code></td>
+                        <td>@(IsArabic ? c.Name.Arabic : c.Name.English)</td>
+                        <td>
+                            <select value="@(c.FiscalPositionId?.ToString() ?? "")"
+                                    @onchange="@(e => OnAssignToCustomerAsync(c.Id, e.Value?.ToString()))">
+                                <option value="">— @Tr("بدون", "None") —</option>
+                                @foreach (var f in _positions.Where(f => f.IsActive))
+                                {
+                                    <option value="@f.Id">@(IsArabic ? f.Name.Arabic : f.Name.English)</option>
+                                }
+                            </select>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 }
 else if (!_editing)
 {
@@ -111,6 +191,10 @@ else if (!_editing)
     private Guid? _editingId;
     private FormModel _form = new();
     private List<FiscalPosition> _positions = new();
+    private List<Customer> _customers = new();
+    private List<VatCategory> _vatCategories = new();
+    private Dictionary<Guid, VatCategory> _vatById = new();
+    private Dictionary<Guid, MappingFormModel> _mappingForm = new();
     private string? _flash;
     private string _flashClass = "flash-success";
 
@@ -120,9 +204,89 @@ else if (!_editing)
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         _positions = await db.Set<FiscalPosition>().AsNoTracking()
+            .Include(f => f.Mappings)
             .OrderByDescending(f => f.IsActive)
             .ThenBy(f => f.Name.English).ToListAsync();
+        _customers = await db.Set<Customer>().AsNoTracking()
+            .Where(c => c.Status == CustomerStatus.Active)
+            .OrderBy(c => c.Code).ToListAsync();
+        _vatCategories = await db.Set<VatCategory>().AsNoTracking()
+            .OrderBy(v => v.Code).ToListAsync();
+        _vatById = _vatCategories.ToDictionary(v => v.Id);
+        foreach (var p in _positions)
+        {
+            if (!_mappingForm.ContainsKey(p.Id))
+                _mappingForm[p.Id] = new MappingFormModel();
+        }
         _loading = false;
+    }
+
+    private async Task OnToggleActiveAsync(FiscalPosition f)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var live = await db.Set<FiscalPosition>().FirstAsync(x => x.Id == f.Id);
+        if (live.IsActive) live.Deactivate(); else live.Reactivate();
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task OnAddMappingAsync(Guid positionId)
+    {
+        _flash = null;
+        try
+        {
+            var form = _mappingForm[positionId];
+            if (!Guid.TryParse(form.SourceVatId, out var sourceId))
+            {
+                _flash = Tr("اختر فئة ضريبية أصلية.", "Pick a source VAT category.");
+                _flashClass = "flash-error";
+                return;
+            }
+            Guid? destId = form.DestinationVatId == "exempt" || string.IsNullOrEmpty(form.DestinationVatId)
+                ? null
+                : Guid.TryParse(form.DestinationVatId, out var d) ? d : null;
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var live = await db.Set<FiscalPosition>().Include(p => p.Mappings)
+                .FirstAsync(p => p.Id == positionId);
+            if (live.Mappings.Any(m => m.SourceVatCategoryId == sourceId))
+            {
+                _flash = Tr("الفئة الأصلية دي عندها قاعدة بالفعل في الموقف ده.",
+                    "Source VAT already has a rule on this position.");
+                _flashClass = "flash-error";
+                return;
+            }
+            live.AddMapping(sourceId, destId);
+            await db.SaveChangesAsync();
+            _mappingForm[positionId] = new MappingFormModel();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _flash = ex.Message;
+            _flashClass = "flash-error";
+        }
+    }
+
+    private async Task OnRemoveMappingAsync(Guid positionId, Guid mappingId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var mapping = await db.Set<FiscalPositionMapping>().FirstOrDefaultAsync(m => m.Id == mappingId);
+        if (mapping is null) return;
+        db.Set<FiscalPositionMapping>().Remove(mapping);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+    }
+
+    private async Task OnAssignToCustomerAsync(Guid customerId, string? positionIdRaw)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var live = await db.Set<Customer>().FirstOrDefaultAsync(c => c.Id == customerId);
+        if (live is null) return;
+        Guid? pid = Guid.TryParse(positionIdRaw, out var p) ? p : null;
+        live.AssignFiscalPosition(pid);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
     }
 
     private void StartCreate()
@@ -198,5 +362,11 @@ else if (!_editing)
         public string NameEn { get; set; } = "";
         public string Description { get; set; } = "";
         public string CountryAutoApply { get; set; } = "";
+    }
+
+    private sealed class MappingFormModel
+    {
+        public string SourceVatId { get; set; } = "";
+        public string DestinationVatId { get; set; } = "exempt";
     }
 }

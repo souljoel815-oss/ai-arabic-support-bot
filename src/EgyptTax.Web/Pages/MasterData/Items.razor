@@ -128,9 +128,19 @@
                         </td>
                         <td>@item.Status</td>
                         <td>
+                            <a href="/items/@item.Id/edit" style="margin-inline-end:8px;font-size:12px;">
+                                ✎ @(IsArabic ? "تعديل" : "Edit")
+                            </a>
                             <a href="/items/@item.Id/lots" style="margin-inline-end:8px;font-size:12px;">
                                 🧪 @(IsArabic ? "الدفعات" : "Lots")
                                 @if (item.TracksLots)
+                                {
+                                    <span style="color:var(--success);" title="@(IsArabic ? "تتبع مفعّل" : "Tracking on")"> ✓</span>
+                                }
+                            </a>
+                            <a href="/items/@item.Id/serials" style="margin-inline-end:8px;font-size:12px;">
+                                🔢 @(IsArabic ? "أرقام تسلسلية" : "Serials")
+                                @if (item.TracksSerials)
                                 {
                                     <span style="color:var(--success);" title="@(IsArabic ? "تتبع مفعّل" : "Tracking on")"> ✓</span>
                                 }

@@ -143,6 +143,31 @@ else
             </tbody>
         </table>
 
+        @* v5 E.8 — early-payment discount routes to 4910 contra-revenue. *@
+        <section class="form-grid" style="margin:14px 0;max-width:520px;">
+            <h3 style="margin:0 0 6px;">@(IsArabic ? "خصم سداد مبكر (اختياري)" : "Early-payment discount (optional)")</h3>
+            <p class="page-subtitle" style="margin:0 0 10px;font-size:12px;">
+                @(IsArabic
+                    ? "لما العميل يدفع أقل من قيمة الفاتورة عشان خصم سداد مبكر، اكتب الفرق هنا. هيتقيد على حساب «4910 خصم مبيعات»."
+                    : "When the customer pays less than the full invoice as an early-payment discount, enter the gap. Routes to 4910 Sales Discount Taken.")
+            </p>
+            <label>
+                <span>@(IsArabic ? "مبلغ الخصم (ج.م.)" : "Discount amount (EGP)")</span>
+                <input type="number" step="0.01" min="0"
+                       max="@((_voucher.GrossReceiptAmount.Amount - _voucher.WhtReceivableAmount.Amount).ToString("F2", System.Globalization.CultureInfo.InvariantCulture))"
+                       @bind="_discountAmount" />
+            </label>
+            @if (_discountAmount > 0m)
+            {
+                var netAfter = _voucher.GrossReceiptAmount.Amount
+                    - _voucher.WhtReceivableAmount.Amount - _discountAmount;
+                <p style="font-size:12px;color:var(--text-muted);margin-top:4px;">
+                    @(IsArabic ? "النقدية الفعلية بعد الخصم:" : "Actual cash after discount:")
+                    <strong>@netAfter.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</strong>
+                </p>
+            }
+        </section>
+
         <p>
             <button type="button" class="btn-primary" disabled="@_busy" @onclick="OnPost">
                 @(_busy ? (IsArabic ? "جارٍ الترحيل…" : "Posting…") : (IsArabic ? "ترحيل السند" : "Post voucher"))
@@ -176,6 +201,7 @@ else
     private readonly Dictionary<Guid, decimal> _allocateInputs = new();
     private HashSet<Guid> _preselectedIds = new();   // v5 E.2
     private bool _busy;
+    private decimal _discountAmount;   // v5 E.8 — early-payment discount → 4910
     private string? _error;
 
     protected override async Task OnInitializedAsync()
@@ -297,7 +323,10 @@ else
             var auth = await Auth.GetAuthenticationStateAsync();
             var userId = auth.User.UserId() ?? Guid.Empty;
             var posted = await PostHandler.HandleAsync(
-                new PostCustomerReceiptVoucherCommand(_voucher.Id, userId));
+                new PostCustomerReceiptVoucherCommand(
+                    _voucher.Id,
+                    userId,
+                    EarlyPaymentDiscountAmount: _discountAmount > 0m ? _discountAmount : null));
             Nav.NavigateTo($"/journals?periodStart={posted.ReceiptDate:yyyy-MM-dd}");
         }
         catch (Exception ex) { _error = ex.Message; }

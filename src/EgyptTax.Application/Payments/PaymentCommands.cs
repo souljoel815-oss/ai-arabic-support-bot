@@ -47,12 +47,19 @@ public sealed record PostSupplierPaymentVoucherCommand(
 /// source invoice. The post handler creates an inbound
 /// <c>WhtCertificate</c> row, applies the customer cert on the
 /// voucher, and the emitter produces the 3-line JE
-/// (DR Cash / DR WhtReceivable / CR AR).</summary>
+/// (DR Cash / DR WhtReceivable / CR AR).
+///
+/// v5 E.8 — when <see cref="EarlyPaymentDiscountAmount"/> is
+/// supplied (positive), the post handler calls
+/// <c>ApplyEarlyPaymentDiscount</c> on the voucher BEFORE
+/// MarkPosted so the emitted JE includes the
+/// DR <c>4910 Sales Discount Taken</c> contra-revenue line.</summary>
 public sealed record PostCustomerReceiptVoucherCommand(
     Guid CustomerReceiptVoucherId,
     Guid PostedByUserId,
     string? CustomerWhtCertificateNumber = null,
     decimal? CustomerWhtAmount = null,
     string? WhtCategoryCode = null,
-    Guid? WhtSourceInvoiceId = null
+    Guid? WhtSourceInvoiceId = null,
+    decimal? EarlyPaymentDiscountAmount = null
 );

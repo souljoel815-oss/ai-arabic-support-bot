@@ -1,0 +1,251 @@
+@page "/projects/{Id:guid}/pnl"
+@using System.Globalization
+@using System.Text
+@using EgyptTax.Domain.Expenses
+@using EgyptTax.Domain.Identity
+@using EgyptTax.Domain.Invoices
+@using EgyptTax.Domain.MasterData
+@using EgyptTax.Domain.Projects
+@using EgyptTax.Domain.Purchases
+@using EgyptTax.Domain.Workflow
+@using EgyptTax.Infrastructure.Persistence
+@using EgyptTax.SharedKernel
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@attribute [Authorize(Policy = "FullyAuthenticated")]
+
+<PageTitle>@Tr("ربح وخسارة المشروع | DaftarX", "Project P&L | DaftarX")</PageTitle>
+
+@if (_loading) { <p>@Tr("جارٍ التحميل…", "Loading…")</p> return; }
+@if (_project is null) { <p>@Tr("المشروع مش موجود.", "Project not found.")</p> return; }
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+        <h1 style="margin-bottom:4px;">📊 @Tr("ربح وخسارة المشروع", "Project P&L")</h1>
+        <p class="page-subtitle" style="margin:0;">
+            <code>@_project.Code</code> · @(IsArabic ? _project.Name.Arabic : _project.Name.English)
+        </p>
+    </div>
+    <a href="/projects/@_project.Id" class="btn-secondary">← @Tr("الرجوع للمشروع", "Back to project")</a>
+</div>
+
+@if (_project.LinkedCostCenterId is null)
+{
+    <div class="kpi-card kpi-warning" style="padding:14px;margin-top:16px;">
+        @Tr("⚠ المشروع ده مش مربوط بمركز تكلفة. ارجع لصفحة المشروع وحدد المركز عشان نقدر نطلع الربح والخسارة.",
+            "⚠ This project isn't linked to a cost center yet. Go back and pick one so the P&L can roll up.")
+    </div>
+    return;
+}
+
+<div class="invoice-toolbar" style="gap:12px;flex-wrap:wrap;margin-top:14px;">
+    <label>
+        @Tr("من", "From") <input type="date" @bind="_from" @bind:after="ReloadAsync" />
+    </label>
+    <label>
+        @Tr("إلى", "To") <input type="date" @bind="_to" @bind:after="ReloadAsync" />
+    </label>
+    <button type="button" class="btn-secondary" @onclick="OnExportCsvAsync">⬇ CSV</button>
+</div>
+
+<section style="margin-top:18px;">
+    <table class="data-grid" style="max-width:600px;">
+        <tbody>
+            <tr><th style="text-align:start;">@Tr("الإيرادات", "Revenue")</th><td class="num">@_revenue.ToString("F2") @Tr("ج.م.", "EGP")</td></tr>
+            <tr><th style="text-align:start;">@Tr("التكاليف المباشرة", "Direct costs")</th><td class="num">@_directCosts.ToString("F2") @Tr("ج.م.", "EGP")</td></tr>
+            <tr><th style="text-align:start;">@Tr("المصروفات", "Expenses")</th><td class="num">@_expenseCost.ToString("F2") @Tr("ج.م.", "EGP")</td></tr>
+            <tr style="font-style:italic;color:var(--text-muted);">
+                <th style="text-align:start;">@Tr("تكلفة العمالة (الجداول الزمنية)", "Labor cost (timesheets)")</th>
+                <td class="num">@_laborCost.ToString("F2") @Tr("ج.م.", "EGP")</td>
+            </tr>
+            <tr style="background:var(--bg-2);font-size:15px;">
+                <th style="text-align:start;">
+                    @Tr("صافي الربح", "Net margin")
+                </th>
+                <td class="num" style="color:@(_netMargin >= 0 ? "var(--success-text)" : "var(--warning-text)");">
+                    <strong>@_netMargin.ToString("F2") @Tr("ج.م.", "EGP")</strong>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    @if (_laborCost == 0m)
+    {
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">
+            ℹ @Tr("ما فيش ساعات مسجَّلة لهذا المشروع في المدة دي. اضغط على «جدولي الزمني» تحت المهام عشان تسجل.",
+                "No timesheet hours logged for this project in this range. Use \"My timesheet\" under projects to log.")
+        </p>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool IsArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+    private string Tr(string ar, string en) => IsArabic ? ar : en;
+
+    private bool _loading = true;
+    private Project? _project;
+    private DateTime _from = DateTime.UtcNow.Date.AddMonths(-3);
+    private DateTime _to = DateTime.UtcNow.Date;
+
+    private decimal _revenue;
+    private decimal _directCosts;
+    private decimal _expenseCost;
+    private decimal _laborCost;
+    private decimal _netMargin => _revenue - _directCosts - _expenseCost - _laborCost;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _project = await Db.Set<Project>().AsNoTracking().FirstOrDefaultAsync(p => p.Id == Id);
+        if (_project?.LinkedCostCenterId is not null)
+        {
+            await ReloadAsync();
+        }
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (_project?.LinkedCostCenterId is not Guid ccId) return;
+        var fromDate = DateOnly.FromDateTime(_from);
+        var toDate = DateOnly.FromDateTime(_to);
+
+        // v5 F.6 v2 — pull ALL in-range SI/PI lines + their split
+        // allocations, then attribute each line's portion to this
+        // project's CC (split row matching ccId, or legacy single-tag
+        // matching ccId). Mirrors the Expense branch below.
+        var revenueRowsAll = await (
+            from i in Db.Set<SalesInvoice>().AsNoTracking()
+            from l in i.Lines
+            where i.State == DocumentState.Posted
+                && i.DocumentDate >= fromDate && i.DocumentDate <= toDate
+            select new { l.Id, l.CostCenterId, Amount = l.LineSubtotal.Amount }
+        ).ToListAsync();
+        var purchaseRowsAll = await (
+            from p in Db.Set<PurchaseInvoice>().AsNoTracking()
+            from l in p.Lines
+            where p.State == DocumentState.Posted
+                && p.DateReceived >= fromDate && p.DateReceived <= toDate
+            select new { l.Id, l.CostCenterId, Amount = l.LineSubtotal.Amount }
+        ).ToListAsync();
+        var lineAllocIds = revenueRowsAll.Select(r => r.Id)
+            .Concat(purchaseRowsAll.Select(r => r.Id))
+            .Distinct()
+            .ToList();
+        var lineAllocs = lineAllocIds.Count == 0
+            ? new List<CostCenterAllocation>()
+            : await Db.Set<CostCenterAllocation>().AsNoTracking()
+                .Where(a => (a.SourceType == CostCenterAllocationSourceType.SalesInvoiceLine
+                          || a.SourceType == CostCenterAllocationSourceType.PurchaseInvoiceLine)
+                    && lineAllocIds.Contains(a.SourceLineId))
+                .ToListAsync();
+        var revAllocs = lineAllocs
+            .Where(a => a.SourceType == CostCenterAllocationSourceType.SalesInvoiceLine)
+            .GroupBy(a => a.SourceLineId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var purAllocs = lineAllocs
+            .Where(a => a.SourceType == CostCenterAllocationSourceType.PurchaseInvoiceLine)
+            .GroupBy(a => a.SourceLineId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        _revenue = 0m;
+        foreach (var r in revenueRowsAll)
+        {
+            if (revAllocs.TryGetValue(r.Id, out var rows))
+            {
+                var match = rows.FirstOrDefault(x => x.CostCenterId == ccId);
+                if (match is not null)
+                {
+                    _revenue += Math.Round(r.Amount * match.PercentBp / 10000m, 2);
+                }
+            }
+            else if (r.CostCenterId == ccId)
+            {
+                _revenue += r.Amount;
+            }
+        }
+        _directCosts = 0m;
+        foreach (var r in purchaseRowsAll)
+        {
+            if (purAllocs.TryGetValue(r.Id, out var rows))
+            {
+                var match = rows.FirstOrDefault(x => x.CostCenterId == ccId);
+                if (match is not null)
+                {
+                    _directCosts += Math.Round(r.Amount * match.PercentBp / 10000m, 2);
+                }
+            }
+            else if (r.CostCenterId == ccId)
+            {
+                _directCosts += r.Amount;
+            }
+        }
+
+        // Expenses: pull all in-range, prefer F.6 split allocations
+        // when present, fall back to legacy single-tag.
+        var expenses = await Db.Set<Expense>().AsNoTracking()
+            .Where(e => e.State == DocumentState.Posted
+                && e.DocumentDate >= fromDate && e.DocumentDate <= toDate)
+            .Select(e => new { e.Id, e.CostCenterId, Amount = e.Amount.Amount })
+            .ToListAsync();
+        var expIds = expenses.Select(e => e.Id).ToList();
+        var allocs = expIds.Count == 0
+            ? new List<CostCenterAllocation>()
+            : await Db.Set<CostCenterAllocation>().AsNoTracking()
+                .Where(a => a.SourceType == CostCenterAllocationSourceType.Expense
+                    && expIds.Contains(a.SourceLineId))
+                .ToListAsync();
+        var allocBySource = allocs.GroupBy(a => a.SourceLineId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        _expenseCost = 0m;
+        foreach (var e in expenses)
+        {
+            if (allocBySource.TryGetValue(e.Id, out var rows))
+            {
+                var match = rows.FirstOrDefault(r => r.CostCenterId == ccId);
+                if (match is not null)
+                {
+                    _expenseCost += Math.Round(e.Amount * match.PercentBp / 10000m, 2);
+                }
+            }
+            else if (e.CostCenterId == ccId)
+            {
+                _expenseCost += e.Amount;
+            }
+        }
+
+        // v5 D.2.1 — labor cost = sum(timesheet hours × hourly rate)
+        // for the project, regardless of whose CC the entry is tagged
+        // with. Pulled raw and summed client-side because SQLite can't
+        // sum decimal columns server-side.
+        var labor = await Db.Set<TimesheetEntry>().AsNoTracking()
+            .Where(t => t.ProjectId == _project.Id
+                && t.EntryDate >= fromDate && t.EntryDate <= toDate)
+            .Select(t => new { t.Hours, t.HourlyRateEgp })
+            .ToListAsync();
+        _laborCost = labor.Sum(t => t.Hours * t.HourlyRateEgp);
+    }
+
+    private async Task OnExportCsvAsync()
+    {
+        var inv = CultureInfo.InvariantCulture;
+        var sb = new StringBuilder();
+        sb.AppendLine("metric,amount_egp");
+        sb.AppendLine($"revenue,{_revenue.ToString("F2", inv)}");
+        sb.AppendLine($"direct_costs,{_directCosts.ToString("F2", inv)}");
+        sb.AppendLine($"expenses,{_expenseCost.ToString("F2", inv)}");
+        sb.AppendLine($"labor_cost,{_laborCost.ToString("F2", inv)}");
+        sb.AppendLine($"net_margin,{_netMargin.ToString("F2", inv)}");
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        var b64 = Convert.ToBase64String(bytes);
+        var fname = $"project_pnl_{_project!.Code}_{_from:yyyyMMdd}_{_to:yyyyMMdd}.csv";
+        await JS.InvokeVoidAsync("eval",
+            $"(()=>{{const a=document.createElement('a');a.href='data:text/csv;base64,{b64}';a.download='{fname}';document.body.appendChild(a);a.click();document.body.removeChild(a);}})()");
+    }
+}

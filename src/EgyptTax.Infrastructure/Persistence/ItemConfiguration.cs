@@ -80,5 +80,10 @@ internal sealed class ItemConfiguration : IEntityTypeConfiguration<Item>
 
         // v3 §11 #5 — lot-tracking opt-in flag.
         b.Property(i => i.TracksLots).HasColumnName("tracks_lots").IsRequired();
+        // v5 D.1 — opt-in serial-number tracking.
+        b.Property(i => i.TracksSerials).HasColumnName("tracks_serials").IsRequired();
+        // v5 F.5 v2 — physical attributes for landed-cost weight/volume splits.
+        b.Property(i => i.WeightKg).HasColumnName("weight_kg").HasColumnType("decimal(10,3)");
+        b.Property(i => i.VolumeM3).HasColumnName("volume_m3").HasColumnType("decimal(10,4)");
     }
 }

@@ -142,7 +142,7 @@ else
             from l in i.Lines
             where i.State == DocumentState.Posted
                 && i.DocumentDate >= fromDate && i.DocumentDate <= toDate
-            select new { l.CostCenterId, Amount = l.LineSubtotal.Amount }
+            select new { l.Id, l.CostCenterId, Amount = l.LineSubtotal.Amount }
         ).ToListAsync();
 
         // Purchase cost per cost-center from purchase invoice lines.
@@ -152,30 +152,101 @@ else
             from l in p.Lines
             where p.State == DocumentState.Posted
                 && p.DateReceived >= fromDate && p.DateReceived <= toDate
-            select new { l.CostCenterId, Amount = l.LineSubtotal.Amount }
+            select new { l.Id, l.CostCenterId, Amount = l.LineSubtotal.Amount }
         ).ToListAsync();
 
         var expenses = await Db.Set<Expense>().AsNoTracking()
             .Where(e => e.State == DocumentState.Posted
                 && e.DocumentDate >= fromDate && e.DocumentDate <= toDate)
-            .Select(e => new { e.CostCenterId, Amount = e.Amount.Amount })
+            .Select(e => new { e.Id, e.CostCenterId, Amount = e.Amount.Amount })
             .ToListAsync();
+
+        // v5 F.6 / F.6 v2 — pull split-allocation rows for in-range
+        // expense + invoice-line sources. When a split exists for a
+        // SourceLineId, the split overrides the legacy single-tag
+        // CostCenterId; otherwise we fall back to the single tag.
+        var expenseIds = expenses.Select(e => e.Id).ToList();
+        var revenueLineIds = revenueRows.Select(r => r.Id).ToList();
+        var purchaseLineIds = purchaseRows.Select(r => r.Id).ToList();
+        var allSourceIds = expenseIds.Concat(revenueLineIds).Concat(purchaseLineIds).Distinct().ToList();
+        var allocations = allSourceIds.Count == 0
+            ? new List<CostCenterAllocation>()
+            : await Db.Set<CostCenterAllocation>().AsNoTracking()
+                .Where(a => allSourceIds.Contains(a.SourceLineId))
+                .ToListAsync();
+        var expenseAllocBySource = allocations
+            .Where(a => a.SourceType == CostCenterAllocationSourceType.Expense)
+            .GroupBy(a => a.SourceLineId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var revenueAllocBySource = allocations
+            .Where(a => a.SourceType == CostCenterAllocationSourceType.SalesInvoiceLine)
+            .GroupBy(a => a.SourceLineId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var purchaseAllocBySource = allocations
+            .Where(a => a.SourceType == CostCenterAllocationSourceType.PurchaseInvoiceLine)
+            .GroupBy(a => a.SourceLineId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        // Back-compat alias for the existing untagged-expense lookup below.
+        var allocBySource = expenseAllocBySource;
 
         var ccLookup = await Db.Set<CostCenter>().AsNoTracking()
             .ToDictionaryAsync(c => c.Id);
 
-        var revenueByCc = revenueRows
-            .Where(r => r.CostCenterId.HasValue)
-            .GroupBy(r => r.CostCenterId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
-        var purchaseByCc = purchaseRows
-            .Where(r => r.CostCenterId.HasValue)
-            .GroupBy(r => r.CostCenterId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
-        var expenseByCc = expenses
-            .Where(r => r.CostCenterId.HasValue)
-            .GroupBy(r => r.CostCenterId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+        // v5 F.6 v2 — same split-aware fold for revenue + purchase lines:
+        // when a split allocation exists for the SI/PI line, distribute
+        // the line subtotal across centers per percentages; otherwise
+        // fall back to the legacy single-tag CostCenterId.
+        var revenueByCc = new Dictionary<Guid, decimal>();
+        foreach (var r in revenueRows)
+        {
+            if (revenueAllocBySource.TryGetValue(r.Id, out var rows))
+            {
+                foreach (var a in rows)
+                {
+                    var portion = Math.Round(r.Amount * a.PercentBp / 10000m, 2);
+                    revenueByCc[a.CostCenterId] = revenueByCc.GetValueOrDefault(a.CostCenterId, 0m) + portion;
+                }
+            }
+            else if (r.CostCenterId is { } ccId)
+            {
+                revenueByCc[ccId] = revenueByCc.GetValueOrDefault(ccId, 0m) + r.Amount;
+            }
+        }
+        var purchaseByCc = new Dictionary<Guid, decimal>();
+        foreach (var r in purchaseRows)
+        {
+            if (purchaseAllocBySource.TryGetValue(r.Id, out var rows))
+            {
+                foreach (var a in rows)
+                {
+                    var portion = Math.Round(r.Amount * a.PercentBp / 10000m, 2);
+                    purchaseByCc[a.CostCenterId] = purchaseByCc.GetValueOrDefault(a.CostCenterId, 0m) + portion;
+                }
+            }
+            else if (r.CostCenterId is { } ccId)
+            {
+                purchaseByCc[ccId] = purchaseByCc.GetValueOrDefault(ccId, 0m) + r.Amount;
+            }
+        }
+        // v5 F.6 — when an expense has split allocations, distribute its
+        // amount across centers per the saved percentages; otherwise fall
+        // back to the legacy single-tag CostCenterId.
+        var expenseByCc = new Dictionary<Guid, decimal>();
+        foreach (var e in expenses)
+        {
+            if (allocBySource.TryGetValue(e.Id, out var rows))
+            {
+                foreach (var r in rows)
+                {
+                    var portion = Math.Round(e.Amount * r.PercentBp / 10000m, 2);
+                    expenseByCc[r.CostCenterId] = expenseByCc.GetValueOrDefault(r.CostCenterId, 0m) + portion;
+                }
+            }
+            else if (e.CostCenterId is { } ccId)
+            {
+                expenseByCc[ccId] = expenseByCc.GetValueOrDefault(ccId, 0m) + e.Amount;
+            }
+        }
 
         var allCcIds = revenueByCc.Keys
             .Union(purchaseByCc.Keys)
@@ -204,9 +275,17 @@ else
         _totalCost = purchaseRows.Sum(r => r.Amount);
         _totalExpense = expenses.Sum(e => e.Amount);
 
-        _untaggedRevenue = revenueRows.Where(r => !r.CostCenterId.HasValue).Sum(r => r.Amount);
-        _untaggedCost = purchaseRows.Where(r => !r.CostCenterId.HasValue).Sum(r => r.Amount);
-        _untaggedExpense = expenses.Where(e => !e.CostCenterId.HasValue).Sum(e => e.Amount);
+        // v5 F.6 v2 — a row is "untagged" only if it has no split
+        // allocation AND no legacy single tag.
+        _untaggedRevenue = revenueRows
+            .Where(r => !r.CostCenterId.HasValue && !revenueAllocBySource.ContainsKey(r.Id))
+            .Sum(r => r.Amount);
+        _untaggedCost = purchaseRows
+            .Where(r => !r.CostCenterId.HasValue && !purchaseAllocBySource.ContainsKey(r.Id))
+            .Sum(r => r.Amount);
+        _untaggedExpense = expenses
+            .Where(e => !e.CostCenterId.HasValue && !expenseAllocBySource.ContainsKey(e.Id))
+            .Sum(e => e.Amount);
 
         _loading = false;
     }

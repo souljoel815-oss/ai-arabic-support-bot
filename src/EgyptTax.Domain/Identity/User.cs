@@ -38,6 +38,13 @@ public sealed class User
     /// toggles "By team."</summary>
     public Guid? SalesTeamId { get; private set; }
 
+    /// <summary>v5 D.2.1 — default hourly billing rate (EGP) used
+    /// to seed new TimesheetEntry rows for this user. Nullable so
+    /// non-billable employees stay unset; the entry form blocks
+    /// billable=true when the rate is null. Operator can override
+    /// per-entry on the timesheet grid.</summary>
+    public decimal? HourlyRateEgp { get; private set; }
+
     public DateTime? LastLoginAtUtc { get; private set; }
     public bool LastLoginSucceeded { get; private set; }
     public int FailedLoginCount { get; private set; }
@@ -109,6 +116,16 @@ public sealed class User
             throw new ArgumentOutOfRangeException(nameof(ratePercent),
                 "Commission rate must be between 0 and 100 percent.");
         CommissionRatePercent = ratePercent;
+    }
+
+    /// <summary>v5 D.2.1 — set the user's default hourly billing
+    /// rate. Pass null to clear (non-billable user).</summary>
+    public void SetHourlyRate(decimal? ratePercent)
+    {
+        if (ratePercent is < 0)
+            throw new ArgumentOutOfRangeException(nameof(ratePercent),
+                "Hourly rate cannot be negative.");
+        HourlyRateEgp = ratePercent;
     }
 
     public void DisableMfa()

@@ -11,15 +11,16 @@ namespace EgyptTax.Infrastructure.Accounting;
 
 /// <summary>
 /// Phase 9 / FR-052 / US7-ready — customer-receipt auto-emitter.
-/// Per FR-052 the customer-WHT split is:
+/// v5 E.8 adds the optional discount leg:
 ///
-///   DR  Cash             net (= gross - wht)
-///   DR  WhtReceivable    wht (omitted when zero)
+///   DR  Cash             net (= gross - wht - discount)
+///   DR  WhtReceivable    wht       (omitted when zero)
+///   DR  SalesDiscountTaken discount (omitted when zero)
 ///   CR  AR               gross
 ///
-/// The WhtReceivable line is OMITTED entirely when
-/// WhtReceivableAmount is zero (Phase 9 default — no customer
-/// certificate recorded).
+/// The WhtReceivable + SalesDiscountTaken lines are OMITTED when
+/// their respective amounts are zero (default: no certificate, no
+/// discount → 2-line DR Cash / CR AR).
 /// </summary>
 public sealed class CustomerReceiptVoucherJournalEmitter : ICustomerReceiptVoucherJournalEmitter
 {
@@ -70,7 +71,7 @@ public sealed class CustomerReceiptVoucherJournalEmitter : ICustomerReceiptVouch
             MoneyEgp Debit,
             MoneyEgp Credit,
             string Description
-        )>(3)
+        )>(4)
         {
             (
                 cashAccountCode,
@@ -87,6 +88,17 @@ public sealed class CustomerReceiptVoucherJournalEmitter : ICustomerReceiptVouch
                     voucher.WhtReceivableAmount,
                     MoneyEgp.Zero,
                     $"Receipt {voucher.DocumentNumber} — customer-withheld tax"
+                )
+            );
+        }
+        if (voucher.DiscountTakenAmount.Amount > 0m)
+        {
+            lines.Add(
+                (
+                    ChartOfAccountCodes.SalesDiscountTaken,
+                    voucher.DiscountTakenAmount,
+                    MoneyEgp.Zero,
+                    $"Receipt {voucher.DocumentNumber} — early-payment discount"
                 )
             );
         }

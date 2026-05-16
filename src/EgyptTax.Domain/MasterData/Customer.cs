@@ -34,6 +34,14 @@ public sealed class Customer
     /// at invoice-line-add time and pre-fills the unit price.</summary>
     public Guid? DefaultPricelistId { get; private set; }
 
+    /// <summary>v5 F.4 — fiscal position controlling tax mapping
+    /// behaviour for this customer's invoices. Null = no special
+    /// treatment (default VAT category from the line's item).
+    /// When set, <c>FiscalPositionResolver</c> swaps the line's
+    /// VAT category at invoice-line-add time per the position's
+    /// mappings (e.g. exporters → 0% VAT, free zone → exempt).</summary>
+    public Guid? FiscalPositionId { get; private set; }
+
     private Customer() { }
 
     public Customer(
@@ -83,6 +91,14 @@ public sealed class Customer
     {
         if (pricelistId == Guid.Empty) pricelistId = null;
         DefaultPricelistId = pricelistId;
+    }
+
+    /// <summary>v5 F.4 — assign or detach the fiscal position.
+    /// The application layer enforces existence + active state.</summary>
+    public void AssignFiscalPosition(Guid? fiscalPositionId)
+    {
+        if (fiscalPositionId == Guid.Empty) fiscalPositionId = null;
+        FiscalPositionId = fiscalPositionId;
     }
 }
 

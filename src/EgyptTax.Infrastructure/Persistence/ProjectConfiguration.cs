@@ -26,6 +26,9 @@ internal sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
         b.Property(p => p.BudgetEgp).HasColumnName("budget_egp").HasColumnType("decimal(19,2)");
         b.Property(p => p.Status).HasColumnName("status")
             .HasConversion<string>().HasMaxLength(16).IsRequired();
+        // v5 D.2.2 — optional cost-center link for P&L roll-up.
+        b.Property(p => p.LinkedCostCenterId).HasColumnName("linked_cost_center_id");
+        b.HasIndex(p => p.LinkedCostCenterId).HasDatabaseName("ix_projects_linked_cost_center_id");
 
         b.HasMany(p => p.Tasks).WithOne()
             .HasForeignKey(t => t.ProjectId).OnDelete(DeleteBehavior.Cascade);
@@ -46,6 +49,8 @@ internal sealed class ProjectTaskConfiguration : IEntityTypeConfiguration<Projec
             .HasConversion<string>().HasMaxLength(16).IsRequired();
         b.Property(t => t.AssignedToUserId).HasColumnName("assigned_to_user_id");
         b.Property(t => t.DueDate).HasColumnName("due_date").HasColumnType("date");
+        // v5 D.2.3 — planned start date for the Gantt chart.
+        b.Property(t => t.StartDate).HasColumnName("start_date").HasColumnType("date");
         b.Property(t => t.CreatedAtUtc).HasColumnName("created_at_utc")
             .HasColumnType("datetime2(3)").IsRequired();
         b.Property(t => t.CompletedAtUtc).HasColumnName("completed_at_utc")

@@ -18,6 +18,7 @@ public enum DocumentType
     CustomerReceiptVoucher,
     FixedAsset,
     ExpenseReport,
+    LandedCost,
 }
 
 public static class DocumentTypeExtensions

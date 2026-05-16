@@ -24,6 +24,14 @@ public sealed class Project
     public decimal? BudgetEgp { get; private set; }
     public ProjectStatus Status { get; private set; } = ProjectStatus.Planning;
 
+    /// <summary>v5 D.2.2 — optional cost-center the project's
+    /// financials roll up against. When set, the Project P&L page
+    /// pulls revenue/direct-costs from sales/purchase/expense lines
+    /// tagged with this CC (or split-allocated to it via F.6).
+    /// Null means "no P&L yet" — the page surfaces a hint to set
+    /// the link.</summary>
+    public Guid? LinkedCostCenterId { get; private set; }
+
     private readonly List<ProjectTask> _tasks = new();
     public IReadOnlyCollection<ProjectTask> Tasks => _tasks;
 
@@ -54,6 +62,14 @@ public sealed class Project
         StartDate = startDate;
         EndDate = endDate;
         BudgetEgp = budgetEgp;
+    }
+
+    /// <summary>v5 D.2.2 — link/unlink the project to a cost center
+    /// for P&L roll-up. Pass <c>null</c> (or Guid.Empty) to clear.</summary>
+    public void LinkCostCenter(Guid? costCenterId)
+    {
+        if (costCenterId == Guid.Empty) costCenterId = null;
+        LinkedCostCenterId = costCenterId;
     }
 
     public void Activate() => Status = ProjectStatus.Active;
