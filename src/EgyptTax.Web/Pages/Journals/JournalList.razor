@@ -5,6 +5,8 @@
 @inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
+<SettingsTabStrip Group="closing" />
+
 <h1>@(IsArabic ? "دفتر اليومية" : "Journal ledger (FR-024 / FR-025)")</h1>
 
 <form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>

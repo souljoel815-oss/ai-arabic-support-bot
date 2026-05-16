@@ -70,14 +70,21 @@
         if (string.IsNullOrEmpty(path)) path = "/";
 
         // Pick the LONGEST matching url so /items/categories wins over /items.
+        // Aliases let a single sidebar entry highlight while the operator
+        // navigates between sibling pages (e.g. all /reports/* under
+        // "Accounting reports").
         _activeLinkUrl = Module.SubNavEntries
             .OfType<SubNavLink>()
-            .Where(l => path.Equals(l.Url, StringComparison.OrdinalIgnoreCase)
-                     || path.StartsWith(l.Url.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase))
+            .Where(l => Matches(path, l.Url)
+                     || (l.AliasUrls?.Any(a => Matches(path, a)) ?? false))
             .OrderByDescending(l => l.Url.Length)
             .Select(l => l.Url)
             .FirstOrDefault();
     }
+
+    private static bool Matches(string path, string url) =>
+        path.Equals(url, StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith(url.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase);
 
     private bool IsActiveLink(string url) =>
         string.Equals(_activeLinkUrl, url, StringComparison.OrdinalIgnoreCase);

@@ -8,6 +8,8 @@
 @inject IJSRuntime Js
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<SettingsTabStrip Group="eta" />
+
 <h1>@(IsArabic ? "إنشاء حزمة فحص ضريبي (US9 / FR-048)" : "Generate tax-inspection bundle (US9 / FR-048)")</h1>
 
 <p>

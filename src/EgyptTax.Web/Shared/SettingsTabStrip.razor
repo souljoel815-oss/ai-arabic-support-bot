@@ -47,6 +47,67 @@
         new("/eta-inbox",           "الصندوق الوارد",   "Inbox"),
         new("/eta-export",          "تصدير",           "Export"),
         new("/eta-wizard",          "معالج الإعداد",    "Setup wizard"),
+        new("/inspection-bundle",   "حزمة فحص ضريبي",  "Inspection bundle"),
+    };
+
+    // v5 sidebar consolidation — new clusters used by the rolled-out
+    // SubNavPanel entries.
+    private static readonly Tab[] AccrualsTabs =
+    {
+        new("/prepaid-expenses",   "المصروفات المدفوعة مقدماً", "Prepaid expenses"),
+        new("/deferred-revenue",   "الإيرادات المؤجلة",         "Deferred revenue"),
+    };
+
+    private static readonly Tab[] TaxesTabs =
+    {
+        new("/tax/vat-return",         "إقرار VAT",          "VAT return"),
+        new("/wht",                    "خصم من المنبع",       "WHT"),
+        new("/wht/inbound",            "استيراد WHT الوارد",  "Inbound WHT"),
+        new("/tax/income-tax-return",  "ضريبة الدخل",        "Income tax"),
+        new("/compliance/calendar",    "تقويم الالتزامات",    "Compliance calendar"),
+        new("/compliance/health",      "صحة الالتزام",        "Compliance health"),
+    };
+
+    private static readonly Tab[] ClosingTabs =
+    {
+        new("/journals",         "قيود التسوية",        "Adjusting entries"),
+        new("/cockpit",          "كشكول الإقفال",       "Closing cockpit"),
+        new("/year-end-close",   "إقفال السنة المالية", "Year-end close"),
+        new("/approvals",        "قفل الفترة",          "Period lock"),
+    };
+
+    private static readonly Tab[] SalesReportsTabs =
+    {
+        new("/dashboards/sales",        "لوحة المبيعات",   "Sales dashboard"),
+        new("/reports/sales-pipeline",  "قمع المبيعات",   "Sales pipeline"),
+        new("/reports/sales-by-rep",    "مبيعات المناديب", "Sales by rep"),
+        new("/reports/commissions",     "عمولات المناديب", "Commissions"),
+    };
+
+    private static readonly Tab[] InventoryReorderingTabs =
+    {
+        new("/reorder-rules",        "قواعد إعادة الطلب",  "Reorder rules"),
+        new("/reorder-suggestions",  "اقتراحات إعادة الطلب","Reorder suggestions"),
+    };
+
+    private static readonly Tab[] InventoryReportsTabs =
+    {
+        new("/reports/stock-valuation", "تقييم المخزون",   "Stock valuation"),
+        new("/reports/pos-sessions",    "جلسات الكاشير",   "POS sessions"),
+    };
+
+    private static readonly Tab[] CrmTabs =
+    {
+        new("/leads",            "الفرص",          "Leads"),
+        new("/projects",         "المشاريع",        "Projects"),
+        new("/routes",           "جولات المناديب", "Routes"),
+        new("/dashboards/me",    "لوحتي الشخصية",  "My dashboard"),
+    };
+
+    private static readonly Tab[] TimesheetsTabs =
+    {
+        new("/timesheets/me",    "جدولي الزمني",  "My timesheet"),
+        new("/timesheets/team",  "جداول الفريق",  "Team timesheets"),
     };
 
     private static readonly Tab[] WhtTabs =
@@ -77,26 +138,42 @@
 
     private Tab[] Tabs => Group switch
     {
-        "tax-setup"          => TaxSetupTabs,
-        "money"              => MoneyTabs,
-        "pricing"            => PricingTabs,
-        "eta"                => EtaTabs,
-        "wht"                => WhtTabs,
-        "accounting-reports" => AccountingReportsTabs,
-        "tax-reports"        => TaxReportsTabs,
-        _                    => Array.Empty<Tab>(),
+        "tax-setup"           => TaxSetupTabs,
+        "money"               => MoneyTabs,
+        "pricing"             => PricingTabs,
+        "eta"                 => EtaTabs,
+        "wht"                 => WhtTabs,
+        "accounting-reports"  => AccountingReportsTabs,
+        "tax-reports"         => TaxReportsTabs,
+        "accruals"            => AccrualsTabs,
+        "taxes"               => TaxesTabs,
+        "closing"             => ClosingTabs,
+        "sales-reports"       => SalesReportsTabs,
+        "inventory-reordering"=> InventoryReorderingTabs,
+        "inventory-reports"   => InventoryReportsTabs,
+        "crm"                 => CrmTabs,
+        "timesheets"          => TimesheetsTabs,
+        _                     => Array.Empty<Tab>(),
     };
 
     private string GroupTitle => Group switch
     {
-        "tax-setup"          => IsArabic ? "إعداد الضرائب"          : "Tax setup",
-        "money"              => IsArabic ? "نقدية وبنوك"            : "Money & banks",
-        "pricing"            => IsArabic ? "التسعير والمبيعات"      : "Pricing & sales",
-        "eta"                => IsArabic ? "الفاتورة الإلكترونية"   : "E-invoicing",
-        "wht"                => IsArabic ? "الخصم من المنبع"        : "Withholding tax",
-        "accounting-reports" => IsArabic ? "التقارير المحاسبية"    : "Accounting reports",
-        "tax-reports"        => IsArabic ? "التقارير الضريبية"     : "Tax reports",
-        _                    => "",
+        "tax-setup"           => IsArabic ? "إعداد الضرائب"          : "Tax setup",
+        "money"               => IsArabic ? "نقدية وبنوك"            : "Money & banks",
+        "pricing"             => IsArabic ? "التسعير والمبيعات"      : "Pricing & sales",
+        "eta"                 => IsArabic ? "الفاتورة الإلكترونية"   : "E-invoicing",
+        "wht"                 => IsArabic ? "الخصم من المنبع"        : "Withholding tax",
+        "accounting-reports"  => IsArabic ? "التقارير المحاسبية"    : "Accounting reports",
+        "tax-reports"         => IsArabic ? "التقارير الضريبية"     : "Tax reports",
+        "accruals"            => IsArabic ? "التراكم والاعتراف"      : "Accruals & recognition",
+        "taxes"               => IsArabic ? "الضرائب"                : "Taxes",
+        "closing"             => IsArabic ? "الإقفال"                : "Closing",
+        "sales-reports"       => IsArabic ? "تقارير المبيعات"        : "Sales reports",
+        "inventory-reordering"=> IsArabic ? "إعادة الطلب"            : "Reordering",
+        "inventory-reports"   => IsArabic ? "تقارير المخزون"         : "Inventory reports",
+        "crm"                 => IsArabic ? "إدارة العلاقات (CRM)"   : "CRM",
+        "timesheets"          => IsArabic ? "الجداول الزمنية"        : "Timesheets",
+        _                     => "",
     };
 
     private bool IsActive(string path)

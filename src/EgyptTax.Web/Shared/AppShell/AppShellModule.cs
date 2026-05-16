@@ -28,7 +28,8 @@ public sealed record SubNavLink(
     string LabelEn,
     string Url,
     string? Search = null,
-    string IconName = "file-text"
+    string IconName = "file-text",
+    IReadOnlyList<string>? AliasUrls = null
 ) : SubNavEntry;
 
 /// <summary>
@@ -73,10 +74,12 @@ public static class AppShellModuleRegistry
                 new SubNavLink("الدفعات المقدمة", "Customer advances", "/customer-advances", "customer advance دفعة مقدمة", "wallet"),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("التقارير", "Reports"),
-                new SubNavLink("لوحة المبيعات", "Sales dashboard", "/dashboards/sales", "sales dashboard", "bar-chart"),
-                new SubNavLink("قمع المبيعات", "Sales pipeline", "/reports/sales-pipeline", "pipeline قمع", "target"),
-                new SubNavLink("مبيعات المناديب", "Sales by rep", "/reports/sales-by-rep", "rep مندوب", "users"),
-                new SubNavLink("عمولات المناديب", "Commissions", "/reports/commissions", "commission عمولة", "percent"),
+                new SubNavLink("تقارير المبيعات", "Sales reports", "/dashboards/sales",
+                    "sales dashboard pipeline rep commission لوحة قمع مندوب عمولة", "bar-chart",
+                    AliasUrls: new[]
+                    {
+                        "/reports/sales-pipeline", "/reports/sales-by-rep", "/reports/commissions",
+                    }),
             }),
 
         new AppShellModule(PurchasesId, "shopping-cart", "المشتريات", "Purchases", "/purchase-invoices", HasSubNav: true,
@@ -88,15 +91,16 @@ public static class AppShellModuleRegistry
                 new SubNavLink("دفعة لمورد", "Pay supplier", "/payments/supplier-payments/new", "supplier payment دفعة مورد", "wallet"),
                 new SubNavLink("مسح إيصال (AI)", "Scan receipt", "/scan-receipt", "scan ocr", "zap"),
                 new SubNavLink("سجل المسح", "Scan history", "/scan-history", "history scan", "archive"),
-                new SubNavSeparator(),
-                new SubNavGroupHeader("الأصول الثابتة", "Fixed assets"),
-                new SubNavLink("الأصول الثابتة", "Fixed assets", "/fixed-assets", "fixed asset أصل", "building"),
-                new SubNavLink("أصل جديد", "New asset", "/fixed-assets/new", "new asset", "plus"),
+                new SubNavLink("الأصول الثابتة", "Fixed assets", "/fixed-assets", "fixed asset أصل", "building",
+                    AliasUrls: new[] { "/fixed-assets/new" }),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("ضريبة الخصم من المنبع", "Withholding tax"),
-                new SubNavLink("الخصم من المنبع", "WHT", "/wht", "wht خصم", "scissors"),
-                new SubNavLink("نموذج 41", "Form 41", "/wht/form41", "form 41 نموذج", "file-text"),
-                new SubNavLink("شهادات الخصم", "WHT certificates", "/certificates", "certificate شهادة", "shield-check"),
+                new SubNavLink("الخصم من المنبع", "WHT", "/wht",
+                    "wht form 41 inbound certificates نموذج شهادات استيراد خصم", "scissors",
+                    AliasUrls: new[]
+                    {
+                        "/wht/form41", "/wht/inbound", "/certificates",
+                    }),
             }),
 
         new AppShellModule(InventoryId, "package", "المخزون", "Inventory", "/items", HasSubNav: true,
@@ -108,62 +112,73 @@ public static class AppShellModuleRegistry
                 new SubNavLink("التحويل بين المواقع", "Stock transfer", "/stock-transfer", "transfer تحويل", "arrow-right"),
                 new SubNavLink("مواقع التخزين", "Stock locations", "/stock-locations", "location موقع", "boxes"),
                 new SubNavLink("الدفعات قاربت الانتهاء", "Expiring lots", "/expiring-lots", "expiring lot صلاحية", "alert-triangle"),
+                new SubNavLink("تكلفة استيراد جديدة", "New landed cost", "/landed-costs/new", "landed cost import شحن جمارك", "package"),
                 new SubNavSeparator(),
-                new SubNavGroupHeader("إعادة الطلب", "Reordering"),
-                new SubNavLink("قواعد إعادة الطلب", "Reorder rules", "/reorder-rules", "reorder rule قاعدة", "edit"),
-                new SubNavLink("اقتراحات إعادة الطلب", "Reorder suggestions", "/reorder-suggestions", "reorder suggestion اقتراح", "alert-triangle"),
-                new SubNavSeparator(),
-                new SubNavGroupHeader("التقارير", "Reports"),
-                new SubNavLink("تقييم المخزون", "Stock valuation", "/reports/stock-valuation", "valuation تقييم", "bar-chart"),
-                new SubNavLink("جلسات الكاشير", "POS sessions", "/reports/pos-sessions", "pos session جلسة", "clock"),
+                new SubNavLink("إعادة الطلب", "Reordering", "/reorder-rules",
+                    "reorder rules suggestions قواعد اقتراحات", "edit",
+                    AliasUrls: new[] { "/reorder-suggestions" }),
+                new SubNavLink("تقارير المخزون", "Inventory reports", "/reports/stock-valuation",
+                    "stock valuation pos sessions تقييم جلسات الكاشير", "bar-chart",
+                    AliasUrls: new[] { "/reports/pos-sessions" }),
             }),
 
         new AppShellModule(AccountingId, "calculator", "المحاسبة", "Accounting", "/journals", HasSubNav: true,
             SubNavEntries: new SubNavEntry[]
             {
+                // v5 sidebar consolidation — multi-link groups collapse to a
+                // single entry that lands on the canonical page; the
+                // SettingsTabStrip on each page surfaces siblings as tabs.
+                // AliasUrls keep the entry highlighted while navigating.
                 new SubNavLink("قيود اليومية", "Journal entries", "/journals", "journal قيد", "edit"),
                 new SubNavLink("قوالب القيود الدورية", "Recurring JV templates", "/journal-templates", "journal template قالب recurring", "file-text"),
-                new SubNavLink("المصروفات المدفوعة مقدماً", "Prepaid expenses", "/prepaid-expenses", "prepaid expense مدفوع مقدم", "calendar"),
-                new SubNavLink("الإيرادات المؤجلة", "Deferred revenue", "/deferred-revenue", "deferred revenue إيراد مؤجل unearned", "trending-up"),
+                new SubNavLink("التراكم والاعتراف", "Accruals & recognition", "/prepaid-expenses",
+                    "prepaid deferred unearned مدفوع مقدم مؤجل", "calendar",
+                    AliasUrls: new[] { "/deferred-revenue" }),
                 new SubNavLink("شجرة الحسابات", "Chart of accounts", "/settings/chart-of-accounts", "coa حسابات", "boxes"),
                 new SubNavLink("المطابقة البنكية", "Bank reconciliation", "/payments/bank-statements", "bank statement كشف", "landmark"),
                 new SubNavLink("تحويل أموال", "Fund transfer", "/cash-transfer", "fund transfer تحويل", "arrow-right"),
                 new SubNavLink("مسحوبات المالك", "Owner drawings", "/owner-drawings", "owner drawings مسحوبات", "wallet"),
                 new SubNavLink("تسوية فروق العملة", "FX adjustment", "/accounting/fx-adjustment", "fx fx-adjustment فروق عملة realized", "scale"),
+                new SubNavLink("تقييم العملة الأجنبية", "FX revaluation", "/reports/fx-revaluation", "fx revaluation unrealized تقييم غير محقق", "scale"),
                 new SubNavLink("الدفعات غير المخصصة", "Unmatched payments", "/payments/unmatched", "unmatched payment دفعة", "alert-triangle"),
                 new SubNavLink("مراكز التكلفة", "Cost centers", "/cost-centers", "cost center مركز تكلفة", "tag"),
                 new SubNavLink("سجل التدقيق", "Audit log", "/audit-log", "audit log سجل تدقيق", "shield-check"),
                 new SubNavSeparator(),
-                new SubNavGroupHeader("الضرائب", "Taxes"),
-                new SubNavLink("ضريبة القيمة المضافة", "VAT return", "/tax/vat-return", "vat return إقرار", "percent"),
-                new SubNavLink("خصم من المنبع", "WHT", "/wht", "wht خصم", "scissors"),
-                new SubNavLink("استيراد WHT الوارد", "Inbound WHT import", "/wht/inbound", "wht inbound استيراد", "archive"),
-                new SubNavLink("ضريبة الدخل", "Income tax", "/tax/income-tax-return", "income tax دخل", "landmark"),
-                new SubNavLink("تقويم الالتزامات", "Compliance calendar", "/compliance/calendar", "compliance calendar تقويم", "calendar"),
-                new SubNavLink("صحة الالتزام", "Compliance health", "/compliance/health", "compliance health صحة", "shield"),
-                new SubNavSeparator(),
-                new SubNavGroupHeader("الفاتورة الإلكترونية (ETA)", "E-invoicing (ETA)"),
-                new SubNavLink("لوحة ETA", "ETA dashboard", "/eta-dashboard", "eta dashboard لوحة", "activity"),
-                new SubNavLink("صندوق ETA الوارد", "ETA inbox", "/eta-inbox", "eta inbox صندوق", "archive"),
-                new SubNavLink("حزمة فحص ضريبي", "Inspection bundle", "/inspection-bundle", "inspection bundle فحص", "shield-check"),
-                new SubNavSeparator(),
-                new SubNavGroupHeader("الإقفال", "Closing"),
-                new SubNavLink("قيود التسوية", "Adjusting entries", "/journals", "adjusting entries تسوية", "scale"),
-                new SubNavLink("كشكول الإقفال", "Closing cockpit", "/cockpit", "closing cockpit إقفال", "calendar-range"),
-                new SubNavLink("إقفال السنة المالية", "Year-end close", "/year-end-close", "year-end close إقفال سنة retained", "calendar-range"),
-                new SubNavLink("قفل الفترة", "Period lock", "/approvals", "period lock قفل", "lock"),
+                new SubNavGroupHeader("الضرائب والإقفال", "Taxes & closing"),
+                new SubNavLink("الضرائب", "Taxes", "/tax/vat-return",
+                    "vat wht income compliance ضريبة دخل خصم تقويم صحة", "percent",
+                    AliasUrls: new[]
+                    {
+                        "/tax/income-tax-return",
+                        "/compliance/calendar", "/compliance/health",
+                    }),
+                new SubNavLink("الفاتورة الإلكترونية (ETA)", "E-invoicing (ETA)", "/eta-dashboard",
+                    "eta inbox export wizard inspection لوحة صندوق فحص", "activity",
+                    AliasUrls: new[]
+                    {
+                        "/eta-inbox", "/eta-export", "/eta-wizard", "/inspection-bundle",
+                    }),
+                new SubNavLink("الإقفال", "Closing", "/cockpit",
+                    "closing cockpit year-end period lock approvals إقفال قفل تسوية", "calendar-range",
+                    AliasUrls: new[]
+                    {
+                        "/year-end-close", "/approvals",
+                    }),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("التقارير", "Reports"),
-                new SubNavLink("ميزان المراجعة", "Trial balance", "/reports/trial-balance", "trial balance ميزان", "scale"),
-                new SubNavLink("دفتر الأستاذ", "General Ledger", "/reports/general-ledger", "general ledger دفتر", "book"),
-                new SubNavLink("قائمة الدخل", "Profit & loss", "/reports/profit-loss", "p&l دخل", "trending-up"),
-                new SubNavLink("الميزانية", "Balance sheet", "/reports/balance-sheet", "balance sheet ميزانية", "scale"),
-                new SubNavLink("التدفقات النقدية", "Cash flow", "/reports/cash-flow", "cash flow تدفقات", "trending-up"),
-                new SubNavLink("تقرير مراكز التكلفة", "Cost-centers report", "/reports/cost-centers", "cost center report تقرير", "tag"),
-                new SubNavLink("VAT الشهري", "Monthly VAT report", "/reports/vat-monthly", "vat monthly شهري", "percent"),
-                new SubNavLink("ضريبة رقم الأعمال", "Turnover tax report", "/reports/turnover-tax", "turnover tax أعمال", "percent"),
-                new SubNavLink("الدخل الخاضع للضريبة", "Taxable income report", "/reports/taxable-income", "taxable income دخل", "landmark"),
-                new SubNavLink("درع الغرامات", "Penalty shield", "/penalty-shield", "penalty غرامة", "shield-check"),
+                new SubNavLink("التقارير المحاسبية", "Accounting reports", "/reports/trial-balance",
+                    "trial balance gl pnl balance sheet cash flow cost center ميزان دفتر دخل ميزانية تدفقات", "bar-chart",
+                    AliasUrls: new[]
+                    {
+                        "/reports/general-ledger", "/reports/profit-loss",
+                        "/reports/balance-sheet", "/reports/cash-flow", "/reports/cost-centers",
+                    }),
+                new SubNavLink("التقارير الضريبية", "Tax reports", "/reports/vat-monthly",
+                    "vat monthly turnover taxable income penalty shield شهري أعمال دخل غرامات", "percent",
+                    AliasUrls: new[]
+                    {
+                        "/reports/turnover-tax", "/reports/taxable-income", "/penalty-shield",
+                    }),
             }),
 
         new AppShellModule(ContactsId, "users", "جهات الاتصال", "Contacts", "/customers", HasSubNav: true,
@@ -172,11 +187,15 @@ public static class AppShellModuleRegistry
                 new SubNavLink("العملاء", "Customers", "/customers", "customer عميل", "user"),
                 new SubNavLink("الموردين", "Suppliers", "/suppliers", "supplier مورد", "building"),
                 new SubNavSeparator(),
-                new SubNavGroupHeader("CRM", "CRM"),
-                new SubNavLink("الفرص", "Leads", "/leads", "lead فرصة", "target"),
-                new SubNavLink("المشاريع", "Projects", "/projects", "project مشروع", "check-square"),
-                new SubNavLink("جولات المناديب", "Sales rep routes", "/routes", "route جولة", "calendar"),
-                new SubNavLink("لوحتي الشخصية", "My dashboard", "/dashboards/me", "my dashboard لوحتي", "activity"),
+                new SubNavLink("إدارة العلاقات (CRM)", "CRM", "/leads",
+                    "leads projects routes my dashboard فرص مشاريع جولات لوحتي", "target",
+                    AliasUrls: new[]
+                    {
+                        "/projects", "/routes", "/dashboards/me",
+                    }),
+                new SubNavLink("الجداول الزمنية", "Timesheets", "/timesheets/me",
+                    "timesheet team hours جدول ساعات فريق", "clock",
+                    AliasUrls: new[] { "/timesheets/team" }),
             }),
 
         new AppShellModule(SettingsId, "settings", "الإعدادات", "Settings", "/settings", HasSubNav: true,
@@ -184,22 +203,29 @@ public static class AppShellModuleRegistry
             {
                 new SubNavLink("لوحة الإعدادات", "Settings home", "/settings", "settings إعدادات", "settings"),
                 new SubNavLink("بيانات الشركة", "Company info", "/settings/company", "company شركة", "building"),
-                new SubNavLink("السنة المالية", "Fiscal year", "/settings/fiscal-year", "fiscal year سنة", "calendar"),
-                new SubNavLink("الفترات الضريبية", "Tax periods", "/settings/tax-periods", "tax period فترة", "calendar-range"),
-                new SubNavLink("الأرصدة الافتتاحية", "Opening balances", "/settings/opening-balances", "opening balance افتتاحي", "scale"),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("التهيئة", "Configuration"),
-                new SubNavLink("VAT", "VAT categories", "/settings/vat-categories", "vat فئات", "percent"),
-                new SubNavLink("WHT", "WHT categories", "/settings/wht-categories", "wht فئات", "scissors"),
-                new SubNavLink("شروط الدفع", "Payment terms", "/settings/payment-terms", "payment term شرط دفع", "calendar"),
-                new SubNavLink("المواقف الضريبية", "Fiscal positions", "/settings/fiscal-positions", "fiscal position موقف ضريبي export", "globe"),
+                new SubNavLink("إعداد الضرائب", "Tax setup", "/settings/tax-periods",
+                    "fiscal year tax period vat wht payment terms positions ضرائب فئات شروط مواقف", "calendar-range",
+                    AliasUrls: new[]
+                    {
+                        "/settings/fiscal-year", "/settings/vat-categories",
+                        "/settings/wht-categories", "/settings/payment-terms",
+                        "/settings/fiscal-positions",
+                    }),
+                new SubNavLink("نقدية وبنوك", "Money & banks", "/settings/payment-methods",
+                    "payment method cash accounts currencies opening balances نقدي خزائن بنوك عملات افتتاحي", "wallet",
+                    AliasUrls: new[]
+                    {
+                        "/settings/cash-accounts", "/currencies", "/settings/opening-balances",
+                    }),
+                new SubNavLink("التسعير والمبيعات", "Pricing & sales", "/settings/quotation-templates",
+                    "quotation pricelist sales teams قوالب أسعار فرق", "tag",
+                    AliasUrls: new[]
+                    {
+                        "/settings/pricelists", "/settings/sales-teams",
+                    }),
                 new SubNavLink("فئات المصروفات", "Expense categories", "/settings/expense-categories", "expense category فئة", "tag"),
-                new SubNavLink("طرق الدفع", "Payment methods", "/settings/payment-methods", "payment method طريقة", "credit-card"),
-                new SubNavLink("الحسابات النقدية", "Cash accounts", "/settings/cash-accounts", "cash account نقدي", "wallet"),
-                new SubNavLink("العملات", "Currencies", "/currencies", "currency عملة", "globe"),
-                new SubNavLink("قوالب عروض الأسعار", "Quotation templates", "/settings/quotation-templates", "quotation template قالب", "file-text"),
-                new SubNavLink("قوائم الأسعار", "Pricelists", "/settings/pricelists", "pricelist قائمة سعر", "tag"),
-                new SubNavLink("فرق المبيعات", "Sales teams", "/settings/sales-teams", "sales team فريق مبيعات", "users"),
                 new SubNavLink("Webhooks", "Webhooks", "/settings/webhooks", "webhook", "zap"),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("الاستيراد والإحالات", "Import & referrals"),
@@ -216,6 +242,8 @@ public static class AppShellModuleRegistry
         new QuickAction("مصروف جديد", "New expense", "/expenses/new", "credit-card"),
         new QuickAction("قيد يومية جديد", "New journal entry", "/journals/new", "edit"),
         new QuickAction("تسجيل دفعة", "Record payment", "/payments/customer-receipts/new", "wallet"),
+        new QuickAction("جدولي الزمني", "My timesheet", "/timesheets/me", "clock"),
+        new QuickAction("تكلفة استيراد جديدة", "New landed cost", "/landed-costs/new", "package"),
     };
 
     public static AppShellModule? Get(string id) =>
@@ -236,19 +264,32 @@ public static class AppShellModuleRegistry
         if (path.StartsWith("/settings/chart-of-accounts", StringComparison.OrdinalIgnoreCase))
             return AccountingId;
 
-        // Prefix match against each module's sub-nav links.
+        // Prefix match against each module's sub-nav links + alias urls
+        // (the latter let a consolidated entry like "Accounting reports"
+        // claim every sibling /reports/* page even though the entry's
+        // canonical url is just /reports/trial-balance).
         foreach (var module in All)
         {
             foreach (var entry in module.SubNavEntries)
             {
                 if (entry is not SubNavLink link) continue;
-                if (path.Equals(link.Url, StringComparison.OrdinalIgnoreCase)) return module.Id;
-                if (path.StartsWith(link.Url + "/", StringComparison.OrdinalIgnoreCase)) return module.Id;
+                if (Matches(path, link.Url)) return module.Id;
+                if (link.AliasUrls is { } aliases)
+                {
+                    foreach (var alias in aliases)
+                    {
+                        if (Matches(path, alias)) return module.Id;
+                    }
+                }
             }
         }
 
         return DashboardId;
     }
+
+    private static bool Matches(string path, string url) =>
+        path.Equals(url, StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith(url.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Returns all sub-nav links across all modules — used by the

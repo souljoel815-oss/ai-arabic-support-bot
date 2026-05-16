@@ -11,6 +11,8 @@
 
 <PageTitle>@(IsArabic ? "تقويم الالتزامات | DaftarX" : "Compliance Calendar | DaftarX")</PageTitle>
 
+<SettingsTabStrip Group="taxes" />
+
 @code {
     private bool IsArabic => CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
     private string Tr(string ar, string en) => IsArabic ? ar : en;

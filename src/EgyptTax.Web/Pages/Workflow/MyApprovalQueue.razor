@@ -18,6 +18,8 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<SettingsTabStrip Group="closing" />
+
 <h1>@(IsArabic ? "قائمة الاعتمادات الخاصة بي" : "My approval queue (Differentiator 3)")</h1>
 
 <p>
