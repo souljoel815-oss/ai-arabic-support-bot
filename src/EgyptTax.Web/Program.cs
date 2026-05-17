@@ -551,6 +551,17 @@ builder.Services.Configure<EgyptTax.Infrastructure.Ocr.TesseractOptions>(
 builder.Services.AddSingleton<EgyptTax.Application.Ocr.IReceiptOcrService,
     EgyptTax.Infrastructure.Ocr.TesseractReceiptOcrService>();
 
+// T029 per specs/009-android-app/tasks.md + research §17.
+// Binds the `MobileVersionConfig` appsettings section to
+// IOptionsMonitor<MobileVersionConfig> so the MeFeaturesEndpoint
+// (T104, US5) can return MinAppVersion + LatestKnownAppVersion to
+// the Android shell on every foreground for FR-019 / FR-020.
+// Reload-on-change is default for IOptionsMonitor — bumping
+// LatestKnownAppVersion in appsettings.json takes effect without
+// a server restart.
+builder.Services.Configure<EgyptTax.Web.Mobile.MobileVersionConfig>(
+    builder.Configuration.GetSection("MobileVersionConfig"));
+
 // G2.2 — WhatsApp invoice delivery. Default to the mock dispatcher
 // (writes the audit row + logs but doesn't hit the network); swap
 // to MetaCloudWhatsAppDispatcher when the vendor's Meta WhatsApp

@@ -42,7 +42,7 @@ coroutines = "1.9.0"
 
 # Testing — research §14
 junit = "5.11.3"
-junit-android-plugin = "1.11.2"
+junit-android-plugin = "1.11.2.0"
 mockk = "1.13.13"
 robolectric = "4.14"
 espresso = "3.6.1"

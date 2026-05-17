@@ -60,19 +60,19 @@ description: "Task list for 009-android-app feature implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T017 Bootstrap `DaftarXApp` at `android/app/src/main/kotlin/com/daftarx/mobile/DaftarXApp.kt` (Application + `@HiltAndroidApp` + Crashlytics init + log-tag setup per FR-017)
-- [ ] T018 Register `DaftarXApp` in `android/app/src/main/AndroidManifest.xml` as `android:name=".DaftarXApp"`
-- [ ] T019 Create `MainActivity` at `android/app/src/main/kotlin/com/daftarx/mobile/MainActivity.kt` (single-activity host, `@AndroidEntryPoint`, Compose `setContent` with placeholder nav scaffold)
-- [ ] T020 [P] Write unit test for `CrashScrubber` at `android/app/src/test/kotlin/com/daftarx/mobile/telemetry/CrashScrubberTest.kt` — asserts that any key outside the allowlist (`appVersion`, `locale`, `idleTimeoutSec`, `serverHostHash`) is rejected (per FR-017). Test MUST fail before T021 lands.
-- [ ] T021 [P] Implement `CrashScrubber` at `android/app/src/main/kotlin/com/daftarx/mobile/telemetry/CrashScrubber.kt` (allowlist gate over `FirebaseCrashlytics.setCustomKey`)
-- [ ] T022 [P] Implement `CrashlyticsBootstrap` at `android/app/src/main/kotlin/com/daftarx/mobile/telemetry/CrashlyticsBootstrap.kt` (configures Crashlytics with the scrubber and the app's locale/version keys)
-- [ ] T023 [P] Implement `HttpClientFactory` at `android/app/src/main/kotlin/com/daftarx/mobile/net/HttpClientFactory.kt` (OkHttp builder + per-host cleartext interceptor per research §2 + persistent `CookieJar` backed by `SessionVault`)
-- [ ] T024 [P] Define `DaftarXApi` Retrofit interface at `android/app/src/main/kotlin/com/daftarx/mobile/net/DaftarXApi.kt` with stubs for `GET /api/v1/me/features`, `POST/DELETE /api/v1/notifications/register`, `POST /api/v1/ai/scan-receipt-mobile`
-- [ ] T025 [P] Server-side: scaffold EF Core migration at `src/EgyptTax.Infrastructure/Migrations/<timestamp>_MobilePushRegistrations.cs` per data-model §5 (table + composite unique index on `(user_id, device_id)` filtered on `revoked_at_utc IS NULL`)
-- [ ] T026 [P] Server-side: add `MobilePushRegistration` EF entity at `src/EgyptTax.Infrastructure/Persistence/Entities/MobilePushRegistration.cs` and register in `AppDbContext.cs` `OnModelCreating` per data-model §5
-- [ ] T027 [P] Server-side: add `MobileVersionConfig.cs` at `src/EgyptTax.Web/Mobile/MobileVersionConfig.cs` (binds `IOptionsMonitor<MobileVersionConfig>` to appsettings section with reload-on-change per research §17)
-- [ ] T028 Server-side: append `MobileVersionConfig` block to `src/EgyptTax.Web/appsettings.json` with `MinAppVersion="1.0.0"` and `LatestKnownAppVersion="1.0.0"`
-- [ ] T029 Server-side: register `MobileVersionConfig` in `src/EgyptTax.Web/Program.cs` DI via `builder.Services.Configure<MobileVersionConfig>(builder.Configuration.GetSection("MobileVersionConfig"))`
+- [X] T017 Bootstrap `DaftarXApp` at `android/app/src/main/kotlin/com/daftarx/mobile/DaftarXApp.kt` (Application + `@HiltAndroidApp` + Crashlytics init + log-tag setup per FR-017)
+- [X] T018 Register `DaftarXApp` in `android/app/src/main/AndroidManifest.xml` as `android:name=".DaftarXApp"`
+- [X] T019 Create `MainActivity` at `android/app/src/main/kotlin/com/daftarx/mobile/MainActivity.kt` (single-activity host, `@AndroidEntryPoint`, Compose `setContent` with placeholder nav scaffold)
+- [X] T020 [P] Write unit test for `CrashScrubber` at `android/app/src/test/kotlin/com/daftarx/mobile/telemetry/CrashScrubberTest.kt` — asserts that any key outside the allowlist (`appVersion`, `locale`, `idleTimeoutSec`, `serverHostHash`) is rejected (per FR-017). Test MUST fail before T021 lands.
+- [X] T021 [P] Implement `CrashScrubber` at `android/app/src/main/kotlin/com/daftarx/mobile/telemetry/CrashScrubber.kt` (allowlist gate over `FirebaseCrashlytics.setCustomKey`)
+- [X] T022 [P] Implement `CrashlyticsBootstrap` at `android/app/src/main/kotlin/com/daftarx/mobile/telemetry/CrashlyticsBootstrap.kt` (configures Crashlytics with the scrubber and the app's locale/version keys)
+- [X] T023 [P] Implement `HttpClientFactory` at `android/app/src/main/kotlin/com/daftarx/mobile/net/HttpClientFactory.kt` (OkHttp builder + per-host cleartext interceptor per research §2 + persistent `CookieJar` backed by `SessionVault`)
+- [X] T024 [P] Define `DaftarXApi` Retrofit interface at `android/app/src/main/kotlin/com/daftarx/mobile/net/DaftarXApi.kt` with stubs for `GET /api/v1/me/features`, `POST/DELETE /api/v1/notifications/register`, `POST /api/v1/ai/scan-receipt-mobile`
+- [X] T025 [P] Server-side: scaffold EF Core migration at `src/EgyptTax.Infrastructure/Migrations/<timestamp>_MobilePushRegistrations.cs` per data-model §5 (table + composite unique index on `(user_id, device_id)` filtered on `revoked_at_utc IS NULL`)
+- [X] T026 [P] Server-side: add `MobilePushRegistration` EF entity at `src/EgyptTax.Infrastructure/Persistence/Entities/MobilePushRegistration.cs` and register in `AppDbContext.cs` `OnModelCreating` per data-model §5
+- [X] T027 [P] Server-side: add `MobileVersionConfig.cs` at `src/EgyptTax.Web/Mobile/MobileVersionConfig.cs` (binds `IOptionsMonitor<MobileVersionConfig>` to appsettings section with reload-on-change per research §17)
+- [X] T028 Server-side: append `MobileVersionConfig` block to `src/EgyptTax.Web/appsettings.json` with `MinAppVersion="1.0.0"` and `LatestKnownAppVersion="1.0.0"`
+- [X] T029 Server-side: register `MobileVersionConfig` in `src/EgyptTax.Web/Program.cs` DI via `builder.Services.Configure<MobileVersionConfig>(builder.Configuration.GetSection("MobileVersionConfig"))`
 
 **Checkpoint**: Foundation ready — Crashlytics fires, HTTP client knows the per-host cleartext policy, the new push-registration table exists, and the server's version-config endpoint backbone is wired. User stories can begin.
 
