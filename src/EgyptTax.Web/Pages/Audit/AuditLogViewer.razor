@@ -10,6 +10,8 @@
 @inject IJSRuntime Js
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.AuditLog">
+
 <h1>
     @(IsArabic ? "سجل التدقيق (FR-028)" : "Audit log (FR-028)")
     @if (_entries is { Count: > 0 })
@@ -125,6 +127,8 @@
             : $"Showing the most recent {_takeLimit} entries. Increase the \"Show last\" filter or use the verify-audit CLI for full-chain queries on large installations.")</em>
     </p>
 }
+
+</RequireFeature>
 
 @code {
     private List<AuditLogEntry>? _entries;

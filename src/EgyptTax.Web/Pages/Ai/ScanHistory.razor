@@ -6,6 +6,8 @@
 @inject AppDbContext Db
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
+<RequireFeature Feature="@Feature.ReceiptOcr">
+
 @*
     M.1 + M.2 follow-on — combined audit log of all AI calls.
     Receipt scans + chat queries side-by-side, filterable by date
@@ -142,6 +144,8 @@ else
         </tbody>
     </table>
 }
+
+</RequireFeature>
 
 @code {
     private bool _loading = true;

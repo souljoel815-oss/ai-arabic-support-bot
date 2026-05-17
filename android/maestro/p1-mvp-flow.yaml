@@ -1,0 +1,31 @@
+# android/maestro/p1-mvp-flow.yaml — T016 (skeleton) per specs/009-android-app/tasks.md.
+#
+# Filled in T052 with the actual flow steps. This skeleton exists so
+# the directory + Gradle/CI plumbing for Maestro are in place from
+# Phase 1; the CI workflow in T120 can already reference it.
+#
+# Maestro version: 1.39+
+# Run locally: maestro test android/maestro/p1-mvp-flow.yaml
+#
+# T052 adds the actual steps:
+#   1. launchApp clearState
+#   2. assertVisible Setup screen
+#   3. inputText (server URL)
+#   4. tapOn "Connect"
+#   5. assertVisible WebView login (record timestamp T1)
+#   6. inputText email + password
+#   7. tapOn login
+#   8. assertVisible dashboard (record timestamp T2)
+#   9. assert (T2 - T0) ≤ 180_000 ms          # SC-001
+#  10. tapOn "enable biometric"
+#  11. stopApp + launchApp
+#  12. respondToBiometric
+#  13. assertVisible dashboard (record timestamp T3)
+#  14. assert (T3 - launch) ≤ 5_000 ms        # SC-002
+
+appId: com.daftarx.mobile
+---
+# (steps land in T052)
+- launchApp:
+    clearState: true
+- assertVisible: "DaftarX"

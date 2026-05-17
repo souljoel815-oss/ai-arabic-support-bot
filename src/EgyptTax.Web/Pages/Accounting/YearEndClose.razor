@@ -12,6 +12,8 @@
 @inject ITrialBalanceReportQuery TrialBalanceQuery
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.ClosingCockpit" />
+
 <PageTitle>@Tr("إقفال السنة المالية | DaftarX", "Year-End Close | DaftarX")</PageTitle>
 
 <SettingsTabStrip Group="closing" />

@@ -24,7 +24,16 @@ namespace EgyptTax.Web.Licensing;
 ///   "signature": "<base64 Ed25519 sig over the canonical JSON of payload>"
 /// }
 /// </summary>
-public sealed record LicenseEnvelope(LicensePayload Payload, string Signature);
+// Explicit JsonPropertyName so the on-disk envelope uses lowercase
+// "payload"/"signature" — matches the documented wire format above
+// AND the field names InAppActivationHandler's shape-check looks up.
+// Without these attributes STJ would use PascalCase ("Payload"
+// /"Signature") and TryGetProperty("payload") on the parsed JSON
+// would silently fail (TryGetProperty is case-sensitive), producing
+// the "ليس ترخيص DaftarX صالح" error even on signature-valid tokens.
+public sealed record LicenseEnvelope(
+    [property: JsonPropertyName("payload")]   LicensePayload Payload,
+    [property: JsonPropertyName("signature")] string Signature);
 
 /// <summary>
 /// Signed license payload. v1 had only Edition (string). v2 (Gux.13)

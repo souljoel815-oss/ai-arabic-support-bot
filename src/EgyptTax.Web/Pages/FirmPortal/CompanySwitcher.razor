@@ -9,6 +9,8 @@
 @inject IJSRuntime Js
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.CompanySwitcher" />
+
 <h1>@(IsArabic ? "تبديل المنشأة" : "Switch installation")</h1>
 
 <p>

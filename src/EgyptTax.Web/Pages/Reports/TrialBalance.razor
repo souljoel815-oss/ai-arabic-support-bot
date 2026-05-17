@@ -4,6 +4,8 @@
 @inject ITrialBalanceReportQuery ReportQuery
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.TrialBalance" />
+
 <SettingsTabStrip Group="accounting-reports" />
 
 <h1>@(IsArabic ? "ميزان المراجعة" : "Trial balance (FR-024)")</h1>

@@ -13,6 +13,8 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.BulkInvoice" />
+
 <PageTitle>@(IsArabic ? "رفع جماعي للفواتير | DaftarX" : "Bulk Invoice Upload | DaftarX")</PageTitle>
 
 @code {

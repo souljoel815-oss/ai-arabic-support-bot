@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    T010 per specs/009-android-app/tasks.md.
+
+    Skeleton manifest. The Application class (DaftarXApp) and the
+    permissions / intent-filters for camera, share-target, deep links,
+    notifications, and the FirebaseMessagingService are added by their
+    owning user-story phases (T017–T018 add the Application; T070–T086
+    add the FCM service + intent filters; T077 adds the share target;
+    T094 adds the share intent-filter; T063 + T086 declare CAMERA and
+    POST_NOTIFICATIONS permissions). Keeping the skeleton minimal here
+    so subsequent story phases own their own manifest changes.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Required by Retrofit / OkHttp for HTTP calls to the customer's
+         configured server. The per-host cleartext rules are in
+         res/xml/network_security_config.xml. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:label="DaftarX"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:theme="@style/Theme.DaftarX"
+        tools:targetApi="34">
+
+        <!--
+            MainActivity placeholder — filled in by T019. Until then this
+            entry keeps the manifest valid so `assembleDebug` doesn't
+            error on "no launcher activity declared".
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|locale|layoutDirection"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.DaftarX">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>

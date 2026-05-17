@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    T011 per specs/009-android-app/tasks.md + research §2.
+
+    Base policy: deny cleartext globally. The per-host cleartext
+    allowance for the user-configured server is layered in at runtime
+    by net/HttpClientFactory.kt (T023) and the WebView's URL whitelist
+    in web/DaftarXWebViewClient.kt (T042) — those code paths only
+    allow cleartext for the single host the user typed in Setup.
+
+    This static config never knows the customer's host (only the user
+    knows; it lives in EncryptedSharedPreferences), so we can't list
+    it in <domain-config>. The default-deny posture means an accidental
+    cleartext leak to a third-party domain (e.g. an embedded Google
+    Maps tile) is blocked even if the runtime allowlist mis-handles it.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

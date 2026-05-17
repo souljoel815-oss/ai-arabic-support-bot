@@ -7,6 +7,8 @@
 @inject NavigationManager Nav
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
+<RequireFeature Feature="@Feature.ReceiptOcr">
+
 @*
     M.1 (v3 roadmap) — Arabic OCR for receipts via Claude Vision.
     The "first 5 seconds aha moment" of the M-phase: paste a photo
@@ -117,6 +119,8 @@
         </div>
     }
 }
+
+</RequireFeature>
 
 @code {
     private const long MaxUploadBytes = 5 * 1024 * 1024;

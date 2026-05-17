@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Splash + manifest-referenced theme. Per FR-011 the app defaults to
+    Arabic + RTL; the actual MaterialTheme is applied per-Composable via
+    DaftarXTheme() in code. This XML theme exists only because the
+    manifest needs a style reference for the activity declaration before
+    the Compose theme takes over at first frame.
+-->
+<resources>
+    <style name="Theme.DaftarX" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBackground">#1F2024</item>
+    </style>
+</resources>

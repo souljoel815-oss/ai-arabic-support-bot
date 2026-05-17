@@ -8,6 +8,8 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.BankImport" />
+
 <PageTitle>@(IsArabic ? "كشوف الحساب البنكي | DaftarX" : "Bank Statements | DaftarX")</PageTitle>
 
 @code {

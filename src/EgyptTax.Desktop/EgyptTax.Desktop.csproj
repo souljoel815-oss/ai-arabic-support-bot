@@ -9,11 +9,23 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>false</UseWindowsForms>
     <UseWPF>false</UseWPF>
-    <ApplicationIcon Condition="Exists('..\EgyptTax.Web\wwwroot\favicon.ico')">..\EgyptTax.Web\wwwroot\favicon.ico</ApplicationIcon>
+    <!-- DaftarX taskbar / Explorer / Alt-Tab icon. Built from
+         daftarx-logo.png via the makeico helper (6 sizes,
+         PNG-in-ICO). The Photino window icon is set at runtime via
+         SetIconFile so the title bar shows the same image. -->
+    <ApplicationIcon>daftarx.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Photino.NET" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Copy daftarx.ico beside DaftarX.exe so SetIconFile finds it
+         at runtime. ApplicationIcon above embeds it in the EXE itself
+         (for the taskbar / Explorer thumbnail); this copy is for
+         Photino's title-bar icon which reads from disk. -->
+    <Content Include="daftarx.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- We do NOT take a code reference on the Web project — Desktop
@@ -38,7 +50,10 @@
            (PortableFirstRun creates it on first run; bundling a copy
            with a partially-applied migration causes startup to fail).
          - logs/ — runtime Serilog output.
-         - *.pdb is fine to ship (helps stack traces). -->
+         - *.pdb is fine to ship (helps stack traces).
+
+       Fires on both Build (so dev launches work) and Publish (so the
+       desktop installer's harvest picks up the web/ subtree). -->
   <Target Name="CopyWebBinariesNextToDesktop" AfterTargets="Build">
     <ItemGroup>
       <_WebFiles Include="..\EgyptTax.Web\bin\$(Configuration)\net8.0\**\*.*"
@@ -49,6 +64,38 @@
           DestinationFiles="@(_WebFiles->'$(OutDir)web\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true"
           Condition="'@(_WebFiles)' != ''" />
+  </Target>
+
+  <Target Name="CopyWebBinariesIntoPublish" AfterTargets="Publish">
+    <!-- Look for the Web publish output in priority order:
+         1. RID-suffixed publish folder (self-contained build with
+            `dotnet publish -r win-x64`).
+         2. Plain publish folder (framework-dependent publish).
+         3. Build output (dev `dotnet build` only — fallback so the
+            launcher works in a debugger, but ships the wrong shape
+            for distribution; the installer build pipeline should
+            always have run a real publish first).
+         Excludes runtime artefacts (daftarx.db, logs/) that don't
+         belong in a redistributable bundle. -->
+    <PropertyGroup>
+      <_WebRidPublish>..\EgyptTax.Web\bin\$(Configuration)\net8.0\$(RuntimeIdentifier)\publish</_WebRidPublish>
+      <_WebPlainPublish>..\EgyptTax.Web\bin\$(Configuration)\net8.0\publish</_WebPlainPublish>
+      <_WebBuildOut>..\EgyptTax.Web\bin\$(Configuration)\net8.0</_WebBuildOut>
+      <_WebSourceDir Condition="'$(RuntimeIdentifier)' != '' AND Exists('$(_WebRidPublish)\EgyptTax.Web.exe')">$(_WebRidPublish)</_WebSourceDir>
+      <_WebSourceDir Condition="'$(_WebSourceDir)' == '' AND Exists('$(_WebPlainPublish)\EgyptTax.Web.exe')">$(_WebPlainPublish)</_WebSourceDir>
+      <_WebSourceDir Condition="'$(_WebSourceDir)' == '' AND Exists('$(_WebBuildOut)\EgyptTax.Web.exe')">$(_WebBuildOut)</_WebSourceDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_PubWebFiles Condition="'$(_WebSourceDir)' != ''"
+                    Include="$(_WebSourceDir)\**\*.*"
+                    Exclude="$(_WebSourceDir)\daftarx.db*;
+                             $(_WebSourceDir)\logs\**\*.*" />
+    </ItemGroup>
+    <Message Importance="high" Text="Bundling Web from $(_WebSourceDir) into $(PublishDir)web" />
+    <Copy SourceFiles="@(_PubWebFiles)"
+          DestinationFiles="@(_PubWebFiles->'$(PublishDir)web\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_PubWebFiles)' != ''" />
   </Target>
 
 </Project>

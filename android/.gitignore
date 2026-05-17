@@ -1,0 +1,50 @@
+# android/.gitignore — T014 per specs/009-android-app/tasks.md
+#
+# Kotlin + Android Studio + Gradle hygiene. The .NET solution at the
+# repo root has its own .gitignore; this file scopes to the android/
+# subtree.
+
+# Build outputs
+build/
+*/build/
+out/
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.properties
+!gradle/wrapper/gradle-wrapper.properties
+.kotlin/
+
+# IDE — Android Studio / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Local config (machine-specific)
+local.properties
+
+# Signing — vendor-only, never commit
+signing.properties
+*.keystore
+*.jks
+
+# Firebase config — per-environment, never commit
+google-services.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Kotlin
+*.class
+
+# Captures / profiling
+captures/
+
+# CMake (if we ever add native code)
+.cxx/
+
+# Logs
+*.log

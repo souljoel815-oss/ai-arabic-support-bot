@@ -13,6 +13,8 @@
 @inject NavigationManager Nav
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.BankImport" />
+
 <PageTitle>@(IsArabic ? "استيراد كشف بنك | DaftarX" : "Import Bank Statement | DaftarX")</PageTitle>
 
 @code {

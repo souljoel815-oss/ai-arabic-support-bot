@@ -1,0 +1,64 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <!--
+    v5 — MSI installer for the DaftarX desktop shell (Photino window
+    + bundled child Kestrel). Separate from EgyptTax.Installer
+    (which is for the on-prem Windows-service deployment with SQL
+    Server). A customer who just wants the desktop app installs
+    THIS one; the data lives in a portable SQLite file under
+    %LOCALAPPDATA%\DaftarX created by PortableFirstRun.
+
+    Build invocation (run from repo root). See build-installer.ps1 for a
+    one-shot script that wraps the three steps below; bullet-points
+    instead of literal dashes so XML doesn't choke on the comment.
+      [step 1] dotnet publish src/EgyptTax.Web ... -r win-x64 (self-contained) -o publish/web
+      [step 2] dotnet publish src/EgyptTax.Desktop ... -r win-x64 (self-contained) -o publish/desktop
+      [step 3] copy publish/web contents into publish/desktop/web (the
+               cross-project AfterPublish target can't see across -o
+               output roots, so this copy is explicit in the wrapper).
+      [step 4] dotnet build src/EgyptTax.DesktopInstaller/EgyptTax.DesktopInstaller.wixproj
+               -c Release -p:HarvestPublishDir=publish/desktop
+    The self-contained flag is what makes the customer install need
+    zero prerequisites: no ASP.NET Core Runtime download, no .NET
+    Hosting Bundle. Drops ~60MB into publish/web for the runtime +
+    ASP.NET Core; another ~60MB in publish/desktop for the same set
+    DaftarX itself uses. Final MSI is ~113 MB.
+
+    Output: src/EgyptTax.DesktopInstaller/bin/Release/DaftarX-Setup.msi
+
+    Intentionally NOT in the .sln — the WiX SDK adds noticeable
+    startup time to every solution build, and the installer rarely
+    needs to rebuild during day-to-day code changes.
+  -->
+
+  <PropertyGroup>
+    <OutputName>DaftarX-Setup</OutputName>
+    <OutputType>Package</OutputType>
+    <InstallerPlatform>x64</InstallerPlatform>
+
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+
+    <HarvestPublishDir Condition=" '$(HarvestPublishDir)' == '' AND '$(PublishDir)' != '' ">$(PublishDir)</HarvestPublishDir>
+    <HarvestPublishDir Condition=" '$(HarvestPublishDir)' == '' ">$(MSBuildThisFileDirectory)..\EgyptTax.Desktop\bin\$(Configuration)\net8.0-windows</HarvestPublishDir>
+
+    <DefineConstants>PublishDir=$(HarvestPublishDir)</DefineConstants>
+
+    <!-- ICE60 fires on .NET satellite-resource assemblies that carry
+         version info but no Language metadata; harmless for our
+         layout — see EgyptTax.Installer.wixproj for the same note. -->
+    <SuppressIces>ICE60</SuppressIces>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Product.wxs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Firewall.wixext" />
+    <PackageReference Include="WixToolset.Util.wixext" />
+  </ItemGroup>
+
+</Project>

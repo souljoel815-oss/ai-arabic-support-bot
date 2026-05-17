@@ -2,6 +2,8 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.ClosingCockpit" />
+
 @*
     Gux.9 — direct-link host for the cockpit. The real UI lives in
     <ClosingCockpitPanel /> so the dashboard drawer can mount the

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Auto-backup + device-transfer exclusions. The encrypted prefs files
+    holding server URL + cached session MUST NOT survive a Cloud-Backup
+    restore on a different device — the OS-key wrapping wouldn't decrypt
+    on the new device anyway, but excluding them here means a restored
+    install lands cleanly on the Setup screen (per research §3 + edge
+    case "user installs side-load APK then later installs Play edition").
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="server_config.prefs.xml" />
+        <exclude domain="sharedpref" path="session_vault.prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="server_config.prefs.xml" />
+        <exclude domain="sharedpref" path="session_vault.prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>

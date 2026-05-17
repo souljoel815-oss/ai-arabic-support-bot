@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  v5 — DaftarX CLIENT MSI.
+
+  Ships:
+    * DaftarX.exe (Photino launcher; detects client-mode at runtime
+      because the web/ folder is absent)
+    * daftarx.ico (Add/Remove Programs + shortcut icon)
+    * Self-contained .NET 8 runtime so the customer needs no
+      prerequisites.
+  Does NOT ship:
+    * web/ folder (no local Kestrel — the launcher connects to the
+      server's URL instead)
+    * Windows service (clients are pure outbound clients)
+    * Firewall rule (no inbound ports)
+
+  First-run UX is owned by the launcher: PromptForServerUrl pops a
+  Photino window asking for the server IP, then saves it to
+  %LOCALAPPDATA%\DaftarX\server.txt.
+
+  Install scope: perMachine, separate folder from the server MSI
+  ("DaftarX Client" vs "DaftarX") and a distinct UpgradeCode so the
+  two installers never conflict on the same machine — though in
+  practice one is for the server box and the other is for
+  workstations.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package Name="DaftarX Client"
+           Manufacturer="DaftarX"
+           Version="1.0.0.0"
+           UpgradeCode="7E1B2D4F-8C5A-49E6-B07C-2D9F8E1A3B6D"
+           Compressed="yes"
+           InstallerVersion="500"
+           Scope="perMachine">
+
+    <SummaryInformation Description="DaftarX Client — workstation launcher for the LAN server"
+                        Manufacturer="DaftarX" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of DaftarX Client is already installed." />
+
+    <Icon Id="DaftarXIcon" SourceFile="$(var.PublishDir)\daftarx.ico" />
+    <Property Id="ARPPRODUCTICON" Value="DaftarXIcon" />
+    <Property Id="ARPHELPLINK" Value="https://daftarx.app/" />
+    <Property Id="ARPURLINFOABOUT" Value="https://daftarx.app/" />
+
+    <Feature Id="DaftarXClientFeature"
+             Title="DaftarX Client"
+             Description="DaftarX desktop launcher (connects to your LAN server)"
+             Level="1"
+             AllowAbsent="no">
+      <ComponentGroupRef Id="DaftarXClientFiles" />
+      <ComponentRef Id="StartMenuShortcutComponent" />
+      <ComponentRef Id="DesktopShortcutComponent" />
+    </Feature>
+
+    <!-- Single recursive glob covers DaftarX.exe + Photino.NET.dll +
+         daftarx.ico + the self-contained .NET runtime. -->
+    <ComponentGroup Id="DaftarXClientFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)\**" />
+    </ComponentGroup>
+
+    <Component Id="StartMenuShortcutComponent"
+               Directory="DaftarXClientStartMenuFolder"
+               Guid="A5C4B7D8-E1F2-4A3B-9C0D-5E6F7A8B9C0D">
+      <Shortcut Id="DaftarXClientStartMenuShortcut"
+                Name="DaftarX"
+                Description="DaftarX — connect to your LAN server"
+                Target="[INSTALLFOLDER]DaftarX.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="DaftarXIcon"
+                Advertise="no" />
+      <RemoveFolder Id="RemoveDaftarXClientStartMenuFolder"
+                    Directory="DaftarXClientStartMenuFolder"
+                    On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\DaftarX\ClientInstall"
+                     Name="StartMenuShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcutComponent"
+               Directory="DesktopFolder"
+               Guid="B6D5C8E9-F2A3-4B4C-A0D1-6F7A8B9C0D1E">
+      <Shortcut Id="DaftarXClientDesktopShortcut"
+                Name="DaftarX"
+                Description="DaftarX — connect to your LAN server"
+                Target="[INSTALLFOLDER]DaftarX.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="DaftarXIcon"
+                Advertise="no" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\DaftarX\ClientInstall"
+                     Name="DesktopShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- Distinct folder name so it doesn't collide with the server
+         install at "C:\Program Files\DaftarX". -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="DaftarX Client" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="DaftarXClientStartMenuFolder" Name="DaftarX" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+  </Package>
+</Wix>

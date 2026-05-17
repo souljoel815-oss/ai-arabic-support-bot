@@ -7,6 +7,8 @@
 @inject IJSRuntime Js
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.TrialBalance" />
+
 @*
     v4 A.1 — General Ledger. Trial Balance + per-account drilldown
     in chronological order with running balance. Mirrors Trial

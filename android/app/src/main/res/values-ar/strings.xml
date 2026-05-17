@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Arabic (primary) strings. Full inventory lands per-story; this
+    placeholder set covers what the manifest references at first launch.
+-->
+<resources>
+    <string name="app_name">دفترك</string>
+</resources>

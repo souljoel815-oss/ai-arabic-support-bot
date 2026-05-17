@@ -89,11 +89,17 @@
     // Flat list for keyboard navigation
     private List<(string type, string url)> _flatItems = new();
 
+    // Honours edition gating — a Solo customer doesn't see "New bulk
+    // invoice" in the palette because BulkInvoice is SMB+. Screen
+    // search (FilteredScreens) is already filtered upstream by
+    // GetAllSearchableItems.
     private IEnumerable<QuickAction> FilteredQuickActions =>
-        AppShellModuleRegistry.QuickActions.Where(a =>
-            string.IsNullOrEmpty(_searchText) ||
-            a.LabelAr.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
-            a.LabelEn.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+        AppShellModuleRegistry.QuickActions
+            .Where(a => a.IsAllowed())
+            .Where(a =>
+                string.IsNullOrEmpty(_searchText) ||
+                a.LabelAr.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                a.LabelEn.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
 
     private IEnumerable<(string Label, string Url, string ModuleLabel, string IconName)> FilteredScreens =>
         AppShellModuleRegistry.GetAllSearchableItems(_isArabic).Where(s =>

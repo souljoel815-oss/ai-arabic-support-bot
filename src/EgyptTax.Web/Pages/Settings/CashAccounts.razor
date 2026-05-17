@@ -9,6 +9,8 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.MultiCashbox" />
+
 <PageTitle>@(IsArabic ? "الخزائن والحسابات البنكية | DaftarX" : "Cashboxes & Bank Accounts | DaftarX")</PageTitle>
 
 @code {

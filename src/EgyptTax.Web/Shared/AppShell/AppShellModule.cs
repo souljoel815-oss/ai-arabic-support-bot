@@ -1,3 +1,5 @@
+using EgyptTax.Web.Licensing;
+
 namespace EgyptTax.Web.Shared.AppShell;
 
 /// <summary>
@@ -9,6 +11,17 @@ namespace EgyptTax.Web.Shared.AppShell;
 ///
 /// The Dashboard module is single-screen (HasSubNav = false).
 /// Icon names map to the existing <c>&lt;Icon Name="..." /&gt;</c> component.
+///
+/// Edition gating (v5.1 — Gux.13 enforcement): top-level modules and
+/// individual sub-nav links carry an optional <c>RequiredFeature</c>
+/// (a <see cref="Feature"/> constant). When non-null, the sidebar
+/// renderer asks <see cref="EditionGate.Allows"/> and hides the entry
+/// when the current install's edition doesn't include the feature.
+/// Solo customers therefore see a much shorter sidebar than Firm
+/// operators — and a URL-direct attempt at a hidden page is caught
+/// by the page-level <see cref="EditionGate.Require"/> call which
+/// throws <see cref="LicenseRestrictionException"/> and lands on the
+/// friendly upgrade page.
 /// </summary>
 public sealed record AppShellModule(
     string Id,
@@ -17,7 +30,8 @@ public sealed record AppShellModule(
     string LabelEn,
     string DefaultRoute,
     bool HasSubNav,
-    IReadOnlyList<SubNavEntry> SubNavEntries
+    IReadOnlyList<SubNavEntry> SubNavEntries,
+    string? RequiredFeature = null
 );
 
 public abstract record SubNavEntry;
@@ -29,18 +43,87 @@ public sealed record SubNavLink(
     string Url,
     string? Search = null,
     string IconName = "file-text",
-    IReadOnlyList<string>? AliasUrls = null
+    IReadOnlyList<string>? AliasUrls = null,
+    string? RequiredFeature = null
 ) : SubNavEntry;
 
 /// <summary>
-/// Quick action for the Command Palette (Ctrl+K).
+/// Quick action for the Command Palette (Ctrl+K). Gets the same
+/// <c>RequiredFeature</c> treatment as <see cref="SubNavLink"/> so a
+/// Solo customer's palette doesn't suggest actions they can't run.
 /// </summary>
 public sealed record QuickAction(
     string LabelAr,
     string LabelEn,
     string Url,
-    string IconName
+    string IconName,
+    string? RequiredFeature = null
 );
+
+/// <summary>
+/// Edition-aware visibility helpers. Pure read against
+/// <see cref="EditionGate"/>; no caching needed because the gate is
+/// already volatile-cheap and an in-session license upgrade should
+/// immediately surface new entries.
+/// </summary>
+public static class AppShellVisibility
+{
+    public static bool IsAllowed(this SubNavLink link) =>
+        link.RequiredFeature is null || EditionGate.Allows(link.RequiredFeature);
+
+    public static bool IsAllowed(this AppShellModule module) =>
+        module.RequiredFeature is null || EditionGate.Allows(module.RequiredFeature);
+
+    public static bool IsAllowed(this QuickAction action) =>
+        action.RequiredFeature is null || EditionGate.Allows(action.RequiredFeature);
+
+    /// <summary>
+    /// Filters a sub-nav list, also dropping group-headers + separators
+    /// that become orphaned when every link under them is hidden. A
+    /// header followed immediately by another header / separator / EOL
+    /// after filtering is removed; a separator at the start / end / next
+    /// to another separator is removed.
+    /// </summary>
+    public static IReadOnlyList<SubNavEntry> FilterForCurrentEdition(this IReadOnlyList<SubNavEntry> entries)
+    {
+        // Pass 1: drop hidden links.
+        var kept = new List<SubNavEntry>(entries.Count);
+        foreach (var e in entries)
+        {
+            if (e is SubNavLink link && !link.IsAllowed()) continue;
+            kept.Add(e);
+        }
+        // Pass 2: drop orphaned headers (header followed by no link before
+        // the next header/separator/EOL) and collapsing/edge separators.
+        var cleaned = new List<SubNavEntry>(kept.Count);
+        for (int i = 0; i < kept.Count; i++)
+        {
+            var e = kept[i];
+            if (e is SubNavGroupHeader)
+            {
+                bool hasLinkBeforeNextHeaderOrEnd = false;
+                for (int j = i + 1; j < kept.Count; j++)
+                {
+                    if (kept[j] is SubNavGroupHeader or SubNavSeparator) break;
+                    if (kept[j] is SubNavLink) { hasLinkBeforeNextHeaderOrEnd = true; break; }
+                }
+                if (!hasLinkBeforeNextHeaderOrEnd) continue;
+            }
+            if (e is SubNavSeparator)
+            {
+                if (cleaned.Count == 0) continue;                       // leading
+                if (cleaned[^1] is SubNavSeparator) continue;           // double
+                // Trailing separator handled by trim below.
+            }
+            cleaned.Add(e);
+        }
+        while (cleaned.Count > 0 && cleaned[^1] is SubNavSeparator)
+        {
+            cleaned.RemoveAt(cleaned.Count - 1);
+        }
+        return cleaned;
+    }
+}
 
 /// <summary>
 /// Catalog of the 7 modules + their sub-nav contents + quick actions.
@@ -68,7 +151,8 @@ public static class AppShellModuleRegistry
                 new SubNavLink("عروض الأسعار", "Quotations", "/quotations", "quotation عرض سعر", "file-text"),
                 new SubNavLink("أوامر البيع", "Sales orders", "/sales-orders", "sales order أمر بيع", "shopping-cart"),
                 new SubNavLink("الفواتير", "Invoices", "/invoices", "invoice فاتورة", "receipt"),
-                new SubNavLink("إنشاء فاتورة جماعية", "Bulk invoices", "/invoices/bulk", "bulk جماعي", "boxes"),
+                new SubNavLink("إنشاء فاتورة جماعية", "Bulk invoices", "/invoices/bulk", "bulk جماعي", "boxes",
+                    RequiredFeature: Feature.BulkInvoice),
                 new SubNavLink("الفواتير المتكررة", "Recurring invoices", "/recurring-invoices", "recurring متكرر", "calendar-range"),
                 new SubNavLink("تسجيل دفعة عميل", "Customer receipt", "/payments/customer-receipts/new", "receipt دفعة", "wallet"),
                 new SubNavLink("الدفعات المقدمة", "Customer advances", "/customer-advances", "customer advance دفعة مقدمة", "wallet"),
@@ -89,8 +173,10 @@ public static class AppShellModuleRegistry
                 new SubNavLink("المصروفات", "Expenses", "/expenses", "expense مصروف", "credit-card"),
                 new SubNavLink("تقارير المصروفات", "Expense reports", "/expense-reports", "expense report تقرير مصروف", "file-text"),
                 new SubNavLink("دفعة لمورد", "Pay supplier", "/payments/supplier-payments/new", "supplier payment دفعة مورد", "wallet"),
-                new SubNavLink("مسح إيصال (AI)", "Scan receipt", "/scan-receipt", "scan ocr", "zap"),
-                new SubNavLink("سجل المسح", "Scan history", "/scan-history", "history scan", "archive"),
+                new SubNavLink("مسح إيصال (AI)", "Scan receipt", "/scan-receipt", "scan ocr", "zap",
+                    RequiredFeature: Feature.ReceiptOcr),
+                new SubNavLink("سجل المسح", "Scan history", "/scan-history", "history scan", "archive",
+                    RequiredFeature: Feature.ReceiptOcr),
                 new SubNavLink("الأصول الثابتة", "Fixed assets", "/fixed-assets", "fixed asset أصل", "building",
                     AliasUrls: new[] { "/fixed-assets/new" }),
                 new SubNavSeparator(),
@@ -135,14 +221,16 @@ public static class AppShellModuleRegistry
                     "prepaid deferred unearned مدفوع مقدم مؤجل", "calendar",
                     AliasUrls: new[] { "/deferred-revenue" }),
                 new SubNavLink("شجرة الحسابات", "Chart of accounts", "/settings/chart-of-accounts", "coa حسابات", "boxes"),
-                new SubNavLink("المطابقة البنكية", "Bank reconciliation", "/payments/bank-statements", "bank statement كشف", "landmark"),
+                new SubNavLink("المطابقة البنكية", "Bank reconciliation", "/payments/bank-statements", "bank statement كشف", "landmark",
+                    RequiredFeature: Feature.BankImport),
                 new SubNavLink("تحويل أموال", "Fund transfer", "/cash-transfer", "fund transfer تحويل", "arrow-right"),
                 new SubNavLink("مسحوبات المالك", "Owner drawings", "/owner-drawings", "owner drawings مسحوبات", "wallet"),
                 new SubNavLink("تسوية فروق العملة", "FX adjustment", "/accounting/fx-adjustment", "fx fx-adjustment فروق عملة realized", "scale"),
                 new SubNavLink("تقييم العملة الأجنبية", "FX revaluation", "/reports/fx-revaluation", "fx revaluation unrealized تقييم غير محقق", "scale"),
                 new SubNavLink("الدفعات غير المخصصة", "Unmatched payments", "/payments/unmatched", "unmatched payment دفعة", "alert-triangle"),
                 new SubNavLink("مراكز التكلفة", "Cost centers", "/cost-centers", "cost center مركز تكلفة", "tag"),
-                new SubNavLink("سجل التدقيق", "Audit log", "/audit-log", "audit log سجل تدقيق", "shield-check"),
+                new SubNavLink("سجل التدقيق", "Audit log", "/audit-log", "audit log سجل تدقيق", "shield-check",
+                    RequiredFeature: Feature.AuditLog),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("الضرائب والإقفال", "Taxes & closing"),
                 new SubNavLink("الضرائب", "Taxes", "/tax/vat-return",
@@ -163,7 +251,8 @@ public static class AppShellModuleRegistry
                     AliasUrls: new[]
                     {
                         "/year-end-close", "/approvals",
-                    }),
+                    },
+                    RequiredFeature: Feature.ClosingCockpit),
                 new SubNavSeparator(),
                 new SubNavGroupHeader("التقارير", "Reports"),
                 new SubNavLink("التقارير المحاسبية", "Accounting reports", "/reports/trial-balance",
@@ -172,7 +261,8 @@ public static class AppShellModuleRegistry
                     {
                         "/reports/general-ledger", "/reports/profit-loss",
                         "/reports/balance-sheet", "/reports/cash-flow", "/reports/cost-centers",
-                    }),
+                    },
+                    RequiredFeature: Feature.TrialBalance),
                 new SubNavLink("التقارير الضريبية", "Tax reports", "/reports/vat-monthly",
                     "vat monthly turnover taxable income penalty shield شهري أعمال دخل غرامات", "percent",
                     AliasUrls: new[]
@@ -218,7 +308,8 @@ public static class AppShellModuleRegistry
                     AliasUrls: new[]
                     {
                         "/settings/cash-accounts", "/currencies", "/settings/opening-balances",
-                    }),
+                    },
+                    RequiredFeature: Feature.MultiCashbox),
                 new SubNavLink("التسعير والمبيعات", "Pricing & sales", "/settings/quotation-templates",
                     "quotation pricelist sales teams قوالب أسعار فرق", "tag",
                     AliasUrls: new[]
@@ -294,14 +385,17 @@ public static class AppShellModuleRegistry
     /// <summary>
     /// Returns all sub-nav links across all modules — used by the
     /// Command Palette to provide searchable screen navigation.
+    /// Skips entries the current edition can't access so search hits
+    /// don't surface locked screens.
     /// </summary>
     public static IEnumerable<(string Label, string Url, string ModuleLabel, string IconName)> GetAllSearchableItems(bool arabic = true)
     {
         foreach (var module in All)
         {
+            if (!module.IsAllowed()) continue;
             foreach (var entry in module.SubNavEntries)
             {
-                if (entry is SubNavLink link)
+                if (entry is SubNavLink link && link.IsAllowed())
                 {
                     var label = arabic ? link.LabelAr : link.LabelEn;
                     var modLabel = arabic ? module.LabelAr : module.LabelEn;

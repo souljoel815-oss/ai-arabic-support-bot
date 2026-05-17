@@ -1,0 +1,52 @@
+@using EgyptTax.Web.Licensing
+@inject NavigationManager Nav
+
+@*
+    v5.1 — Edition gate component. Wrap a page's content in
+    <RequireFeature Feature="@Feature.X">...</RequireFeature> and any
+    edition that doesn't include the feature is bounced to
+    /license-restricted?feature=X via NavigationManager.
+
+    Sidebar/sub-nav already hide locked entries (AppShellModule
+    RequiredFeature + FilterForCurrentEdition), so this component is
+    the second line of defense — catches URL-direct attempts, deep
+    bookmarks, and stale browser history.
+
+    Pure server-side check at OnInitialized; cheap (just reads
+    LicenseStatus volatile fields via EditionGate.Allows) so no
+    measurable hit per page render.
+*@
+
+@if (_allowed && ChildContent is not null)
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter, EditorRequired] public string Feature { get; set; } = default!;
+
+    /// <summary>
+    /// Optional. When provided, the component renders ChildContent only
+    /// when the current edition allows the feature — strict wrapper
+    /// mode. When omitted (self-closing usage), the component acts as
+    /// a guard: it performs the check + redirect and renders nothing.
+    /// The latter is cheaper to retrofit (single line at the top of a
+    /// page) but less strict — sibling components on the page still
+    /// initialise briefly before NavigationException unwinds the
+    /// render pipeline. For sensitive pages prefer the wrapper.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool _allowed;
+
+    protected override void OnInitialized()
+    {
+        _allowed = EditionGate.Allows(Feature);
+        if (!_allowed)
+        {
+            // replace:true so the back button doesn't bounce them right
+            // back into the locked page after the redirect.
+            Nav.NavigateTo($"/license-restricted?feature={Uri.EscapeDataString(Feature)}", replace: true);
+        }
+    }
+}

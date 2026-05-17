@@ -13,6 +13,8 @@
 @inject IMonthlyTaxClosingCockpitQuery CockpitQuery
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.ComplianceHealth" />
+
 <PageTitle>@(IsArabic ? "صحة الامتثال | DaftarX" : "Compliance Health | DaftarX")</PageTitle>
 
 <SettingsTabStrip Group="taxes" />

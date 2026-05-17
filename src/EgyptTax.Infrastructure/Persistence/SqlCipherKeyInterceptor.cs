@@ -30,31 +30,41 @@ public sealed class SqlCipherKeyInterceptor : DbConnectionInterceptor
     }
 
     public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData)
-        => ApplyKey(connection);
+        => ApplyKey();
 
     public override Task ConnectionOpenedAsync(
         DbConnection connection,
         ConnectionEndEventData eventData,
         CancellationToken cancellationToken = default)
     {
-        ApplyKey(connection);
+        ApplyKey();
         return Task.CompletedTask;
     }
 
-    private void ApplyKey(DbConnection connection)
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static",
+        Justification = "Instance method kept so the rekey-aware revival can read _masterKeyProvider without changing signatures.")]
+    private void ApplyKey()
     {
-        // Linux dev container path — sentry pre-set to allow; key
-        // bytes optional. SQLCipher gracefully accepts no PRAGMA key
-        // (treats the DB as unencrypted) so dev mode keeps working.
-        if (!LicenseSentry.IsLicensed) return;
-        var key = _masterKeyProvider();
-        if (key is null || key.Length == 0) return;
+        // v5 — temporarily DISABLED. The architecture assumed the DB
+        // was always created encrypted, but PortableFirstRun creates
+        // it plaintext (because LicenseSentry.IsLicensed is false at
+        // boot, before activation). After in-app activation, the
+        // interceptor would start issuing PRAGMA key against the
+        // existing plaintext file, which SQLite reports as "file is
+        // not a database" on the first read. License protection is
+        // already provided by the Ed25519 signature + HWID binding —
+        // file-level encryption was defense in depth. Re-enable only
+        // after the activation flow learns to PRAGMA rekey the
+        // existing DB in-place.
+        return;
 
-        // SQLCipher accepts hex-encoded keys via PRAGMA key = "x'...'";
-        // safer than passing raw bytes through a string parameter.
-        var hex = Convert.ToHexString(key);
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = $"PRAGMA key = \"x'{hex}'\";";
-        cmd.ExecuteNonQuery();
+        // Original code kept commented for the rekey-aware revival:
+        //   if (!LicenseSentry.IsLicensed) return;
+        //   var key = _masterKeyProvider();
+        //   if (key is null || key.Length == 0) return;
+        //   var hex = Convert.ToHexString(key);
+        //   using var cmd = connection.CreateCommand();
+        //   cmd.CommandText = $"PRAGMA key = \"x'{hex}'\";";
+        //   cmd.ExecuteNonQuery();
     }
 }

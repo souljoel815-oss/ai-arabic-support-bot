@@ -249,6 +249,22 @@
                             Scope="any"
                             Profile="all"
                             IgnoreFailure="yes" />
+      <!-- v5 — port 50063 is the fixed bind for the DaftarX desktop
+           shell (src/EgyptTax.Desktop). When the operator runs
+           DaftarX.exe on the same machine the MSI was installed on,
+           workstations on the LAN need this hole to reach the
+           Photino-wrapped Kestrel instance bound to 0.0.0.0:50063.
+           Override on the launcher side via --port <n> or
+           DAFTARX_PORT=<n>; if the operator picks a different port
+           they own the firewall rule for it. -->
+      <fw:FirewallException Id="DaftarXDesktop50063"
+                            Name="DaftarX desktop (50063)"
+                            Description="Inbound HTTP for the DaftarX desktop shell on port 50063"
+                            Port="50063"
+                            Protocol="tcp"
+                            Scope="any"
+                            Profile="all"
+                            IgnoreFailure="yes" />
     </Component>
 
     <!-- T247-fix-A: write appsettings.Production.json from the

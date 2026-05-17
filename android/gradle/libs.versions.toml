@@ -1,0 +1,126 @@
+# android/gradle/libs.versions.toml — T002 + T003 + T004 + T005 + T006 + T007 + T008
+#
+# Version catalog: single source of truth for every dependency version.
+# Bumping a library = editing one line here. Per plan.md Technical Context:
+# Kotlin 2.0.x, AGP 8.5+ (we use 8.7), Java 17 toolchain, minSdk 24, target 34.
+
+[versions]
+# Build tooling
+agp = "8.7.2"
+kotlin = "2.0.21"
+ksp = "2.0.21-1.0.28"
+
+# AndroidX — research §1, §2, §4, §5, §6, §13
+androidx-core = "1.15.0"
+androidx-appcompat = "1.7.0"          # research §13 — per-app locale
+androidx-activity = "1.9.3"
+androidx-lifecycle = "2.8.7"
+androidx-webkit = "1.12.1"            # research §1 — managed WebView
+androidx-biometric = "1.4.0-alpha02"  # research §5 — BIOMETRIC_STRONG | DEVICE_CREDENTIAL
+androidx-security-crypto = "1.1.0-alpha06"   # research §3, §4 — EncryptedSharedPreferences
+androidx-camera = "1.4.0"             # research §6 — CameraX
+
+# Compose — research §1, §13
+compose-bom = "2024.10.01"
+
+# Firebase — research §8 + §16 (FCM + Crashlytics)
+firebase-bom = "33.5.1"
+google-services = "4.4.2"
+firebase-crashlytics-plugin = "3.0.2"
+
+# DI — Hilt (plan.md Primary Dependencies)
+hilt = "2.52"
+hilt-compose-nav = "1.2.0"
+
+# HTTP — Retrofit + Moshi (plan.md Primary Dependencies)
+retrofit = "2.11.0"
+moshi = "1.15.1"
+okhttp = "4.12.0"
+
+# Coroutines
+coroutines = "1.9.0"
+
+# Testing — research §14
+junit = "5.11.3"
+junit-android-plugin = "1.11.2"
+mockk = "1.13.13"
+robolectric = "4.14"
+espresso = "3.6.1"
+androidx-test-junit = "1.2.1"
+androidx-test-core = "1.6.1"
+truth = "1.4.4"
+
+[libraries]
+# Compose BOM + UI
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+compose-runtime = { module = "androidx.compose.runtime:runtime" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-activity = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+compose-ui-test = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+
+# AndroidX foundations
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidx-appcompat" }
+androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "androidx-lifecycle" }
+androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "androidx-lifecycle" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
+
+# Native shell capabilities
+androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "androidx-webkit" }
+androidx-biometric = { module = "androidx.biometric:biometric-ktx", version.ref = "androidx-biometric" }
+androidx-security-crypto = { module = "androidx.security:security-crypto-ktx", version.ref = "androidx-security-crypto" }
+androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "androidx-camera" }
+androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "androidx-camera" }
+androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "androidx-camera" }
+androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "androidx-camera" }
+
+# Firebase — Crashlytics + FCM (research §8, §16)
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging-ktx" }
+firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics-ktx" }
+
+# Hilt — DI
+hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
+hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
+hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hilt-compose-nav" }
+
+# HTTP — Retrofit + Moshi + OkHttp
+retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
+retrofit-moshi = { module = "com.squareup.retrofit2:converter-moshi", version.ref = "retrofit" }
+moshi = { module = "com.squareup.moshi:moshi", version.ref = "moshi" }
+moshi-kotlin-codegen = { module = "com.squareup.moshi:moshi-kotlin-codegen", version.ref = "moshi" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okhttp-logging = { module = "com.squareup.okhttp3:logging-interceptor", version.ref = "okhttp" }
+
+# Coroutines
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# Test — research §14
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
+junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+mockk-android = { module = "io.mockk:mockk-android", version.ref = "mockk" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+androidx-test-junit-ktx = { module = "androidx.test.ext:junit-ktx", version.ref = "androidx-test-junit" }
+androidx-test-core-ktx = { module = "androidx.test:core-ktx", version.ref = "androidx-test-core" }
+truth = { module = "com.google.truth:truth", version.ref = "truth" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
+firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics-plugin" }
+junit5-android = { id = "de.mannodermaus.android-junit5", version.ref = "junit-android-plugin" }

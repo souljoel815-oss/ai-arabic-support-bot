@@ -20,8 +20,12 @@
         @(_isArabic ? Module.LabelAr : Module.LabelEn)
     </header>
 
+    @* Entries filtered by edition gate; FilterForCurrentEdition also
+       removes orphaned group headers / trailing separators so a Solo
+       customer's panel doesn't end in a dangling "Reports" header
+       with nothing under it. *@
     <nav class="appshell-subnav-nav">
-        @foreach (var entry in Module.SubNavEntries)
+        @foreach (var entry in Module.SubNavEntries.FilterForCurrentEdition())
         {
             switch (entry)
             {

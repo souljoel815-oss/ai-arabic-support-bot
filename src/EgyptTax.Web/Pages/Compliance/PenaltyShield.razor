@@ -11,6 +11,8 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.ComplianceHealth" />
+
 <PageTitle>@(IsArabic ? "درع الغرامات | DaftarX" : "Penalty Shield | DaftarX")</PageTitle>
 
 @code {

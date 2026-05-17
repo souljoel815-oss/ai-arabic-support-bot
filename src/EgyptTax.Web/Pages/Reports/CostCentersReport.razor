@@ -11,6 +11,8 @@
 @inject AppDbContext Db
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
+<RequireFeature Feature="@Feature.TrialBalance" />
+
 @*
     v3 §11 #3 + v4 C.2 — analytical report. Per cost center:
     revenue (sales-invoice lines tagged with this center) +

@@ -10,6 +10,8 @@
 @inject AuthenticationStateProvider AuthState
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.IncomeTaxReturn" />
+
 <PageTitle>@(IsArabic ? "تفاصيل إقرار ضريبة الدخل | DaftarX" : "Income Tax Return | DaftarX")</PageTitle>
 
 @code {

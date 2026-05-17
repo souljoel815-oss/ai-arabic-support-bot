@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  v5 — DaftarX desktop MSI.
+
+  Ships:
+    * DaftarX.exe (Photino launcher)
+    * web\EgyptTax.Web.exe + dependencies (child Kestrel)
+    * daftarx.ico (Add/Remove Programs + shortcut icon)
+  Adds:
+    * Start Menu shortcut → DaftarX.exe
+    * Desktop shortcut → DaftarX.exe
+    * Inbound firewall rule for TCP 50063 (DaftarX's fixed port,
+      0.0.0.0 bind, so LAN workstations can reach the server too).
+    * Add/Remove Programs entry with the logo.
+
+  First-run UX is owned by PortableFirstRun inside EgyptTax.Web —
+  the MSI does NOT seed a DB or admin user. The launcher creates
+  %LOCALAPPDATA%\DaftarX\daftarx.db on first run and prints the
+  bootstrap credentials to first-run-credentials.txt.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
+
+  <Package Name="DaftarX"
+           Manufacturer="DaftarX"
+           Version="1.0.0.0"
+           UpgradeCode="3F8E9C2A-7B41-4D6E-9A0F-1C5E8B6D9A02"
+           Compressed="yes"
+           InstallerVersion="500"
+           Scope="perMachine">
+
+    <SummaryInformation Description="DaftarX — Egyptian SME accounting (desktop edition)"
+                        Manufacturer="DaftarX" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Reject downgrades; require uninstall first. -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of DaftarX is already installed." />
+
+    <!-- Icon used by Add/Remove Programs + Start Menu shortcut. -->
+    <Icon Id="DaftarXIcon" SourceFile="$(var.PublishDir)\daftarx.ico" />
+    <Property Id="ARPPRODUCTICON" Value="DaftarXIcon" />
+    <Property Id="ARPHELPLINK" Value="https://daftarx.app/" />
+    <Property Id="ARPURLINFOABOUT" Value="https://daftarx.app/" />
+
+    <Feature Id="DaftarXFeature"
+             Title="DaftarX"
+             Description="DaftarX desktop app + bundled web host"
+             Level="1"
+             AllowAbsent="no">
+      <ComponentGroupRef Id="DaftarXFiles" />
+      <ComponentRef Id="RegisterServiceScriptComponent" />
+      <ComponentRef Id="StartMenuShortcutComponent" />
+      <ComponentRef Id="DesktopShortcutComponent" />
+      <ComponentRef Id="FirewallComponent" />
+    </Feature>
+
+    <!-- WiX 5 <Files> harvest — single recursive glob covers the
+         entire publish output: DaftarX.exe, Photino.NET.dll,
+         daftarx.ico, runtimes/, web/EgyptTax.Web.exe + deps, etc. -->
+    <ComponentGroup Id="DaftarXFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)\**" />
+    </ComponentGroup>
+
+    <!-- The register-service.ps1 script lives in the installer source
+         tree (not the published web app) — it's an install-time
+         lifecycle tool, not a runtime artifact. -->
+    <ComponentGroup Id="DaftarXScripts" Directory="INSTALLFOLDER">
+      <Component Id="RegisterServiceScriptComponent"
+                 Guid="8A5E1F2C-6D4B-4E70-9C3A-1F2E5D8B0A4F">
+        <File Id="RegisterServiceScript"
+              Source="register-service.ps1"
+              KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Start Menu shortcut.
+         Uses a registry value as keypath because the shortcut target
+         (DaftarX.exe) is harvested by the Files element above; a
+         Component can have only one keypath, so the shortcut lives in
+         its own Component with a HKCU registry stamp as the key. -->
+    <Component Id="StartMenuShortcutComponent"
+               Directory="DaftarXStartMenuFolder"
+               Guid="9B4F7A2C-3D8E-4F12-A5B6-7C0D1E2F3A4B">
+      <Shortcut Id="DaftarXStartMenuShortcut"
+                Name="DaftarX"
+                Description="DaftarX — Egyptian SME accounting"
+                Target="[INSTALLFOLDER]DaftarX.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="DaftarXIcon"
+                Advertise="no" />
+      <RemoveFolder Id="RemoveDaftarXStartMenuFolder"
+                    Directory="DaftarXStartMenuFolder"
+                    On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\DaftarX\Install"
+                     Name="StartMenuShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcutComponent"
+               Directory="DesktopFolder"
+               Guid="2E1A8D6F-9C5B-4E73-B0A1-4F8C9D2E3A5C">
+      <Shortcut Id="DaftarXDesktopShortcut"
+                Name="DaftarX"
+                Description="DaftarX — Egyptian SME accounting"
+                Target="[INSTALLFOLDER]DaftarX.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="DaftarXIcon"
+                Advertise="no" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\DaftarX\Install"
+                     Name="DesktopShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- Inbound firewall hole for DaftarX's fixed bind (50063).
+         The launcher binds Kestrel to 0.0.0.0:50063 so workstations
+         on the LAN can reach the desktop server while DaftarX also
+         renders it locally in a Photino window. Override port at
+         launch via the (port) CLI flag or DAFTARX_PORT env var;
+         operators who do that are on the hook for their own firewall
+         rule. -->
+    <Component Id="FirewallComponent"
+               Directory="INSTALLFOLDER"
+               Guid="C6A0E4B5-2D7F-4983-9A12-6E5F8B3C0D17">
+      <RegistryValue Root="HKLM"
+                     Key="Software\DaftarX\Install"
+                     Name="FirewallConfigured"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+      <fw:FirewallException Id="DaftarXDesktop50063"
+                            Name="DaftarX (50063)"
+                            Description="Inbound HTTP for the DaftarX desktop shell on port 50063"
+                            Port="50063"
+                            Protocol="tcp"
+                            Scope="any"
+                            Profile="all"
+                            IgnoreFailure="yes" />
+    </Component>
+
+    <!-- Service lifecycle CAs.
+         RegisterService: deferred + impersonate=no so it runs as
+         LocalSystem with permission to talk to the Service Control
+         Manager. SetProperty resolves [INSTALLFOLDER] at execute-
+         sequence time so the script knows where its own DLLs live.
+         StopService + DeleteService: best-effort on uninstall so a
+         broken service entry doesn't block removal. -->
+    <!-- [INSTALLFOLDER] resolves with a trailing backslash; if we
+         pass it as "[INSTALLFOLDER]" the result ends in \" which
+         Windows' argv parser treats as an escaped quote (per
+         CommandLineToArgvW rules: backslash-then-quote = literal
+         quote, not closing). That corrupts the argument and the
+         script either fails to parse or receives a garbage path.
+         Drop the -InstallFolder argument entirely — the script
+         falls back to $PSScriptRoot, which is reliable when it's
+         invoked via -File. -->
+    <SetProperty Id="RegisterService"
+                 Value='"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "[INSTALLFOLDER]register-service.ps1"'
+                 Sequence="execute"
+                 Before="RegisterService" />
+    <CustomAction Id="RegisterService"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <CustomAction Id="StopDaftarXService"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='sc.exe stop DaftarX'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+    <CustomAction Id="DeleteDaftarXService"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='sc.exe delete DaftarX'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="RegisterService"
+              After="InstallFiles"
+              Condition="NOT REMOVE" />
+      <Custom Action="StopDaftarXService"
+              Before="RemoveFiles"
+              Condition="REMOVE=&quot;ALL&quot;" />
+      <Custom Action="DeleteDaftarXService"
+              After="StopDaftarXService"
+              Condition="REMOVE=&quot;ALL&quot;" />
+    </InstallExecuteSequence>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="DaftarX" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="DaftarXStartMenuFolder" Name="DaftarX" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+  </Package>
+</Wix>

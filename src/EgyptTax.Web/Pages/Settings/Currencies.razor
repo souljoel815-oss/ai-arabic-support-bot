@@ -6,6 +6,8 @@
 @inject AppDbContext Db
 @attribute [Authorize(Policy = "FullyAuthenticated")]
 
+<RequireFeature Feature="@Feature.MultiCashbox" />
+
 @*
     v3 §11 #7 (multi-currency) — currency master + exchange-rate
     history. v1 ships master-data + rate management only;

@@ -69,11 +69,9 @@
             : "Groq's API is free for personal use (rate-limited). No budget cap needed.")
     </p>
 
-    @* Anthropic fields are intentionally hidden — operator picked Groq.
-       Domain still has the columns so a power user can flip via SQL,
-       but the UI is single-provider clean. _chatProvider is locked to
-       Groq below so the save flow takes the Groq branch. *@
-    @{ _chatProvider = AiChatProvider.Groq; }
+    @* Anthropic fields are intentionally hidden — single-vendor UI.
+       Save flow always takes the Groq branch (see OnSaveAsync); the
+       AiSettings.ChatProvider column stays Groq via ConfigureGroq. *@
 
     <div class="invoice-actions" style="margin-top:16px;">
         <button type="button" class="btn-primary" disabled="@_saving" @onclick="OnSaveAsync">
@@ -149,13 +147,9 @@
     private string _flashClass = "kpi-card kpi-info";
 
     private bool _enabled;
-    private string _apiKey = "";
-    private string _apiKeyHint = "";
-    private string _modelName = "claude-haiku-4-5-20251001";
-    private int _monthlyBudget = 500;
 
-    // v5 — Groq chat provider state.
-    private AiChatProvider _chatProvider = AiChatProvider.Anthropic;
+    // v5 — Groq chat provider state. Anthropic columns kept in the
+    // domain for forward-compat but the UI is single-vendor Groq.
     private string _groqApiKey = "";
     private string _groqApiKeyHint = "";
     private string _groqModelName = "meta-llama/llama-4-scout-17b-16e-instruct";
@@ -164,21 +158,11 @@
     private int _monthCallCount;
     private int _monthInputTokens;
     private int _monthOutputTokens;
-    private decimal _monthEgp;
 
     protected override async Task OnInitializedAsync()
     {
         var s = await Settings.GetAiSettingsAsync();
         _enabled = s.Enabled;
-        _modelName = s.ModelName;
-        _monthlyBudget = s.MonthlyBudgetEgp;
-        _apiKey = "";
-        _apiKeyHint = string.IsNullOrEmpty(s.EncryptedApiKey)
-            ? Tr("sk-ant-api03-…", "sk-ant-api03-…")
-            : Tr("(محفوظ — اتركه فارغاً للإبقاء عليه)", "(stored — leave blank to keep)");
-
-        // v5 — Groq side
-        _chatProvider = s.ChatProvider;
         _groqModelName = s.GroqModelName;
         _groqApiKey = "";
         _groqApiKeyHint = string.IsNullOrEmpty(s.EncryptedGroqApiKey)
@@ -191,7 +175,10 @@
             .Take(10)
             .ToListAsync();
 
-        // Monthly aggregate across receipt scans + chat logs.
+        // Monthly aggregate across receipt scans + chat logs. Groq is
+        // free for personal use so no EGP cost calc here — operator
+        // just needs to see call volume + token totals for rate-limit
+        // awareness.
         var now = DateTime.UtcNow;
         var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         var scanTotals = await Db.Set<ReceiptScan>().AsNoTracking()
@@ -205,10 +192,6 @@
         _monthCallCount = scanTotals.Count + chatTotals.Count;
         _monthInputTokens = scanTotals.Sum(x => x.InputTokens) + chatTotals.Sum(x => x.InputTokens);
         _monthOutputTokens = scanTotals.Sum(x => x.OutputTokens) + chatTotals.Sum(x => x.OutputTokens);
-        // Haiku 4.5 published rates × 50 EGP/USD. Display-only.
-        _monthEgp = Math.Round(
-            ((decimal)_monthInputTokens / 1_000_000m * 0.25m
-             + (decimal)_monthOutputTokens / 1_000_000m * 1.25m) * 50m, 2);
 
         _loading = false;
     }
@@ -219,65 +202,36 @@
         _flash = null;
         try
         {
-            if (_monthlyBudget is < 50 or > 100000)
-            {
-                _flash = Tr("الميزانية لازم تكون بين 50 و 100,000 ج.م.", "Budget must be 50-100,000 EGP.");
-                _flashClass = "kpi-card kpi-error";
-                return;
-            }
-
             var s = await Settings.GetAiSettingsAsync();
 
-            var encryptedKey = string.IsNullOrWhiteSpace(_apiKey)
-                ? (s.EncryptedApiKey ?? "")
-                : Protector.Encrypt(_apiKey);
+            // UI is locked to Groq (single-vendor) — encrypt the typed
+            // key, or fall back to the stored one if the operator left
+            // the field blank to keep their existing key.
+            var encryptedGroqKey = string.IsNullOrWhiteSpace(_groqApiKey)
+                ? (s.EncryptedGroqApiKey ?? "")
+                : Protector.Encrypt(_groqApiKey);
 
-            if (_enabled && string.IsNullOrEmpty(encryptedKey))
+            if (_enabled && string.IsNullOrEmpty(encryptedGroqKey))
             {
-                _flash = Tr("أدخل مفتاح API قبل التفعيل.", "Enter an API key before enabling.");
+                _flash = Tr("أدخل مفتاح Groq API قبل التفعيل.",
+                           "Enter a Groq API key before enabling.");
                 _flashClass = "kpi-card kpi-error";
                 return;
             }
 
             if (_enabled)
             {
-                s.Configure(encryptedKey, _modelName, _monthlyBudget);
-            }
-            else
-            {
-                // Allow model-only updates while disabled.
-                s.UpdateModelOnly(_modelName);
-                s.Disable();
-            }
-
-            // v5 — Groq side: when the operator switches chat provider
-            // to Groq we encrypt the typed key (or keep the stored one
-            // if the field is blank) and persist the chosen model.
-            if (_chatProvider == AiChatProvider.Groq)
-            {
-                var encryptedGroqKey = string.IsNullOrWhiteSpace(_groqApiKey)
-                    ? (s.EncryptedGroqApiKey ?? "")
-                    : Protector.Encrypt(_groqApiKey);
-                if (string.IsNullOrEmpty(encryptedGroqKey))
-                {
-                    _flash = Tr("أدخل مفتاح Groq API قبل اختيار Groq كمزوّد.",
-                               "Enter a Groq API key before picking Groq as the chat provider.");
-                    _flashClass = "kpi-card kpi-error";
-                    return;
-                }
                 s.ConfigureGroq(
                     encryptedKey: string.IsNullOrWhiteSpace(_groqApiKey) ? null : encryptedGroqKey,
                     modelName: _groqModelName);
             }
             else
             {
-                s.SwitchChatProvider(AiChatProvider.Anthropic);
+                s.Disable();
             }
 
             await Db.SaveChangesAsync();
 
-            _apiKey = "";
-            _apiKeyHint = Tr("(محفوظ — اتركه فارغاً للإبقاء عليه)", "(stored — leave blank to keep)");
             _groqApiKey = "";
             _groqApiKeyHint = Tr("(محفوظ — اتركه فارغاً للإبقاء عليه)", "(stored — leave blank to keep)");
             _flash = Tr("✓ تم الحفظ.", "✓ Saved.");

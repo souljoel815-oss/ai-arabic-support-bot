@@ -1,0 +1,54 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <!--
+    v5 — DaftarX CLIENT MSI. Tiny installer (~30 MB) for workstations
+    on the customer's LAN. Ships only the Photino-based DaftarX.exe
+    shell + self-contained .NET runtime. NO bundled web app, NO
+    Windows service, NO firewall rule (clients are outbound-only).
+
+    First launch prompts for the server URL (the main DaftarX server's
+    LAN IP) and saves it to %LOCALAPPDATA%\DaftarX\server.txt so
+    subsequent launches go straight to the window.
+
+    Separate from EgyptTax.DesktopInstaller (the full server MSI)
+    because the two installs target completely different machines and
+    must NOT collide — different UpgradeCode, different INSTALLFOLDER
+    name, different ProductCode.
+
+    Build (run from repo root):
+      pwsh src/EgyptTax.DesktopClientInstaller/build-client-installer.ps1
+
+    Output:
+      src/EgyptTax.DesktopClientInstaller/bin/Release/DaftarX-Client-Setup.msi
+
+    Intentionally NOT in the .sln (same reason as the server MSI:
+    WiX SDK is slow to evaluate at solution-build time).
+  -->
+
+  <PropertyGroup>
+    <OutputName>DaftarX-Client-Setup</OutputName>
+    <OutputType>Package</OutputType>
+    <InstallerPlatform>x64</InstallerPlatform>
+
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+
+    <HarvestPublishDir Condition=" '$(HarvestPublishDir)' == '' AND '$(PublishDir)' != '' ">$(PublishDir)</HarvestPublishDir>
+    <HarvestPublishDir Condition=" '$(HarvestPublishDir)' == '' ">$(MSBuildThisFileDirectory)..\..\publish\client</HarvestPublishDir>
+
+    <DefineConstants>PublishDir=$(HarvestPublishDir)</DefineConstants>
+
+    <SuppressIces>ICE60</SuppressIces>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Product.wxs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" />
+  </ItemGroup>
+
+</Project>

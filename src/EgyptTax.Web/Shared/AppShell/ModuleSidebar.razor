@@ -26,9 +26,13 @@
         <span class="appshell-logo-text" style="display:none;">DaftarX</span>
     </a>
 
-    @* Main module buttons (all except settings) *@
+    @* Main module buttons (all except settings). Modules filtered by
+       edition gate — a top-level module hidden when its RequiredFeature
+       isn't included in the current install's edition (e.g. firm portal
+       module on a non-Firm install). *@
     <nav class="appshell-modules-nav">
-        @foreach (var m in AppShellModuleRegistry.All.Where(x => x.Id != AppShellModuleRegistry.SettingsId))
+        @foreach (var m in AppShellModuleRegistry.All
+            .Where(x => x.Id != AppShellModuleRegistry.SettingsId && x.IsAllowed()))
         {
             var isActive = m.Id == ActiveModuleId;
             <a class="appshell-module-btn @(isActive ? "is-active" : "")"

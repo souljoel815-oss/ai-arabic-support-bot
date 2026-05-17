@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    English fallback strings for the native shell (T015 placeholder set;
+    full string inventory per FR-011 lands in T051, T064, T073, T080, T087,
+    T093 as each story brings new screens online).
+-->
+<resources>
+    <string name="app_name">DaftarX</string>
+</resources>

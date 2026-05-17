@@ -13,6 +13,8 @@
 @inject NavigationManager Nav
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.FirmPortal" />
+
 <h1>@(IsArabic ? "وضع المراجعة" : "Firm portal — review mode (Differentiator 3)")</h1>
 
 <p>

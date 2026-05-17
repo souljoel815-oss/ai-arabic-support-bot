@@ -5,6 +5,8 @@
 @inject ICertificateMonitorQuery CertQuery
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.WhtCertificateMgmt" />
+
 <PageTitle>@(IsArabic ? "الشهادات | DaftarX" : "Certificates | DaftarX")</PageTitle>
 
 @code {

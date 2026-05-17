@@ -112,6 +112,13 @@ vendor-keys.json
 
 # Issue-License.ps1 output — per-customer signed tokens + README.
 licenses/
+# Catch botched env-var substitution variants (e.g. unresolved $HWID$ED).
+licenses$*/
+
+# Local SQLite databases — runtime data, never in source.
+*.db
+*.db-shm
+*.db-wal
 
 # Build artefacts (dotnet publish output) — never source-tree.
 publish/

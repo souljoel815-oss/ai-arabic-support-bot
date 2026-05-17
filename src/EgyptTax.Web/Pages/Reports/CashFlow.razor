@@ -7,6 +7,8 @@
 @inject IJSRuntime Js
 @attribute [Authorize(Policy = "NotSalesRepOnly")]
 
+<RequireFeature Feature="@Feature.TrialBalance" />
+
 @*
     v4 B.4 — Cash Flow statement, direct method. Three buckets
     (Customer Receipts / Supplier Payments / Other) all under

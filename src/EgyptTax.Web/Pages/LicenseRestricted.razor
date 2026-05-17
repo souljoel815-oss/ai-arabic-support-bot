@@ -1,0 +1,175 @@
+@page "/license-restricted"
+@using System.Globalization
+@using EgyptTax.Web.Licensing
+
+@*
+    v5.1 — Friendly landing page for blocked premium features.
+
+    Pages tagged with EditionGate.Allows(feature)==false redirect here
+    via NavigationManager.NavigateTo("/license-restricted?feature=...")
+    in their OnInitialized. We render a bilingual "you need to upgrade"
+    panel with the feature label, the minimum edition required, and
+    the contact details from the active license (so the operator can
+    call the same sales channel that issued their current tier).
+*@
+
+<div class="dx-restricted-shell" dir="@(_isArabic ? "rtl" : "ltr")">
+    <div class="dx-restricted-card">
+        <div class="dx-restricted-icon">
+            <Icon Name="lock" />
+        </div>
+        <h1>@(_isArabic ? "هذه الميزة غير متاحة في خطتك الحالية" : "This feature isn't included in your plan")</h1>
+
+        <p class="dx-restricted-sub">
+            @if (_isArabic)
+            {
+                <text>
+                    الميزة <strong>@_featureLabelAr</strong> متاحة فقط في خطة
+                    <strong>@_minimumEditionAr</strong> أو أعلى.
+                    أنت حالياً على خطة <strong>@_currentEditionAr</strong>.
+                </text>
+            }
+            else
+            {
+                <text>
+                    The <strong>@_featureLabelEn</strong> feature is only included in the
+                    <strong>@_minimumEditionEn</strong> plan or higher.
+                    You're currently on <strong>@_currentEditionEn</strong>.
+                </text>
+            }
+        </p>
+
+        <div class="dx-restricted-contact">
+            <h3>@(_isArabic ? "للترقية" : "To upgrade")</h3>
+            <p>
+                <Icon Name="phone" />
+                <a href="tel:@LicenseStatus.SalesPhone">@LicenseStatus.SalesPhone</a>
+            </p>
+            <p>
+                <Icon Name="mail" />
+                <a href="mailto:@LicenseStatus.SalesEmail">@LicenseStatus.SalesEmail</a>
+            </p>
+        </div>
+
+        <div class="dx-restricted-actions">
+            <a href="/" class="btn btn-secondary">
+                <Icon Name="home" />
+                @(_isArabic ? "العودة للرئيسية" : "Back to home")
+            </a>
+            <a href="/settings" class="btn btn-primary">
+                <Icon Name="settings" />
+                @(_isArabic ? "الإعدادات" : "Settings")
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+    .dx-restricted-shell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 70vh;
+        padding: 24px;
+    }
+    .dx-restricted-card {
+        max-width: 560px;
+        width: 100%;
+        background: var(--surface, #fff);
+        border: 1px solid var(--border, #e5e7eb);
+        border-radius: 12px;
+        padding: 36px;
+        text-align: center;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+    }
+    .dx-restricted-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: #fef3c7;
+        color: #b45309;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 18px;
+    }
+    .dx-restricted-icon :deep(svg) { width: 32px; height: 32px; }
+    .dx-restricted-card h1 { font-size: 22px; margin: 0 0 12px; color: var(--text-strong, #111827); }
+    .dx-restricted-sub { font-size: 15px; line-height: 1.7; color: var(--text-muted, #4b5563); margin: 0 0 24px; }
+    .dx-restricted-contact { background: var(--surface-muted, #f9fafb); border-radius: 8px; padding: 16px; margin: 0 0 24px; text-align: start; }
+    .dx-restricted-contact h3 { font-size: 14px; margin: 0 0 10px; color: var(--text-muted, #4b5563); font-weight: 600; }
+    .dx-restricted-contact p { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+    .dx-restricted-contact :deep(svg) { width: 16px; height: 16px; color: var(--text-muted, #4b5563); }
+    .dx-restricted-contact a { color: var(--text-strong, #111827); text-decoration: none; font-weight: 500; }
+    .dx-restricted-contact a:hover { text-decoration: underline; }
+    .dx-restricted-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .dx-restricted-actions :deep(svg) { width: 16px; height: 16px; margin-inline-end: 6px; vertical-align: -3px; }
+</style>
+
+@code {
+    [SupplyParameterFromQuery(Name = "feature")]
+    public string? FeatureKey { get; set; }
+
+    private bool _isArabic =>
+        CultureInfo.CurrentCulture.Name.StartsWith("ar", StringComparison.OrdinalIgnoreCase);
+
+    private string _featureLabelAr = "";
+    private string _featureLabelEn = "";
+    private string _minimumEditionAr = "";
+    private string _minimumEditionEn = "";
+    private string _currentEditionAr = "";
+    private string _currentEditionEn = "";
+
+    protected override void OnParametersSet()
+    {
+        // Resolve minimum edition from the feature key (defaults to SMB
+        // when the key is unknown — most premium features land there).
+        var min = string.IsNullOrEmpty(FeatureKey)
+            ? LicenseEdition.Smb
+            : Feature.MinimumEditionFor(FeatureKey);
+        _minimumEditionAr = min.ArabicLabel();
+        _minimumEditionEn = min.ToString();
+
+        var cur = EditionGate.CurrentEdition();
+        _currentEditionAr = cur.ArabicLabel();
+        _currentEditionEn = cur.ToString();
+
+        (_featureLabelAr, _featureLabelEn) = FeatureLabel(FeatureKey);
+    }
+
+    /// <summary>Bilingual labels for the feature constants the operator
+    /// would actually hit. Falls back to the raw key if we don't know it
+    /// (better than blank — the operator can still tell sales what they
+    /// were trying to use).</summary>
+    private static (string Ar, string En) FeatureLabel(string? key) => key switch
+    {
+        Feature.BulkInvoice           => ("إنشاء الفواتير الجماعية", "Bulk invoice upload"),
+        Feature.BankImport            => ("استيراد كشف حساب بنكي", "Bank statement import"),
+        Feature.MultiCashbox          => ("خزائن وحسابات بنكية متعددة", "Multiple cashboxes / bank accounts"),
+        Feature.ClosingCockpit        => ("لوحة الإقفال", "Closing cockpit"),
+        Feature.TrialBalance          => ("التقارير المحاسبية", "Accounting reports"),
+        Feature.CustomChartOfAccounts => ("شجرة الحسابات المخصصة", "Custom chart of accounts"),
+        Feature.MultiUser             => ("إدارة المستخدمين المتعددين", "Multiple users"),
+        Feature.SmtpDirectEmail       => ("إرسال الفواتير بالبريد", "Direct SMTP email"),
+        Feature.AutoBackup            => ("النسخ الاحتياطي التلقائي", "Automatic backup"),
+        Feature.AuditLog              => ("سجل التدقيق", "Audit log"),
+        Feature.InvoiceTemplates      => ("قوالب الفواتير المخصصة", "Custom invoice templates"),
+        Feature.BilingualInvoices     => ("الفواتير ثنائية اللغة", "Bilingual invoices"),
+        Feature.MultiCompany          => ("شركات متعددة", "Multi-company"),
+        Feature.IncomeTaxReturn       => ("إقرار ضريبة الدخل", "Income tax return"),
+        Feature.WhtCertificateMgmt    => ("إدارة شهادات الخصم من المنبع", "WHT certificate management"),
+        Feature.ComplianceHealth      => ("لوحة الصحة الضريبية", "Compliance health dashboard"),
+        Feature.PrioritySupport       => ("الدعم الفني المميز", "Priority support"),
+        Feature.CloudBackup           => ("النسخ الاحتياطي السحابي", "Cloud backup"),
+        Feature.ArabicAiAssistant     => ("المساعد الذكي بالعربية", "Arabic AI assistant"),
+        Feature.FirmPortal            => ("بوابة مكتب المحاسبة", "Firm portal"),
+        Feature.CompanySwitcher       => ("التبديل بين الشركات", "Company switcher"),
+        Feature.CommissionLedger      => ("دفتر العمولات", "Commission ledger"),
+        Feature.ClientOnboardingWizard => ("معالج تأهيل العملاء", "Client onboarding wizard"),
+        Feature.BulkCrossCompany      => ("العمليات الجماعية بين الشركات", "Bulk cross-company operations"),
+        Feature.EtaItemCodeSuggester  => ("اقتراح أكواد ETA للأصناف", "ETA item code suggester"),
+        Feature.WhatsAppDelivery      => ("إرسال الفواتير عبر WhatsApp", "WhatsApp invoice delivery"),
+        Feature.ReceiptOcr            => ("مسح الإيصالات بالذكاء الاصطناعي", "Receipt OCR"),
+        _                             => (key ?? "—", key ?? "—"),
+    };
+}

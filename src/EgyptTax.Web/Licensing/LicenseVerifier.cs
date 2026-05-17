@@ -62,7 +62,10 @@ public static class LicenseVerifier
         if (envelope.Payload.ExpiresAtUtc < nowUtc)
             return LicenseCheckResult.Failed(LicenseFailureReason.Expired, envelope.Payload);
 
-        if (envelope.Payload.Version != 1)
+        // v1 = original; v2 = Gux.13 adds MaxUsers/MaxCompanies/Features.
+        // Pre-v2 tokens stay accepted because LicensePayload's new fields
+        // are nullable + WhenWritingNull (canonical bytes unchanged).
+        if (envelope.Payload.Version is not (1 or 2))
             return LicenseCheckResult.Failed(LicenseFailureReason.UnsupportedVersion, envelope.Payload);
 
         return LicenseCheckResult.Ok(envelope.Payload);
