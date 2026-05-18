@@ -116,12 +116,12 @@ return [
             ],
             'smb' => [
                 'name' => 'SMB',
-                'tagline' => 'For small businesses (up to 5 users, 3 companies)',
+                'tagline' => 'For small businesses (5 users, 3 companies)',
                 'monthly' => '1,200',
                 'annual' => '12,000',
                 'features' => [
-                    'Up to 5 users',
-                    'Up to 3 organisations',
+                    'Up to 5 users total',
+                    'Up to 3 organisations (same users access any)',
                     'Everything in Solo',
                     'Multi-user + roles',
                     'Bank reconciliation',
