@@ -7,6 +7,7 @@ use App\Http\Controllers\Marketing\FeaturesController;
 use App\Http\Controllers\Marketing\HomeController;
 use App\Http\Controllers\Marketing\PricingController;
 use App\Http\Controllers\Marketing\TermsController;
+use App\Http\Controllers\Portal\LicenceController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -110,8 +111,20 @@ Route::prefix('portal')
     ->middleware(['auth', 'verified', \App\Http\Middleware\OrganisationScope::class])
     ->group(function () {
         Route::view('/', 'portal.dashboard')->name('portal.dashboard');
-        Route::view('/licences', 'portal.placeholder')
-            ->name('portal.licences')->defaults('page', 'licences');
+
+        // --- US2 licence self-service (T065) ---
+        Route::get('/licences', [LicenceController::class, 'index'])
+            ->name('portal.licences');
+        Route::get('/licences/activate-paid', [LicenceController::class, 'showActivatePaid'])
+            ->name('portal.licences.activate-paid');
+        Route::post('/licences/activate-paid', [LicenceController::class, 'activatePaid'])
+            ->name('portal.licences.activate-paid.submit');
+        Route::get('/licences/{licence}/transfer', [LicenceController::class, 'showTransfer'])
+            ->name('portal.licences.transfer');
+        Route::post('/licences/{licence}/transfer', [LicenceController::class, 'transfer'])
+            ->name('portal.licences.transfer.submit');
+        Route::get('/licences/{licence}/token', [LicenceController::class, 'downloadToken'])
+            ->name('portal.licences.token');
         Route::view('/subscription', 'portal.placeholder')
             ->name('portal.subscription')->defaults('page', 'subscription');
         Route::view('/billing', 'portal.placeholder')

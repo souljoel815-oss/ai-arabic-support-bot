@@ -31,21 +31,30 @@ class RegisteredUserController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.TeamMember::class],
+            'display_name' => ['required', 'string', 'max:128'],
+            'email' => ['required', 'string', 'lowercase', 'email', 'max:256', 'unique:'.TeamMember::class],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            // FR-008 — locale preference at signup; defaults to ar-EG.
+            'locale_preference' => ['nullable', 'in:ar-EG,en-US'],
         ]);
 
         $user = TeamMember::create([
-            'name' => $request->name,
+            'display_name' => $request->display_name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
+            'locale_preference' => $request->locale_preference ?? 'ar-EG',
         ]);
 
         event(new Registered($user));
 
         Auth::login($user);
 
-        return redirect(route('dashboard', absolute: false));
+        // Phase 5 (US3 T081 SignupService) replaces this with the full
+        // signup flow that also creates a CustomerOrganisation + Owner
+        // OrganisationMembership row. For now go to the portal dashboard;
+        // the dashboard tells the user to subscribe before doing anything
+        // real (the OrganisationScope middleware will catch the
+        // no-active-membership case + bounce them appropriately).
+        return redirect(route('portal.dashboard', absolute: false));
     }
 }

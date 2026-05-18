@@ -133,23 +133,23 @@ description: "Task list for 010-website-portal feature implementation (Laravel 1
 
 ### Tests for User Story 2
 
-- [ ] T056 [P] [US2] Contract test at `portal/tests/Feature/Contracts/ActivatePaidLicenceEndpointTest.php` — 10 assertions per [contracts/activate-paid-licence.md](./contracts/activate-paid-licence.md)
-- [ ] T057 [P] [US2] Contract test at `portal/tests/Feature/Contracts/TransferLicenceEndpointTest.php` — 10 assertions per [contracts/transfer-licence.md](./contracts/transfer-licence.md) including the concurrent-transfer optimistic-concurrency case
-- [ ] T058 [P] [US2] Dusk e2e at `portal/tests/Browser/Portal/LicenceTransferFlowTest.php` asserting SC-003 (transfer flow < 5 min wall-clock)
-- [ ] T059 [P] [US2] Unit test for `HwidValidator` at `portal/tests/Unit/Licences/HwidValidatorTest.php` (format check + cross-customer collision)
+- [X] T056 [P] [US2] Contract test at `portal/tests/Feature/Contracts/ActivatePaidLicenceEndpointTest.php` — 10 assertions per [contracts/activate-paid-licence.md](./contracts/activate-paid-licence.md)
+- [X] T057 [P] [US2] Contract test at `portal/tests/Feature/Contracts/TransferLicenceEndpointTest.php` — 10 assertions per [contracts/transfer-licence.md](./contracts/transfer-licence.md) including the concurrent-transfer optimistic-concurrency case
+- [X] T058 [P] [US2] Dusk e2e at `portal/tests/Browser/Portal/LicenceTransferFlowTest.php` asserting SC-003 (transfer flow < 5 min wall-clock)
+- [X] T059 [P] [US2] Unit test for `HwidValidator` at `portal/tests/Unit/Licences/HwidValidatorTest.php` (format check + cross-customer collision)
 
 ### Implementation for User Story 2
 
-- [ ] T060 [P] [US2] Create migration `create_subscriptions_table.php` + `Subscription` Eloquent model per data-model.md §4 (NO `Trial` status per FR-030)
-- [ ] T061 [P] [US2] Create migration `create_licences_table.php` + `Licence` Eloquent model per data-model.md §5 — composite unique index on `hwid` filtered on `retired_at IS NULL`
-- [ ] T062 [P] [US2] Implement `portal/app/Services/Licences/HwidValidator.php` — regex `^[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$` + cross-customer collision query
-- [ ] T063 [P] [US2] Implement `portal/app/Services/Licences/ActivatePaidLicenceService.php` per [contracts/activate-paid-licence.md](./contracts/activate-paid-licence.md) Behaviour section
-- [ ] T064 [P] [US2] Implement `portal/app/Services/Licences/TransferLicenceService.php` per [contracts/transfer-licence.md](./contracts/transfer-licence.md) Behaviour section (FR-014: retire + reissue + 2 audit rows wrapped in `DB::transaction`)
-- [ ] T065 [US2] Map `POST /api/v1/portal/licences/activate` + `POST /api/v1/portal/licences/{id}/transfer` + `GET /api/v1/portal/licences/{id}/token.token` routes in `portal/routes/api.php`; create `LicenceController.php` thin wrapper
-- [ ] T066 [P] [US2] Create `portal/resources/views/portal/licences/list.blade.php` showing active + retired licences with action buttons (Download token, Transfer, Renew). When the Subscription's `tier ∈ {Enterprise, Firm}`, render the "Priority support" badge inline next to the tier name (spec US2 AS#3 — surfaces the Feature.PrioritySupport entitlement at the licence-management surface, not just on the Support form)
-- [ ] T067 [P] [US2] Create `portal/resources/views/portal/licences/activate-paid.blade.php` (paste HWID → submit → download token)
-- [ ] T068 [P] [US2] Create `portal/resources/views/portal/licences/transfer.blade.php` (confirm dialog → submit → download new token)
-- [ ] T069 [P] [US2] Translation files (ar + en) at `portal/lang/{ar,en}/licences.php` for all US2 UI strings
+- [X] T060 [P] [US2] Create migration `create_subscriptions_table.php` + `Subscription` Eloquent model per data-model.md §4 (NO `Trial` status per FR-030)
+- [X] T061 [P] [US2] Create migration `create_licences_table.php` + `Licence` Eloquent model per data-model.md §5 — composite unique index on `hwid` filtered on `retired_at IS NULL`
+- [X] T062 [P] [US2] Implement `portal/app/Services/Licences/HwidValidator.php` — regex `^[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$` + cross-customer collision query
+- [X] T063 [P] [US2] Implement `portal/app/Services/Licences/ActivatePaidLicenceService.php` per [contracts/activate-paid-licence.md](./contracts/activate-paid-licence.md) Behaviour section
+- [X] T064 [P] [US2] Implement `portal/app/Services/Licences/TransferLicenceService.php` per [contracts/transfer-licence.md](./contracts/transfer-licence.md) Behaviour section (FR-014: retire + reissue + 2 audit rows wrapped in `DB::transaction`)
+- [X] T065 [US2] Map `POST /api/v1/portal/licences/activate` + `POST /api/v1/portal/licences/{id}/transfer` + `GET /api/v1/portal/licences/{id}/token.token` routes in `portal/routes/api.php`; create `LicenceController.php` thin wrapper
+- [X] T066 [P] [US2] Create `portal/resources/views/portal/licences/list.blade.php` showing active + retired licences with action buttons (Download token, Transfer, Renew). When the Subscription's `tier ∈ {Enterprise, Firm}`, render the "Priority support" badge inline next to the tier name (spec US2 AS#3 — surfaces the Feature.PrioritySupport entitlement at the licence-management surface, not just on the Support form)
+- [X] T067 [P] [US2] Create `portal/resources/views/portal/licences/activate-paid.blade.php` (paste HWID → submit → download token)
+- [X] T068 [P] [US2] Create `portal/resources/views/portal/licences/transfer.blade.php` (confirm dialog → submit → download new token)
+- [X] T069 [P] [US2] Translation files (ar + en) at `portal/lang/{ar,en}/licences.php` for all US2 UI strings
 
 **Checkpoint**: A customer can complete the SC-003 5-minute licence transfer end-to-end. US2 is independently shippable but depends on having paid customers (US3 creates them); for v1 testing the team seeds test customers manually via `database/seeders/`.
 
