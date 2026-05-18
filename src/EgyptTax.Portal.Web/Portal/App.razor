@@ -1,0 +1,16 @@
+@* T035 — Blazor Server root component. Routes under /portal/* resolve to
+   Razor components in the EgyptTax.Portal.Web.Portal.Pages namespace. *@
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(_PortalLayout)">
+            <NotAuthorized>
+                <p>You are not authorised to view this page.</p>
+            </NotAuthorized>
+        </AuthorizeRouteView>
+    </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(_PortalLayout)">
+            <p>Sorry, there's nothing at this address.</p>
+        </LayoutView>
+    </NotFound>
+</Router>

@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>EgyptTax.Portal.Web</RootNamespace>
+    <AssemblyName>EgyptTax.Portal.Web</AssemblyName>
+    <UserSecretsId>egypttax-portal-web-dev-local</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EgyptTax.Portal.Application\EgyptTax.Portal.Application.csproj" />
+    <ProjectReference Include="..\EgyptTax.Portal.Infrastructure\EgyptTax.Portal.Infrastructure.csproj" />
+    <!-- Plan.md anticipated a shared EgyptTax.Web.Tools library but
+         LicenseIssueHost actually lives inside EgyptTax.Web as an
+         internal static class. To keep the portal physically isolated
+         from the on-prem product (plan.md "Structure Decision"), T028
+         reimplements the Ed25519 signing in Portal.Application against
+         the same vendor-keys.json format rather than referencing
+         EgyptTax.Web here. -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EgyptTax.Portal.UnitTests" />
+    <InternalsVisibleTo Include="EgyptTax.Portal.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="QuestPDF" />
+    <PackageReference Include="Otp.NET" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

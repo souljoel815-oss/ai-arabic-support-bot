@@ -35,22 +35,22 @@ description: "Task list for 010-website-portal feature implementation"
 
 **Purpose**: Stand up the three new .NET projects + version pins + dockerised local stack + CI pipeline. No business code yet.
 
-- [ ] T001 Create `src/EgyptTax.Portal.Web/EgyptTax.Portal.Web.csproj` targeting net8.0 per plan.md Technical Context
-- [ ] T002 [P] Create `src/EgyptTax.Portal.Application/EgyptTax.Portal.Application.csproj` targeting net8.0
-- [ ] T003 [P] Create `src/EgyptTax.Portal.Infrastructure/EgyptTax.Portal.Infrastructure.csproj` targeting net8.0
-- [ ] T004 Add the three new project references to the existing solution file at repo root
-- [ ] T005 [P] Add package refs to `EgyptTax.Portal.Web.csproj`: `Microsoft.AspNetCore.Identity.EntityFrameworkCore`, `Microsoft.AspNetCore.Components.Server`, `Microsoft.AspNetCore.Mvc.RazorPages`, `Microsoft.AspNetCore.Localization.Routing`, `Serilog.AspNetCore`, `Serilog.Sinks.File`, `Serilog.Sinks.ApplicationInsights`, `QuestPDF`
-- [ ] T006 [P] Add package refs to `EgyptTax.Portal.Application.csproj`: `Microsoft.Extensions.Logging.Abstractions`, `MediatR` (for handler dispatch), `FluentValidation`
-- [ ] T007 [P] Add package refs to `EgyptTax.Portal.Infrastructure.csproj`: `Microsoft.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.SqlServer`, `Microsoft.EntityFrameworkCore.Sqlite` (dev override), `Azure.Storage.Blobs`, `Microsoft.Extensions.Http`, `Microsoft.Extensions.Http.Polly`
-- [ ] T008 [P] Add project reference from `EgyptTax.Portal.Application.csproj` to `EgyptTax.Portal.Infrastructure.csproj` (Web composes both)
-- [ ] T009 [P] Add project reference from `EgyptTax.Portal.Web.csproj` to `EgyptTax.Web.Tools.csproj` (to wrap the existing `LicenseIssueHost` per research §10)
-- [ ] T010 [P] Create `deploy/portal/Dockerfile` (multi-stage .NET 8 SDK → distroless runtime) per plan.md
-- [ ] T011 [P] Create `deploy/portal/docker-compose.yml` (portal-web + SQL Server 2022 + Azurite) for local dev stack per plan.md
-- [ ] T012 [P] Create `deploy/portal/cloudflare/cache-rules.json` (marketing routes `max-age=3600`; portal/api/identity routes `no-store`) per research §9
-- [ ] T013 [P] Create `deploy/portal/README.md` ops runbook (deploy procedure, secret rotation, incident response)
-- [ ] T014 [P] Set up Tailwind CSS v4 at `src/EgyptTax.Portal.Web/wwwroot/css/input.css` + `tailwind.config.js`; document the `npx tailwindcss --watch` invocation in `quickstart.md`
-- [ ] T015 [P] Create `.github/workflows/portal-build.yml` CI workflow with three stages (build+unit, integration, deploy-on-main) per research §16
-- [ ] T016 [P] Create `src/EgyptTax.Portal.Web/appsettings.json` + `appsettings.Development.json` (Development sets SQLite override + fake Resend SMTP) per plan.md
+- [X] T001 Create `src/EgyptTax.Portal.Web/EgyptTax.Portal.Web.csproj` targeting net8.0 per plan.md Technical Context
+- [X] T002 [P] Create `src/EgyptTax.Portal.Application/EgyptTax.Portal.Application.csproj` targeting net8.0
+- [X] T003 [P] Create `src/EgyptTax.Portal.Infrastructure/EgyptTax.Portal.Infrastructure.csproj` targeting net8.0
+- [X] T004 Add the three new project references to the existing solution file at repo root
+- [X] T005 [P] Add package refs to `EgyptTax.Portal.Web.csproj`: `Microsoft.AspNetCore.Identity.EntityFrameworkCore`, `Microsoft.AspNetCore.Components.Server`, `Microsoft.AspNetCore.Mvc.RazorPages`, `Microsoft.AspNetCore.Localization.Routing`, `Serilog.AspNetCore`, `Serilog.Sinks.File`, `Serilog.Sinks.ApplicationInsights`, `QuestPDF`
+- [X] T006 [P] Add package refs to `EgyptTax.Portal.Application.csproj`: `Microsoft.Extensions.Logging.Abstractions`, `MediatR` (for handler dispatch), `FluentValidation`
+- [X] T007 [P] Add package refs to `EgyptTax.Portal.Infrastructure.csproj`: `Microsoft.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.SqlServer`, `Microsoft.EntityFrameworkCore.Sqlite` (dev override), `Azure.Storage.Blobs`, `Microsoft.Extensions.Http`, `Microsoft.Extensions.Http.Polly`
+- [X] T008 [P] Add project reference from `EgyptTax.Portal.Application.csproj` to `EgyptTax.Portal.Infrastructure.csproj` (Web composes both)
+- [X] T009 [P] Add project reference from `EgyptTax.Portal.Web.csproj` to `EgyptTax.Web.Tools.csproj` (to wrap the existing `LicenseIssueHost` per research §10)
+- [X] T010 [P] Create `deploy/portal/Dockerfile` (multi-stage .NET 8 SDK → distroless runtime) per plan.md
+- [X] T011 [P] Create `deploy/portal/docker-compose.yml` (portal-web + SQL Server 2022 + Azurite) for local dev stack per plan.md
+- [X] T012 [P] Create `deploy/portal/cloudflare/cache-rules.json` (marketing routes `max-age=3600`; portal/api/identity routes `no-store`) per research §9
+- [X] T013 [P] Create `deploy/portal/README.md` ops runbook (deploy procedure, secret rotation, incident response)
+- [X] T014 [P] Set up Tailwind CSS v4 at `src/EgyptTax.Portal.Web/wwwroot/css/input.css` + `tailwind.config.js`; document the `npx tailwindcss --watch` invocation in `quickstart.md`
+- [X] T015 [P] Create `.github/workflows/portal-build.yml` CI workflow with three stages (build+unit, integration, deploy-on-main) per research §16
+- [X] T016 [P] Create `src/EgyptTax.Portal.Web/appsettings.json` + `appsettings.Development.json` (Development sets SQLite override + fake Resend SMTP) per plan.md
 
 ---
 
@@ -60,26 +60,26 @@ description: "Task list for 010-website-portal feature implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T017 Create `PortalDbContext` at `src/EgyptTax.Portal.Infrastructure/Persistence/PortalDbContext.cs` deriving from `IdentityDbContext<PortalUser>`; auto-discover entity configurations via `ApplyConfigurationsFromAssembly`
-- [ ] T018 [P] Create `PortalUser` at `src/EgyptTax.Portal.Web/Identity/PortalUser.cs` extending `IdentityUser` with `LocalePreference`, `DisplayName`, `SoftDeletedAtUtc` per data-model.md §2 + FR-032
-- [ ] T019 [P] Create `PortalRole` at `src/EgyptTax.Portal.Web/Identity/PortalRole.cs` (placeholder — actual role logic is org-scoped via `OrganisationMembership.Role`)
-- [ ] T020 [P] Create `TotpMfaService` at `src/EgyptTax.Portal.Web/Identity/TotpMfaService.cs` using `Otp.NET` per research §2 for FR-011
-- [ ] T021 [P] Configure AspNetCore.Identity in `Program.cs`: PBKDF2 password hashing, lockout (5 attempts / 15 min), email confirmation required, TOTP MFA opt-in, separate cookie name `.DaftarXPortal.Identity` to avoid colliding with any on-prem cookie if dev runs both on localhost
-- [ ] T022 [P] Create `CustomerOrganisation` entity at `src/EgyptTax.Portal.Infrastructure/Persistence/Entities/CustomerOrganisation.cs` per data-model.md §1
-- [ ] T023 [P] Create `OrganisationMembership` entity at `src/EgyptTax.Portal.Infrastructure/Persistence/Entities/OrganisationMembership.cs` per data-model.md §2 join table
-- [ ] T024 [P] Create `AuditLogEntry` entity at `src/EgyptTax.Portal.Infrastructure/Persistence/Entities/AuditLogEntry.cs` per data-model.md §8
-- [ ] T025 [P] Create `IEntityTypeConfiguration<>` classes for the three foundational entities at `src/EgyptTax.Portal.Infrastructure/Persistence/Configurations/` (CustomerOrganisationConfiguration, OrganisationMembershipConfiguration with the filtered unique index on `(OrganisationId, TeamMemberId) WHERE RevokedAtUtc IS NULL`, AuditLogEntryConfiguration)
-- [ ] T026 Create initial EF Core migration `00_Initial` at `src/EgyptTax.Portal.Infrastructure/Migrations/` covering Identity tables + CustomerOrganisation + OrganisationMembership + AuditLogEntry; apply it locally to confirm the DbContext composes correctly
-- [ ] T027 [P] Define `IAuditLogWriter` + impl at `src/EgyptTax.Portal.Application/Audit/AuditLogWriter.cs` (FR-023, FR-028 — every state change writes one row, scoped to OrganisationId, payload NEVER contains tokens/PII per data-model.md §8)
-- [ ] T028 [P] Define `ILicenceSigningService` at `src/EgyptTax.Portal.Application/Licences/ILicenceSigningService.cs` + impl `LicenceSigningService.cs` that wraps the existing `EgyptTax.Web.Tools.LicenseIssueHost` flow per research §10
-- [ ] T029 [P] Create `OrganisationScopeMiddleware` at `src/EgyptTax.Portal.Web/Middleware/OrganisationScopeMiddleware.cs` rejecting URL-tampering attempts that try to read org-B data while signed in to org-A (FR-021)
-- [ ] T030 [P] Configure ASP.NET Core localization in `Program.cs`: ar-EG default RTL, en-US fallback, URL-prefix routing (`/ar/*`, `/en/*`) per FR-008 + research §8; create `LocaleResolver` middleware
-- [ ] T031 [P] Define `IEmailService` at `src/EgyptTax.Portal.Application/Email/IEmailService.cs` + `DevStdoutEmailService` (writes to stdout in Development) + `ResendTransactionalEmailService` scaffold in Infrastructure per research §4
-- [ ] T032 [P] Wire Serilog at `Program.cs` with JSON file sink + Application Insights sink per research §15
-- [ ] T033 [P] Create Mission Control base layout at `src/EgyptTax.Portal.Web/Pages/Shared/_Layout.cshtml` (gold + charcoal palette mirroring the on-prem product + the Android app)
-- [ ] T034 [P] Create `_PortalLayout.razor` at `src/EgyptTax.Portal.Web/Portal/Shared/_PortalLayout.razor` (Blazor Server layout, auth required, sidebar nav)
-- [ ] T035 Configure two-surface routing in `Program.cs`: Razor Pages for `/*` (marketing), Blazor Server with cookie auth required for `/portal/*` per plan.md "Project Type"
-- [ ] T036 [P] Add `Program.cs` `MapHealthChecks("/health")` returning the DbContext + Resend + Azure Blob connectivity status
+- [X] T017 Create `PortalDbContext` at `src/EgyptTax.Portal.Infrastructure/Persistence/PortalDbContext.cs` deriving from `IdentityDbContext<PortalUser>`; auto-discover entity configurations via `ApplyConfigurationsFromAssembly`
+- [X] T018 [P] Create `PortalUser` at `src/EgyptTax.Portal.Web/Identity/PortalUser.cs` extending `IdentityUser` with `LocalePreference`, `DisplayName`, `SoftDeletedAtUtc` per data-model.md §2 + FR-032
+- [X] T019 [P] Create `PortalRole` at `src/EgyptTax.Portal.Web/Identity/PortalRole.cs` (placeholder — actual role logic is org-scoped via `OrganisationMembership.Role`)
+- [X] T020 [P] Create `TotpMfaService` at `src/EgyptTax.Portal.Web/Identity/TotpMfaService.cs` using `Otp.NET` per research §2 for FR-011
+- [X] T021 [P] Configure AspNetCore.Identity in `Program.cs`: PBKDF2 password hashing, lockout (5 attempts / 15 min), email confirmation required, TOTP MFA opt-in, separate cookie name `.DaftarXPortal.Identity` to avoid colliding with any on-prem cookie if dev runs both on localhost
+- [X] T022 [P] Create `CustomerOrganisation` entity at `src/EgyptTax.Portal.Infrastructure/Persistence/Entities/CustomerOrganisation.cs` per data-model.md §1
+- [X] T023 [P] Create `OrganisationMembership` entity at `src/EgyptTax.Portal.Infrastructure/Persistence/Entities/OrganisationMembership.cs` per data-model.md §2 join table
+- [X] T024 [P] Create `AuditLogEntry` entity at `src/EgyptTax.Portal.Infrastructure/Persistence/Entities/AuditLogEntry.cs` per data-model.md §8
+- [X] T025 [P] Create `IEntityTypeConfiguration<>` classes for the three foundational entities at `src/EgyptTax.Portal.Infrastructure/Persistence/Configurations/` (CustomerOrganisationConfiguration, OrganisationMembershipConfiguration with the filtered unique index on `(OrganisationId, TeamMemberId) WHERE RevokedAtUtc IS NULL`, AuditLogEntryConfiguration)
+- [X] T026 Create initial EF Core migration `00_Initial` at `src/EgyptTax.Portal.Infrastructure/Migrations/` covering Identity tables + CustomerOrganisation + OrganisationMembership + AuditLogEntry; apply it locally to confirm the DbContext composes correctly
+- [X] T027 [P] Define `IAuditLogWriter` + impl at `src/EgyptTax.Portal.Application/Audit/AuditLogWriter.cs` (FR-023, FR-028 — every state change writes one row, scoped to OrganisationId, payload NEVER contains tokens/PII per data-model.md §8)
+- [X] T028 [P] Define `ILicenceSigningService` at `src/EgyptTax.Portal.Application/Licences/ILicenceSigningService.cs` + impl `LicenceSigningService.cs` that wraps the existing `EgyptTax.Web.Tools.LicenseIssueHost` flow per research §10
+- [X] T029 [P] Create `OrganisationScopeMiddleware` at `src/EgyptTax.Portal.Web/Middleware/OrganisationScopeMiddleware.cs` rejecting URL-tampering attempts that try to read org-B data while signed in to org-A (FR-021)
+- [X] T030 [P] Configure ASP.NET Core localization in `Program.cs`: ar-EG default RTL, en-US fallback, URL-prefix routing (`/ar/*`, `/en/*`) per FR-008 + research §8; create `LocaleResolver` middleware
+- [X] T031 [P] Define `IEmailService` at `src/EgyptTax.Portal.Application/Email/IEmailService.cs` + `DevStdoutEmailService` (writes to stdout in Development) + `ResendTransactionalEmailService` scaffold in Infrastructure per research §4
+- [X] T032 [P] Wire Serilog at `Program.cs` with JSON file sink + Application Insights sink per research §15
+- [X] T033 [P] Create Mission Control base layout at `src/EgyptTax.Portal.Web/Pages/Shared/_Layout.cshtml` (gold + charcoal palette mirroring the on-prem product + the Android app)
+- [X] T034 [P] Create `_PortalLayout.razor` at `src/EgyptTax.Portal.Web/Portal/Shared/_PortalLayout.razor` (Blazor Server layout, auth required, sidebar nav)
+- [X] T035 Configure two-surface routing in `Program.cs`: Razor Pages for `/*` (marketing), Blazor Server with cookie auth required for `/portal/*` per plan.md "Project Type"
+- [X] T036 [P] Add `Program.cs` `MapHealthChecks("/health")` returning the DbContext + Resend + Azure Blob connectivity status
 
 **Checkpoint**: Foundation ready — DbContext composes, Identity logs in, licence-signing service is callable, audit-log writer works, locale routing serves bilingual pages. User stories can begin.
 

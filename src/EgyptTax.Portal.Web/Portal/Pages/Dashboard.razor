@@ -1,0 +1,16 @@
+@page "/portal"
+@page "/portal/dashboard"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<h1 class="text-2xl font-bold mb-4">@_greeting</h1>
+<p class="text-gray-600">
+    Phase 2 scaffold — full dashboard lands in US3 task T098 (FR-012):
+    subscription status, active licences, next renewal date, open ticket
+    count, and recent downloads.
+</p>
+
+@code {
+    // T098 lands the real implementation. Phase 2 just proves the
+    // Blazor host renders + auth pipeline works end-to-end.
+    private string _greeting = "Welcome to the DaftarX customer portal";
+}

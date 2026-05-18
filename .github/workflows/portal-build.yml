@@ -1,0 +1,115 @@
+# CI workflow for 010-website-portal.
+# Three stages per research §16:
+#   1. build + unit — compiles the 3 new portal projects + runs UnitTests.
+#   2. integration — spins up SQL Server + Azurite via docker-compose, runs IntegrationTests.
+#   3. deploy-on-main — builds the Docker image + ships to the App Service (only on main branch).
+#
+# Filters: only triggers when files inside the portal scope change, so on-prem (008) +
+# Android (009) work doesn't churn this pipeline.
+
+name: portal-build
+
+on:
+  push:
+    branches: [main, 010-website-portal]
+    paths:
+      - "src/EgyptTax.Portal.Web/**"
+      - "src/EgyptTax.Portal.Application/**"
+      - "src/EgyptTax.Portal.Infrastructure/**"
+      - "tests/EgyptTax.Portal.UnitTests/**"
+      - "tests/EgyptTax.Portal.IntegrationTests/**"
+      - "tests/EgyptTax.Portal.E2ETests/**"
+      - "deploy/portal/**"
+      - "Directory.Packages.props"
+      - "Directory.Build.props"
+      - ".github/workflows/portal-build.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/EgyptTax.Portal.Web/**"
+      - "src/EgyptTax.Portal.Application/**"
+      - "src/EgyptTax.Portal.Infrastructure/**"
+      - "tests/EgyptTax.Portal.UnitTests/**"
+      - "tests/EgyptTax.Portal.IntegrationTests/**"
+      - "deploy/portal/**"
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  build-unit:
+    name: Build + Unit
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Restore
+        run: dotnet restore src/EgyptTax.Portal.Web/EgyptTax.Portal.Web.csproj
+      - name: Build portal projects (Release)
+        run: |
+          dotnet build src/EgyptTax.Portal.Web/EgyptTax.Portal.Web.csproj -c Release --no-restore
+      - name: Unit tests
+        run: |
+          if [ -d tests/EgyptTax.Portal.UnitTests ]; then
+            dotnet test tests/EgyptTax.Portal.UnitTests/EgyptTax.Portal.UnitTests.csproj -c Release --no-build
+          else
+            echo "::warning::tests/EgyptTax.Portal.UnitTests not yet created — skipping."
+          fi
+
+  integration:
+    name: Integration
+    runs-on: ubuntu-22.04
+    needs: build-unit
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          SA_PASSWORD: Daftarx_local_DEV_password_1!
+          MSSQL_PID: Developer
+        ports: ["1433:1433"]
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Daftarx_local_DEV_password_1! -Q 'SELECT 1' -No"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+      azurite:
+        image: mcr.microsoft.com/azure-storage/azurite:latest
+        ports: ["10000:10000"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Integration tests
+        env:
+          ConnectionStrings__PortalDb: Server=localhost,1433;Database=DaftarXPortal_ci;User Id=sa;Password=Daftarx_local_DEV_password_1!;Encrypt=False;TrustServerCertificate=True;
+          AzureBlob__ConnectionString: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://localhost:10000/devstoreaccount1;
+        run: |
+          if [ -d tests/EgyptTax.Portal.IntegrationTests ]; then
+            dotnet test tests/EgyptTax.Portal.IntegrationTests/EgyptTax.Portal.IntegrationTests.csproj -c Release
+          else
+            echo "::warning::tests/EgyptTax.Portal.IntegrationTests not yet created — skipping."
+          fi
+
+  deploy:
+    name: Deploy (main only)
+    runs-on: ubuntu-22.04
+    needs: integration
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -f deploy/portal/Dockerfile -t daftarx-portal-web:${{ github.sha }} .
+      - name: Smoke (privacy URL)
+        run: |
+          echo "Privacy URL smoke check runs against staging slot after deploy — see T135 in tasks.md."
+      # Push + deploy steps wired up by the vendor's release engineering team:
+      #   - docker push to the vendor's container registry
+      #   - az webapp config container set ... or equivalent
+      #   - curl Cloudflare purge API per deploy/portal/cloudflare/cache-rules.json#purge_on_deploy
+      #   - smoke /privacy/android + / + /health

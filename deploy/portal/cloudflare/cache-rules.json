@@ -1,0 +1,43 @@
+{
+  "_comment": "Per research §9. Marketing routes cache aggressively (HTML 1h, static assets 1y), portal/api/identity routes never cache. Apply via Cloudflare Cache Rules (Rules → Cache Rules in the dashboard, or via API).",
+  "rules": [
+    {
+      "name": "portal-no-store",
+      "description": "Authenticated portal + identity + API routes must never be cached at the edge — responses contain per-user data + auth cookies.",
+      "expression": "(starts_with(http.request.uri.path, \"/portal/\") or starts_with(http.request.uri.path, \"/api/\") or starts_with(http.request.uri.path, \"/Identity/\") or starts_with(http.request.uri.path, \"/_blazor\") or starts_with(http.request.uri.path, \"/_framework\"))",
+      "action": "set_cache_settings",
+      "action_parameters": {
+        "cache": false,
+        "browser_ttl": { "mode": "respect_origin" },
+        "edge_ttl": { "mode": "bypass_by_default" }
+      }
+    },
+    {
+      "name": "marketing-static-assets-long-cache",
+      "description": "CSS / JS / images / fonts have content-hashed filenames after Tailwind build — safe to cache for a year.",
+      "expression": "(starts_with(http.request.uri.path, \"/css/\") or starts_with(http.request.uri.path, \"/js/\") or starts_with(http.request.uri.path, \"/images/\") or starts_with(http.request.uri.path, \"/fonts/\") or starts_with(http.request.uri.path, \"/_content/\"))",
+      "action": "set_cache_settings",
+      "action_parameters": {
+        "cache": true,
+        "edge_ttl": { "mode": "override_origin", "default": 31536000 },
+        "browser_ttl": { "mode": "override_origin", "default": 31536000 }
+      }
+    },
+    {
+      "name": "marketing-html-short-cache",
+      "description": "Marketing HTML (homepage, pricing, downloads, privacy, etc.) cached at the edge for 1 hour; CI hits the purge API on every deploy.",
+      "expression": "(not starts_with(http.request.uri.path, \"/portal/\") and not starts_with(http.request.uri.path, \"/api/\") and not starts_with(http.request.uri.path, \"/Identity/\") and not starts_with(http.request.uri.path, \"/_blazor\") and not starts_with(http.request.uri.path, \"/css/\") and not starts_with(http.request.uri.path, \"/js/\") and not starts_with(http.request.uri.path, \"/images/\") and not starts_with(http.request.uri.path, \"/fonts/\"))",
+      "action": "set_cache_settings",
+      "action_parameters": {
+        "cache": true,
+        "edge_ttl": { "mode": "override_origin", "default": 3600 },
+        "browser_ttl": { "mode": "override_origin", "default": 300 }
+      }
+    }
+  ],
+  "purge_on_deploy": {
+    "endpoint": "https://api.cloudflare.com/client/v4/zones/{ZONE_ID}/purge_cache",
+    "body": { "purge_everything": true },
+    "_comment": "Production CI/CD calls this after every deploy. Token requires 'Cache Purge' scope on the zone — store in CLOUDFLARE_API_TOKEN env var."
+  }
+}

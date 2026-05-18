@@ -1,0 +1,22 @@
+@{
+    var current = System.Threading.Thread.CurrentThread.CurrentUICulture.TwoLetterISOLanguageName;
+    var rawPath = Context.Request.Path.Value ?? "/";
+    // Strip the leading /ar or /en so we can replace it with the other locale.
+    var pathWithoutLocale = rawPath;
+    if (rawPath.StartsWith("/ar/", StringComparison.OrdinalIgnoreCase) || rawPath.StartsWith("/en/", StringComparison.OrdinalIgnoreCase))
+    {
+        pathWithoutLocale = rawPath.Substring(3);
+    }
+    else if (rawPath.Equals("/ar", StringComparison.OrdinalIgnoreCase) || rawPath.Equals("/en", StringComparison.OrdinalIgnoreCase))
+    {
+        pathWithoutLocale = "/";
+    }
+    if (string.IsNullOrEmpty(pathWithoutLocale))
+    {
+        pathWithoutLocale = "/";
+    }
+    var otherLocale = current == "ar" ? "en" : "ar";
+    var otherLabel = current == "ar" ? "EN" : "ع";
+    var href = $"/{otherLocale}{pathWithoutLocale}{Context.Request.QueryString}";
+}
+<a href="@href" class="rounded border px-2 py-1 text-xs hover:bg-gray-100" aria-label="Switch language">@otherLabel</a>
