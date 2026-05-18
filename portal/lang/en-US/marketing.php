@@ -116,7 +116,7 @@ return [
             ],
             'smb' => [
                 'name' => 'SMB',
-                'tagline' => 'For small businesses (5-25 employees)',
+                'tagline' => 'For small businesses (up to 5 users, 3 companies)',
                 'monthly' => '1,200',
                 'annual' => '12,000',
                 'features' => [
