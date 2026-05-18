@@ -16,6 +16,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@yield('title', __('messages.app.name'))</title>
     <meta name="description" content="@yield('description', __('messages.app.tagline'))" />
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" href="/images/daftarx-logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="/images/daftarx-logo.png">
     <link rel="alternate" hreflang="ar-EG" href="{{ url('/ar'.$pathNoLocale) }}" />
     <link rel="alternate" hreflang="en-US" href="{{ url('/en'.$pathNoLocale) }}" />
     <link rel="canonical" href="{{ url($currentPath === '/' ? '/' : '/'.$currentPath) }}" />

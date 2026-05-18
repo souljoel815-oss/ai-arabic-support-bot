@@ -7,6 +7,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" href="/images/daftarx-logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="/images/daftarx-logo.png">
     <title>@yield('title', __('messages.app.name'))</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
