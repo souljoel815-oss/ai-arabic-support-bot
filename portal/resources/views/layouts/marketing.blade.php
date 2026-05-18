@@ -75,20 +75,24 @@
 <body class="min-h-screen antialiased">
 
     {{-- Brand top-nav. Sticky, blurred white surface, gold underline on hover. --}}
-    <header class="sticky top-0 z-30 backdrop-blur-md bg-white/80 border-b border-ink-100/60">
+    @php
+        $navItems = [
+            ['url' => '/features',  'label' => __('messages.nav.features')],
+            ['url' => '/pricing',   'label' => __('messages.nav.pricing')],
+            ['url' => '/downloads', 'label' => __('messages.nav.downloads')],
+            ['url' => '/about',     'label' => __('messages.nav.about')],
+            ['url' => '/contact',   'label' => __('messages.nav.contact')],
+        ];
+        $authUser = auth()->user();
+        $userInitial = $authUser ? mb_strtoupper(mb_substr($authUser->display_name ?? $authUser->email, 0, 1)) : '';
+    @endphp
+    <header class="sticky top-0 z-30 backdrop-blur-md bg-white/85 border-b border-ink-100/60" x-data="{ mobileOpen: false }">
         <nav class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3.5">
-            <a href="/" class="flex items-center gap-2">
+            <a href="/" class="flex items-center gap-2 shrink-0">
                 <x-application-logo size="md" />
             </a>
-            @php
-                $navItems = [
-                    ['url' => '/features',  'label' => __('messages.nav.features')],
-                    ['url' => '/pricing',   'label' => __('messages.nav.pricing')],
-                    ['url' => '/downloads', 'label' => __('messages.nav.downloads')],
-                    ['url' => '/about',     'label' => __('messages.nav.about')],
-                    ['url' => '/contact',   'label' => __('messages.nav.contact')],
-                ];
-            @endphp
+
+            {{-- Desktop nav links --}}
             <div class="hidden md:flex items-center gap-1 text-sm">
                 @foreach ($navItems as $item)
                     @php
@@ -103,13 +107,10 @@
                     </a>
                 @endforeach
             </div>
-            <div class="flex items-center gap-2 text-sm">
+
+            {{-- Desktop auth area --}}
+            <div class="hidden md:flex items-center gap-2 text-sm">
                 @auth
-                    {{-- Signed in already — short-circuit straight to the portal --}}
-                    @php
-                        $authUser = auth()->user();
-                        $initial = mb_strtoupper(mb_substr($authUser?->display_name ?? $authUser?->email ?? '?', 0, 1));
-                    @endphp
                     <a href="/portal" class="btn-primary !py-2 !px-4">
                         افتح البوابة
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 rtl:rotate-180" viewBox="0 0 24 24"
@@ -117,10 +118,10 @@
                             <path d="M5 12h14M13 5l7 7-7 7" />
                         </svg>
                     </a>
-                    <span class="hidden sm:inline-flex h-9 w-9 items-center justify-center rounded-full text-white text-sm font-bold shadow-brand-glow"
+                    <span class="inline-flex h-9 w-9 items-center justify-center rounded-full text-white text-sm font-bold shadow-brand-glow"
                           style="background: linear-gradient(135deg, #d68a1f 0%, #b06d18 100%);"
-                          title="{{ $authUser?->display_name ?? $authUser?->email }}">
-                        {{ $initial }}
+                          title="{{ $authUser->display_name ?? $authUser->email }}">
+                        {{ $userInitial }}
                     </span>
                 @else
                     <a href="/login" class="btn-ghost">{{ __('messages.nav.login') }}</a>
@@ -130,7 +131,65 @@
                     {{ $isArabic ? 'EN' : 'ع' }}
                 </a>
             </div>
+
+            {{-- Mobile: hamburger toggle (shows only below md breakpoint) --}}
+            <button type="button"
+                    class="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-lg text-ink-700 hover:bg-ink-100 transition"
+                    @click="mobileOpen = !mobileOpen"
+                    :aria-expanded="mobileOpen.toString()"
+                    aria-label="Toggle menu">
+                <svg x-show="!mobileOpen" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12h18M3 6h18M3 18h18" />
+                </svg>
+                <svg x-show="mobileOpen" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+            </button>
         </nav>
+
+        {{-- Mobile menu panel — slides down from header --}}
+        <div x-show="mobileOpen"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 -translate-y-2"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             class="md:hidden border-t border-ink-100 bg-white"
+             style="display:none">
+            <div class="px-4 py-4 space-y-1">
+                @foreach ($navItems as $item)
+                    @php
+                        $isActive = str_starts_with('/'.trim(request()->path(), '/'), $item['url']);
+                    @endphp
+                    <a href="{{ $item['url'] }}"
+                       class="block rounded-lg px-3 py-2.5 text-base {{ $isActive ? 'bg-brand-50 text-brand-800 font-semibold' : 'text-ink-700 hover:bg-ink-50' }}">
+                        {{ $item['label'] }}
+                    </a>
+                @endforeach
+
+                <div class="pt-4 mt-2 border-t border-ink-100 space-y-2">
+                    @auth
+                        <div class="flex items-center gap-3 px-3 py-2">
+                            <span class="inline-flex h-9 w-9 items-center justify-center rounded-full text-white text-sm font-bold"
+                                  style="background: linear-gradient(135deg, #d68a1f 0%, #b06d18 100%);">
+                                {{ $userInitial }}
+                            </span>
+                            <div class="min-w-0">
+                                <div class="truncate text-sm font-semibold text-ink-900">{{ $authUser->display_name ?? $authUser->email }}</div>
+                                <div class="truncate text-xs text-ink-500">{{ $authUser->email }}</div>
+                            </div>
+                        </div>
+                        <a href="/portal" class="btn-primary w-full justify-center">افتح البوابة</a>
+                    @else
+                        <a href="/login" class="btn-secondary w-full justify-center">{{ __('messages.nav.login') }}</a>
+                        <a href="/register" class="btn-primary w-full justify-center">{{ __('messages.nav.register') }}</a>
+                    @endauth
+                    <a href="{{ $altUrl }}" class="block text-center text-xs text-ink-500 hover:text-ink-700 py-2">
+                        {{ $isArabic ? 'English' : 'العربية' }}
+                    </a>
+                </div>
+            </div>
+        </div>
     </header>
 
     <main class="mx-auto max-w-6xl px-4 py-12">

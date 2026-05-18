@@ -15,9 +15,12 @@
         text-rendering: optimizeLegibility;
     }
     /* Optical sizing for headlines — tighter tracking + serif fallback so
-       big Arabic text reads less "default-sans" and more "considered". */
+       big Arabic text reads less "default-sans" and more "considered".
+       NOTE: do NOT force a `color:` here — headings inherit from their
+       parent surface so a dark CTA's `text-white` actually applies. The
+       display-* / card-section-title utilities set the dark colour on
+       light backgrounds explicitly. */
     h1, h2, h3, h4 {
-        @apply text-ink-950;
         letter-spacing: -0.02em;
     }
     /* Custom scrollbar — matches the brand palette instead of OS default. */

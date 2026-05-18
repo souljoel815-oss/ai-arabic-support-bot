@@ -44,17 +44,58 @@
     <title>@yield('title', __('messages.app.name')) · بوابة العملاء</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="antialiased">
+<body class="antialiased" x-data="{ sidebarOpen: false }">
     <div class="flex min-h-screen">
 
+        {{-- ─── Mobile top bar (md:hidden) — visible only on small screens ── --}}
+        <header class="md:hidden fixed inset-x-0 top-0 z-30 flex items-center justify-between bg-white border-b border-ink-100 px-4 h-14">
+            <a href="/portal" class="flex items-center">
+                <x-application-logo size="sm" />
+            </a>
+            <button type="button"
+                    class="inline-flex items-center justify-center h-10 w-10 rounded-lg text-ink-700 hover:bg-ink-100 transition"
+                    @click="sidebarOpen = true"
+                    aria-label="Open menu">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12h18M3 6h18M3 18h18" />
+                </svg>
+            </button>
+        </header>
+
+        {{-- Mobile backdrop --}}
+        <div x-show="sidebarOpen"
+             x-transition.opacity
+             @click="sidebarOpen = false"
+             class="md:hidden fixed inset-0 z-40 bg-ink-950/40 backdrop-blur-sm"
+             style="display:none"></div>
+
         {{-- ─── Sidebar — clean, light, generous spacing ──────── --}}
-        <aside class="w-[240px] shrink-0 flex flex-col bg-white border-end border-ink-100/80">
+        {{-- Desktop: always visible 240px column. Mobile: hidden by
+             default, slides in as drawer from the side when toggled.
+             Use a slot-aware off-screen class so RTL slides from the
+             trailing edge naturally. --}}
+        @php
+            $offscreenClass = $dir === 'rtl' ? 'translate-x-full' : '-translate-x-full';
+        @endphp
+        <aside class="fixed md:relative inset-y-0 start-0 z-50 w-[260px] md:w-[240px] shrink-0 flex flex-col bg-white border-end border-ink-100/80 transform transition-transform duration-200 md:translate-x-0 {{ $offscreenClass }}"
+               :class="sidebarOpen ? 'translate-x-0' : '{{ $offscreenClass }} md:translate-x-0'">
 
             {{-- Brand bar --}}
-            <div class="px-5 pt-6 pb-5">
-                <a href="/portal" class="block">
+            <div class="px-5 pt-6 pb-5 flex items-center justify-between">
+                <a href="/portal" class="block" @click="sidebarOpen = false">
                     <x-application-logo size="md" />
                 </a>
+                {{-- Close button — only on mobile --}}
+                <button type="button"
+                        class="md:hidden inline-flex items-center justify-center h-9 w-9 rounded-lg text-ink-500 hover:bg-ink-100 hover:text-ink-900 transition"
+                        @click="sidebarOpen = false"
+                        aria-label="Close menu">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                </button>
             </div>
 
             {{-- Nav --}}
@@ -119,7 +160,8 @@
         </aside>
 
         {{-- ─── Main content area ──────────────────────────────── --}}
-        <main class="flex-1 min-w-0 px-8 py-8 max-w-[1180px] animate-fade-in-up">
+        {{-- Top padding pt-20 on mobile to clear the fixed header bar; pt-8 on desktop. --}}
+        <main class="flex-1 min-w-0 px-4 md:px-8 pt-20 md:pt-8 pb-8 max-w-[1180px] animate-fade-in-up">
             @if (session('status'))
                 <div class="mb-6 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900 flex items-center gap-3 shadow-elevation-1">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-emerald-600" viewBox="0 0 24 24"
