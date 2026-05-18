@@ -69,22 +69,25 @@
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="min-h-screen bg-amber-50 text-stone-900 antialiased">
+<body class="min-h-screen antialiased">
 
-    {{-- T033 — Mission Control marketing header. Sidebar is portal-only;
-         the public marketing surface gets a simple top nav. --}}
-    <header class="border-b border-stone-200 bg-white shadow-sm">
-        <nav class="mx-auto flex max-w-6xl items-center justify-between gap-6 px-4 py-4">
-            <a href="/" class="text-xl font-bold text-stone-900">{{ __('messages.app.name') }}</a>
-            <div class="flex items-center gap-4 text-sm">
-                <a href="/features" class="hover:text-amber-600">{{ __('messages.nav.features') }}</a>
-                <a href="/pricing" class="hover:text-amber-600">{{ __('messages.nav.pricing') }}</a>
-                <a href="/downloads" class="hover:text-amber-600">{{ __('messages.nav.downloads') }}</a>
-                <a href="/about" class="hover:text-amber-600">{{ __('messages.nav.about') }}</a>
-                <a href="/contact" class="hover:text-amber-600">{{ __('messages.nav.contact') }}</a>
-                <a href="/login" class="rounded border border-stone-300 px-3 py-1 hover:bg-stone-100">{{ __('messages.nav.login') }}</a>
-                <a href="/register" class="rounded bg-amber-600 px-3 py-1 font-semibold text-white hover:bg-amber-700">{{ __('messages.nav.register') }}</a>
-                <a href="{{ $altUrl }}" class="rounded border border-stone-200 px-2 py-1 text-xs text-stone-600 hover:bg-stone-100" aria-label="Switch language">
+    {{-- Brand top-nav. Sticky on scroll, subtle border + soft shadow. --}}
+    <header class="sticky top-0 z-30 backdrop-blur bg-white/85 border-b border-ink-100">
+        <nav class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
+            <a href="/" class="flex items-center gap-2">
+                <x-application-logo size="md" />
+            </a>
+            <div class="hidden md:flex items-center gap-1 text-sm">
+                <a href="/features" class="px-3 py-2 text-ink-700 hover:text-brand-700 transition">{{ __('messages.nav.features') }}</a>
+                <a href="/pricing" class="px-3 py-2 text-ink-700 hover:text-brand-700 transition">{{ __('messages.nav.pricing') }}</a>
+                <a href="/downloads" class="px-3 py-2 text-ink-700 hover:text-brand-700 transition">{{ __('messages.nav.downloads') }}</a>
+                <a href="/about" class="px-3 py-2 text-ink-700 hover:text-brand-700 transition">{{ __('messages.nav.about') }}</a>
+                <a href="/contact" class="px-3 py-2 text-ink-700 hover:text-brand-700 transition">{{ __('messages.nav.contact') }}</a>
+            </div>
+            <div class="flex items-center gap-2 text-sm">
+                <a href="/login" class="btn-ghost">{{ __('messages.nav.login') }}</a>
+                <a href="/register" class="btn-primary !py-2 !px-4">{{ __('messages.nav.register') }}</a>
+                <a href="{{ $altUrl }}" class="rounded-full border border-ink-200 px-2.5 py-1 text-xs font-medium text-ink-600 hover:bg-ink-50 hover:text-ink-900 transition" aria-label="Switch language">
                     {{ $isArabic ? 'EN' : 'ع' }}
                 </a>
             </div>
@@ -95,16 +98,36 @@
         @yield('content')
     </main>
 
-    {{-- T051 — footer with legal links per FR-007. --}}
-    <footer class="mt-16 border-t border-stone-200 bg-white">
-        <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-6 text-xs text-stone-500">
-            <span>© {{ date('Y') }} {{ __('messages.app.name') }}. {{ __('messages.footer.tagline') }}</span>
-            <div class="flex flex-wrap gap-4">
-                <a href="/terms" class="hover:text-amber-600">{{ __('messages.footer.terms') }}</a>
-                <a href="/refund" class="hover:text-amber-600">{{ __('messages.footer.refund') }}</a>
-                <a href="/privacy" class="hover:text-amber-600">{{ __('messages.footer.privacy') }}</a>
-                <a href="/privacy/android" class="hover:text-amber-600">{{ __('messages.footer.privacy_android') }}</a>
+    <footer class="mt-20 border-t border-ink-100 bg-white">
+        <div class="mx-auto max-w-6xl px-4 py-10 grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div>
+                <x-application-logo size="md" />
+                <p class="mt-3 text-sm text-ink-600 max-w-xs leading-relaxed">{{ __('messages.app.tagline') }}</p>
             </div>
+            <div>
+                <h4 class="text-sm font-bold text-ink-950 mb-3">{{ __('messages.nav.features') }}</h4>
+                <ul class="space-y-2 text-sm text-ink-700">
+                    <li><a href="/features" class="hover:text-brand-700">{{ __('messages.nav.features') }}</a></li>
+                    <li><a href="/pricing" class="hover:text-brand-700">{{ __('messages.nav.pricing') }}</a></li>
+                    <li><a href="/downloads" class="hover:text-brand-700">{{ __('messages.nav.downloads') }}</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="text-sm font-bold text-ink-950 mb-3">المؤسسة</h4>
+                <ul class="space-y-2 text-sm text-ink-700">
+                    <li><a href="/about" class="hover:text-brand-700">{{ __('messages.nav.about') }}</a></li>
+                    <li><a href="/contact" class="hover:text-brand-700">{{ __('messages.nav.contact') }}</a></li>
+                    <li><a href="/terms" class="hover:text-brand-700">{{ __('messages.footer.terms') }}</a></li>
+                    <li><a href="/refund" class="hover:text-brand-700">{{ __('messages.footer.refund') }}</a></li>
+                    <li><a href="/privacy" class="hover:text-brand-700">{{ __('messages.footer.privacy') }}</a></li>
+                    <li><a href="/privacy/android" class="hover:text-brand-700">{{ __('messages.footer.privacy_android') }}</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="border-t border-ink-100">
+            <p class="mx-auto max-w-6xl px-4 py-4 text-xs text-ink-500">
+                © {{ date('Y') }} {{ __('messages.app.name') }} · {{ __('messages.footer.tagline') }}
+            </p>
         </div>
     </footer>
 

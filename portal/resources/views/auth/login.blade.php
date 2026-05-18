@@ -1,47 +1,47 @@
 <x-guest-layout>
-    <!-- Session Status -->
+    @section('title', 'تسجيل الدخول · ' . __('messages.app.name'))
+
+    <header class="mb-6 text-center">
+        <h1 class="text-2xl font-bold text-ink-950 mb-1">أهلاً بعودتك</h1>
+        <p class="text-sm text-ink-600">سجّل دخولك لإدارة اشتراكك وتراخيصك.</p>
+    </header>
+
     <x-auth-session-status class="mb-4" :status="session('status')" />
 
-    <form method="POST" action="{{ route('login') }}">
+    <form method="POST" action="{{ route('login') }}" class="space-y-4">
         @csrf
 
-        <!-- Email Address -->
         <div>
-            <x-input-label for="email" :value="__('Email')" />
-            <x-text-input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')" required autofocus autocomplete="username" />
-            <x-input-error :messages="$errors->get('email')" class="mt-2" />
+            <x-input-label for="email" value="البريد الإلكتروني / Email" />
+            <x-text-input id="email" type="email" name="email" :value="old('email')" required autofocus autocomplete="username" />
+            <x-input-error :messages="$errors->get('email')" />
         </div>
 
-        <!-- Password -->
-        <div class="mt-4">
-            <x-input-label for="password" :value="__('Password')" />
-
-            <x-text-input id="password" class="block mt-1 w-full"
-                            type="password"
-                            name="password"
-                            required autocomplete="current-password" />
-
-            <x-input-error :messages="$errors->get('password')" class="mt-2" />
+        <div>
+            <div class="flex items-center justify-between mb-1.5">
+                <label for="password" class="form-label !mb-0">كلمة المرور / Password</label>
+                @if (Route::has('password.request'))
+                    <a class="text-xs text-brand-700 hover:text-brand-800 underline-offset-2 hover:underline" href="{{ route('password.request') }}">
+                        نسيت كلمة المرور؟
+                    </a>
+                @endif
+            </div>
+            <x-text-input id="password" type="password" name="password" required autocomplete="current-password" />
+            <x-input-error :messages="$errors->get('password')" />
         </div>
 
-        <!-- Remember Me -->
-        <div class="block mt-4">
-            <label for="remember_me" class="inline-flex items-center">
-                <input id="remember_me" type="checkbox" class="rounded dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-indigo-600 shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:focus:ring-offset-gray-800" name="remember">
-                <span class="ms-2 text-sm text-gray-600 dark:text-gray-400">{{ __('Remember me') }}</span>
-            </label>
-        </div>
+        <label class="flex items-center gap-2 text-sm text-ink-700">
+            <input type="checkbox" name="remember" class="rounded border-ink-300 text-brand-600 focus:ring-brand-400">
+            <span>تذكّرني / Remember me</span>
+        </label>
 
-        <div class="flex items-center justify-end mt-4">
-            @if (Route::has('password.request'))
-                <a class="underline text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800" href="{{ route('password.request') }}">
-                    {{ __('Forgot your password?') }}
-                </a>
-            @endif
-
-            <x-primary-button class="ms-3">
-                {{ __('Log in') }}
-            </x-primary-button>
-        </div>
+        <x-primary-button class="w-full">
+            تسجيل الدخول
+        </x-primary-button>
     </form>
+
+    <p class="mt-6 text-center text-sm text-ink-600">
+        مفيش حساب؟
+        <a href="{{ route('register') }}" class="text-brand-700 font-semibold hover:text-brand-800">ابدأ التجربة المجانية ←</a>
+    </p>
 </x-guest-layout>

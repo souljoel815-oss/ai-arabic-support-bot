@@ -1,30 +1,32 @@
+@php
+    $isArabic = str_starts_with(app()->getLocale(), 'ar');
+@endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="csrf-token" content="{{ csrf_token() }}">
+<html lang="{{ app()->getLocale() }}" dir="{{ $isArabic ? 'rtl' : 'ltr' }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>@yield('title', __('messages.app.name'))</title>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+</head>
+<body class="antialiased">
+    <div class="auth-shell">
 
-        <title>{{ config('app.name', 'Laravel') }}</title>
+        {{-- Brand wordmark on top, links back to the marketing home. --}}
+        <a href="/" class="mb-6 inline-flex items-center gap-2">
+            <x-application-logo size="lg" />
+        </a>
 
-        <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-
-        <!-- Scripts -->
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
-    </head>
-    <body class="font-sans text-gray-900 antialiased">
-        <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gray-100 dark:bg-gray-900">
-            <div>
-                <a href="/">
-                    <x-application-logo class="w-20 h-20 fill-current text-gray-500" />
-                </a>
-            </div>
-
-            <div class="w-full sm:max-w-md mt-6 px-6 py-4 bg-white dark:bg-gray-800 shadow-md overflow-hidden sm:rounded-lg">
-                {{ $slot }}
-            </div>
+        <div class="auth-card">
+            {{ $slot }}
         </div>
-    </body>
+
+        <p class="mt-6 text-xs text-ink-500 text-center max-w-md">
+            {{ __('messages.app.tagline') }} ·
+            <a href="/" class="hover:text-brand-700 underline-offset-2 hover:underline">{{ __('messages.app.name') }}</a>
+        </p>
+
+    </div>
+</body>
 </html>
