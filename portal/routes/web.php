@@ -7,7 +7,10 @@ use App\Http\Controllers\Marketing\FeaturesController;
 use App\Http\Controllers\Marketing\HomeController;
 use App\Http\Controllers\Marketing\PricingController;
 use App\Http\Controllers\Marketing\TermsController;
+use App\Http\Controllers\Portal\BillingController;
+use App\Http\Controllers\Portal\DashboardController;
 use App\Http\Controllers\Portal\LicenceController;
+use App\Http\Controllers\Portal\SubscriptionController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -110,7 +113,26 @@ Route::middleware(\App\Http\Middleware\LocaleResolver::class)
 Route::prefix('portal')
     ->middleware(['auth', 'verified', \App\Http\Middleware\OrganisationScope::class])
     ->group(function () {
-        Route::view('/', 'portal.dashboard')->name('portal.dashboard');
+        // --- US3 dashboard (T098) ---
+        Route::get('/', [DashboardController::class, 'show'])->name('portal.dashboard');
+
+        // --- US3 subscription management (T099, T103, T153) ---
+        Route::get('/subscription', [SubscriptionController::class, 'index'])
+            ->name('portal.subscription');
+        Route::get('/subscription/start', [SubscriptionController::class, 'showStart'])
+            ->name('portal.subscription.start');
+        Route::post('/subscription/start', [SubscriptionController::class, 'start'])
+            ->name('portal.subscription.start.submit');
+        Route::post('/subscription/{subscription}/cancel', [SubscriptionController::class, 'cancel'])
+            ->name('portal.subscription.cancel');
+
+        // --- US3 billing (T100) ---
+        Route::get('/billing', [BillingController::class, 'index'])
+            ->name('portal.billing');
+        Route::get('/billing/{invoice}/pdf', [BillingController::class, 'downloadPdf'])
+            ->name('portal.billing.pdf');
+        Route::post('/billing/{invoice}/refund', [BillingController::class, 'refund'])
+            ->name('portal.billing.refund');
 
         // --- US2 licence self-service (T065) ---
         Route::get('/licences', [LicenceController::class, 'index'])
@@ -125,10 +147,6 @@ Route::prefix('portal')
             ->name('portal.licences.transfer.submit');
         Route::get('/licences/{licence}/token', [LicenceController::class, 'downloadToken'])
             ->name('portal.licences.token');
-        Route::view('/subscription', 'portal.placeholder')
-            ->name('portal.subscription')->defaults('page', 'subscription');
-        Route::view('/billing', 'portal.placeholder')
-            ->name('portal.billing')->defaults('page', 'billing');
         Route::view('/downloads', 'portal.placeholder')
             ->name('portal.downloads')->defaults('page', 'downloads');
         Route::view('/support', 'portal.placeholder')

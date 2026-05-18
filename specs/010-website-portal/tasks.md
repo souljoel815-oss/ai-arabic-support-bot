@@ -174,28 +174,28 @@ description: "Task list for 010-website-portal feature implementation (Laravel 1
 
 ### Implementation for User Story 3
 
-- [ ] T078 [P] [US3] Create migration `create_invoices_table.php` + `Invoice` Eloquent model per data-model.md §6 — composite unique on `(customer_organisation_id, invoice_number)` + filtered unique on `paymob_transaction_id` for webhook idempotency; `getRefundEligibilityAttribute()` accessor implements FR-034
-- [ ] T079 [P] [US3] Create migration `create_sales_leads_table.php` + `SalesLead` Eloquent model per data-model.md §7
-- [ ] T080 [P] [US3] Implement `portal/app/Services/Sales/CreateSalesLeadService.php` (called by US1 Contact page's form post)
-- [ ] T081 [P] [US3] Implement `portal/app/Services/Identity/SignupService.php` per [contracts/signup.md](./contracts/signup.md) Behaviour section
-- [ ] T082 [US3] Map `POST /api/v1/portal/signup` + email-confirmation route in `portal/routes/api.php` + `portal/routes/auth.php` (Breeze already provides `/register` + `/verify-email` — extend rather than replace)
-- [ ] T083 [P] [US3] Implement `portal/app/Services/Subscriptions/CreateTrialIntentService.php` — per FR-030 this creates ONLY an analytics-intent record, NEVER a Subscription row with `status = 'Trial'`
-- [ ] T084 [P] [US3] Implement `portal/app/Services/Subscriptions/ConvertTrialToPaidService.php` (FR-029 single-tap with no re-entered fields)
+- [X] T078 [P] [US3] Create migration `create_invoices_table.php` + `Invoice` Eloquent model per data-model.md §6 — composite unique on `(customer_organisation_id, invoice_number)` + filtered unique on `paymob_transaction_id` for webhook idempotency; `getRefundEligibilityAttribute()` accessor implements FR-034
+- [X] T079 [P] [US3] Create migration `create_sales_leads_table.php` + `SalesLead` Eloquent model per data-model.md §7
+- [X] T080 [P] [US3] Implement `portal/app/Services/Sales/CreateSalesLeadService.php` (called by US1 Contact page's form post)
+- [X] T081 [P] [US3] Implement `portal/app/Services/Identity/SignupService.php` per [contracts/signup.md](./contracts/signup.md) Behaviour section
+- [X] T082 [US3] Map `POST /api/v1/portal/signup` + email-confirmation route in `portal/routes/api.php` + `portal/routes/auth.php` (Breeze already provides `/register` + `/verify-email` — extend rather than replace)
+- [X] T083 [P] [US3] Implement `portal/app/Services/Subscriptions/CreateTrialIntentService.php` — per FR-030 this creates ONLY an analytics-intent record, NEVER a Subscription row with `status = 'Trial'`
+- [X] T084 [P] [US3] Implement `portal/app/Services/Subscriptions/ConvertTrialToPaidService.php` (FR-029 single-tap with no re-entered fields)
 - [ ] T085 [P] [US3] Implement `portal/app/Services/Subscriptions/UpgradeTierService.php` (FR-033 instant proration — compute unused-EGP credit + new-tier prorated charge, issue fresh licences at new tier, retire old-tier licences with `retired_reason = "TierUpgraded"`)
 - [ ] T086 [P] [US3] Implement `portal/app/Services/Subscriptions/ScheduleDowngradeService.php` (FR-033 sets `Subscription.pending_tier_change_to` to take effect at next renewal — no mid-period refund)
-- [ ] T087 [P] [US3] Implement `portal/app/Services/Subscriptions/RefundFirstPeriodService.php` (FR-034 7-day window only on FirstPeriod invoices)
+- [X] T087 [P] [US3] Implement `portal/app/Services/Subscriptions/RefundFirstPeriodService.php` (FR-034 7-day window only on FirstPeriod invoices)
 - [ ] T088 [P] [US3] Implement `portal/app/Services/Payments/PaymobHttpClient.php` (raw `Illuminate\Http\Client` adapter wrapping the Paymob v3 API)
 - [ ] T089 [P] [US3] Implement `portal/app/Services/Payments/PaymobAdapter.php` covering card + Fawry + Vodafone Cash + InstaPay per FR-015 + research §3
 - [ ] T090 [P] [US3] Implement `portal/app/Services/Payments/PaymentWebhookHandler.php` per [contracts/payment-webhook.md](./contracts/payment-webhook.md) Behaviour section (idempotent state machine, HMAC verification using `hash_hmac`)
 - [ ] T091 [US3] Map `POST /api/v1/portal/payments/webhook` route in `portal/routes/api.php` with `PaymobHmacMiddleware.php` for signature verification
-- [ ] T092 [P] [US3] Implement `portal/app/Console/Commands/MarkInvoicePaid.php` (vendor-only `php artisan invoice:mark-paid INV-2026-NNNNN` CLI per quickstart.md)
+- [X] T092 [P] [US3] Implement `portal/app/Console/Commands/MarkInvoicePaid.php` (vendor-only `php artisan invoice:mark-paid INV-2026-NNNNN` CLI per quickstart.md)
 - [ ] T093 [P] [US3] Implement `portal/app/Services/InvoicePdf/ArabicInvoiceRenderer.php` using DOMPDF (Arabic RTL + Egyptian VAT line + sequential per-org invoice number per FR-016); Blade template at `portal/resources/views/invoices/template.blade.php`
 - [ ] T094 [P] [US3] Configure `portal/config/filesystems.php` `local` disk + `Storage::disk('local')->put('invoices/{org-id}/{invoice-number}.pdf', $pdfBytes)` pattern in `ArabicInvoiceRenderer`
 - [ ] T095 [P] [US3] Configure Resend SMTP in `portal/config/mail.php` + queue-able Mailable classes at `portal/app/Mail/{SignupConfirmation,PaymentReceipt,RefundConfirmation,TrialEndingT7,TrialEndingT1,RenewalFailed}.php`
 - [ ] T096 [P] [US3] Blade email templates at `portal/resources/views/emails/{signup-confirmation,payment-receipt,refund-confirmation,trial-ending-T-7,trial-ending-T-1,renewal-failed}.blade.php` with bilingual variants based on the recipient's `locale_preference`
-- [ ] T097 [P] [US3] Replace Breeze's default `register.blade.php` to also accept `organisation_legal_name_ar` + `display_name` per [contracts/signup.md](./contracts/signup.md); Breeze handles `verify-email.blade.php` out of the box
-- [ ] T098 [P] [US3] Create `portal/resources/views/portal/dashboard.blade.php` + `DashboardController.php` showing subscription status + active licences + next renewal + open tickets + recent downloads (FR-012)
-- [ ] T099 [P] [US3] Create `portal/resources/views/portal/subscription/{index,upgrade,downgrade,convert-trial,cancel}.blade.php` + `SubscriptionController.php` handling all 5 transitions
+- [X] T097 [P] [US3] Replace Breeze's default `register.blade.php` to also accept `organisation_legal_name_ar` + `display_name` per [contracts/signup.md](./contracts/signup.md); Breeze handles `verify-email.blade.php` out of the box
+- [X] T098 [P] [US3] Create `portal/resources/views/portal/dashboard.blade.php` + `DashboardController.php` showing subscription status + active licences + next renewal + open tickets + recent downloads (FR-012)
+- [X] T099 [P] [US3] Create `portal/resources/views/portal/subscription/{index,upgrade,downgrade,convert-trial,cancel}.blade.php` + `SubscriptionController.php` handling all 5 transitions
 - [ ] T100 [P] [US3] Create `portal/resources/views/portal/billing/{invoices,payment-methods,refund}.blade.php` + `BillingController.php` (invoices list + PDF download + `refund_eligibility` badge per Invoice)
 - [ ] T101 [P] [US3] Create `portal/resources/views/portal/downloads.blade.php` + `PortalDownloadsController.php` (authenticated, ties to active Subscription's tier — Solo doesn't see Enterprise downloads)
 - [ ] T102 [P] [US3] Translation files (ar + en) at `portal/lang/{ar,en}/{subscription,billing,dashboard,downloads}.php` for all US3 UI strings
