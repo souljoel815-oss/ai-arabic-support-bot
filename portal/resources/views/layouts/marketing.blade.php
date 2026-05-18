@@ -3,9 +3,11 @@
     $dir = $isArabic ? 'rtl' : 'ltr';
     $altLocale = $isArabic ? 'en' : 'ar';
     $currentPath = request()->path();
-    // Strip leading /ar or /en from the path so we can build the alt-locale URL.
+    // Strip leading /ar or /en from the path + normalise the result so we
+    // never produce double slashes when the original path was just "/".
     $pathNoLocale = preg_replace('#^(ar|en)(/|$)#', '', $currentPath);
-    $altUrl = '/'.$altLocale.($pathNoLocale === '' ? '' : '/'.$pathNoLocale);
+    $pathNoLocale = trim($pathNoLocale, '/');
+    $altUrl = $pathNoLocale === '' ? '/'.$altLocale : '/'.$altLocale.'/'.$pathNoLocale;
 @endphp
 <!DOCTYPE html>
 <html lang="{{ app()->getLocale() }}" dir="{{ $dir }}">
@@ -16,6 +18,55 @@
     <meta name="description" content="@yield('description', __('messages.app.tagline'))" />
     <link rel="alternate" hreflang="ar-EG" href="{{ url('/ar'.$pathNoLocale) }}" />
     <link rel="alternate" hreflang="en-US" href="{{ url('/en'.$pathNoLocale) }}" />
+    <link rel="canonical" href="{{ url($currentPath === '/' ? '/' : '/'.$currentPath) }}" />
+
+    {{-- T054 — Open Graph + Twitter Card meta for social previews. --}}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="{{ __('messages.app.name') }}" />
+    <meta property="og:title" content="@yield('title', __('messages.app.name'))" />
+    <meta property="og:description" content="@yield('description', __('messages.app.tagline'))" />
+    <meta property="og:url" content="{{ url($currentPath === '/' ? '/' : '/'.$currentPath) }}" />
+    <meta property="og:locale" content="{{ $isArabic ? 'ar_EG' : 'en_US' }}" />
+    <meta property="og:locale:alternate" content="{{ $isArabic ? 'en_US' : 'ar_EG' }}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="@yield('title', __('messages.app.name'))" />
+    <meta name="twitter:description" content="@yield('description', __('messages.app.tagline'))" />
+
+    {{-- T053 — JSON-LD Organization + SoftwareApplication structured data. --}}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "{{ __('messages.app.name') }}",
+        "url": "{{ url('/') }}",
+        "logo": "{{ url('/images/daftarx-logo.png') }}",
+        "description": "{{ __('messages.app.tagline') }}",
+        "contactPoint": {
+            "@type": "ContactPoint",
+            "email": "{{ __('marketing.contact.channels.sales') }}",
+            "contactType": "sales",
+            "areaServed": "EG",
+            "availableLanguage": ["Arabic", "English"]
+        }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "{{ __('messages.app.name') }}",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Windows, Android",
+        "offers": {
+            "@type": "AggregateOffer",
+            "priceCurrency": "EGP",
+            "lowPrice": "{{ __('marketing.pricing.tiers.solo.monthly') }}",
+            "highPrice": "{{ __('marketing.pricing.tiers.firm.monthly') }}",
+            "offerCount": 4
+        }
+    }
+    </script>
+
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-amber-50 text-stone-900 antialiased">

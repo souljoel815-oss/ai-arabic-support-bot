@@ -1,118 +1,137 @@
 <?php
 
+use App\Http\Controllers\Marketing\AboutController;
+use App\Http\Controllers\Marketing\ContactController;
+use App\Http\Controllers\Marketing\DownloadsController;
+use App\Http\Controllers\Marketing\FeaturesController;
+use App\Http\Controllers\Marketing\HomeController;
+use App\Http\Controllers\Marketing\PricingController;
+use App\Http\Controllers\Marketing\TermsController;
 use App\Http\Controllers\ProfileController;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 /**
- * T035 — Two-surface routing:
- *   /*           → marketing (Razor-Pages-equivalent — public Blade views).
- *   /portal/*    → authenticated portal (Blade + auth + organisation-scope).
- *   /api/*       → JSON endpoints (defined in routes/api.php).
- *
- * Marketing pages with the optional locale prefix /ar/* + /en/* resolve
- * to the same Blade view via the LocaleResolver middleware. Phase 3
- * (US1) replaces these placeholder closures with real Marketing\* controllers.
+ * T035 + T052 — Two-surface routing with optional locale prefix.
+ *   /*            → marketing (public Blade views).
+ *   /ar/* + /en/* → same marketing pages, locale-aware.
+ *   /portal/*     → authenticated portal (Blade + auth + organisation-scope).
+ *   /api/*        → JSON endpoints (defined in routes/api.php).
  */
 
-// --- T036: /health ---------------------------------------------------
-// JSON 200 when the DB is reachable + degraded JSON 503 otherwise.
-// Cloudflare can use this for origin health checks; UptimeRobot pings
-// from 3 geographies per research §15.
+// --- T036: /health -------------------------------------------------------
 Route::get('/health', function () {
     try {
         DB::connection()->getPdo();
-        $dbStatus = 'ok';
     } catch (\Throwable $e) {
         return response()->json(['status' => 'degraded', 'db' => 'unreachable'], 503);
     }
     return response()->json([
         'status' => 'ok',
-        'db' => $dbStatus,
+        'db' => 'ok',
         'app' => config('app.name', 'DaftarX Portal'),
         'time_utc' => now()->toIso8601String(),
     ]);
 });
 
-// --- Marketing surface (public, no auth) -----------------------------
-// Phase 3 (US1, T040-T055) fleshes these out with the real Marketing\*
-// controllers + per-page Blade views. For Phase 2 we just route them
-// through placeholder views that prove the layout composes.
+// --- T053: robots.txt + sitemap.xml --------------------------------------
+Route::get('/robots.txt', function () {
+    $body = "User-agent: *\n"
+        . "Allow: /\n"
+        . "Disallow: /portal/\n"
+        . "Disallow: /api/\n"
+        . "Disallow: /login\n"
+        . "Disallow: /register\n"
+        . "\n"
+        . "Sitemap: " . url('/sitemap.xml') . "\n";
+    return response($body)->header('Content-Type', 'text/plain; charset=utf-8');
+});
+
+Route::get('/sitemap.xml', function () {
+    $base = rtrim(config('app.url') ?: url('/'), '/');
+    $now = now()->toAtomString();
+    $paths = ['/', '/features', '/pricing', '/downloads', '/about', '/contact', '/terms', '/refund', '/privacy', '/privacy/android'];
+    $urls = [];
+    foreach (['ar', 'en'] as $locale) {
+        foreach ($paths as $p) {
+            $loc = $p === '/' ? "{$base}/{$locale}" : "{$base}/{$locale}{$p}";
+            $altAr = $p === '/' ? "{$base}/ar" : "{$base}/ar{$p}";
+            $altEn = $p === '/' ? "{$base}/en" : "{$base}/en{$p}";
+            $urls[] = "  <url>\n"
+                . "    <loc>{$loc}</loc>\n"
+                . "    <lastmod>{$now}</lastmod>\n"
+                . "    <changefreq>weekly</changefreq>\n"
+                . "    <xhtml:link rel=\"alternate\" hreflang=\"ar-EG\" href=\"{$altAr}\"/>\n"
+                . "    <xhtml:link rel=\"alternate\" hreflang=\"en-US\" href=\"{$altEn}\"/>\n"
+                . "  </url>";
+        }
+    }
+    $body = '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
+        . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+        . 'xmlns:xhtml="http://www.w3.org/1999/xhtml">' . "\n"
+        . implode("\n", $urls) . "\n"
+        . '</urlset>';
+    return response($body)->header('Content-Type', 'application/xml; charset=utf-8');
+});
+
+// --- Marketing surface ---------------------------------------------------
+// All routes wired through LocaleResolver. Same controller serves both
+// the locale-prefixed and locale-less variants of each page; LocaleResolver
+// reads the URL prefix and sets App::setLocale() accordingly.
 
 $marketingRoutes = function (): void {
-    Route::view('/', 'marketing.home')->name('marketing.home');
-    Route::view('/features', 'marketing.placeholder')->name('marketing.features')
-        ->defaults('page', 'features');
-    Route::view('/pricing', 'marketing.placeholder')->name('marketing.pricing')
-        ->defaults('page', 'pricing');
-    Route::view('/downloads', 'marketing.placeholder')->name('marketing.downloads')
-        ->defaults('page', 'downloads');
-    Route::view('/about', 'marketing.placeholder')->name('marketing.about')
-        ->defaults('page', 'about');
-    Route::view('/contact', 'marketing.placeholder')->name('marketing.contact')
-        ->defaults('page', 'contact');
-    Route::view('/terms', 'marketing.placeholder')->name('marketing.terms')
-        ->defaults('page', 'terms');
-    Route::view('/refund', 'marketing.placeholder')->name('marketing.refund')
-        ->defaults('page', 'refund');
-    Route::view('/privacy', 'marketing.placeholder')->name('marketing.privacy')
-        ->defaults('page', 'privacy');
-    Route::view('/privacy/android', 'marketing.placeholder')
-        ->name('marketing.privacy.android')
-        ->defaults('page', 'privacy_android');
+    Route::get('/', [HomeController::class, 'show'])->name('marketing.home');
+    Route::get('/features', [FeaturesController::class, 'show'])->name('marketing.features');
+    Route::get('/pricing', [PricingController::class, 'show'])->name('marketing.pricing');
+    Route::get('/downloads', [DownloadsController::class, 'show'])->name('marketing.downloads');
+    Route::get('/about', [AboutController::class, 'show'])->name('marketing.about');
+    Route::get('/contact', [ContactController::class, 'show'])->name('marketing.contact');
+    Route::post('/contact', [ContactController::class, 'submit'])
+        ->middleware('throttle:10,60')   // FR-005 + T147 — 10/hour/IP
+        ->name('marketing.contact.submit');
+    Route::get('/terms', [TermsController::class, 'terms'])->name('marketing.terms');
+    Route::get('/refund', [TermsController::class, 'refund'])->name('marketing.refund');
+    Route::get('/privacy', [TermsController::class, 'privacy'])->name('marketing.privacy');
+    Route::get('/privacy/android', [TermsController::class, 'privacyAndroid'])
+        ->name('marketing.privacy.android');
 };
 
-// Locale-prefixed variants: /ar/*, /en/*.
+// /ar/* and /en/* — explicit locale prefix.
 Route::prefix('{locale}')->where(['locale' => 'ar|en'])
     ->middleware(\App\Http\Middleware\LocaleResolver::class)
     ->group($marketingRoutes);
 
-// Locale-less variants — LocaleResolver still runs to pick a default.
+// /* — locale-less; LocaleResolver picks default.
 Route::middleware(\App\Http\Middleware\LocaleResolver::class)
     ->group($marketingRoutes);
 
-// --- Portal surface (authenticated) ----------------------------------
-// /portal/* requires login + email verification + active organisation
-// membership (OrganisationScope middleware).
+// --- Portal surface (authenticated) --------------------------------------
 Route::prefix('portal')
     ->middleware(['auth', 'verified', \App\Http\Middleware\OrganisationScope::class])
     ->group(function () {
         Route::view('/', 'portal.dashboard')->name('portal.dashboard');
-        // Phase 4 (US2) + Phase 5 (US3) + Phase 6-8 (US4-US6) flesh
-        // these out. Placeholder routes prove the auth + sidebar pipeline.
         Route::view('/licences', 'portal.placeholder')
-            ->name('portal.licences')
-            ->defaults('page', 'licences');
+            ->name('portal.licences')->defaults('page', 'licences');
         Route::view('/subscription', 'portal.placeholder')
-            ->name('portal.subscription')
-            ->defaults('page', 'subscription');
+            ->name('portal.subscription')->defaults('page', 'subscription');
         Route::view('/billing', 'portal.placeholder')
-            ->name('portal.billing')
-            ->defaults('page', 'billing');
+            ->name('portal.billing')->defaults('page', 'billing');
         Route::view('/downloads', 'portal.placeholder')
-            ->name('portal.downloads')
-            ->defaults('page', 'downloads');
+            ->name('portal.downloads')->defaults('page', 'downloads');
         Route::view('/support', 'portal.placeholder')
-            ->name('portal.support')
-            ->defaults('page', 'support');
+            ->name('portal.support')->defaults('page', 'support');
         Route::view('/organisation', 'portal.placeholder')
-            ->name('portal.organisation')
-            ->defaults('page', 'organisation');
+            ->name('portal.organisation')->defaults('page', 'organisation');
         Route::view('/account/security', 'portal.placeholder')
-            ->name('portal.account.security')
-            ->defaults('page', 'security');
+            ->name('portal.account.security')->defaults('page', 'security');
     });
 
-// --- Profile (Breeze default — kept under /profile, not /portal) -----
-// Breeze's profile editor doesn't need the OrganisationScope middleware
-// (it's a per-user setting, not an org-scoped operation), so keep it
-// at the top level for now. US5 may move it under /portal/account.
+// --- Profile (Breeze default) --------------------------------------------
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-// Breeze's auth routes (login, register, verify-email, password reset).
+// Breeze's auth routes.
 require __DIR__.'/auth.php';

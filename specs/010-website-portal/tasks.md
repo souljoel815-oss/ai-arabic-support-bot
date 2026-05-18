@@ -98,28 +98,28 @@ description: "Task list for 010-website-portal feature implementation (Laravel 1
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T037 [P] [US1] Dusk e2e at `portal/tests/Browser/Marketing/HomepageRenderTest.php` asserting SC-006 (< 3 s p75 first render for `/`, `/ar`, `/en`)
-- [ ] T038 [P] [US1] Dusk e2e at `portal/tests/Browser/Marketing/PricingNavigationTest.php` asserting SC-001 (Homepage → Pricing → trial CTA in ≤ 3 clicks)
-- [ ] T039 [P] [US1] Dusk e2e at `portal/tests/Browser/Marketing/LanguageSwitcherTest.php` asserting FR-008 (locale toggle preserves current page + scroll position)
+- [X] T037 [P] [US1] Dusk e2e at `portal/tests/Browser/Marketing/HomepageRenderTest.php` asserting SC-006 (< 3 s p75 first render for `/`, `/ar`, `/en`)
+- [X] T038 [P] [US1] Dusk e2e at `portal/tests/Browser/Marketing/PricingNavigationTest.php` asserting SC-001 (Homepage → Pricing → trial CTA in ≤ 3 clicks)
+- [X] T039 [P] [US1] Dusk e2e at `portal/tests/Browser/Marketing/LanguageSwitcherTest.php` asserting FR-008 (locale toggle preserves current page + scroll position)
 
 ### Implementation for User Story 1
 
-- [ ] T040 [P] [US1] Create `portal/app/Http/Controllers/Marketing/HomeController.php` + `portal/resources/views/marketing/home.blade.php` (hero + value props + three primary CTAs Start trial / See pricing / Download) per FR-001
-- [ ] T041 [P] [US1] Create `FeaturesController.php` + `marketing/features.blade.php` enumerating the 27-feature catalog from the on-prem `Feature` enum organised by category per FR-002 (the feature list is hardcoded in PHP; no DB table needed)
-- [ ] T042 [P] [US1] Create `PricingController.php` + `marketing/pricing.blade.php` with 4 tier cards + monthly/annual EGP prices + feature checklist + comparison matrix per FR-003
-- [ ] T043 [P] [US1] Create `DownloadsController.php` + `marketing/downloads.blade.php` listing DaftarX-Setup.msi + DaftarX-Client-Setup.msi (from feature 008) + Google Play badge + side-load APK link (from feature 009) with file size + version + checksum per FR-004
-- [ ] T044 [P] [US1] Create `AboutController.php` + `marketing/about.blade.php` per FR-005
-- [ ] T045 [P] [US1] Create `ContactController.php` + `marketing/contact.blade.php` with form posting to `CreateSalesLeadAction` stub (full persistence lands in US3 with the SalesLead entity); WhatsApp + phone + email channels rendered statically
-- [ ] T046 [P] [US1] Create `PrivacyController.php` + `marketing/privacy/index.blade.php` (vendor-wide privacy policy) per FR-006
-- [ ] T047 [P] [US1] Create `TermsController.php` + `marketing/terms.blade.php` + `RefundController.php` + `marketing/refund.blade.php` per FR-007
-- [ ] T048 [P] [US1] Author Tailwind CSS marketing styles at `portal/resources/css/app.css` using CSS logical properties (`margin-inline-start` etc.) so the same stylesheet serves RTL + LTR per research §8
-- [ ] T049 [P] [US1] Create `_language-switcher.blade.php` partial at `portal/resources/views/components/language-switcher.blade.php` that toggles between `/ar/...` and `/en/...` preserving the current page path
-- [ ] T050 [P] [US1] Create translation files for every marketing page: `lang/ar/marketing.php` + `lang/en/marketing.php` with one nested key per page (`home.hero_title`, `pricing.solo_tier_name`, etc.)
-- [ ] T051 [P] [US1] Create `_footer.blade.php` partial linking Terms, Refund, Privacy, About from every marketing page per FR-007
-- [ ] T052 [US1] Wire locale-aware routing in `portal/routes/web.php` so `/ar/pricing` and `/en/pricing` both resolve to `PricingController@show` with the right culture (uses `Route::prefix('{locale}')` with a route constraint + a `LocaleResolver` middleware on the group)
-- [ ] T053 [US1] Add structured data (JSON-LD `Organization` + `Product` + `Offer` schemas), `sitemap.xml` generation via a controller, and `robots.txt` per FR-009 SEO requirement
-- [ ] T054 [P] [US1] Add Open Graph + Twitter Card meta tags to every marketing page for social sharing
-- [ ] T055 [P] [US1] Add `<link rel="alternate" hreflang>` tags for both locales on every marketing page (Google indexes ar + en as distinct pages)
+- [X] T040 [P] [US1] Create `portal/app/Http/Controllers/Marketing/HomeController.php` + `portal/resources/views/marketing/home.blade.php` (hero + value props + three primary CTAs Start trial / See pricing / Download) per FR-001
+- [X] T041 [P] [US1] Create `FeaturesController.php` + `marketing/features.blade.php` enumerating the 27-feature catalog from the on-prem `Feature` enum organised by category per FR-002 (the feature list is hardcoded in PHP; no DB table needed)
+- [X] T042 [P] [US1] Create `PricingController.php` + `marketing/pricing.blade.php` with 4 tier cards + monthly/annual EGP prices + feature checklist + comparison matrix per FR-003
+- [X] T043 [P] [US1] Create `DownloadsController.php` + `marketing/downloads.blade.php` listing DaftarX-Setup.msi + DaftarX-Client-Setup.msi (from feature 008) + Google Play badge + side-load APK link (from feature 009) with file size + version + checksum per FR-004
+- [X] T044 [P] [US1] Create `AboutController.php` + `marketing/about.blade.php` per FR-005
+- [X] T045 [P] [US1] Create `ContactController.php` + `marketing/contact.blade.php` with form posting to `CreateSalesLeadAction` stub (full persistence lands in US3 with the SalesLead entity); WhatsApp + phone + email channels rendered statically
+- [X] T046 [P] [US1] Create `PrivacyController.php` + `marketing/privacy/index.blade.php` (vendor-wide privacy policy) per FR-006
+- [X] T047 [P] [US1] Create `TermsController.php` + `marketing/terms.blade.php` + `RefundController.php` + `marketing/refund.blade.php` per FR-007
+- [X] T048 [P] [US1] Author Tailwind CSS marketing styles at `portal/resources/css/app.css` using CSS logical properties (`margin-inline-start` etc.) so the same stylesheet serves RTL + LTR per research §8
+- [X] T049 [P] [US1] Create `_language-switcher.blade.php` partial at `portal/resources/views/components/language-switcher.blade.php` that toggles between `/ar/...` and `/en/...` preserving the current page path
+- [X] T050 [P] [US1] Create translation files for every marketing page: `lang/ar/marketing.php` + `lang/en/marketing.php` with one nested key per page (`home.hero_title`, `pricing.solo_tier_name`, etc.)
+- [X] T051 [P] [US1] Create `_footer.blade.php` partial linking Terms, Refund, Privacy, About from every marketing page per FR-007
+- [X] T052 [US1] Wire locale-aware routing in `portal/routes/web.php` so `/ar/pricing` and `/en/pricing` both resolve to `PricingController@show` with the right culture (uses `Route::prefix('{locale}')` with a route constraint + a `LocaleResolver` middleware on the group)
+- [X] T053 [US1] Add structured data (JSON-LD `Organization` + `Product` + `Offer` schemas), `sitemap.xml` generation via a controller, and `robots.txt` per FR-009 SEO requirement
+- [X] T054 [P] [US1] Add Open Graph + Twitter Card meta tags to every marketing page for social sharing
+- [X] T055 [P] [US1] Add `<link rel="alternate" hreflang>` tags for both locales on every marketing page (Google indexes ar + en as distinct pages)
 
 **Checkpoint**: Marketing surface fully functional and SEO-indexable. US1 is independently shippable as a "coming soon — sign up to be notified" landing page even before any portal work lands.
 
