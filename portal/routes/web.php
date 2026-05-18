@@ -89,37 +89,45 @@ Route::get('/sitemap.xml', function () {
 // the locale-prefixed and locale-less variants of each page; LocaleResolver
 // reads the URL prefix and sets App::setLocale() accordingly.
 
-$marketingRoutes = function (): void {
-    Route::get('/', [HomeController::class, 'show'])->name('marketing.home');
-    Route::get('/features', [FeaturesController::class, 'show'])->name('marketing.features');
-    Route::get('/pricing', [PricingController::class, 'show'])->name('marketing.pricing');
-    Route::get('/downloads', [MarketingDownloadsController::class, 'show'])->name('marketing.downloads');
-    Route::get('/about', [AboutController::class, 'show'])->name('marketing.about');
-    Route::get('/contact', [ContactController::class, 'show'])->name('marketing.contact');
-    Route::post('/contact', [ContactController::class, 'submit'])
-        ->middleware('throttle:contact-form')   // FR-005 + T147 — named limiter in AppServiceProvider
-        ->name('marketing.contact.submit');
-    Route::get('/terms', [TermsController::class, 'terms'])->name('marketing.terms');
-    Route::get('/refund', [TermsController::class, 'refund'])->name('marketing.refund');
-    Route::get('/privacy', [TermsController::class, 'privacy'])->name('marketing.privacy');
-    Route::get('/privacy/android', [TermsController::class, 'privacyAndroid'])
-        ->name('marketing.privacy.android');
-    // T136 — archived privacy-policy snapshots (one per amendment date).
-    // 404 when no snapshot exists for the requested date so consent
-    // claims chain cleanly.
-    Route::get('/privacy/android/history/{date}', [TermsController::class, 'privacyAndroidHistory'])
-        ->where('date', '\d{4}-\d{2}-\d{2}')
-        ->name('marketing.privacy.android.history');
+// The locale-less group owns the canonical `marketing.*` route names;
+// the locale-prefixed group registers the same paths under `localised.*`
+// names so route caching can serialise both without a collision. The
+// LocaleResolver middleware sets the app locale either way, so the
+// rendered output is identical; callers should keep using `marketing.*`
+// names in views (those resolve to the locale-less canonical URLs).
+$marketingRoutes = function (string $namePrefix): callable {
+    return function () use ($namePrefix): void {
+        Route::get('/', [HomeController::class, 'show'])->name($namePrefix.'home');
+        Route::get('/features', [FeaturesController::class, 'show'])->name($namePrefix.'features');
+        Route::get('/pricing', [PricingController::class, 'show'])->name($namePrefix.'pricing');
+        Route::get('/downloads', [MarketingDownloadsController::class, 'show'])->name($namePrefix.'downloads');
+        Route::get('/about', [AboutController::class, 'show'])->name($namePrefix.'about');
+        Route::get('/contact', [ContactController::class, 'show'])->name($namePrefix.'contact');
+        Route::post('/contact', [ContactController::class, 'submit'])
+            ->middleware('throttle:contact-form')   // FR-005 + T147 — named limiter in AppServiceProvider
+            ->name($namePrefix.'contact.submit');
+        Route::get('/terms', [TermsController::class, 'terms'])->name($namePrefix.'terms');
+        Route::get('/refund', [TermsController::class, 'refund'])->name($namePrefix.'refund');
+        Route::get('/privacy', [TermsController::class, 'privacy'])->name($namePrefix.'privacy');
+        Route::get('/privacy/android', [TermsController::class, 'privacyAndroid'])
+            ->name($namePrefix.'privacy.android');
+        // T136 — archived privacy-policy snapshots (one per amendment date).
+        // 404 when no snapshot exists for the requested date so consent
+        // claims chain cleanly.
+        Route::get('/privacy/android/history/{date}', [TermsController::class, 'privacyAndroidHistory'])
+            ->where('date', '\d{4}-\d{2}-\d{2}')
+            ->name($namePrefix.'privacy.android.history');
+    };
 };
 
-// /ar/* and /en/* — explicit locale prefix.
+// /ar/* and /en/* — explicit locale prefix; namespaced under `localised.*`.
 Route::prefix('{locale}')->where(['locale' => 'ar|en'])
     ->middleware(\App\Http\Middleware\LocaleResolver::class)
-    ->group($marketingRoutes);
+    ->group($marketingRoutes('localised.'));
 
-// /* — locale-less; LocaleResolver picks default.
+// /* — locale-less; LocaleResolver picks default. Canonical `marketing.*` names.
 Route::middleware(\App\Http\Middleware\LocaleResolver::class)
-    ->group($marketingRoutes);
+    ->group($marketingRoutes('marketing.'));
 
 // --- Portal surface (authenticated) --------------------------------------
 // Per FR-010: signup + email confirmation are decoupled — the visitor
