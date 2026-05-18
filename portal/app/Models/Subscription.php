@@ -50,6 +50,48 @@ class Subscription extends Model
     /** Tiers that include the Priority-support entitlement (FR-019 / US2 AS#3). */
     public const PRIORITY_SUPPORT_TIERS = [self::TIER_ENTERPRISE, self::TIER_FIRM];
 
+    /**
+     * Per-tier maximum number of CustomerOrganisation rows that can be
+     * owned by a single subscription. `null` = unlimited (Firm tier
+     * only — that's the multi-client tier designed for accounting
+     * offices). Single-org tiers prevent 3 unrelated businesses from
+     * pooling one SMB subscription to dodge per-customer pricing.
+     */
+    public const MAX_ORGANISATIONS = [
+        self::TIER_SOLO => 1,
+        self::TIER_SMB => 1,
+        self::TIER_ENTERPRISE => 1,
+        self::TIER_FIRM => null,   // unlimited
+    ];
+
+    /**
+     * Per-tier maximum number of distinct TeamMember rows that can hold
+     * an active (non-revoked) OrganisationMembership in the subscription's
+     * organisation(s). `null` = unlimited.
+     */
+    public const MAX_USERS = [
+        self::TIER_SOLO => 1,
+        self::TIER_SMB => 5,
+        self::TIER_ENTERPRISE => null,
+        self::TIER_FIRM => null,
+    ];
+
+    /**
+     * Convenience: returns the org cap for a given tier, or PHP_INT_MAX
+     * when the tier has no cap. Lets callers do `>=` checks without a
+     * null-guard branch.
+     */
+    public static function orgCapFor(string $tier): int
+    {
+        return self::MAX_ORGANISATIONS[$tier] ?? PHP_INT_MAX;
+    }
+
+    /** Same as orgCapFor() for the per-user count. */
+    public static function userCapFor(string $tier): int
+    {
+        return self::MAX_USERS[$tier] ?? PHP_INT_MAX;
+    }
+
     protected $fillable = [
         'customer_organisation_id',
         'tier',

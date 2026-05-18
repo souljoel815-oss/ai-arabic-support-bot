@@ -5,6 +5,7 @@ namespace App\Services\Organisations;
 use App\Models\CustomerOrganisation;
 use App\Models\Invitation;
 use App\Models\OrganisationMembership;
+use App\Models\Subscription;
 use App\Models\TeamMember;
 use App\Services\Audit\AuditLogWriter;
 use Illuminate\Support\Facades\DB;
@@ -86,6 +87,40 @@ class InviteMemberService
 
         if ($pendingInvitation) {
             throw new RuntimeException("An open invitation for this email already exists; resend or revoke first.");
+        }
+
+        // Tier-cap guard — block the invitation if it would push the
+        // organisation past its subscription's user limit (Subscription::MAX_USERS).
+        // Counts distinct active TeamMembers across the org plus any
+        // open invitations (those reserve a seat until accepted or
+        // expired). Firm / Enterprise tiers have null caps and skip
+        // the check.
+        $activeSubscription = Subscription::query()
+            ->where('customer_organisation_id', $org->id)
+            ->where('status', Subscription::STATUS_ACTIVE)
+            ->first();
+
+        if ($activeSubscription !== null) {
+            $cap = Subscription::userCapFor($activeSubscription->tier);
+            if ($cap !== PHP_INT_MAX) {
+                $activeMembers = OrganisationMembership::query()
+                    ->where('customer_organisation_id', $org->id)
+                    ->whereNull('revoked_at')
+                    ->whereNotNull('accepted_at')
+                    ->distinct('team_member_id')
+                    ->count('team_member_id');
+                $openInvitations = Invitation::query()
+                    ->where('customer_organisation_id', $org->id)
+                    ->whereNull('accepted_at')
+                    ->where('expires_at', '>', now())
+                    ->count();
+                if ($activeMembers + $openInvitations >= $cap) {
+                    throw new RuntimeException(
+                        "User cap reached for tier {$activeSubscription->tier} ({$cap} users). "
+                        . "Revoke an existing member or upgrade your subscription before inviting more."
+                    );
+                }
+            }
         }
 
         $rawToken = $this->generateRawToken();
