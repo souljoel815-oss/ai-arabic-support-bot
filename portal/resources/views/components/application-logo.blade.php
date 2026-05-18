@@ -4,15 +4,15 @@
      filter for dark backgrounds (slight brightness lift). --}}
 @props(['size' => 'md', 'variant' => 'light'])
 @php
-    // Logo PNG has padding around the kufic icon + a small "DaftarX"
-    // wordmark baked in below. Heights are bumped slightly vs the
-    // earlier monogram component so the icon stays readable.
+    // Logo PNG has generous padding around the kufic icon + a small
+    // "DaftarX" wordmark baked in below — render heights need to be
+    // bumped or the actual icon glyph reads tiny in the navbar/sidebar.
     $heightClass = match ($size) {
-        'sm' => 'h-10',
-        'md' => 'h-12',
-        'lg' => 'h-16',
-        'xl' => 'h-24',
-        default => 'h-12',
+        'sm' => 'h-14',
+        'md' => 'h-16',
+        'lg' => 'h-24',
+        'xl' => 'h-32',
+        default => 'h-16',
     };
     $filterStyle = $variant === 'dark'
         ? 'filter: brightness(1.15);'
