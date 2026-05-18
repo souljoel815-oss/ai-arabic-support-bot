@@ -9,6 +9,7 @@ use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -29,9 +30,14 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        // Emails are case-insensitive in real life; lowercase before
+        // validating so the user doesn't get a confusing rejection on
+        // an otherwise valid address like "Guillaume@proton.me".
+        $request->merge(['email' => Str::lower((string) $request->input('email', ''))]);
+
         $validated = $request->validate([
             'display_name' => ['required', 'string', 'max:128'],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:256', 'unique:'.TeamMember::class],
+            'email' => ['required', 'string', 'email', 'max:256', 'unique:'.TeamMember::class],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
             'organisation_legal_name_ar' => ['required', 'string', 'max:256'],
             'locale_preference' => ['nullable', 'in:ar-EG,en-US'],
