@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AcceptInvitationController;
 use App\Http\Controllers\Marketing\AboutController;
 use App\Http\Controllers\Marketing\ContactController;
 use App\Http\Controllers\Marketing\DownloadsController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\Marketing\TermsController;
 use App\Http\Controllers\Portal\BillingController;
 use App\Http\Controllers\Portal\DashboardController;
 use App\Http\Controllers\Portal\LicenceController;
+use App\Http\Controllers\Portal\OrganisationController;
 use App\Http\Controllers\Portal\SubscriptionController;
 use App\Http\Controllers\Portal\SupportTicketController;
 use App\Http\Controllers\ProfileController;
@@ -190,11 +192,31 @@ Route::prefix('portal')
 
         Route::view('/downloads', 'portal.placeholder')
             ->name('portal.downloads')->defaults('page', 'downloads');
-        Route::view('/organisation', 'portal.placeholder')
-            ->name('portal.organisation')->defaults('page', 'organisation');
+
+        // --- US5 multi-user invitations (T125-T127) — Owner-only ---
+        Route::get('/organisation', [OrganisationController::class, 'members'])
+            ->name('portal.organisation');
+        Route::get('/organisation/members', [OrganisationController::class, 'members'])
+            ->name('portal.organisation.members');
+        Route::post('/organisation/invitations', [OrganisationController::class, 'invite'])
+            ->middleware(['verified', 'throttle:10,60'])  // FR-020 10/hour rate limit
+            ->name('portal.organisation.invitations.send');
+        Route::post('/organisation/memberships/{membership}/revoke', [OrganisationController::class, 'revoke'])
+            ->middleware('verified')
+            ->name('portal.organisation.memberships.revoke');
         Route::view('/account/security', 'portal.placeholder')
             ->name('portal.account.security')->defaults('page', 'security');
     });
+
+// --- US5 public invitation-accept route (no auth) ----------------------
+// The link sent in the invitation email lands here. The invitee may
+// not have a portal account yet — they create their password on the
+// accept form. Per FR-020.
+Route::get('/invitations/accept', [AcceptInvitationController::class, 'show'])
+    ->name('invitations.accept');
+Route::post('/invitations/accept', [AcceptInvitationController::class, 'accept'])
+    ->middleware('throttle:20,60')
+    ->name('invitations.accept.submit');
 
 // --- Profile (Breeze default) --------------------------------------------
 Route::middleware('auth')->group(function () {

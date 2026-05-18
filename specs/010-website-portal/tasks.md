@@ -243,24 +243,24 @@ description: "Task list for 010-website-portal feature implementation (Laravel 1
 
 ### Tests for User Story 5
 
-- [ ] T117 [P] [US5] Contract test at `portal/tests/Feature/Contracts/InviteMemberEndpointTest.php` — 12 assertions per [contracts/invite-member.md](./contracts/invite-member.md) including token-hashing-at-rest + 7-day expiry + single-use semantics
-- [ ] T118 [P] [US5] Integration test at `portal/tests/Feature/Flows/MemberRemovalSessionTerminationTest.php` (FR-022 — removed member's sessions terminated within 5 minutes via the `security_stamp_version` bump)
-- [ ] T119 [P] [US5] Integration test at `portal/tests/Feature/Flows/AtLeastOneActiveOwnerInvariantTest.php` (cannot remove the only remaining Owner — invariant guards the org from becoming inaccessible)
+- [X] T117 [P] [US5] Contract test at `portal/tests/Feature/Contracts/InviteMemberEndpointTest.php` — 12 assertions per [contracts/invite-member.md](./contracts/invite-member.md) including token-hashing-at-rest + 7-day expiry + single-use semantics
+- [X] T118 [P] [US5] Integration test at `portal/tests/Feature/Flows/MemberRemovalSessionTerminationTest.php` (FR-022 — removed member's sessions terminated within 5 minutes via the `security_stamp_version` bump)
+- [X] T119 [P] [US5] Integration test at `portal/tests/Feature/Flows/AtLeastOneActiveOwnerInvariantTest.php` (cannot remove the only remaining Owner — invariant guards the org from becoming inaccessible)
 - [ ] T120 [P] [US5] Dusk e2e at `portal/tests/Browser/Portal/MemberInviteFlowTest.php` asserting SC-007 (invite-click-to-dashboard < 3 min wall-clock)
 
 ### Implementation for User Story 5
 
-- [ ] T121 [P] [US5] Create migration `create_invitations_table.php` + `Invitation` Eloquent model per data-model.md §10 (stores SHA-256 HASH of token, not raw — per contracts/invite-member.md test #11)
-- [ ] T122 [P] [US5] Implement `portal/app/Services/Organisations/InviteMemberService.php` per [contracts/invite-member.md](./contracts/invite-member.md) Behaviour section
-- [ ] T123 [P] [US5] Implement `portal/app/Services/Organisations/AcceptInvitationService.php` (single-use, marks `accepted_at`, creates TeamMember if email isn't already a portal user)
-- [ ] T124 [P] [US5] Implement `portal/app/Services/Organisations/RemoveMemberService.php` (FR-022 — flip `revoked_at`, bump `security_stamp_version`, invalidate active sessions within 5 min via a `CheckOrganisationMembershipStamp` middleware, refuse if removing the only active Owner)
-- [ ] T125 [US5] Map `POST /api/v1/portal/organisations/{id}/invitations` + `POST /api/v1/portal/invitations/accept` + `DELETE /api/v1/portal/organisations/{id}/memberships/{memberId}` routes in `portal/routes/api.php`
-- [ ] T126 [P] [US5] Create authorization Gates at `portal/app/Providers/AuthServiceProvider.php` — one per role × per action (e.g. `Gate::define('manage-licences', ...)`, `Gate::define('manage-billing', ...)`, etc.)
-- [ ] T127 [P] [US5] Create `portal/resources/views/portal/organisation/members.blade.php` (invite form + member list + role chips + revoke buttons; Owner-only visibility)
-- [ ] T128 [P] [US5] Create `portal/resources/views/portal/invitations/accept.blade.php` (landing page for invitation links — set password + accept)
-- [ ] T129 [P] [US5] Apply role-based visibility checks across all portal Blade views — e.g. `transfer.blade.php` hidden for `BillingAdmin` (Owner-only per FR-022 implicit, License management is an Owner concern)
+- [X] T121 [P] [US5] Create migration `create_invitations_table.php` + `Invitation` Eloquent model per data-model.md §10 (stores SHA-256 HASH of token, not raw — per contracts/invite-member.md test #11)
+- [X] T122 [P] [US5] Implement `portal/app/Services/Organisations/InviteMemberService.php` per [contracts/invite-member.md](./contracts/invite-member.md) Behaviour section
+- [X] T123 [P] [US5] Implement `portal/app/Services/Organisations/AcceptInvitationService.php` (single-use, marks `accepted_at`, creates TeamMember if email isn't already a portal user)
+- [X] T124 [P] [US5] Implement `portal/app/Services/Organisations/RemoveMemberService.php` (FR-022 — flip `revoked_at`, bump `security_stamp_version`, invalidate active sessions within 5 min via a `CheckOrganisationMembershipStamp` middleware, refuse if removing the only active Owner)
+- [X] T125 [US5] Map `POST /api/v1/portal/organisations/{id}/invitations` + `POST /api/v1/portal/invitations/accept` + `DELETE /api/v1/portal/organisations/{id}/memberships/{memberId}` routes in `portal/routes/api.php`
+- [X] T126 [P] [US5] Create authorization Gates at `portal/app/Providers/AuthServiceProvider.php` — one per role × per action (e.g. `Gate::define('manage-licences', ...)`, `Gate::define('manage-billing', ...)`, etc.)
+- [X] T127 [P] [US5] Create `portal/resources/views/portal/organisation/members.blade.php` (invite form + member list + role chips + revoke buttons; Owner-only visibility)
+- [X] T128 [P] [US5] Create `portal/resources/views/portal/invitations/accept.blade.php` (landing page for invitation links — set password + accept)
+- [X] T129 [P] [US5] Apply role-based visibility checks across all portal Blade views — e.g. `transfer.blade.php` hidden for `BillingAdmin` (Owner-only per FR-022 implicit, License management is an Owner concern)
 - [ ] T130 [P] [US5] Blade Mailable templates: `OrganisationInvitation.blade.php` (bilingual based on inviter's `locale_preference` fallback), `MemberRemoved.blade.php`
-- [ ] T131 [P] [US5] Translation files (ar + en) for all US5 UI strings
+- [X] T131 [P] [US5] Translation files (ar + en) for all US5 UI strings
 
 **Checkpoint**: An accounting firm subscribing to Firm tier can invite their team + assign per-member roles. US5 doesn't disturb US1–US4 — a single-user Solo customer never opens this page.
 
