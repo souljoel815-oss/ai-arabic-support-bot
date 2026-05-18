@@ -101,8 +101,28 @@
                 @endforeach
             </div>
             <div class="flex items-center gap-2 text-sm">
-                <a href="/login" class="btn-ghost">{{ __('messages.nav.login') }}</a>
-                <a href="/register" class="btn-primary !py-2 !px-4">{{ __('messages.nav.register') }}</a>
+                @auth
+                    {{-- Signed in already — short-circuit straight to the portal --}}
+                    @php
+                        $authUser = auth()->user();
+                        $initial = mb_strtoupper(mb_substr($authUser?->display_name ?? $authUser?->email ?? '?', 0, 1));
+                    @endphp
+                    <a href="/portal" class="btn-primary !py-2 !px-4">
+                        افتح البوابة
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 rtl:rotate-180" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14M13 5l7 7-7 7" />
+                        </svg>
+                    </a>
+                    <span class="hidden sm:inline-flex h-9 w-9 items-center justify-center rounded-full text-white text-sm font-bold shadow-brand-glow"
+                          style="background: linear-gradient(135deg, #d68a1f 0%, #b06d18 100%);"
+                          title="{{ $authUser?->display_name ?? $authUser?->email }}">
+                        {{ $initial }}
+                    </span>
+                @else
+                    <a href="/login" class="btn-ghost">{{ __('messages.nav.login') }}</a>
+                    <a href="/register" class="btn-primary !py-2 !px-4">{{ __('messages.nav.register') }}</a>
+                @endauth
                 <a href="{{ $altUrl }}" class="rounded-full border border-ink-200 px-2.5 py-1 text-xs font-bold text-ink-600 hover:bg-ink-50 hover:text-ink-900 hover:border-ink-300 transition" aria-label="Switch language">
                     {{ $isArabic ? 'EN' : 'ع' }}
                 </a>
