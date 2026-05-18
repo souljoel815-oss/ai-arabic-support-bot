@@ -8,6 +8,22 @@
         <p class="text-stone-600 text-sm">{{ $user->email }}</p>
     </header>
 
+    {{-- FR-010 soft banner: paid actions need email verification first. --}}
+    @if ($user->email_verified_at === null)
+        <div class="mb-4 rounded border border-stone-300 bg-stone-50 px-4 py-3 text-sm flex items-center justify-between gap-4">
+            <span>
+                <strong>إيميلك مش متأكد لسه.</strong>
+                تقدر تتفرّج على البوابة، لكن قبل ما تشترك أو تنشّط ترخيص لازم تأكّد إيميلك.
+            </span>
+            <form method="POST" action="{{ route('verification.send') }}">
+                @csrf
+                <button type="submit" class="rounded border border-stone-400 px-3 py-1 text-xs hover:bg-stone-100">
+                    أعد إرسال رسالة التأكيد
+                </button>
+            </form>
+        </div>
+    @endif
+
     @if (! $hasActiveSubscription)
         {{-- T103 — "Subscribe to keep going" CTA when there's no active Subscription (FR-029 + FR-030). --}}
         <section class="rounded-lg border border-amber-300 bg-amber-50 p-6 mb-6">

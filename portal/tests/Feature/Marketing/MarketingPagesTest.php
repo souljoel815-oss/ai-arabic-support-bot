@@ -52,6 +52,22 @@ class MarketingPagesTest extends TestCase
         $response->assertSee('Crashlytics');
     }
 
+    public function test_privacy_android_history_missing_snapshot_returns_404(): void
+    {
+        // T136 — when no snapshot is published for the requested date,
+        // 404 (not a silent fallback to the live policy). Consent-claim
+        // chains depend on the date returning the policy text AT THAT
+        // date, not a later revision.
+        $this->get('/privacy/android/history/2024-01-01')->assertNotFound();
+    }
+
+    public function test_privacy_android_history_rejects_invalid_date_format(): void
+    {
+        $this->get('/privacy/android/history/not-a-date')->assertNotFound();
+        $this->get('/privacy/android/history/2024')->assertNotFound();
+        $this->get('/privacy/android/history/2024-1-1')->assertNotFound();
+    }
+
     public function test_exposes_robots_and_sitemap(): void
     {
         $this->get('/robots.txt')->assertOk()->assertSee('Sitemap:');

@@ -37,4 +37,35 @@ class TermsController extends Controller
     {
         return view('marketing.privacy.android');
     }
+
+    /**
+     * T136 per US6 — version archival. When the privacy policy text
+     * changes the operator publishes a snapshot at
+     * /privacy/android/history/{YYYY-MM-DD}. Older snapshots remain
+     * accessible so prior consent claims stay auditable for the
+     * lifetime of the affected Play Store listings + tax-authority
+     * inspections that reference them.
+     *
+     * Snapshots live as plain Blade views under
+     * resources/views/marketing/privacy/history/{date}.blade.php. When
+     * a snapshot doesn't exist for the requested date, this method
+     * returns 404 (rather than silently falling back to the current
+     * policy) so consent-claim chains don't get falsified by a missing
+     * snapshot resolving to the latest version.
+     */
+    public function privacyAndroidHistory(string $date): View
+    {
+        // Strict ISO date format guard — prevents path-injection +
+        // makes the snapshot key auditable.
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            abort(404);
+        }
+
+        $viewName = "marketing.privacy.history.{$date}";
+        if (! view()->exists($viewName)) {
+            abort(404);
+        }
+
+        return view($viewName);
+    }
 }

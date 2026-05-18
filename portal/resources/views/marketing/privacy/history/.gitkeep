@@ -1,0 +1,9 @@
+Privacy-policy snapshots live here as `{YYYY-MM-DD}.blade.php` files.
+
+Each file is a frozen copy of the privacy/android Blade view at the time
+of an amendment. They serve at `/privacy/android/history/{date}`. When
+the live policy at `/privacy/android` changes the operator publishes a
+new snapshot here using the date of the change.
+
+Append-only — old snapshots must NEVER be edited because they back
+prior consent claims.

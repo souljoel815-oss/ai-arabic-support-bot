@@ -214,22 +214,22 @@ description: "Task list for 010-website-portal feature implementation (Laravel 1
 
 ### Tests for User Story 4
 
-- [ ] T104 [P] [US4] Integration test at `portal/tests/Feature/Flows/SupportTicketLifecycleTest.php` (create → reply → resolve → re-open transitions)
-- [ ] T105 [P] [US4] Integration test at `portal/tests/Feature/Flows/SupportTicketAttachmentLimitsTest.php` (3-file cap, 5-MB cap, MIME-type whitelist enforcement)
-- [ ] T106 [P] [US4] Unit test for `SlaCalculator` at `portal/tests/Unit/Support/SlaCalculatorTest.php` (24h vs 4h based on Subscription.tier; business-hours-only counting per FR-019)
+- [X] T104 [P] [US4] Integration test at `portal/tests/Feature/Flows/SupportTicketLifecycleTest.php` (create → reply → resolve → re-open transitions)
+- [X] T105 [P] [US4] Integration test at `portal/tests/Feature/Flows/SupportTicketAttachmentLimitsTest.php` (3-file cap, 5-MB cap, MIME-type whitelist enforcement)
+- [X] T106 [P] [US4] Unit test for `SlaCalculator` at `portal/tests/Unit/Support/SlaCalculatorTest.php` (24h vs 4h based on Subscription.tier; business-hours-only counting per FR-019)
 
 ### Implementation for User Story 4
 
-- [ ] T107 [P] [US4] Create migrations + Eloquent models for `SupportTicket` + `SupportTicketReply` + `SupportTicketAttachment` per data-model.md §8
-- [ ] T108 [P] [US4] Implement `portal/app/Services/Support/CreateTicketService.php` (FR-018 + MIME whitelist + 5-MB cap + 3-file cap + total 15-MB cap; saves attachments via `Storage::disk('local')->putFileAs(...)` under `tickets/{org-id}/`)
-- [ ] T109 [P] [US4] Implement `portal/app/Services/Support/ReplyTicketService.php` — sets `support_tickets.first_reply_at` on the first vendor reply (T156 / SC-005 measurement)
-- [ ] T110 [P] [US4] Implement `portal/app/Services/Support/SlaCalculator.php` (FR-019 — reads `Subscription.tier`, computes business-hours-bounded deadline)
-- [ ] T111 [US4] Map `POST /api/v1/portal/support/tickets` + `POST /api/v1/portal/support/tickets/{id}/replies` + `GET /api/v1/portal/support/attachments/{id}` routes in `portal/routes/api.php` + `SupportTicketController.php`
-- [ ] T112 [P] [US4] Create `portal/resources/views/portal/support/list.blade.php` (ticket list with status + SLA badge per ticket)
-- [ ] T113 [P] [US4] Create `portal/resources/views/portal/support/new.blade.php` (form: category + priority + description + 3-file upload; priority=High disabled for Solo per FR-018)
-- [ ] T114 [P] [US4] Create `portal/resources/views/portal/support/detail.blade.php` (thread view with vendor replies inline, reply form at the bottom)
+- [X] T107 [P] [US4] Create migrations + Eloquent models for `SupportTicket` + `SupportTicketReply` + `SupportTicketAttachment` per data-model.md §8
+- [X] T108 [P] [US4] Implement `portal/app/Services/Support/CreateTicketService.php` (FR-018 + MIME whitelist + 5-MB cap + 3-file cap + total 15-MB cap; saves attachments via `Storage::disk('local')->putFileAs(...)` under `tickets/{org-id}/`)
+- [X] T109 [P] [US4] Implement `portal/app/Services/Support/ReplyTicketService.php` — sets `support_tickets.first_reply_at` on the first vendor reply (T156 / SC-005 measurement)
+- [X] T110 [P] [US4] Implement `portal/app/Services/Support/SlaCalculator.php` (FR-019 — reads `Subscription.tier`, computes business-hours-bounded deadline)
+- [X] T111 [US4] Map `POST /api/v1/portal/support/tickets` + `POST /api/v1/portal/support/tickets/{id}/replies` + `GET /api/v1/portal/support/attachments/{id}` routes in `portal/routes/api.php` + `SupportTicketController.php`
+- [X] T112 [P] [US4] Create `portal/resources/views/portal/support/list.blade.php` (ticket list with status + SLA badge per ticket)
+- [X] T113 [P] [US4] Create `portal/resources/views/portal/support/new.blade.php` (form: category + priority + description + 3-file upload; priority=High disabled for Solo per FR-018)
+- [X] T114 [P] [US4] Create `portal/resources/views/portal/support/detail.blade.php` (thread view with vendor replies inline, reply form at the bottom)
 - [ ] T115 [P] [US4] Blade Mailable templates: `TicketCreated.blade.php`, `TicketReplied.blade.php`, `TicketResolved.blade.php` under `resources/views/emails/support/`
-- [ ] T116 [P] [US4] Translation files (ar + en) for all US4 UI strings + the "Priority support" badge copy from FR-019
+- [X] T116 [P] [US4] Translation files (ar + en) for all US4 UI strings + the "Priority support" badge copy from FR-019
 
 **Checkpoint**: Customer + vendor staff have a complete ticket-lifecycle UX. US4 is independently functional and integrates cleanly with US1–US3.
 
@@ -274,14 +274,14 @@ description: "Task list for 010-website-portal feature implementation (Laravel 1
 
 ### Tests for User Story 6
 
-- [ ] T132 [P] [US6] Dusk e2e at `portal/tests/Browser/Marketing/PrivacyAndroidUrlStabilityTest.php` asserting SC-004 (URL returns 200 with bilingual content on every deploy)
+- [X] T132 [P] [US6] Dusk e2e at `portal/tests/Browser/Marketing/PrivacyAndroidUrlStabilityTest.php` asserting SC-004 (URL returns 200 with bilingual content on every deploy)
 
 ### Implementation for User Story 6
 
-- [ ] T133 [P] [US6] Create `portal/resources/views/marketing/privacy/android.blade.php` + route in `portal/routes/web.php` rendering the policy at the stable URL `/privacy/android` per FR-006 (separate from `/privacy` index even if content is similar — the URL itself is the contract)
-- [ ] T134 [P] [US6] Translation files `lang/ar/privacy_android.php` + `lang/en/privacy_android.php` with the full policy text covering Crashlytics diagnostics + FCM device tokens per feature 009 FR-018
+- [X] T133 [P] [US6] Create `portal/resources/views/marketing/privacy/android.blade.php` + route in `portal/routes/web.php` rendering the policy at the stable URL `/privacy/android` per FR-006 (separate from `/privacy` index even if content is similar — the URL itself is the contract)
+- [X] T134 [P] [US6] Translation files `lang/ar/privacy_android.php` + `lang/en/privacy_android.php` with the full policy text covering Crashlytics diagnostics + FCM device tokens per feature 009 FR-018
 - [ ] T135 [P] [US6] Add a CI smoke step to `.github/workflows/portal-build.yml` that hits `/privacy/android` on the staging slot after every deploy and fails the build if it doesn't return 200 with the expected content (prevents accidental URL removal)
-- [ ] T136 [P] [US6] Implement version archival: when the privacy policy text changes, the previous version is preserved at `/privacy/android/history/{YYYY-MM-DD}` so prior consent claims remain auditable (the translation files become append-only — older versions stored as `lang/{ar,en}/privacy_android_2026_05_18.php` etc.)
+- [X] T136 [P] [US6] Implement version archival: when the privacy policy text changes, the previous version is preserved at `/privacy/android/history/{YYYY-MM-DD}` so prior consent claims remain auditable (the translation files become append-only — older versions stored as `lang/{ar,en}/privacy_android_2026_05_18.php` etc.)
 
 **Checkpoint**: The Android app's Play Store listing remains compliant for as long as the website stays up. US6's surface is tiny (one page + one CI check) but the compliance dependency is real.
 

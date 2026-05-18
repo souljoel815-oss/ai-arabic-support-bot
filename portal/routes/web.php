@@ -11,6 +11,7 @@ use App\Http\Controllers\Portal\BillingController;
 use App\Http\Controllers\Portal\DashboardController;
 use App\Http\Controllers\Portal\LicenceController;
 use App\Http\Controllers\Portal\SubscriptionController;
+use App\Http\Controllers\Portal\SupportTicketController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -98,6 +99,12 @@ $marketingRoutes = function (): void {
     Route::get('/privacy', [TermsController::class, 'privacy'])->name('marketing.privacy');
     Route::get('/privacy/android', [TermsController::class, 'privacyAndroid'])
         ->name('marketing.privacy.android');
+    // T136 — archived privacy-policy snapshots (one per amendment date).
+    // 404 when no snapshot exists for the requested date so consent
+    // claims chain cleanly.
+    Route::get('/privacy/android/history/{date}', [TermsController::class, 'privacyAndroidHistory'])
+        ->where('date', '\d{4}-\d{2}-\d{2}')
+        ->name('marketing.privacy.android.history');
 };
 
 // /ar/* and /en/* — explicit locale prefix.
@@ -110,8 +117,15 @@ Route::middleware(\App\Http\Middleware\LocaleResolver::class)
     ->group($marketingRoutes);
 
 // --- Portal surface (authenticated) --------------------------------------
+// Per FR-010: signup + email confirmation are decoupled — the visitor
+// can browse the portal (dashboard / subscription / billing / licences
+// listings) WITHOUT verifying their email; verification is only enforced
+// before any PAID ACTION (creating a subscription, activating a paid
+// licence, transferring a licence, requesting a refund). The `verified`
+// middleware is attached per-route on the POST handlers that matter,
+// not on the route group as a whole.
 Route::prefix('portal')
-    ->middleware(['auth', 'verified', \App\Http\Middleware\OrganisationScope::class])
+    ->middleware(['auth', \App\Http\Middleware\OrganisationScope::class])
     ->group(function () {
         // --- US3 dashboard (T098) ---
         Route::get('/', [DashboardController::class, 'show'])->name('portal.dashboard');
@@ -121,9 +135,13 @@ Route::prefix('portal')
             ->name('portal.subscription');
         Route::get('/subscription/start', [SubscriptionController::class, 'showStart'])
             ->name('portal.subscription.start');
+        // Verified gate on the POST — submission attempts an actual paid
+        // action (creates a Subscription + Invoice), so FR-010 kicks in.
         Route::post('/subscription/start', [SubscriptionController::class, 'start'])
+            ->middleware('verified')
             ->name('portal.subscription.start.submit');
         Route::post('/subscription/{subscription}/cancel', [SubscriptionController::class, 'cancel'])
+            ->middleware('verified')
             ->name('portal.subscription.cancel');
 
         // --- US3 billing (T100) ---
@@ -131,26 +149,47 @@ Route::prefix('portal')
             ->name('portal.billing');
         Route::get('/billing/{invoice}/pdf', [BillingController::class, 'downloadPdf'])
             ->name('portal.billing.pdf');
+        // Refund touches money + reverses a Paymob transaction → verified.
         Route::post('/billing/{invoice}/refund', [BillingController::class, 'refund'])
+            ->middleware('verified')
             ->name('portal.billing.refund');
 
         // --- US2 licence self-service (T065) ---
+        // GET routes (browsing licences + reading the activate form) are
+        // open to unverified accounts; the POST handlers that sign a
+        // token + the token-download endpoint are gated by `verified`
+        // because they produce / hand over a paid-licence artefact.
         Route::get('/licences', [LicenceController::class, 'index'])
             ->name('portal.licences');
         Route::get('/licences/activate-paid', [LicenceController::class, 'showActivatePaid'])
             ->name('portal.licences.activate-paid');
         Route::post('/licences/activate-paid', [LicenceController::class, 'activatePaid'])
+            ->middleware('verified')
             ->name('portal.licences.activate-paid.submit');
         Route::get('/licences/{licence}/transfer', [LicenceController::class, 'showTransfer'])
             ->name('portal.licences.transfer');
         Route::post('/licences/{licence}/transfer', [LicenceController::class, 'transfer'])
+            ->middleware('verified')
             ->name('portal.licences.transfer.submit');
         Route::get('/licences/{licence}/token', [LicenceController::class, 'downloadToken'])
+            ->middleware('verified')
             ->name('portal.licences.token');
+        // --- US4 support tickets (T111-T114) ---
+        Route::get('/support', [SupportTicketController::class, 'index'])
+            ->name('portal.support');
+        Route::get('/support/new', [SupportTicketController::class, 'showNew'])
+            ->name('portal.support.new');
+        Route::post('/support', [SupportTicketController::class, 'create'])
+            ->name('portal.support.create');
+        Route::get('/support/{ticket}', [SupportTicketController::class, 'show'])
+            ->name('portal.support.detail');
+        Route::post('/support/{ticket}/reply', [SupportTicketController::class, 'reply'])
+            ->name('portal.support.reply');
+        Route::get('/support/attachments/{attachment}', [SupportTicketController::class, 'downloadAttachment'])
+            ->name('portal.support.attachment');
+
         Route::view('/downloads', 'portal.placeholder')
             ->name('portal.downloads')->defaults('page', 'downloads');
-        Route::view('/support', 'portal.placeholder')
-            ->name('portal.support')->defaults('page', 'support');
         Route::view('/organisation', 'portal.placeholder')
             ->name('portal.organisation')->defaults('page', 'organisation');
         Route::view('/account/security', 'portal.placeholder')
