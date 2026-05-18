@@ -38,22 +38,22 @@ description: "Task list for 010-website-portal feature implementation (Laravel 1
 
 **Purpose**: Scaffold the Laravel 11 project + install dependencies + configure dev env + CI pipeline. No business code yet.
 
-- [ ] T001 Run `composer create-project laravel/laravel:^11.0 portal --prefer-dist` to scaffold the Laravel app at `portal/`
-- [ ] T002 Run `composer require laravel/breeze --dev` then `php artisan breeze:install blade --dark` for cookie-auth + email-confirm scaffolding
-- [ ] T003 [P] Run `composer require pragmarx/google2fa-laravel barryvdh/laravel-dompdf bacon/bacon-qr-code` for TOTP MFA + PDF + QR-code generation
-- [ ] T004 [P] Run `composer require spatie/laravel-permission` (optional but recommended for the role-based gates in US5)
-- [ ] T005 [P] Copy `portal/.env.example` to `portal/.env` + run `php artisan key:generate` + configure `DB_CONNECTION=sqlite` for dev with `database/database.sqlite` touched
-- [ ] T006 [P] Run `npm install` then verify `npm run build` succeeds (Vite + Tailwind already wired by Breeze)
-- [ ] T007 [P] Configure `portal/config/database.php` MySQL connection to use `daftarx_portal` schema in production; dev defaults to SQLite via `.env`
-- [ ] T008 [P] Configure `portal/config/mail.php` SMTP driver pointing at Resend (`smtp.resend.com:587`) for production; default to `log` driver in `.env` for dev
-- [ ] T009 [P] Create `portal/config/paymob.php` with `api_key`, `hmac_secret`, integration IDs per payment method (read from env)
-- [ ] T010 [P] Create `portal/config/licence.php` with `vendor_keys_path` (default `base_path('../vendor-keys.json')`)
-- [ ] T011 [P] Configure `portal/config/queue.php` to use `database` driver in production; `sync` driver in dev
-- [ ] T012 [P] Create `deploy/portal/README.md` ops runbook (Hostinger deploy procedure, secret rotation, incident response)
-- [ ] T013 [P] Create `deploy/portal/cloudflare/cache-rules.json` (marketing routes `max-age=3600`; portal/api/auth routes `no-store`) per research §9
-- [ ] T014 [P] Create `.github/workflows/portal-build.yml` CI workflow with three stages (build+unit, integration, deploy-on-main via rsync over SSH) per research §16
-- [ ] T015 [P] Configure `portal/tailwind.config.js` to scan `resources/views/**/*.blade.php` + add brand colors (gold + charcoal) mirroring the on-prem product
-- [ ] T016 [P] Pin `composer.json` PHP requirement to `^8.2` (so Hostinger PHP 8.2+ all work) and Laravel to `^11.0`
+- [X] T001 Run `composer create-project laravel/laravel:^11.0 portal --prefer-dist` to scaffold the Laravel app at `portal/`
+- [X] T002 Run `composer require laravel/breeze --dev` then `php artisan breeze:install blade --dark` for cookie-auth + email-confirm scaffolding
+- [X] T003 [P] Run `composer require pragmarx/google2fa-laravel barryvdh/laravel-dompdf bacon/bacon-qr-code` for TOTP MFA + PDF + QR-code generation
+- [X] T004 [P] Run `composer require spatie/laravel-permission` (optional but recommended for the role-based gates in US5)
+- [X] T005 [P] Copy `portal/.env.example` to `portal/.env` + run `php artisan key:generate` + configure `DB_CONNECTION=sqlite` for dev with `database/database.sqlite` touched
+- [X] T006 [P] Run `npm install` then verify `npm run build` succeeds (Vite + Tailwind already wired by Breeze)
+- [X] T007 [P] Configure `portal/config/database.php` MySQL connection to use `daftarx_portal` schema in production; dev defaults to SQLite via `.env`
+- [X] T008 [P] Configure `portal/config/mail.php` SMTP driver pointing at Resend (`smtp.resend.com:587`) for production; default to `log` driver in `.env` for dev
+- [X] T009 [P] Create `portal/config/paymob.php` with `api_key`, `hmac_secret`, integration IDs per payment method (read from env)
+- [X] T010 [P] Create `portal/config/licence.php` with `vendor_keys_path` (default `base_path('../vendor-keys.json')`)
+- [X] T011 [P] Configure `portal/config/queue.php` to use `database` driver in production; `sync` driver in dev
+- [X] T012 [P] Create `deploy/portal/README.md` ops runbook (Hostinger deploy procedure, secret rotation, incident response)
+- [X] T013 [P] Create `deploy/portal/cloudflare/cache-rules.json` (marketing routes `max-age=3600`; portal/api/auth routes `no-store`) per research §9
+- [X] T014 [P] Create `.github/workflows/portal-build.yml` CI workflow with three stages (build+unit, integration, deploy-on-main via rsync over SSH) per research §16
+- [X] T015 [P] Configure `portal/tailwind.config.js` to scan `resources/views/**/*.blade.php` + add brand colors (gold + charcoal) mirroring the on-prem product
+- [X] T016 [P] Pin `composer.json` PHP requirement to `^8.2` (so Hostinger PHP 8.2+ all work) and Laravel to `^11.0`
 
 ---
 
@@ -63,26 +63,26 @@ description: "Task list for 010-website-portal feature implementation (Laravel 1
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T017 Create initial migration `2026_05_18_000001_create_customer_organisations_table.php` at `portal/database/migrations/` per data-model.md §1
-- [ ] T018 [P] Replace Breeze's default `users` migration with `2026_05_18_000002_create_team_members_table.php` (rename table to `team_members`, switch primary key to `char(36)` UUID, add `locale_preference` + `display_name` + `mfa_secret` + `mfa_enabled_at` + `last_login_at` + `soft_deleted_at` columns per data-model.md §2 + FR-032)
-- [ ] T019 [P] Create migration `2026_05_18_000003_create_organisation_memberships_table.php` per data-model.md §3 join table (include the filtered-unique-on-active index trick using MySQL 8 generated columns)
-- [ ] T020 [P] Create migration `2026_05_18_000004_create_audit_log_entries_table.php` per data-model.md §9
-- [ ] T021 Create `portal/app/Models/TeamMember.php` extending `Illuminate\Foundation\Auth\User` with `HasUuids` trait, casts (`encrypted` for `mfa_secret`, `datetime` for the timestamp columns), and `belongsToMany(CustomerOrganisation::class)->using(OrganisationMembership::class)` relationship
-- [ ] T022 [P] Create `portal/app/Models/CustomerOrganisation.php` with `HasUuids` trait + relationships per data-model.md §1
-- [ ] T023 [P] Create `portal/app/Models/OrganisationMembership.php` as a `Pivot` model with `HasUuids` trait per data-model.md §3
-- [ ] T024 [P] Create `portal/app/Models/AuditLogEntry.php` with `HasUuids` trait + casts per data-model.md §9
-- [ ] T025 [P] Update `portal/config/auth.php` to point at `App\Models\TeamMember::class` (Breeze defaults to `App\Models\User`)
-- [ ] T026 Apply migrations locally via `php artisan migrate` to confirm the schema composes correctly on both SQLite (dev) and MySQL (production check)
-- [ ] T027 [P] Create `portal/app/Services/Audit/AuditLogWriter.php` per FR-023 + FR-028 — every state change writes one row, scoped to `customer_organisation_id`, payload NEVER contains tokens/PII per data-model.md §9; rejects rows whose payload contains forbidden substrings (`password`, `secret`, `token`, etc.)
-- [ ] T028 [P] Create `portal/app/Services/Licences/LicencePayloadCanonicalizer.php` + `portal/app/Services/Licences/LicenceSigningService.php` using PHP's `sodium_crypto_sign_detached()` to produce envelopes byte-compatible with the on-prem `LicenseVerifier` per research §10; reads `vendor-keys.json` from the path in `config/licence.php`
-- [ ] T029 [P] Create `portal/app/Http/Middleware/OrganisationScope.php` rejecting URL-tampering attempts that try to read org-B data while signed in to org-A (FR-021); registered in `bootstrap/app.php` for the `portal` route group only
-- [ ] T030 [P] Create `portal/app/Http/Middleware/LocaleResolver.php` reading the first URL path segment (`/ar/*` or `/en/*`) + setting `App::setLocale()`; register globally; create base `lang/ar/messages.php` + `lang/en/messages.php` with FR-008 strings
-- [ ] T031 [P] Create `portal/app/Services/Email/ResendMailer.php` wrapping `Mail::send` with a Polly-style retry on transient failures (Laravel doesn't have Polly — use a simple while-loop with exponential backoff) per research §4 + T095
-- [ ] T032 [P] Configure Laravel's log channel in `portal/config/logging.php` for daily rotation (30-day retention) + JSON formatter for prod per research §15
-- [ ] T033 [P] Create base marketing layout at `portal/resources/views/layouts/marketing.blade.php` (gold + charcoal palette mirroring the on-prem product + the Android app)
-- [ ] T034 [P] Create authenticated portal layout at `portal/resources/views/layouts/portal.blade.php` (auth required via the `auth` middleware in routes; sidebar nav with the 8 portal sections per plan.md)
-- [ ] T035 Configure two-surface routing in `portal/routes/web.php`: marketing routes under `/` (and `/ar/*` + `/en/*`), portal routes under `/portal/*` behind the `auth` middleware group
-- [ ] T036 [P] Add a `Route::get('/health', ...)` in `web.php` returning JSON with DB connectivity status (uses `DB::connection()->getPdo()` smoke check)
+- [X] T017 Create initial migration `2026_05_18_000001_create_customer_organisations_table.php` at `portal/database/migrations/` per data-model.md §1
+- [X] T018 [P] Replace Breeze's default `users` migration with `2026_05_18_000002_create_team_members_table.php` (rename table to `team_members`, switch primary key to `char(36)` UUID, add `locale_preference` + `display_name` + `mfa_secret` + `mfa_enabled_at` + `last_login_at` + `soft_deleted_at` columns per data-model.md §2 + FR-032)
+- [X] T019 [P] Create migration `2026_05_18_000003_create_organisation_memberships_table.php` per data-model.md §3 join table (include the filtered-unique-on-active index trick using MySQL 8 generated columns)
+- [X] T020 [P] Create migration `2026_05_18_000004_create_audit_log_entries_table.php` per data-model.md §9
+- [X] T021 Create `portal/app/Models/TeamMember.php` extending `Illuminate\Foundation\Auth\User` with `HasUuids` trait, casts (`encrypted` for `mfa_secret`, `datetime` for the timestamp columns), and `belongsToMany(CustomerOrganisation::class)->using(OrganisationMembership::class)` relationship
+- [X] T022 [P] Create `portal/app/Models/CustomerOrganisation.php` with `HasUuids` trait + relationships per data-model.md §1
+- [X] T023 [P] Create `portal/app/Models/OrganisationMembership.php` as a `Pivot` model with `HasUuids` trait per data-model.md §3
+- [X] T024 [P] Create `portal/app/Models/AuditLogEntry.php` with `HasUuids` trait + casts per data-model.md §9
+- [X] T025 [P] Update `portal/config/auth.php` to point at `App\Models\TeamMember::class` (Breeze defaults to `App\Models\User`)
+- [X] T026 Apply migrations locally via `php artisan migrate` to confirm the schema composes correctly on both SQLite (dev) and MySQL (production check)
+- [X] T027 [P] Create `portal/app/Services/Audit/AuditLogWriter.php` per FR-023 + FR-028 — every state change writes one row, scoped to `customer_organisation_id`, payload NEVER contains tokens/PII per data-model.md §9; rejects rows whose payload contains forbidden substrings (`password`, `secret`, `token`, etc.)
+- [X] T028 [P] Create `portal/app/Services/Licences/LicencePayloadCanonicalizer.php` + `portal/app/Services/Licences/LicenceSigningService.php` using PHP's `sodium_crypto_sign_detached()` to produce envelopes byte-compatible with the on-prem `LicenseVerifier` per research §10; reads `vendor-keys.json` from the path in `config/licence.php`
+- [X] T029 [P] Create `portal/app/Http/Middleware/OrganisationScope.php` rejecting URL-tampering attempts that try to read org-B data while signed in to org-A (FR-021); registered in `bootstrap/app.php` for the `portal` route group only
+- [X] T030 [P] Create `portal/app/Http/Middleware/LocaleResolver.php` reading the first URL path segment (`/ar/*` or `/en/*`) + setting `App::setLocale()`; register globally; create base `lang/ar/messages.php` + `lang/en/messages.php` with FR-008 strings
+- [X] T031 [P] Create `portal/app/Services/Email/ResendMailer.php` wrapping `Mail::send` with a Polly-style retry on transient failures (Laravel doesn't have Polly — use a simple while-loop with exponential backoff) per research §4 + T095
+- [X] T032 [P] Configure Laravel's log channel in `portal/config/logging.php` for daily rotation (30-day retention) + JSON formatter for prod per research §15
+- [X] T033 [P] Create base marketing layout at `portal/resources/views/layouts/marketing.blade.php` (gold + charcoal palette mirroring the on-prem product + the Android app)
+- [X] T034 [P] Create authenticated portal layout at `portal/resources/views/layouts/portal.blade.php` (auth required via the `auth` middleware in routes; sidebar nav with the 8 portal sections per plan.md)
+- [X] T035 Configure two-surface routing in `portal/routes/web.php`: marketing routes under `/` (and `/ar/*` + `/en/*`), portal routes under `/portal/*` behind the `auth` middleware group
+- [X] T036 [P] Add a `Route::get('/health', ...)` in `web.php` returning JSON with DB connectivity status (uses `DB::connection()->getPdo()` smoke check)
 
 **Checkpoint**: Foundation ready — Eloquent models compose, migrations apply, Breeze auth flow signs users in, licence-signing service is callable, audit-log writer works, locale routing serves bilingual pages. User stories can begin.
 
