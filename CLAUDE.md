@@ -2,6 +2,7 @@
 Active feature: 010-website-portal
 - Spec: specs/010-website-portal/spec.md
 - Plan: specs/010-website-portal/plan.md
+- Tasks: specs/010-website-portal/tasks.md   ← resume point for future agents
 - Research: specs/010-website-portal/research.md
 - Data model: specs/010-website-portal/data-model.md
 - Contracts: specs/010-website-portal/contracts/

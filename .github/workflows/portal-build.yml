@@ -1,0 +1,76 @@
+name: portal-build
+
+# T135 + portal CI per deploy/portal/README.md.
+# Builds the Laravel portal, runs tests, and after deploy hits the
+# /privacy/android route on the staging slot to confirm the URL still
+# resolves (FR-022 — the URL is referenced from the published Android
+# manifest and removing it would break the Play-Store listing).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'portal/**'
+      - '.github/workflows/portal-build.yml'
+  pull_request:
+    paths:
+      - 'portal/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, dom, pdo_mysql, pdo_sqlite, sodium, gd
+          coverage: none
+
+      - name: Cache composer
+        uses: actions/cache@v4
+        with:
+          path: portal/vendor
+          key: composer-${{ hashFiles('portal/composer.lock') }}
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: portal/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+
+      - run: cp .env.example .env
+      - run: php artisan key:generate
+      - run: php artisan migrate --force --database=sqlite_testing
+        env:
+          DB_CONNECTION: sqlite_testing
+
+      - run: php artisan test --parallel
+
+  smoke-privacy-android:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Hit /privacy/android on staging slot
+        # T135 — guards FR-022 (the Play Store listing references this URL).
+        # Fail loudly if it 404s OR the expected anchor is missing.
+        run: |
+          set -euo pipefail
+          STAGING_URL="${STAGING_URL:-https://staging.daftarx.app}"
+          RESPONSE=$(curl -fsSL "${STAGING_URL}/privacy/android")
+          echo "$RESPONSE" | grep -q "play_store_required" \
+            || { echo "::error::/privacy/android does not contain expected content"; exit 1; }
+          echo "✓ /privacy/android is healthy on staging"

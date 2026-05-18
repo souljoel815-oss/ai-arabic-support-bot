@@ -3,10 +3,17 @@
 @section('title', 'سجل التدقيق')
 
 @section('content')
-    <header class="mb-6">
-        <a href="{{ route('portal.organisation') }}" class="text-sm text-brand-700 hover:underline">← المؤسسة</a>
-        <h1 class="text-2xl font-bold text-ink-950 mt-2">سجل التدقيق</h1>
-        <p class="text-ink-600 mt-1">
+    <header class="mb-8">
+        <a href="{{ route('portal.organisation') }}" class="inline-flex items-center gap-1.5 text-sm text-brand-700 hover:text-brand-800 mb-3 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 rtl:rotate-180" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m15 18-6-6 6-6" />
+            </svg>
+            المؤسسة
+        </a>
+        <p class="eyebrow mb-2">سجل النشاط الإداري</p>
+        <h1 class="display-1 mb-1.5">سجل التدقيق</h1>
+        <p class="text-ink-600">
             كل تعديل أو إجراء على المؤسسة + مين عمله + إمتى. السجل دائم — لا يُحذف حتى لو الحساب اتحذف.
         </p>
     </header>

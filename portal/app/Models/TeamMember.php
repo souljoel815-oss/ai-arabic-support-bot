@@ -2,12 +2,16 @@
 
 namespace App\Models;
 
+use App\Mail\SignupConfirmation;
+use App\Services\Email\ResendMailer;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\URL;
 
 /**
  * T021 per data-model.md §2 + FR-032. The portal's authenticated user.
@@ -66,6 +70,35 @@ class TeamMember extends Authenticatable implements MustVerifyEmail
             'soft_deleted_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Override Laravel's default plain-text verification notification.
+     * We dispatch our branded bilingual `SignupConfirmation` Mailable
+     * instead, picking ar / en based on this member's locale_preference.
+     *
+     * The verification URL is built exactly the same way Laravel's stock
+     * notification builds it (60-min signed temporary URL), so the
+     * `verification.verify` route handles it unchanged.
+     */
+    public function sendEmailVerificationNotification(): void
+    {
+        $verificationUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            Carbon::now()->addMinutes((int) config('auth.verification.expire', 60)),
+            [
+                'id' => $this->getKey(),
+                'hash' => sha1($this->getEmailForVerification()),
+            ],
+        );
+
+        $mailable = new SignupConfirmation(
+            localePreference: $this->locale_preference ?? 'ar-EG',
+            displayName: $this->display_name ?? $this->email,
+            verificationUrl: $verificationUrl,
+        );
+
+        app(ResendMailer::class)->send($mailable, $this->email, $this->display_name);
     }
 
     /**

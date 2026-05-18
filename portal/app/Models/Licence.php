@@ -22,6 +22,12 @@ class Licence extends Model
     use HasFactory;
     use HasUuids;
 
+    /** @use \Illuminate\Database\Eloquent\Factories\HasFactory<\Database\Factories\LicenceFactory> */
+    protected static function newFactory(): \Database\Factories\LicenceFactory
+    {
+        return \Database\Factories\LicenceFactory::new();
+    }
+
     protected $table = 'licences';
 
     protected $keyType = 'string';

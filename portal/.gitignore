@@ -17,3 +17,8 @@ yarn-error.log
 /.fleet
 /.idea
 /.vscode
+
+# DOMPDF auto-generates these on first render of a font.
+/storage/fonts/*.ufm.json
+/storage/fonts/*.afm
+/storage/fonts/*.cache

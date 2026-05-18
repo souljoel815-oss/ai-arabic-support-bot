@@ -223,3 +223,32 @@ After US1 is green, follow the story-to-entity map in [data-model.md](data-model
 - [data-model.md](data-model.md) — every entity with fields, invariants, and the user story that introduces it.
 - [contracts/](contracts/) — JSON Schemas + protocol specs for every external boundary (eInvoice, WHT certificate, Form 41, Inspection Bundle manifest, QR seal, audit verifier, REST API).
 - [spec.md](spec.md) — the spec itself (the source of truth for everything above).
+
+---
+
+## Portal integration (T150 — added 2026-05-18)
+
+The DaftarX customer portal (feature `010-website-portal`) issues
+**portal-signed licences** that this desktop product must accept. The
+two surfaces share the same `Ed25519` keypair + canonical payload shape:
+
+- Portal signing service: `portal/app/Services/Licences/LicenceSigningService.php`
+- Public key: bundled with this desktop binary at build time (NEVER
+  shipped via the network — embedded into the assembly so an attacker
+  who compromises the network can't substitute their own key).
+- Payload version: `2` (see `portal/specs/contracts/activate-paid-licence.md`).
+
+When portal-issued tokens land on a desktop install:
+1. Read the base64 token from the activation flow.
+2. Decode to JSON envelope `{payload, signature}`.
+3. Verify `sodium_crypto_sign_verify_detached(signature, canonical_payload, public_key)`.
+4. Treat as equivalent to a locally-activated licence — no special-case branching.
+
+For rotations: portal + desktop must roll the key in coordinated
+releases. The portal's `LICENCE_SIGNING_KEYS_PATH` env var and the
+desktop's embedded public-key constant flip together on the same day.
+
+Portal endpoints relevant to this product:
+- `POST /portal/licences/activate-paid` — issues a new portal-signed token
+- `POST /portal/licences/{id}/transfer` — re-binds to a new HWID
+- `GET  /portal/licences/{id}/token` — downloads the token JSON

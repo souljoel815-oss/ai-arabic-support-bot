@@ -1,5 +1,5 @@
 /* DaftarX portal — Tailwind base + brand customisations. */
-@import url('https://fonts.bunny.net/css?family=cairo:400,500,600,700,800|tajawal:400,500,700|figtree:400,500,600,700&display=swap');
+@import url('https://fonts.bunny.net/css?family=cairo:400,500,600,700,800,900|tajawal:400,500,700|figtree:400,500,600,700,800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -12,31 +12,40 @@
     body {
         @apply bg-brand-50 text-ink-900 antialiased;
         -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
     }
+    /* Optical sizing for headlines — tighter tracking + serif fallback so
+       big Arabic text reads less "default-sans" and more "considered". */
     h1, h2, h3, h4 {
         @apply text-ink-950;
-        letter-spacing: -0.01em;
+        letter-spacing: -0.02em;
     }
+    /* Custom scrollbar — matches the brand palette instead of OS default. */
+    ::-webkit-scrollbar { @apply w-2 h-2; }
+    ::-webkit-scrollbar-track { @apply bg-transparent; }
+    ::-webkit-scrollbar-thumb { @apply bg-ink-300/60 rounded-full; }
+    ::-webkit-scrollbar-thumb:hover { @apply bg-ink-400; }
 }
 
 @layer components {
-    /* Primary CTA — gold-on-charcoal, glow on hover. */
+    /* ─── Buttons ─────────────────────────────────────────────── */
     .btn-primary {
-        @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5
+        @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5
                text-white font-semibold bg-brand-600 hover:bg-brand-500
-               shadow-brand-glow transition focus:outline-none
+               shadow-brand-glow hover:shadow-brand-glow-lg
+               transition focus:outline-none
                focus:ring-2 focus:ring-brand-400 focus:ring-offset-2
                focus:ring-offset-brand-50 disabled:opacity-50 disabled:cursor-not-allowed;
     }
     .btn-secondary {
-        @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5
+        @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5
                font-semibold text-ink-800 bg-white border border-ink-200
                hover:bg-ink-50 hover:border-ink-300 transition focus:outline-none
                focus:ring-2 focus:ring-brand-400 focus:ring-offset-2
                focus:ring-offset-brand-50;
     }
     .btn-danger {
-        @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
+        @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2
                font-semibold text-red-700 bg-white border border-red-300
                hover:bg-red-50 transition focus:outline-none focus:ring-2
                focus:ring-red-400 focus:ring-offset-2 focus:ring-offset-brand-50;
@@ -45,8 +54,13 @@
         @apply inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm
                text-ink-700 hover:bg-ink-100 hover:text-ink-900 transition;
     }
+    /* Inverse buttons for the dark sidebar. */
+    .btn-inverse-ghost {
+        @apply inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm
+               text-ink-300 hover:bg-white/5 hover:text-white transition;
+    }
 
-    /* Form controls — gold focus rings, charcoal text. */
+    /* ─── Form controls ──────────────────────────────────────── */
     .form-input,
     .form-select,
     .form-textarea {
@@ -55,56 +69,75 @@
                focus:border-brand-500 focus:ring-2 focus:ring-brand-300
                focus:ring-offset-0 transition;
     }
-    .form-label {
-        @apply block text-sm font-semibold text-ink-800 mb-1.5;
-    }
-    .form-error {
-        @apply mt-1 text-sm text-red-700;
-    }
-    .form-hint {
-        @apply mt-1 text-xs text-ink-500;
-    }
+    .form-label  { @apply block text-sm font-semibold text-ink-800 mb-1.5; }
+    .form-error  { @apply mt-1 text-sm text-red-700; }
+    .form-hint   { @apply mt-1 text-xs text-ink-500; }
 
-    /* Cards — surfaces sit on the brand-50 page background. */
+    /* ─── Surfaces ────────────────────────────────────────────── */
     .card {
-        @apply rounded-2xl bg-white border border-ink-100 shadow-sm;
+        @apply rounded-2xl bg-white border border-ink-100/80 shadow-sm
+               transition-shadow;
     }
     .card-padded {
         @apply card p-6;
+    }
+    .card-hover {
+        @apply hover:border-ink-200 hover:shadow-elevation-2 transition;
     }
     .card-section-title {
         @apply text-lg font-bold text-ink-950 mb-4;
     }
 
+    /* Stat tile — used on the dashboard KPI strip. Pulled out as its own
+       class so future stats (sparklines, deltas) can grow consistently. */
+    .stat-tile {
+        @apply card-padded card-hover relative overflow-hidden cursor-pointer
+               flex items-start gap-4;
+    }
+    .stat-tile-icon {
+        @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-xl;
+    }
+    .stat-tile-label {
+        @apply text-xs uppercase tracking-wider text-ink-500 font-bold;
+    }
+    .stat-tile-value {
+        @apply text-3xl font-extrabold text-ink-950 leading-none mt-1;
+    }
+    .stat-tile-sub {
+        @apply text-xs text-ink-600 mt-1;
+    }
+
     /* Tier card on the marketing pricing page. */
     .tier-card {
         @apply relative rounded-2xl border-2 border-ink-100 bg-white p-6 shadow-sm
-               flex flex-col transition hover:border-brand-300 hover:shadow-md;
+               flex flex-col transition hover:border-brand-300 hover:shadow-elevation-2;
     }
     .tier-card-featured {
         @apply tier-card border-brand-500 ring-2 ring-brand-200 hover:border-brand-500;
     }
 
-    /* Status pills — match the in-table chips across the portal. */
+    /* ─── Pills ───────────────────────────────────────────────── */
     .pill {
-        @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+        @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
     }
     .pill-success { @apply pill bg-emerald-100 text-emerald-800; }
     .pill-warning { @apply pill bg-amber-100 text-amber-900; }
     .pill-info    { @apply pill bg-sky-100 text-sky-800; }
     .pill-danger  { @apply pill bg-red-100 text-red-800; }
     .pill-muted   { @apply pill bg-ink-100 text-ink-700; }
+    .pill-brand   { @apply pill bg-brand-100 text-brand-900; }
+    .pill-dark    { @apply pill bg-ink-900 text-brand-200 ring-1 ring-inset ring-white/10; }
 
-    /* Brand wordmark used everywhere instead of a placeholder logo image. */
+    /* ─── Brand wordmark ─────────────────────────────────────── */
     .wordmark {
-        @apply font-bold tracking-tight text-ink-950;
+        @apply font-extrabold tracking-tight;
         font-feature-settings: "ss01" 1;
     }
     .wordmark .wordmark-accent {
-        @apply text-brand-600;
+        @apply text-brand-500;
     }
 
-    /* Auth screens: gradient backdrop + centered card. */
+    /* ─── Auth shell ─────────────────────────────────────────── */
     .auth-shell {
         @apply min-h-screen flex flex-col items-center justify-center px-4 py-12;
         background:
@@ -115,10 +148,88 @@
     .auth-card {
         @apply card-padded w-full max-w-md;
     }
+
+    /* ─── Dark sidebar nav (portal layout) ───────────────────── */
+    /* NOTE: pair these classes with a literal `group` class on the <a>
+       so `group-hover:` variants on the icon child still apply. */
+    .sidebar-link {
+        @apply relative flex items-center gap-3 rounded-xl px-3 py-2.5
+               text-ink-300 hover:bg-white/5 hover:text-white
+               transition outline-none;
+    }
+    .sidebar-link-active {
+        @apply sidebar-link text-white bg-white/[0.06] font-semibold;
+    }
+    .sidebar-link-active::before {
+        content: '';
+        @apply absolute inset-y-2 start-0 w-1 rounded-full bg-brand-500
+               shadow-brand-glow;
+    }
+
+    /* ─── Eyebrow label (small caps section header) ──────────── */
+    .eyebrow {
+        @apply text-xs font-bold uppercase tracking-[0.12em] text-brand-700;
+    }
+    .eyebrow-muted {
+        @apply text-xs font-bold uppercase tracking-[0.12em] text-ink-500;
+    }
+    .eyebrow-light {
+        @apply text-xs font-bold uppercase tracking-[0.12em] text-brand-300;
+    }
+
+    /* ─── Display headline ───────────────────────────────────── */
+    .display-1 {
+        @apply text-4xl font-extrabold tracking-tight text-ink-950 leading-tight;
+    }
+    .display-2 {
+        @apply text-3xl font-extrabold tracking-tight text-ink-950 leading-tight;
+    }
+
+    /* ─── Decorative gradients & glow accents ────────────────── */
+    .bg-hero-gold {
+        background:
+            radial-gradient(ellipse at 0% 100%, rgba(245, 214, 145, 0.5) 0%, transparent 60%),
+            radial-gradient(ellipse at 100% 0%, rgba(214, 138, 31, 0.18) 0%, transparent 55%),
+            linear-gradient(135deg, #fdf8ed 0%, #faecca 100%);
+    }
+    .bg-hero-charcoal {
+        background:
+            radial-gradient(ellipse at 100% 0%, rgba(214, 138, 31, 0.18) 0%, transparent 55%),
+            radial-gradient(ellipse at 0% 100%, rgba(176, 109, 24, 0.12) 0%, transparent 55%),
+            linear-gradient(135deg, #1c1a16 0%, #2d2a23 50%, #1c1a16 100%);
+    }
+    .bg-sidebar {
+        background:
+            radial-gradient(ellipse at top right, rgba(176, 109, 24, 0.08) 0%, transparent 50%),
+            linear-gradient(180deg, #1c1a16 0%, #14120f 100%);
+    }
+
+    /* Subtle dotted bg used inside empty-state cards. */
+    .bg-dots {
+        background-image: radial-gradient(circle, rgba(176, 109, 24, 0.12) 1px, transparent 1px);
+        background-size: 22px 22px;
+    }
 }
 
 @layer utilities {
     /* Logical-property utilities — same stylesheet serves RTL + LTR. */
     .border-start { border-inline-start-width: 1px; }
     .border-end   { border-inline-end-width: 1px; }
+
+    /* Animation utilities. */
+    @keyframes fade-in-up {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in-up { animation: fade-in-up 0.4s ease-out both; }
+
+    @keyframes shimmer {
+        0%   { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+    .animate-shimmer {
+        background: linear-gradient(90deg, transparent, rgba(214, 138, 31, 0.15), transparent);
+        background-size: 200% 100%;
+        animation: shimmer 2.5s linear infinite;
+    }
 }

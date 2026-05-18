@@ -3,51 +3,63 @@
 @section('title', __('licences.activate.title'))
 
 @section('content')
-    <header class="mb-6">
-        <a href="{{ route('portal.licences') }}" class="text-sm text-amber-700 hover:underline">
-            ← {{ __('licences.title') }}
+    <header class="mb-8">
+        <a href="{{ route('portal.licences') }}" class="inline-flex items-center gap-1.5 text-sm text-brand-700 hover:text-brand-800 mb-3 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 rtl:rotate-180" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m15 18-6-6 6-6" />
+            </svg>
+            {{ __('licences.title') }}
         </a>
-        <h1 class="text-2xl font-bold mt-2">{{ __('licences.activate.title') }}</h1>
+        <p class="eyebrow mb-2">تنشيط ترخيص</p>
+        <h1 class="display-1 mb-1.5">{{ __('licences.activate.title') }}</h1>
     </header>
 
-    <div class="max-w-2xl rounded-lg border border-stone-200 bg-white p-6">
-        <div class="rounded border border-amber-200 bg-amber-50 p-4 mb-6 text-sm text-stone-700">
-            {{ __('licences.activate.instructions') }}
+    <div class="max-w-2xl">
+        <div class="rounded-2xl border border-brand-200 bg-brand-50/70 p-5 mb-5 text-sm text-ink-800 flex items-start gap-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-200/70 text-brand-700">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+                </svg>
+            </span>
+            <span>{{ __('licences.activate.instructions') }}</span>
         </div>
 
-        <form method="POST" action="{{ route('portal.licences.activate-paid.submit') }}" class="space-y-4">
+        <form method="POST" action="{{ route('portal.licences.activate-paid.submit') }}" class="card-padded space-y-5">
             @csrf
             <input type="hidden" name="subscription_id" value="{{ $subscription->id }}">
 
             <div>
-                <label class="block text-sm font-semibold mb-1">{{ __('licences.activate.subscription_label') }}</label>
-                <div class="rounded border border-stone-200 bg-stone-50 px-3 py-2 text-stone-700">
-                    {{ __('marketing.pricing.tiers.'.strtolower($subscription->tier).'.name') }}
-                    · {{ __('licences.cadence.'.$subscription->billing_cadence) }}
-                    · {{ __('licences.period_end_label') }} {{ $subscription->current_period_end_at?->format('Y-m-d') }}
+                <label class="form-label">{{ __('licences.activate.subscription_label') }}</label>
+                <div class="rounded-xl border-2 border-brand-200 bg-brand-50/50 px-4 py-3 flex items-center gap-3 flex-wrap">
+                    <span class="pill-brand">{{ __('marketing.pricing.tiers.'.strtolower($subscription->tier).'.name') }}</span>
+                    <span class="text-ink-300">·</span>
+                    <span class="text-sm text-ink-700">{{ __('licences.cadence.'.$subscription->billing_cadence) }}</span>
+                    <span class="text-ink-300">·</span>
+                    <span class="text-sm text-ink-600">{{ __('licences.period_end_label') }} <span class="font-mono">{{ $subscription->current_period_end_at?->format('Y-m-d') }}</span></span>
                 </div>
             </div>
 
             <div>
-                <label for="hwid" class="block text-sm font-semibold mb-1">
-                    {{ __('licences.activate.hwid_label') }}
-                </label>
+                <label for="hwid" class="form-label">{{ __('licences.activate.hwid_label') }}</label>
                 <input id="hwid" name="hwid" type="text" required
                        value="{{ old('hwid') }}"
                        placeholder="{{ __('licences.activate.hwid_placeholder') }}"
-                       class="w-full rounded border border-stone-300 px-3 py-2 font-mono text-sm focus:border-amber-600 focus:ring-1 focus:ring-amber-600 uppercase"
+                       class="form-input font-mono uppercase tracking-wider !text-center"
                        pattern="[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}"
                        maxlength="19">
+                <p class="form-hint">معرف الجهاز ظاهر في البرنامج Desktop → الإعدادات → معلومات الترخيص</p>
                 @error('hwid')
-                    <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                    <p class="form-error">{{ $message }}</p>
                 @enderror
             </div>
 
-            <div class="flex gap-3 pt-2">
-                <button type="submit" class="rounded bg-amber-600 px-5 py-2 text-white font-semibold hover:bg-amber-700">
+            <div class="flex gap-3 pt-4 border-t border-ink-100">
+                <button type="submit" class="btn-primary !py-3 !px-6">
                     {{ __('licences.activate.submit') }}
                 </button>
-                <a href="{{ route('portal.licences') }}" class="rounded border border-stone-300 px-5 py-2 hover:bg-stone-100">
+                <a href="{{ route('portal.licences') }}" class="btn-secondary">
                     {{ __('licences.activate.cancel') }}
                 </a>
             </div>

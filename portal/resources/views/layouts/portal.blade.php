@@ -2,15 +2,35 @@
     $isArabic = str_starts_with(app()->getLocale(), 'ar');
     $dir = $isArabic ? 'rtl' : 'ltr';
     $currentPath = '/' . trim(request()->path(), '/');
+    $user = auth()->user();
+    $primaryMembership = $user
+        ?->customerOrganisations()
+        ?->wherePivotNull('revoked_at')
+        ?->wherePivotNotNull('accepted_at')
+        ?->first();
+    $primaryRole = $primaryMembership?->pivot?->role;
+    $primaryOrgName = $primaryMembership?->legal_name_ar;
+
     $navItems = [
-        ['url' => '/portal',                  'label' => 'الرئيسية',           'label_en' => 'Dashboard',         'icon' => '◆'],
-        ['url' => '/portal/licences',         'label' => 'التراخيص',           'label_en' => 'Licences',          'icon' => '◇'],
-        ['url' => '/portal/subscription',     'label' => 'الاشتراك',           'label_en' => 'Subscription',      'icon' => '★'],
-        ['url' => '/portal/billing',          'label' => 'الفواتير',           'label_en' => 'Billing',           'icon' => '₣'],
-        ['url' => '/portal/downloads',        'label' => 'التحميل',            'label_en' => 'Downloads',         'icon' => '⬇'],
-        ['url' => '/portal/support',          'label' => 'الدعم الفني',        'label_en' => 'Support',           'icon' => '?'],
-        ['url' => '/portal/organisation',     'label' => 'المؤسسة',            'label_en' => 'Organisation',      'icon' => '⌂'],
-        ['url' => '/portal/account/security', 'label' => 'الأمان والحساب',     'label_en' => 'Account',           'icon' => '⚙'],
+        ['url' => '/portal',                  'label' => 'الرئيسية',         'label_en' => 'Dashboard',    'icon' => 'home'],
+        ['url' => '/portal/licences',         'label' => 'التراخيص',         'label_en' => 'Licences',     'icon' => 'key'],
+        ['url' => '/portal/subscription',     'label' => 'الاشتراك',         'label_en' => 'Subscription', 'icon' => 'star'],
+        ['url' => '/portal/billing',          'label' => 'الفواتير',         'label_en' => 'Invoices',     'icon' => 'receipt'],
+        ['url' => '/portal/downloads',        'label' => 'التحميل',          'label_en' => 'Downloads',    'icon' => 'download'],
+        ['url' => '/portal/support',          'label' => 'الدعم الفني',      'label_en' => 'Support',      'icon' => 'support'],
+        ['url' => '/portal/organisation',     'label' => 'المؤسسة',          'label_en' => 'Organisation', 'icon' => 'building'],
+        ['url' => '/portal/account/security', 'label' => 'الأمان والحساب',   'label_en' => 'Account',      'icon' => 'shield'],
+    ];
+
+    $iconPaths = [
+        'home'     => 'M3 12 12 3l9 9M5 10v10h14V10',
+        'key'      => 'M21 2 13 10m3 3-2-2m-1 6a4 4 0 1 1-5.66-5.66 4 4 0 0 1 5.66 5.66Z',
+        'star'     => 'm12 3 2.7 6 6.3.6-4.7 4.3 1.3 6.1L12 17l-5.6 3 1.3-6.1L3 9.6 9.3 9Z',
+        'receipt'  => 'M6 3v18l3-2 3 2 3-2 3 2V3zM9 8h6m-6 4h6m-6 4h4',
+        'download' => 'M12 3v12m-5-5 5 5 5-5M5 21h14',
+        'support'  => 'M18.36 5.64A9 9 0 1 1 5.64 18.36 9 9 0 0 1 18.36 5.64Zm-9.55 9.55 2.83-2.83m4.95-4.95-2.83 2.83',
+        'building' => 'M3 21h18M5 21V5l7-2 7 2v16M9 9h.01M13 9h.01M9 13h.01M13 13h.01M9 17h.01M13 17h.01',
+        'shield'   => 'M12 3 4 6v6c0 4.5 3.2 8.5 8 9 4.8-.5 8-4.5 8-9V6Z',
     ];
 @endphp
 <!DOCTYPE html>
@@ -24,56 +44,90 @@
 <body class="antialiased">
     <div class="flex min-h-screen">
 
-        {{-- Portal sidebar — single-tier (slim) since the portal surface
-             is ~12 screens vs. the on-prem product's ~55 (where the locked
-             2-tier ModuleSidebar+SubNavPanel earns its keep). --}}
-        <aside class="w-60 shrink-0 border-end border-ink-100 bg-white flex flex-col">
-            <div class="border-b border-ink-100 px-5 py-4">
-                <a href="/portal" class="flex items-center gap-2">
+        {{-- ─── Sidebar — clean, light, generous spacing ──────── --}}
+        <aside class="w-[240px] shrink-0 flex flex-col bg-white border-end border-ink-100/80">
+
+            {{-- Brand bar --}}
+            <div class="px-5 pt-6 pb-5">
+                <a href="/portal" class="block">
                     <x-application-logo size="md" />
                 </a>
-                <span class="mt-1 block text-xs text-ink-500">بوابة العملاء</span>
             </div>
 
-            <nav class="flex-1 p-3 space-y-0.5 text-sm">
+            {{-- Nav --}}
+            <nav class="flex-1 overflow-y-auto px-3 pb-4 space-y-0.5 text-[15px]">
                 @foreach ($navItems as $item)
                     @php
                         $isActive = $currentPath === $item['url']
                             || ($item['url'] !== '/portal' && str_starts_with($currentPath, $item['url']));
-                        $classes = $isActive
-                            ? 'flex items-center gap-3 rounded-lg px-3 py-2 bg-brand-100 text-brand-800 font-semibold'
-                            : 'flex items-center gap-3 rounded-lg px-3 py-2 text-ink-700 hover:bg-ink-50 hover:text-ink-950 transition';
                     @endphp
-                    <a href="{{ $item['url'] }}" class="{{ $classes }}">
-                        <span class="w-5 text-center text-brand-600" aria-hidden="true">{{ $item['icon'] }}</span>
+                    <a href="{{ $item['url'] }}"
+                       class="group relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition
+                              {{ $isActive
+                                  ? 'bg-brand-50 text-brand-800 font-semibold'
+                                  : 'text-ink-700 hover:bg-ink-50 hover:text-ink-950' }}">
+                        @if ($isActive)
+                            <span class="absolute inset-y-2 start-0 w-[3px] rounded-full bg-brand-600"></span>
+                        @endif
+                        <span class="{{ $isActive ? 'text-brand-600' : 'text-ink-400 group-hover:text-ink-600' }} shrink-0 transition">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[18px]" viewBox="0 0 24 24"
+                                 fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="{{ $iconPaths[$item['icon']] }}" />
+                            </svg>
+                        </span>
                         <span>{{ $isArabic ? $item['label'] : $item['label_en'] }}</span>
                     </a>
                 @endforeach
             </nav>
 
+            {{-- Profile footer — compact, just identity + logout --}}
             <div class="border-t border-ink-100 p-3">
-                <div class="px-3 py-2 text-xs text-ink-500">
-                    <div class="font-semibold text-ink-800">{{ auth()->user()?->display_name ?? auth()->user()?->email }}</div>
-                    <div class="truncate">{{ auth()->user()?->email }}</div>
+                <div class="flex items-center gap-3 px-2 py-2">
+                    @php
+                        $initial = mb_strtoupper(mb_substr($user?->display_name ?? $user?->email ?? '?', 0, 1));
+                    @endphp
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white text-sm font-bold"
+                          style="background: linear-gradient(135deg, #d68a1f 0%, #b06d18 100%);">
+                        {{ $initial }}
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <div class="truncate text-sm font-semibold text-ink-900 leading-tight">{{ $user?->display_name ?? $user?->email }}</div>
+                        <div class="truncate text-xs text-ink-500 mt-0.5">
+                            @if ($primaryRole)
+                                {{ __('organisation.role.'.$primaryRole) }}
+                            @else
+                                {{ $user?->email }}
+                            @endif
+                        </div>
+                    </div>
+                    <form method="POST" action="{{ route('logout') }}">
+                        @csrf
+                        <button type="submit"
+                                class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-400 hover:bg-red-50 hover:text-red-600 transition"
+                                title="تسجيل الخروج">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24"
+                                 fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+                            </svg>
+                        </button>
+                    </form>
                 </div>
-                <form method="POST" action="{{ route('logout') }}" class="mt-2">
-                    @csrf
-                    <button type="submit" class="w-full text-start rounded-lg px-3 py-2 text-sm text-ink-700 hover:bg-red-50 hover:text-red-700 transition">
-                        تسجيل الخروج
-                    </button>
-                </form>
             </div>
         </aside>
 
-        <main class="flex-1 px-8 py-8 max-w-6xl">
+        {{-- ─── Main content area ──────────────────────────────── --}}
+        <main class="flex-1 min-w-0 px-8 py-8 max-w-[1180px] animate-fade-in-up">
             @if (session('status'))
-                <div class="mb-6 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
-                    <span>✓</span>
+                <div class="mb-6 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900 flex items-center gap-3 shadow-elevation-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-emerald-600" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3" />
+                    </svg>
                     <span>{{ session('status') }}</span>
                 </div>
             @endif
             @if ($errors->any())
-                <div class="mb-6 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+                <div class="mb-6 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800 shadow-elevation-1">
                     <ul class="list-disc list-inside space-y-1">
                         @foreach ($errors->all() as $msg)
                             <li>{{ $msg }}</li>

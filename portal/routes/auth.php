@@ -15,7 +15,8 @@ Route::middleware('guest')->group(function () {
     Route::get('register', [RegisteredUserController::class, 'create'])
         ->name('register');
 
-    Route::post('register', [RegisteredUserController::class, 'store']);
+    Route::post('register', [RegisteredUserController::class, 'store'])
+        ->middleware('throttle:signup');   // FR-005 + T147 — 5/hour/IP
 
     Route::get('login', [AuthenticatedSessionController::class, 'create'])
         ->name('login');
@@ -56,4 +57,11 @@ Route::middleware('auth')->group(function () {
 
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');
+
+    // Convenience GET alias so you can log out by hitting /logout in the
+    // address bar. Routes the same destroy() handler — Laravel session
+    // already binds to the browser cookie so no CSRF is needed for a
+    // logout (session destruction is not a state-changing op against a
+    // third party).
+    Route::get('logout', [AuthenticatedSessionController::class, 'destroy']);
 });

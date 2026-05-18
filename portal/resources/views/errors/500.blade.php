@@ -3,8 +3,11 @@
 @section('title', 'خطأ في الخادم')
 
 @section('code-block')
-    <div class="mx-auto mb-6 w-20 h-20 rounded-full bg-red-100 flex items-center justify-center">
-        <span class="text-3xl font-bold text-red-700">500</span>
+    <div class="mx-auto mb-6">
+        <div class="h-24 w-24 mx-auto rounded-2xl flex items-center justify-center shadow-elevation-3"
+             style="background: linear-gradient(135deg, #fca5a5 0%, #dc2626 100%);">
+            <span class="text-4xl font-extrabold text-white tracking-tight">500</span>
+        </div>
     </div>
 @endsection
 
@@ -17,5 +20,5 @@
 @endsection
 
 @section('extra-cta')
-    <a href="/contact" class="btn-secondary">تواصل مع الدعم</a>
+    <a href="/contact" class="btn-secondary !py-3">تواصل مع الدعم</a>
 @endsection

@@ -3,9 +3,10 @@
 @section('title', 'الأمان والحساب')
 
 @section('content')
-    <header class="mb-6">
-        <h1 class="text-2xl font-bold text-ink-950 mb-1">الأمان والحساب</h1>
-        <p class="text-ink-600">إعدادات الحساب الشخصي + المصادقة الثنائية + الجلسات النشطة.</p>
+    <header class="mb-8">
+        <p class="eyebrow mb-2">الأمان والإعدادات</p>
+        <h1 class="display-1 mb-1.5">الأمان والحساب</h1>
+        <p class="text-ink-600 text-base">إعدادات الحساب الشخصي + المصادقة الثنائية + الجلسات النشطة.</p>
     </header>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -95,14 +96,25 @@
         </div>
 
         {{-- Danger zone --}}
-        <div class="card-padded lg:col-span-2 border-red-200 bg-red-50">
-            <h2 class="card-section-title text-red-900">المنطقة الخطرة</h2>
-            <p class="text-sm text-red-800 mb-3">
-                حذف حسابك نهائياً — مع 30 يوم Grace Period عشان تستعيده لو غيّرت رأيك.
-            </p>
-            <a href="{{ route('portal.account.delete') }}" class="btn-danger">
-                طلب حذف الحساب
-            </a>
+        <div class="lg:col-span-2 rounded-2xl border-2 border-red-200 bg-red-50/60 p-6 relative overflow-hidden">
+            <span class="absolute inset-y-0 start-0 w-1 bg-red-500"></span>
+            <div class="flex items-start gap-4">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0ZM12 9v4m0 4h.01" />
+                    </svg>
+                </span>
+                <div class="flex-1">
+                    <h2 class="text-lg font-bold text-red-900 mb-1">المنطقة الخطرة</h2>
+                    <p class="text-sm text-red-800 mb-4">
+                        حذف حسابك نهائياً — مع 30 يوم Grace Period عشان تستعيده لو غيّرت رأيك.
+                    </p>
+                    <a href="{{ route('portal.account.delete') }}" class="btn-danger">
+                        طلب حذف الحساب
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 @endsection

@@ -97,7 +97,7 @@ $marketingRoutes = function (): void {
     Route::get('/about', [AboutController::class, 'show'])->name('marketing.about');
     Route::get('/contact', [ContactController::class, 'show'])->name('marketing.contact');
     Route::post('/contact', [ContactController::class, 'submit'])
-        ->middleware('throttle:10,60')   // FR-005 + T147 — 10/hour/IP
+        ->middleware('throttle:contact-form')   // FR-005 + T147 — named limiter in AppServiceProvider
         ->name('marketing.contact.submit');
     Route::get('/terms', [TermsController::class, 'terms'])->name('marketing.terms');
     Route::get('/refund', [TermsController::class, 'refund'])->name('marketing.refund');
@@ -232,7 +232,7 @@ Route::prefix('portal')
 Route::get('/invitations/accept', [AcceptInvitationController::class, 'show'])
     ->name('invitations.accept');
 Route::post('/invitations/accept', [AcceptInvitationController::class, 'accept'])
-    ->middleware('throttle:20,60')
+    ->middleware('throttle:invitation-accept')   // FR-020 + T147 — named limiter
     ->name('invitations.accept.submit');
 
 // --- Profile (Breeze default) --------------------------------------------
