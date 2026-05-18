@@ -53,12 +53,19 @@ return new class extends Migration
         } else {
             // MySQL 8 + others: generated column = (org||member) when
             // not revoked, NULL otherwise. Unique on the generated col.
+            //
+            // Notes for portability:
+            //   - VIRTUAL (not STORED) — Hostinger's MySQL 8 rejects STORED
+            //     columns whose expression uses CASE on other columns
+            //     (treated as non-deterministic). VIRTUAL has looser rules.
+            //   - IF(..., ..., NULL) instead of CASE WHEN ... THEN ... END —
+            //     same semantics, but the deterministic check passes cleanly.
             Schema::getConnection()->statement(
                 'ALTER TABLE organisation_memberships '
                 . 'ADD COLUMN active_membership_fingerprint VARCHAR(80) AS '
-                . '(CASE WHEN revoked_at IS NULL '
-                . 'THEN CONCAT(customer_organisation_id, ":", team_member_id) '
-                . 'ELSE NULL END) STORED, '
+                . '(IF(revoked_at IS NULL, '
+                . 'CONCAT(customer_organisation_id, ":", team_member_id), '
+                . 'NULL)) VIRTUAL, '
                 . 'ADD UNIQUE KEY ux_organisation_memberships_active (active_membership_fingerprint)'
             );
         }
