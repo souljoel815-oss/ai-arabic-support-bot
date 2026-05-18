@@ -57,7 +57,12 @@
     {
         var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
         if (string.IsNullOrEmpty(path)) path = "/";
-        _activeModuleId = AppShellModuleRegistry.ResolveActive(path);
+        // Sticky-resolution: pass our current module id so a navigation
+        // to a URL claimed by both the current module and another module
+        // (e.g. /wht is in both Purchases sidebar AND Accounting's
+        // TaxesTabs) keeps the operator in their existing context
+        // instead of "teleporting" the sidebar highlight.
+        _activeModuleId = AppShellModuleRegistry.ResolveActive(path, _activeModuleId);
         _activeModule = AppShellModuleRegistry.Get(_activeModuleId);
     }
 

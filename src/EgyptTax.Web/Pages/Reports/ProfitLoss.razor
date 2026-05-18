@@ -1,0 +1,149 @@
+@page "/reports/profit-loss"
+@using EgyptTax.Application.Reports
+@using Microsoft.AspNetCore.Authorization
+@inject IProfitLossReportQuery ReportQuery
+@attribute [Authorize(Policy = "NotSalesRepOnly")]
+
+<RequireFeature Feature="@Feature.TrialBalance" />
+
+<SettingsTabStrip Group="accounting-reports" />
+
+<h1>@(IsArabic ? "قائمة الدخل" : "Profit &amp; Loss")</h1>
+
+<form class="invoice-toolbar" @onsubmit="OnRefresh" @onsubmit:preventDefault>
+    <label>
+        <span>@(IsArabic ? "بداية الفترة" : "Period start")</span>
+        <input type="date" @bind="_periodStart" />
+    </label>
+    <label>
+        <span>@(IsArabic ? "نهاية الفترة" : "Period end")</span>
+        <input type="date" @bind="_periodEnd" />
+    </label>
+    <button type="submit" class="btn-primary" disabled="@_loading">
+        @(_loading ? (IsArabic ? "جارٍ الحساب…" : "Computing…") : (IsArabic ? "تشغيل التقرير" : "Run report"))
+    </button>
+</form>
+
+@if (_report is null)
+{
+    @if (_loading)
+    {
+        <p>@(IsArabic ? "جارٍ التحميل…" : "Loading…")</p>
+    }
+    else
+    {
+        <p><em>@(IsArabic ? "اختر الفترة بالأعلى ثم اضغط «تشغيل التقرير»." : "Pick a period above and click \"Run report\".")</em></p>
+    }
+    return;
+}
+
+<section class="invoice-totals">
+    <div><strong>@(IsArabic ? "الفترة:" : "Period:")</strong> @_report.PeriodStart.ToString("yyyy-MM-dd") @(IsArabic ? "إلى" : "to") @_report.PeriodEnd.ToString("yyyy-MM-dd")</div>
+    <div><strong>@(IsArabic ? "إجمالي الإيرادات:" : "Total revenue:")</strong> <span class="num">@_report.TotalRevenue.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    <div><strong>@(IsArabic ? "إجمالي المصروفات:" : "Total expenses:")</strong> <span class="num">@_report.TotalExpenses.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span></div>
+    @if (_report.NetIncome.Amount >= 0m)
+    {
+        <div class="grand">
+            <strong>@(IsArabic ? "صافي الربح:" : "Net income:")</strong>
+            <span class="num">@_report.NetIncome.Amount.ToString("F2") @(IsArabic ? "ج.م." : "EGP")</span>
+        </div>
+    }
+    else
+    {
+        <div class="flash-error">
+            <strong>@(IsArabic ? "صافي الخسارة:" : "Net loss:")</strong>
+            <span class="num">@((-_report.NetIncome.Amount).ToString("F2")) @(IsArabic ? "ج.م." : "EGP")</span>
+        </div>
+    }
+</section>
+
+<section>
+    <h2>@(IsArabic ? $"الإيرادات ({_report.RevenueRows.Count})" : $"Revenue ({_report.RevenueRows.Count})")</h2>
+    @if (_report.RevenueRows.Count == 0)
+    {
+        <p><em>@(IsArabic ? "لا توجد إيرادات مسجلة في هذه الفترة." : "No revenue recorded in this period.")</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "كود الحساب" : "Account code")</th>
+                    <th class="num">@(IsArabic ? "القيمة" : "Amount")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _report.RevenueRows)
+                {
+                    <tr>
+                        <td><code>@row.AccountCode</code></td>
+                        <td class="num">@row.Amount.Amount.ToString("F2")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>@(IsArabic ? "الإجمالي" : "Total")</th>
+                    <th class="num">@_report.TotalRevenue.Amount.ToString("F2")</th>
+                </tr>
+            </tfoot>
+        </table>
+    }
+</section>
+
+<section>
+    <h2>@(IsArabic ? $"المصروفات ({_report.ExpenseRows.Count})" : $"Expenses ({_report.ExpenseRows.Count})")</h2>
+    @if (_report.ExpenseRows.Count == 0)
+    {
+        <p><em>@(IsArabic ? "لا توجد مصروفات مسجلة في هذه الفترة." : "No expenses recorded in this period.")</em></p>
+    }
+    else
+    {
+        <table class="data-grid">
+            <thead>
+                <tr>
+                    <th>@(IsArabic ? "كود الحساب" : "Account code")</th>
+                    <th class="num">@(IsArabic ? "القيمة" : "Amount")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _report.ExpenseRows)
+                {
+                    <tr>
+                        <td><code>@row.AccountCode</code></td>
+                        <td class="num">@row.Amount.Amount.ToString("F2")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>@(IsArabic ? "الإجمالي" : "Total")</th>
+                    <th class="num">@_report.TotalExpenses.Amount.ToString("F2")</th>
+                </tr>
+            </tfoot>
+        </table>
+    }
+</section>
+
+@code {
+    private DateTime _periodStart = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    private DateTime _periodEnd = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month,
+        DateTime.DaysInMonth(DateTime.UtcNow.Year, DateTime.UtcNow.Month));
+    private bool _loading;
+    private ProfitLossReport? _report;
+
+    private async Task OnRefresh()
+    {
+        _loading = true;
+        try
+        {
+            _report = await ReportQuery.RunAsync(
+                DateOnly.FromDateTime(_periodStart),
+                DateOnly.FromDateTime(_periodEnd));
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

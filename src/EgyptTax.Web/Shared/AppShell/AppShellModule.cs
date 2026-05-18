@@ -239,6 +239,17 @@ public static class AppShellModuleRegistry
                     {
                         "/tax/income-tax-return",
                         "/compliance/calendar", "/compliance/health",
+                        // /wht + /wht/inbound are CANONICAL in Purchases &gt;
+                        // WHT but ALSO appear in the TaxesTabs strip on
+                        // the VAT-return page. Listing them as aliases
+                        // here lets the sticky-module resolver
+                        // (ResolveActive's currentModuleId path) keep the
+                        // operator in Accounting when they're already
+                        // here. A user who navigates to /wht via the
+                        // Purchases sidebar still lands in Purchases
+                        // because that module's canonical Url wins on
+                        // the first-visit (no sticky context yet).
+                        "/wht", "/wht/inbound",
                     }),
                 new SubNavLink("الفاتورة الإلكترونية (ETA)", "E-invoicing (ETA)", "/eta-dashboard",
                     "eta inbox export wizard inspection لوحة صندوق فحص", "activity",
@@ -346,7 +357,19 @@ public static class AppShellModuleRegistry
     /// belongs to Accounting, not Settings). Falls back to Dashboard
     /// for the root path or anything unmatched.
     /// </summary>
-    public static string ResolveActive(string path)
+    /// <param name="path">URL path to resolve.</param>
+    /// <param name="currentModuleId">
+    /// Sticky-resolution hint (2026-05-18 fix): when set, prefer the
+    /// current module if it can claim the path via a canonical Url or
+    /// AliasUrls match. Prevents the sidebar from "teleporting" to a
+    /// different module when an operator clicks a TabStrip tab that
+    /// references a URL appearing in multiple modules' sub-nav lists
+    /// (e.g. <c>/wht</c> in both Purchases &gt; WHT and Accounting &gt;
+    /// TaxesTabs). The first time the user clicks a link in module
+    /// <c>currentModuleId</c>, this method keeps them there; navigating
+    /// in via a different module's sidebar sets a new sticky context.
+    /// </param>
+    public static string ResolveActive(string path, string? currentModuleId = null)
     {
         if (string.IsNullOrEmpty(path) || path == "/") return DashboardId;
 
@@ -355,27 +378,44 @@ public static class AppShellModuleRegistry
         if (path.StartsWith("/settings/chart-of-accounts", StringComparison.OrdinalIgnoreCase))
             return AccountingId;
 
+        // Sticky-resolution pass: if the caller knows which module the
+        // user is currently in, give that module first refusal on the
+        // path. Only kicks in when the current module actually claims
+        // the path — if not, we fall through to the normal first-match.
+        if (!string.IsNullOrEmpty(currentModuleId)
+            && Get(currentModuleId) is { } current
+            && ModuleClaimsPath(current, path))
+        {
+            return current.Id;
+        }
+
         // Prefix match against each module's sub-nav links + alias urls
         // (the latter let a consolidated entry like "Accounting reports"
         // claim every sibling /reports/* page even though the entry's
         // canonical url is just /reports/trial-balance).
         foreach (var module in All)
         {
-            foreach (var entry in module.SubNavEntries)
-            {
-                if (entry is not SubNavLink link) continue;
-                if (Matches(path, link.Url)) return module.Id;
-                if (link.AliasUrls is { } aliases)
-                {
-                    foreach (var alias in aliases)
-                    {
-                        if (Matches(path, alias)) return module.Id;
-                    }
-                }
-            }
+            if (ModuleClaimsPath(module, path)) return module.Id;
         }
 
         return DashboardId;
+    }
+
+    private static bool ModuleClaimsPath(AppShellModule module, string path)
+    {
+        foreach (var entry in module.SubNavEntries)
+        {
+            if (entry is not SubNavLink link) continue;
+            if (Matches(path, link.Url)) return true;
+            if (link.AliasUrls is { } aliases)
+            {
+                foreach (var alias in aliases)
+                {
+                    if (Matches(path, alias)) return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static bool Matches(string path, string url) =>

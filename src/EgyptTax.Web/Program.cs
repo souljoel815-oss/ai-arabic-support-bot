@@ -303,6 +303,21 @@ builder.Services.AddScoped<
     EgyptTax.Infrastructure.Reports.SqlCashFlowReportQuery
 >();
 
+// v5 (2026-05-18) — Profit & Loss / قائمة الدخل + Balance Sheet /
+// الميزانية. Same data source as Trial Balance (JournalEntry +
+// JournalEntryLine); P&L filters to revenue (4xxx) + expense (5xxx)
+// accounts; Balance Sheet aggregates cumulative balances of assets
+// (1xxx) + liabilities (2xxx) + equity (3xxx) plus a derived
+// retained-earnings figure.
+builder.Services.AddScoped<
+    EgyptTax.Application.Reports.IProfitLossReportQuery,
+    EgyptTax.Infrastructure.Reports.SqlProfitLossReportQuery
+>();
+builder.Services.AddScoped<
+    EgyptTax.Application.Reports.IBalanceSheetReportQuery,
+    EgyptTax.Infrastructure.Reports.SqlBalanceSheetReportQuery
+>();
+
 // P1.8 (Penalty Shield) — exposure projection. Reads EtaSubmission +
 // SalesInvoice to compute current tier + projected fines + the
 // prioritised work queue. See PenaltyRegime for the constants.
