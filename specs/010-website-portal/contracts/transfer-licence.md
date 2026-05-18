@@ -10,7 +10,7 @@ Retires an existing Licence's token, signs a fresh token bound to a new hardware
 
 ```
 POST /api/v1/portal/licences/7a9b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d/transfer
-Cookie: .AspNetCore.Identity.Application=...
+Cookie: laravel_session=...
 Content-Type: application/json
 ```
 
@@ -108,7 +108,7 @@ The licence id doesn't exist or already belongs to a different (deleted) organis
 
 ## Contract test
 
-`tests/EgyptTax.Portal.IntegrationTests/Contracts/TransferLicenceEndpointTests.cs` asserts:
+`portal/tests/Feature/Contracts/TransferLicenceEndpointTest.php` asserts:
 
 1. Owner transferring a valid licence to a fresh HWID returns 200 + the source licence's `RetiredAtUtc` is populated + a new Licence row exists with the new HWID + same Edition + same expiry.
 2. Two audit-log rows are written: `licence.retired` referencing the source, and `licence.activated` referencing the new, with cross-references in their payloads.

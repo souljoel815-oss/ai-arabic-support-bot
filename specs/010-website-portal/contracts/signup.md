@@ -83,21 +83,21 @@ The email already exists as an active TeamMember. The response does NOT confirm 
 ## Behaviour
 
 1. Validate the request body shape; reject with 400 on any error.
-2. Hash the password via AspNetCore.Identity's default PBKDF2 hasher.
-3. Insert a `CustomerOrganisation` row (`LegalNameAr` = `organisationLegalNameAr`, `CountryCode = "EG"`, `BillingEmail` = `email`).
-4. Insert a `TeamMember` row with the supplied email + display name + locale, `EmailConfirmedAtUtc` left null.
-5. Insert an `OrganisationMembership` row binding the TeamMember to the Organisation with `Role = "Owner"`.
-6. Generate an email-confirmation token via AspNetCore.Identity, dispatch via Resend with the bilingual template.
-7. Write an `AuditLogEntry` with `Verb = "organisation.signedUp"`, `ActorKind = "TeamMember"`, `ActorTeamMemberId = <new id>`.
+2. Hash the password via Laravel's `Hash::make()` (bcrypt).
+3. Insert a `CustomerOrganisation` row (`legal_name_ar` = `organisationLegalNameAr`, `country_code = "EG"`, `billing_email` = `email`).
+4. Insert a `TeamMember` row with the supplied email + display name + locale, `email_verified_at` left null.
+5. Insert an `OrganisationMembership` row binding the TeamMember to the Organisation with `role = "Owner"`.
+6. Generate an email-confirmation signed URL via Laravel's `VerifyEmail` notification, dispatch via Resend SMTP with the bilingual Blade Mailable template.
+7. Write an `AuditLogEntry` with `verb = "organisation.signedUp"`, `actor_kind = "TeamMember"`, `actor_team_member_id = <new id>`.
 8. Return 201.
 
-The transaction wraps steps 3-7 as a single EF Core SaveChanges (with the email dispatch outside the transaction to prevent slow SMTP from holding the DB connection).
+The transaction wraps steps 3-7 as a single `DB::transaction()` (with the email dispatch queued to `database` queue outside the transaction to prevent slow SMTP from holding the DB connection).
 
 ---
 
 ## Contract test
 
-`tests/EgyptTax.Portal.IntegrationTests/Contracts/SignupEndpointTests.cs` asserts:
+`portal/tests/Feature/Contracts/SignupEndpointTest.php` asserts:
 
 1. Valid request returns 201 + a `CustomerOrganisation` row + a founding-Owner `TeamMember` row + a single `OrganisationMembership` with `Role = "Owner"`.
 2. Missing `organisationLegalNameAr` returns 400 with `details.organisationLegalNameAr` populated.

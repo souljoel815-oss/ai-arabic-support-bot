@@ -101,7 +101,7 @@ The PDF generation and email dispatch happen OUTSIDE the transaction via a backg
 
 ## Contract test
 
-`tests/EgyptTax.Portal.IntegrationTests/Contracts/PaymentWebhookEndpointTests.cs` asserts:
+`portal/tests/Feature/Contracts/PaymentWebhookEndpointTest.php` asserts:
 
 1. A valid `success: true` payload for a known InvoiceNumber transitions the Invoice to `Paid`, extends the Subscription's period, and enqueues both the PDF + email jobs (verified by a fake background-queue adapter).
 2. Same payload received twice returns 200 both times but only emits ONE `payment.cleared` audit-log row (idempotency).

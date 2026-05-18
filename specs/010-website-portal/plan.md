@@ -3,34 +3,56 @@
 **Branch**: `010-website-portal` | **Date**: 2026-05-18 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/010-website-portal/spec.md`
 
+> **Stack switch (2026-05-18)**: This plan was originally written for ASP.NET Core 8 + Blazor Server + SQL Server + Docker (commit 6bf395e). The customer is hosting on a **Hostinger Shared Hosting** plan which does not support .NET 8 / Docker / WebSockets, so the architecture was rewritten for Laravel 11 + PHP 8.4 + MySQL 8 + Blade templates. The previous .NET design lives in git history (commits 6bf395e and earlier 63f8596) if a future VPS upgrade reverses the constraint. The spec.md user stories + functional requirements + clarifications are unchanged — only the implementation stack moved.
+
 ## Summary
 
-Stand up `daftarx.app` as two surfaces hosted from a single deploy: (1) a fast, SEO-friendly **public marketing site** (homepage, features, pricing, downloads, privacy policy, contact) that prospects browse without auth, and (2) an authenticated **customer portal** behind a `/portal/*` URL prefix where customers manage their commercial relationship — subscriptions, paid licence tokens (signed by the existing `Issue-License.ps1` flow + `vendor-keys.json`), billing, downloads, support tickets, and team-member memberships.
+Stand up `daftarx.app` as a **classic LAMP-style web app** (Linux + Nginx + MySQL + PHP via Hostinger) serving both surfaces from one Laravel 11 codebase: (1) a fast, SEO-friendly **public marketing site** (homepage, features, pricing, downloads, privacy policy, contact) rendered as Blade pages cached at the Cloudflare edge, and (2) an authenticated **customer portal** behind a `/portal/*` URL prefix where customers manage their commercial relationship — subscriptions, paid licence tokens (signed in-process via PHP's `sodium_crypto_sign_detached` against the existing Ed25519 `vendor-keys.json` keypair), billing, downloads, support tickets, and team-member memberships.
 
-The 5 clarifications from `/speckit-clarify` Session 2026-05-18 sharpen the architecture: trial happens entirely client-side in the on-prem product (FR-029/FR-030 — no portal endpoint), paid activation uses the existing manual HWID-copy flow (FR-031 — no new signing protocol), portal identity is fully separate from the on-prem product's user store (FR-032), tier changes are self-service with proration (FR-033), and refunds are limited to a 7-day first-period window (FR-034).
+The 5 clarifications from `/speckit-clarify` Session 2026-05-18 sharpen the architecture in ways that map cleanly to the Laravel stack: trial happens entirely client-side in the on-prem product (FR-029/FR-030 — no portal endpoint at all), paid activation uses the existing manual HWID-copy flow (FR-031 — Laravel controller signs an envelope identical to the on-prem `LicenseEnvelope` format), portal identity is fully separate from the on-prem product's user store (FR-032 — Laravel Breeze owns its own `users` table on a separate MySQL database), tier changes are self-service with proration (FR-033 — Laravel handles all the math in `SubscriptionService`), and refunds are limited to a 7-day first-period window (FR-034 — computed inline in the Invoice Eloquent model).
 
-Both surfaces share a single ASP.NET Core 8 codebase — the marketing pages are server-rendered Razor with output caching for SEO + sub-3 s p75 render targets, the portal is interactive Blazor Server with cookie auth + MFA. The portal's commercial database is a brand-new schema (Customer Organisation / Subscription / Licence / Invoice / Ticket / Sales Lead / Audit Log) deliberately isolated from the existing on-prem `EgyptTax` accounting database — the two share git history but no runtime data.
+The portal's commercial database is a brand-new MySQL schema (Customer Organisation / Subscription / Licence / Invoice / Ticket / Sales Lead / Audit Log) deliberately isolated from the existing on-prem `EgyptTax` accounting database — the two share git history but no runtime data, no SSO, no cross-system database link.
 
 ## Technical Context
 
-**Language/Version**: C# 12 on .NET 8.0 LTS (matches the existing `src/EgyptTax.Web` Blazor Server stack — same SDK, same hosting model, same developer skill set). Razor Pages for marketing, Blazor Server for the portal.
+**Language/Version**: PHP 8.4 (Hostinger's current latest; Laravel 11 requires PHP 8.2+, 8.4 works with no caveats). All code is server-rendered Blade — no SPA, no Inertia, no client-side framework. The few interactive bits (form validation, language switcher) use Alpine.js (already bundled with Laravel Breeze).
+
 **Primary Dependencies**:
-- *Server*: ASP.NET Core 8 (Razor Pages + Blazor Server), Entity Framework Core 8 (SQL Server provider matching the existing infrastructure), Serilog with the same sinks as `EgyptTax.Web`, AspNetCore.Identity for Team Member identity (password + TOTP MFA), DataProtection for cookie + secret protection, AspNetCore.Localization for the ar-EG / en-US split.
-- *Reuse from monorepo*: the existing `EgyptTax.Web.Tools.LicenseIssueHost` flow (today a CLI verb on `EgyptTax.Web.exe`) is wrapped as an injectable service so the portal calls it in-process — same Ed25519 keypair, same signed-token format, customers' existing on-prem `LicenseVerifier` accepts portal-issued tokens unchanged.
-- *Payments*: Paymob hosted-checkout for card + Fawry + Vodafone Cash + InstaPay (single Egyptian aggregator covers all four required methods per FR-015 + research §3). Bank transfer is manual reconciliation with a vendor-only admin tool.
-- *Email*: Resend.com transactional API (the simplest reliable provider with Egyptian deliverability) for invitations, payment receipts, ticket notifications, trial-ending reminders. Templates rendered server-side as MJML.
-- *PDF receipts*: QuestPDF (royalty-free for revenue < $1M/yr, MIT-equivalent licence) generates the Arabic-RTL invoice PDFs required by FR-016.
-- *Frontend assets*: Tailwind CSS (v4, CLI-only — no Node runtime needed at build time) for marketing styling; Material 3 + minimal custom CSS for the portal. No JavaScript framework — Blazor Server handles the interactive bits.
+- *Framework*: Laravel 11 (LTS — security patches through Aug 2026, framework patches through Mar 2026). Standard `laravel/laravel` skeleton + `laravel/breeze` for auth scaffolding.
+- *Auth*: Laravel Breeze (cookie session auth + email confirmation) + `pragmarx/google2fa-laravel` for TOTP MFA. PBKDF2 → bcrypt password hashing (Laravel default).
+- *Reuse from monorepo*: PHP's built-in `sodium_crypto_sign_detached` produces Ed25519 signatures byte-compatible with the on-prem `EgyptTax.Web.Licensing.LicenseVerifier`. Same `vendor-keys.json` file is read by both; `LicenceSigningService` (PHP) and `LicenseVerifier` (C#) interoperate cleanly because Ed25519 is a standard with no implementation variance.
+- *Payments*: Paymob hosted-checkout via direct HTTP integration (no SDK — `Illuminate\Http\Client` posts to `https://accept.paymob.com/api/...`). Single Egyptian aggregator covers all four required methods per FR-015 + research §3. Bank transfer is manual reconciliation with a vendor-only admin Artisan command.
+- *Email*: Resend.com transactional API via SMTP (Laravel's `mail` driver supports SMTP natively — Resend exposes SMTP on `smtp.resend.com:587`). Templates rendered as Blade Mailables + MJML compiled to HTML during build.
+- *PDF receipts*: `barryvdh/laravel-dompdf` generates the Arabic-RTL invoice PDFs required by FR-016. DOMPDF supports Arabic shaping via the built-in DejaVu Sans + an embedded Cairo font.
+- *Frontend assets*: Tailwind CSS v3 + Vite (Laravel 11 default). No JavaScript framework — Alpine.js for the rare interactive widget (already in Breeze).
+
 **Storage**:
-- *Portal DB*: new SQL Server database `DaftarXPortal` (development override allows SQLite via `appsettings.Development.json` for fast local iteration). Holds the 8 commercial entities documented in `data-model.md`. Schema lives in `src/EgyptTax.Portal.Infrastructure/Migrations/`.
+- *Portal DB*: new MySQL 8 database `daftarx_portal` on the same Hostinger MySQL instance. Local dev override via SQLite file `database/database.sqlite` for zero-config startup. Holds the 8 commercial entities documented in `data-model.md`. Schema lives in `portal/database/migrations/`.
 - *No overlap* with the existing on-prem `EgyptTax` accounting database — portal queries are commercial-only (subscriptions, licences, invoices, tickets), accounting data stays on the customer's own server.
-- *Blob storage* for invoice PDFs + ticket attachments: Azure Blob Storage or S3-compatible bucket (research §6 narrows). Local-disk fallback during dev.
-**Testing**: xUnit + FluentAssertions for unit + integration (mirrors `EgyptTax.UnitTests`). Playwright in C# bindings for the marketing-surface end-to-end + portal critical flows (signup → trial-conversion → licence transfer). bUnit for Blazor Server component tests where they're cheaper than Playwright. Contract tests for the 5 contracts in `contracts/` are xUnit cases against `WebApplicationFactory<Program>`.
-**Target Platform**: Linux server (Ubuntu 22.04 LTS via Docker), hosted in a single Cairo-or-Frankfurt data centre (sub-3 s render target from Cairo broadband per FR-025 + SC-006). Cloudflare in front for CDN edge caching of marketing pages + DDoS protection.
-**Project Type**: Web application (two surfaces hosted from one ASP.NET Core process, OR split into two if Cloudflare edge-cache rules become awkward — research §1 settles this).
-**Performance Goals**: SC-006 — every marketing page renders in under 3 s at p75 from a Cairo broadband connection on a mid-range device. SC-002 — signup → tier select → payment → token download → installer download in under 15 min. SC-003 — licence transfer in under 5 min. Cloudflare caching gives marketing pages effectively-zero TTFB after first hit.
-**Constraints**: EGP-only billing in v1 (FR-015). Single-region hosting in v1. Privacy policy URL `daftarx.app/privacy/android` is a stable contract with the Android app's Play Store data-safety form (FR-006 + SC-004) — any URL change must be coordinated with feature 009's release. Trial state is OWNED by the on-prem product, NEVER tracked by the portal (FR-030). Portal identity is fully separate from on-prem product identity (FR-032) — no SSO, no cross-system password sync.
-**Scale/Scope**: Year-1 target is 200 paying customers with ≤ 10 Team Members each → ≤ 2,000 Team Member rows, ≤ 2,000 Subscriptions, ≤ 4,000 Licences (each Subscription has 1-3 licences for the LAN + multi-device cases), ≤ 24,000 Invoices/year (monthly cadence dominates), ≤ 6,000 Support Tickets/year. Single-region SQL Server with daily backups is enough. Surface is ~15 marketing pages + ~12 portal screens (Dashboard, Licences, Subscription, Billing, Downloads, Support, Settings, Members, Security, Activate-paid, Transfer-licence, Account-deletion).
+- *File storage* for invoice PDFs + ticket attachments: Laravel `Storage::disk('local')` writing to `portal/storage/app/private/` on Hostinger (no S3 / Azure Blob in v1 — shared hosting includes plenty of disk). Path layout: `storage/app/private/invoices/{org-id}/{invoice-number}.pdf` and `storage/app/private/tickets/{org-id}/{ticket-id}/{attachment-id}.{ext}`. Migrating to Backblaze B2 or an S3-compatible bucket lands as a Phase 9 polish task if disk pressure becomes real.
+
+**Testing**: Pest (Laravel 11's default test framework — more readable than raw PHPUnit) for unit + feature tests. Laravel's HTTP test helpers (`$this->get(...)`, `$this->post(...)`) handle contract tests inline — no separate WebApplicationFactory equivalent needed. Browser tests use Laravel Dusk (Selenium-based) for the marketing-surface end-to-end + portal critical flows (signup → trial-conversion → licence transfer). Dusk runs locally + in CI.
+
+**Target Platform**: Hostinger Shared Hosting (Linux + Nginx + PHP-FPM, MySQL 8). Single-region — Hostinger's Egypt-nearby data centres (Frankfurt / Singapore — Hostinger doesn't have Cairo POPs but the latency target is met via Cloudflare edge cache). Cloudflare in front for CDN + DDoS + the marketing-page edge cache.
+
+**Project Type**: Web application (single Laravel app, two-surface routing — Blade pages under `/*` for marketing, Blade pages under `/portal/*` behind `auth` middleware for the portal). No SPA, no separate API tier in v1.
+
+**Performance Goals**: SC-006 — every marketing page renders in under 3 s at p75 from a Cairo broadband connection on a mid-range device. Achieved via (a) Cloudflare edge cache giving sub-100 ms TTFB after first hit, (b) Blade view caching (`php artisan view:cache` in CI), (c) `config:cache` + `route:cache` on every deploy, (d) eager-loading via Eloquent's `with()` to kill N+1s. SC-002 — signup → tier select → payment → token download → installer download in under 15 min. SC-003 — licence transfer in under 5 min.
+
+**Constraints**:
+- EGP-only billing in v1 (FR-015).
+- Single-region hosting in v1 (Hostinger Shared = no multi-region).
+- Privacy policy URL `daftarx.app/privacy/android` is a stable contract with the Android app's Play Store data-safety form (FR-006 + SC-004) — any URL change must be coordinated with feature 009's release.
+- Trial state is OWNED by the on-prem product, NEVER tracked by the portal (FR-030).
+- Portal identity is fully separate from on-prem product identity (FR-032) — no SSO, no cross-system password sync.
+- **Hostinger Shared Hosting limitations** that shape architecture:
+  - ❌ No long-running processes — background work happens via Laravel queue (`database` driver) + cron entry hitting `php artisan schedule:run` every minute. NO Hangfire equivalent.
+  - ❌ No WebSockets — no Blazor Server / real-time push. Everything is request/response.
+  - ❌ No Docker / no system-level service install — pure PHP + composer.
+  - ⚠️ PHP execution time limit ~30-120s per request — long uploads + PDF generation chunked into queued jobs.
+  - ⚠️ Cron resolution = 1 minute (Hostinger Premium) or 15 minutes (Hostinger Single — won't work for `schedule:run` which needs per-minute resolution).
+
+**Scale/Scope**: Year-1 target is 200 paying customers with ≤ 10 Team Members each → ≤ 2,000 TeamMember rows, ≤ 2,000 Subscriptions, ≤ 4,000 Licences (each Subscription has 1-3 licences for the LAN + multi-device cases), ≤ 24,000 Invoices/year (monthly cadence dominates), ≤ 6,000 Support Tickets/year. Single MySQL database with Hostinger's daily backups is enough. Surface is ~15 marketing pages + ~12 portal screens (Dashboard, Licences, Subscription, Billing, Downloads, Support, Settings, Members, Security, Activate-paid, Transfer-licence, Account-deletion).
 
 ## Constitution Check
 
@@ -38,11 +60,11 @@ Both surfaces share a single ASP.NET Core 8 codebase — the marketing pages are
 
 | Principle | Status | Notes |
 |-----------|--------|-------|
-| **I. Spec-First Development** | ✅ Pass | `spec.md` complete with 34 functional requirements (28 original + 6 from `/speckit-clarify` Session 2026-05-18), 6 prioritised user stories, 9 measurable success criteria, 8 key entities, 0 `[NEEDS CLARIFICATION]` markers. All ambiguity resolved into the Clarifications section + Assumptions. |
-| **II. Plan Before Code** | ✅ Pass | This plan documents language, dependencies, storage, testing, target platform, project structure, and explicit constitutional reuse points (the on-prem licence-signing flow). No code may be written until tasks are generated from this plan. |
-| **III. Test-First Discipline** | ✅ Pass (commitment) | Contract tests for the 5 portal endpoints (signup, activate-paid-licence, transfer-licence, payment-webhook, invite-member) and integration tests for every cross-boundary flow (Paymob hosted-checkout round-trip, Resend transactional email round-trip, in-process licence-signing call, blob-storage attachment upload, Cloudflare cache invalidation hook) MUST be written and observed failing before their production code, recorded in `tasks.md` per `/speckit-tasks`. |
-| **IV. Simplicity & YAGNI** | ✅ Pass | Two surfaces in one process is the simplest architecture that satisfies the spec — separating them into two services would add a hop without solving any concrete problem. The clarifications explicitly reduced complexity: no SSO (FR-032), no new activation endpoint (FR-031), no portal-side trial tracking (FR-030), no mid-period refund logic (FR-034). The one reused dependency (the in-process licence-signing call) is the simplest way to honour the spec's requirement to keep the existing token format. No Complexity Tracking entries needed. |
-| **V. Incremental, Independently Testable Delivery** | ✅ Pass | The 6 user stories decompose into 3 P1 (Marketing, Licence self-service, Signup→Pay→Download) + 3 P2 (Support, Multi-user, Privacy URL). P1 stories together are the MVP that lets the vendor start taking real money. P2 stories layer orthogonally — none of them blocks any of the others. |
+| **I. Spec-First Development** | ✅ Pass | `spec.md` complete with 34 functional requirements, 6 prioritised user stories, 9 measurable success criteria, 8 key entities, 0 `[NEEDS CLARIFICATION]` markers. All ambiguity resolved into the Clarifications section + Assumptions. Stack switch is an implementation concern, not a spec concern — spec wording is framework-agnostic. |
+| **II. Plan Before Code** | ✅ Pass | This plan documents language, dependencies, storage, testing, target platform, project structure, and the explicit reuse contract (the Ed25519 signing keypair shared with on-prem). No code may be written until tasks are regenerated from this plan. |
+| **III. Test-First Discipline** | ✅ Pass (commitment) | Contract tests for the 5 portal endpoints (signup, activate-paid-licence, transfer-licence, payment-webhook, invite-member) and integration tests for every cross-boundary flow (Paymob hosted-checkout round-trip, Resend SMTP round-trip, in-process licence-signing call, local-disk attachment upload, Cloudflare cache invalidation hook) MUST be written and observed failing before their production code, recorded in `tasks.md` per `/speckit-tasks`. Laravel + Pest make this easy — every test is a top-level PHP file under `tests/`. |
+| **IV. Simplicity & YAGNI** | ✅ Pass | The Laravel rewrite reduces complexity vs the .NET attempt: no Blazor Server (= no WebSocket lifecycle), no two-project split (Application vs Infrastructure — Laravel uses a flat `app/` directory), no Hangfire (= queue is just database rows), no Docker (= deploy is git pull + composer install). The clarifications already simplified the domain (no SSO per FR-032, no new activation endpoint per FR-031, no portal-side trial per FR-030, no mid-period refund per FR-034). No Complexity Tracking entries needed. |
+| **V. Incremental, Independently Testable Delivery** | ✅ Pass | The 6 user stories decompose into 3 P1 (Marketing, Licence self-service, Signup→Pay→Download) + 3 P2 (Support, Multi-user, Privacy URL). P1 stories together are the MVP that lets the vendor start taking real money. P2 stories layer orthogonally — none of them blocks any of the others. Same as the .NET design — the constitution check passes for the same reasons. |
 
 **Re-check after Phase 1 design**: see [Post-Design Constitution Check](#post-design-constitution-check) below.
 
@@ -53,10 +75,10 @@ Both surfaces share a single ASP.NET Core 8 codebase — the marketing pages are
 ```text
 specs/010-website-portal/
 ├── plan.md              # This file (/speckit-plan command output)
-├── research.md          # Phase 0 output (/speckit-plan command)
-├── data-model.md        # Phase 1 output (/speckit-plan command)
-├── quickstart.md        # Phase 1 output (/speckit-plan command)
-├── contracts/           # Phase 1 output (/speckit-plan command)
+├── research.md          # Phase 0 output — Laravel-stack decisions
+├── data-model.md        # Phase 1 output — Eloquent models + migrations
+├── quickstart.md        # Phase 1 output — composer + artisan workflow
+├── contracts/           # Phase 1 output — endpoint contracts (URL + JSON shapes only)
 │   ├── signup.md                # POST /api/v1/portal/signup
 │   ├── activate-paid-licence.md # POST /api/v1/portal/licences/activate
 │   ├── transfer-licence.md      # POST /api/v1/portal/licences/{id}/transfer
@@ -64,171 +86,162 @@ specs/010-website-portal/
 │   └── invite-member.md         # POST /api/v1/portal/organisations/{id}/invitations
 ├── checklists/
 │   └── requirements.md  # spec-quality checklist (from /speckit-specify)
-└── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
+└── tasks.md             # Phase 2 output (/speckit-tasks command - regenerated for Laravel)
 ```
 
 ### Source Code (repository root)
 
 ```text
-src/EgyptTax.Portal.Web/                          # NEW: Razor Pages (marketing) + Blazor Server (portal)
-├── Pages/                                        # Razor Pages — marketing surface
-│   ├── Index.cshtml                              # Homepage (/, /ar, /en)
-│   ├── Features.cshtml                           # /features
-│   ├── Pricing.cshtml                            # /pricing
-│   ├── Downloads.cshtml                          # /downloads — MSIs + Play Store + side-load APK
-│   ├── About.cshtml
-│   ├── Contact.cshtml                            # creates a Sales Lead
-│   ├── Privacy/
-│   │   ├── Index.cshtml                          # /privacy (vendor-wide)
-│   │   └── Android.cshtml                        # /privacy/android (stable Play Store URL)
-│   ├── Terms.cshtml
-│   ├── Refund.cshtml
-│   └── _ViewImports.cshtml
-├── Portal/                                       # Blazor Server (authenticated)
-│   ├── App.razor
-│   ├── Pages/
-│   │   ├── Dashboard.razor
+portal/                                         # NEW — Laravel 11 app root
+├── app/
+│   ├── Http/
+│   │   ├── Controllers/
+│   │   │   ├── Marketing/                      # HomeController, PricingController, etc.
+│   │   │   ├── Portal/                         # DashboardController, LicenceController, etc.
+│   │   │   └── Api/
+│   │   │       └── PaymentWebhookController.php
+│   │   ├── Middleware/
+│   │   │   ├── OrganisationScope.php           # FR-021 — rejects cross-org URL tampering
+│   │   │   ├── OrganisationMfaPolicy.php       # FR-011 / T155 — enforce TOTP for Owners
+│   │   │   └── LocaleResolver.php              # /ar/* + /en/* prefix routing
+│   │   └── Requests/                           # FormRequest validators per endpoint
+│   ├── Models/                                 # Eloquent models — 1:1 with data-model.md entities
+│   │   ├── CustomerOrganisation.php
+│   │   ├── TeamMember.php                      # extends Illuminate\Foundation\Auth\User
+│   │   ├── OrganisationMembership.php
+│   │   ├── Subscription.php
+│   │   ├── Licence.php
+│   │   ├── Invoice.php
+│   │   ├── SalesLead.php
+│   │   ├── SupportTicket.php
+│   │   ├── SupportTicketReply.php
+│   │   ├── SupportTicketAttachment.php
+│   │   ├── AuditLogEntry.php
+│   │   ├── Invitation.php                      # US5 — token hash + 7-day expiry
+│   │   └── DownloadArtifactVersion.php         # FR-017 — prior-3 versions
+│   ├── Services/
 │   │   ├── Licences/
-│   │   │   ├── List.razor
-│   │   │   ├── ActivatePaid.razor                # paste HWID → download token
-│   │   │   └── Transfer.razor                    # retire old HWID, sign new
-│   │   ├── Subscription/
-│   │   │   ├── Index.razor
-│   │   │   ├── Upgrade.razor                     # FR-033 instant proration
-│   │   │   └── Downgrade.razor                   # FR-033 scheduled at renewal
-│   │   ├── Billing/
-│   │   │   ├── Invoices.razor                    # list + PDF download
-│   │   │   └── PaymentMethods.razor
-│   │   ├── Downloads.razor                       # latest MSI/APK by tier
+│   │   │   ├── LicenceSigningService.php       # sodium_crypto_sign_detached wrap
+│   │   │   ├── HwidValidator.php
+│   │   │   └── LicencePayloadCanonicalizer.php # JSON byte-compatible with on-prem
+│   │   ├── Subscriptions/
+│   │   │   ├── ConvertTrialToPaidService.php   # FR-029 single-tap
+│   │   │   ├── UpgradeTierService.php          # FR-033 instant proration
+│   │   │   ├── ScheduleDowngradeService.php    # FR-033 at-renewal
+│   │   │   ├── RefundFirstPeriodService.php    # FR-034 7-day window
+│   │   │   └── CancelSubscriptionService.php   # FR-013 Cancel action
+│   │   ├── Payments/
+│   │   │   ├── PaymobAdapter.php               # raw HTTPS adapter (4 methods + card)
+│   │   │   ├── PaymentWebhookHandler.php       # HMAC verify + idempotent state machine
+│   │   │   └── ManualBankTransferReconciler.php
 │   │   ├── Support/
-│   │   │   ├── List.razor
-│   │   │   ├── New.razor
-│   │   │   └── Detail.razor
-│   │   ├── Organisation/
-│   │   │   ├── Members.razor                     # invite + role
-│   │   │   └── AuditLog.razor
-│   │   ├── Account/
-│   │   │   ├── Security.razor                    # MFA, sessions, auth-events log
-│   │   │   └── Delete.razor                      # 30-day soft-delete
-│   │   └── ConvertTrial.razor                    # FR-029 "Subscribe to keep going"
-│   └── Shared/
-├── Identity/                                     # AspNetCore.Identity, separate store per FR-032
-│   ├── PortalUser.cs                             # NOT shared with on-prem product
-│   ├── PortalRole.cs
-│   └── TotpMfaService.cs
-├── Localization/                                 # ar-EG / en-US per FR-008
-├── wwwroot/
-│   ├── css/
-│   ├── images/
-│   └── _assets/
-├── Program.cs                                    # ASP.NET Core composition root
-├── appsettings.json
-└── EgyptTax.Portal.Web.csproj
+│   │   │   ├── CreateTicketService.php         # FR-018 — 3 attachments × 5 MB
+│   │   │   └── SlaCalculator.php               # FR-019 — tier-based SLA
+│   │   ├── Organisations/
+│   │   │   ├── InviteMemberService.php         # FR-020 — 7-day token, hashed at rest
+│   │   │   ├── AcceptInvitationService.php
+│   │   │   ├── RemoveMemberService.php         # FR-022 — 5-min session kill
+│   │   │   └── DeleteAccountService.php        # FR-024 — 30-day soft-delete
+│   │   ├── Audit/
+│   │   │   └── AuditLogWriter.php              # FR-023 — forbidden-substring guard
+│   │   └── Email/
+│   │       └── ResendMailer.php                # wraps Laravel's Mail::send with retry
+│   ├── Mail/                                   # Mailable classes
+│   │   ├── SignupConfirmation.php
+│   │   ├── PaymentReceipt.php
+│   │   ├── OrganisationInvitation.php
+│   │   ├── RefundConfirmation.php
+│   │   └── ...
+│   ├── Console/
+│   │   ├── Commands/
+│   │   │   ├── MarkInvoicePaid.php             # vendor admin CLI per quickstart.md
+│   │   │   ├── PurgeSoftDeletedAccounts.php    # FR-024 nightly job
+│   │   │   ├── ComputeSupportSlaRollup.php     # SC-005 / T156
+│   │   │   └── ProcessRenewals.php             # renewal job per Subscription lifecycle
+│   │   └── Kernel.php                          # registers scheduled commands
+│   └── Providers/
+│       ├── AppServiceProvider.php
+│       └── AuthServiceProvider.php             # role-based gates
+├── database/
+│   ├── migrations/                             # 1 file per table change, ordered by timestamp
+│   ├── seeders/                                # test fixtures for dev
+│   └── factories/                              # Pest factories for tests
+├── lang/                                       # FR-008 — bilingual
+│   ├── ar/                                     # ar/messages.php + ar/marketing.php + ...
+│   └── en/
+├── resources/
+│   ├── views/
+│   │   ├── layouts/
+│   │   │   ├── marketing.blade.php             # public surface — header + footer
+│   │   │   └── portal.blade.php                # authenticated surface — sidebar nav
+│   │   ├── marketing/
+│   │   │   ├── home.blade.php
+│   │   │   ├── features.blade.php
+│   │   │   ├── pricing.blade.php
+│   │   │   ├── downloads.blade.php
+│   │   │   ├── about.blade.php
+│   │   │   ├── contact.blade.php
+│   │   │   ├── terms.blade.php
+│   │   │   ├── refund.blade.php
+│   │   │   └── privacy/
+│   │   │       ├── index.blade.php
+│   │   │       └── android.blade.php           # FR-006 — stable URL
+│   │   ├── portal/
+│   │   │   ├── dashboard.blade.php
+│   │   │   ├── licences/{list,activate-paid,transfer}.blade.php
+│   │   │   ├── subscription/{index,upgrade,downgrade,cancel,convert-trial}.blade.php
+│   │   │   ├── billing/{invoices,payment-methods,refund}.blade.php
+│   │   │   ├── downloads.blade.php
+│   │   │   ├── support/{list,new,detail}.blade.php
+│   │   │   ├── organisation/{members,audit-log,security-policy}.blade.php
+│   │   │   └── account/{security,delete}.blade.php
+│   │   ├── auth/                               # Breeze-generated (login, register, etc.)
+│   │   └── components/                         # shared Blade components
+│   │       ├── language-switcher.blade.php
+│   │       ├── footer.blade.php
+│   │       └── tier-card.blade.php
+│   ├── css/app.css                             # Tailwind input
+│   ├── js/app.js                               # Alpine + Vite bootstrap
+│   └── mail/                                   # MJML→HTML compiled templates
+├── routes/
+│   ├── web.php                                 # marketing + portal browser routes
+│   ├── api.php                                 # /api/v1/portal/* — JSON endpoints + webhook
+│   └── auth.php                                # Breeze-generated
+├── public/                                     # web server document root
+├── tests/
+│   ├── Feature/
+│   │   ├── Contracts/                          # 5 contract test files per contracts/*.md
+│   │   ├── Flows/                              # cross-boundary integration tests
+│   │   ├── Marketing/                          # Dusk e2e for marketing pages
+│   │   └── Portal/                             # Dusk e2e for portal flows
+│   └── Unit/                                   # pure unit tests (no DB, no HTTP)
+├── composer.json
+├── package.json                                # Vite + Tailwind
+├── vite.config.js
+├── tailwind.config.js
+├── .env.example                                # committed; .env gitignored
+└── artisan                                     # Laravel CLI
 
-src/EgyptTax.Portal.Application/                  # NEW: command/query handlers
-├── Subscriptions/
-│   ├── CreateTrialSubscriptionHandler.cs         # invoked by Signup
-│   ├── ConvertTrialToPaidHandler.cs              # FR-029
-│   ├── UpgradeTierHandler.cs                     # FR-033 instant proration
-│   ├── ScheduleDowngradeHandler.cs               # FR-033 pending until renewal
-│   └── RefundFirstPeriodHandler.cs               # FR-034 7-day window
-├── Licences/
-│   ├── ActivatePaidLicenceHandler.cs             # FR-031 manual HWID input
-│   ├── TransferLicenceHandler.cs                 # FR-014 retire + reissue
-│   ├── LicenceSigningService.cs                  # wraps the existing LicenseIssueHost
-│   └── HwidValidator.cs                          # rejects malformed + cross-customer collisions
-├── Payments/
-│   ├── PaymobAdapter.cs                          # four Egyptian methods + card
-│   ├── PaymentWebhookHandler.cs                  # idempotent state machine
-│   └── ManualBankTransferReconciler.cs           # vendor admin tool
-├── Support/
-│   ├── CreateTicketHandler.cs                    # 3 attachments, 5 MB each
-│   ├── ReplyTicketHandler.cs
-│   └── SlaCalculator.cs                          # FR-019 tier-based SLA
-├── Organisations/
-│   ├── InviteMemberHandler.cs                    # FR-020 7-day token
-│   ├── RemoveMemberHandler.cs                    # FR-022 5-min session kill
-│   └── DeleteAccountHandler.cs                   # FR-024 30-day soft-delete
-├── Audit/
-│   └── AuditLogWriter.cs                         # FR-023
-└── EgyptTax.Portal.Application.csproj
-
-src/EgyptTax.Portal.Infrastructure/               # NEW: persistence + outbound integrations
-├── Persistence/
-│   ├── PortalDbContext.cs                        # SQL Server (SQLite override for dev)
-│   ├── Entities/                                 # 8 entities from data-model.md
-│   │   ├── CustomerOrganisation.cs
-│   │   ├── TeamMember.cs
-│   │   ├── Subscription.cs
-│   │   ├── Licence.cs
-│   │   ├── Invoice.cs
-│   │   ├── SupportTicket.cs
-│   │   ├── SalesLead.cs
-│   │   └── AuditLogEntry.cs
-│   └── Configurations/                           # IEntityTypeConfiguration<> per entity
-├── Migrations/                                   # EF Core migrations (00_Initial + per-feature)
-├── Email/
-│   ├── ResendTransactionalEmailService.cs        # invitations, receipts, notifications
-│   └── Templates/                                # MJML → HTML
-├── Payments/
-│   └── PaymobHttpClient.cs                       # raw HTTPS adapter
-├── Storage/
-│   └── BlobAttachmentStore.cs                    # Azure Blob or S3-compatible
-└── EgyptTax.Portal.Infrastructure.csproj
-
-src/EgyptTax.Web.Tools/                           # EXISTING: hosts LicenseIssueHost.cs
-└── LicenseIssueHost.cs                           # exists from feature 008; portal injects this
-
-tests/EgyptTax.Portal.UnitTests/                  # NEW
-├── Subscriptions/
-├── Licences/
-├── Payments/
-├── Support/
-└── Organisations/
-
-tests/EgyptTax.Portal.IntegrationTests/           # NEW — WebApplicationFactory<Program>
-├── Contracts/
-│   ├── SignupEndpointTests.cs
-│   ├── ActivatePaidLicenceEndpointTests.cs
-│   ├── TransferLicenceEndpointTests.cs
-│   ├── PaymentWebhookEndpointTests.cs
-│   └── InviteMemberEndpointTests.cs
-└── Flows/
-    ├── TrialConversionFlowTests.cs
-    ├── TierUpgradeProrationTests.cs
-    └── RefundWindowTests.cs
-
-tests/EgyptTax.Portal.E2ETests/                   # NEW — Playwright in C#
-├── Marketing/
-│   ├── HomepageRenderTests.cs                    # SC-006 p75 < 3 s
-│   ├── PricingNavigationTests.cs                 # SC-001 ≤ 3 clicks
-│   └── PrivacyAndroidUrlStabilityTests.cs        # SC-004
-└── Portal/
-    ├── SignupToDownloadFlowTests.cs              # SC-002 < 15 min
-    ├── LicenceTransferFlowTests.cs               # SC-003 < 5 min
-    └── MemberInviteFlowTests.cs                  # SC-007 < 3 min
-
-deploy/portal/                                    # NEW — deployment artifacts
-├── Dockerfile                                    # multi-stage .NET 8 build → distroless runtime
-├── docker-compose.yml                            # local stack: app + SQL Server + Azurite blob
-├── cloudflare/
-│   └── cache-rules.json                          # marketing cached 1 h; portal never cached
-└── README.md                                     # ops runbook
+deploy/portal/                                  # NEW — Hostinger deploy runbook
+├── README.md                                   # deploy procedure, secret rotation, incident response
+├── nginx.conf.snippet                          # only if Hostinger needs custom config (rare on shared)
+├── .htaccess                                   # for Apache plans — Laravel's default works
+└── deploy.sh                                   # git pull + composer install + artisan migrate runner
 ```
 
-**Structure Decision**: Three new .NET projects (`EgyptTax.Portal.Web` + `EgyptTax.Portal.Application` + `EgyptTax.Portal.Infrastructure`) mirroring the existing `EgyptTax.Web` / `EgyptTax.Application` / `EgyptTax.Infrastructure` layering. The portal projects sit alongside the on-prem product's projects in the same solution but reference NOTHING from `EgyptTax.Web`'s own domain — they only call into `EgyptTax.Web.Tools.LicenseIssueHost` (the existing licence signer). This isolation keeps the portal deployable independently of the on-prem product and prevents accidental coupling between commercial relationship data (portal) and customer accounting data (on-prem). Marketing pages + portal pages share one ASP.NET Core process per research §1 — the second surface is a Blazor Server area mounted under `/portal/*` with cookie auth required.
+**Structure Decision**: Single `portal/` directory at repo root containing a self-contained Laravel 11 project. Laravel's standard structure (`app/Http/Controllers`, `app/Models`, `app/Services`, `resources/views`) is the canonical layout — no further sub-projects, no shared library DLLs to manage. The portal sits alongside the on-prem `src/EgyptTax.*` .NET projects in the same git repo but the two systems share NO runtime code — only the `vendor-keys.json` Ed25519 keypair (which is itself outside the repo, mounted as a secret on the production server). This isolation keeps the portal deployable independently of the on-prem product and prevents accidental coupling between commercial relationship data (portal) and customer accounting data (on-prem). All FR-032 separation requirements are enforced at the database boundary: the portal's MySQL database has no foreign key, no view, and no network reachability to the customers' own on-prem `EgyptTax` databases.
 
 ## Complexity Tracking
 
-> No constitutional violations to record. The clarifications in Session 2026-05-18 explicitly REDUCED complexity at five separate points:
+> No constitutional violations to record. The Laravel rewrite + the original clarifications combine to make this the simplest viable architecture:
 >
-> - FR-030: no portal-side trial tracking — the entire trial state machine collapses to "doesn't exist in the portal database".
-> - FR-031: no new activation endpoint — the existing manual HWID-copy flow is reused exactly.
-> - FR-032: no SSO / no cross-system password sync — saves an entire identity-federation subsystem.
-> - FR-034: no mid-period refund logic — saves a proration-credit calculator on the refund path.
-> - FR-033 downgrade-at-renewal: no immediate proration on downgrade — saves a refund-on-downgrade calculator.
+> - Laravel 11 → one framework, one directory, one composer.json. No project/solution multi-targeting.
+> - PHP's built-in `sodium` extension → Ed25519 signing with zero external crypto library (BouncyCastle replaced).
+> - MySQL + database-driver queues → no Redis dependency on shared hosting.
+> - Blade + Alpine.js → no SPA build pipeline, no client-side router, no Blazor lifecycle.
+> - Cloudflare cache → no manual CDN config beyond `.htaccess` cache headers.
 >
-> The one place where reasonable people might argue for added complexity is the two-surfaces-in-one-process decision (some teams would split marketing into a static-site-generator + portal into a separate ASP.NET Core app). That decision is research §1 — the simpler unified-process approach won unless / until concrete edge-cache rules force a split.
+> The five FR-clarifications continue to reduce complexity (no portal-side trial / no new activation endpoint / no SSO / no mid-period refund / no immediate downgrade refund) — the Laravel implementation honours each by simply not implementing the feature, the same way the .NET attempt did.
 
 ## Post-Design Constitution Check
 
@@ -236,8 +249,8 @@ deploy/portal/                                    # NEW — deployment artifacts
 
 | Principle | Status | Notes |
 |-----------|--------|-------|
-| **I. Spec-First Development** | ✅ Pass | Phase 1 artifacts cite `spec.md` (34 FRs) for every entity, contract, and quickstart step. No new requirements introduced during design. |
-| **II. Plan Before Code** | ✅ Pass | Plan, data-model, and contracts are the complete pre-code package. `/speckit-tasks` consumes these next. |
-| **III. Test-First Discipline** | ✅ Pass | Each contract in `contracts/` enumerates explicit assertions that become failing tests before the endpoint's production code lands. Integration test directory pre-allocated under `tests/EgyptTax.Portal.IntegrationTests/Contracts/` with one file per contract. |
-| **IV. Simplicity & YAGNI** | ✅ Pass | Data model is 8 entities (vs the spec's 8 key entities — 1:1 mapping, no speculative extras). One new database, one new ASP.NET Core process, one wrap around the existing licence signer. No abstractions for "future iOS portal" or "future multi-currency". |
-| **V. Incremental, Independently Testable Delivery** | ✅ Pass | Quickstart documents the P1 MVP slice (marketing pages live + signup + trial-conversion + manual paid activation + downloads) end-to-end without any P2 dependencies. The P2 stories (Support, Multi-user, Privacy URL stability) add tables + screens that don't disturb the P1 surface. |
+| **I. Spec-First Development** | ✅ Pass | Phase 1 artifacts cite `spec.md` (34 FRs) for every Eloquent model, contract, and quickstart step. No new requirements introduced during design. |
+| **II. Plan Before Code** | ✅ Pass | Plan, data-model, and contracts are the complete pre-code package. `/speckit-tasks` consumes these next to regenerate `tasks.md` against the Laravel stack. |
+| **III. Test-First Discipline** | ✅ Pass | Each contract in `contracts/` enumerates explicit assertions that become failing Pest tests before the endpoint's production code lands. Feature test directory pre-allocated under `portal/tests/Feature/Contracts/` with one file per contract. |
+| **IV. Simplicity & YAGNI** | ✅ Pass | Data model is 13 Eloquent models — the 8 from spec.md Key Entities plus the 5 supporting types added in the audit (Invitation, SupportTicketReply, SupportTicketAttachment, DownloadArtifactVersion, plus the implicit OrganisationMembership join). All map 1:1 to data-model.md tables. One new MySQL database, one Laravel app, one in-process licence signer. No abstractions for "future iOS portal" or "future multi-currency". |
+| **V. Incremental, Independently Testable Delivery** | ✅ Pass | Quickstart documents the P1 MVP slice (marketing pages live + signup + trial-conversion + manual paid activation + downloads) end-to-end without any P2 dependencies. The P2 stories (Support, Multi-user, Privacy URL stability) add tables + screens that don't disturb the P1 surface. Identical to the .NET design's incremental story split — the stack switch doesn't change the slicing. |

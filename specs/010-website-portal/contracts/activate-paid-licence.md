@@ -2,7 +2,7 @@
 
 **Plan**: [../plan.md](../plan.md) | **Spec**: [../spec.md](../spec.md) (FR-031, FR-014, User Story 3)
 
-Customer-side endpoint that signs a paid licence token bound to a specific hardware id. Called from the portal's "Activate paid licence" Razor page after payment clears. Reuses the existing `EgyptTax.Web.Tools.LicenseIssueHost` flow + `vendor-keys.json` keypair per research §10.
+Customer-side endpoint that signs a paid licence token bound to a specific hardware id. Called from the portal's "Activate paid licence" Blade page after payment clears. Uses Laravel's `LicenceSigningService` which wraps PHP's built-in `sodium_crypto_sign_detached()` against the `vendor-keys.json` keypair to produce envelopes byte-compatible with the on-prem `EgyptTax.Web.Licensing.LicenseVerifier` per research §10.
 
 ---
 
@@ -10,7 +10,7 @@ Customer-side endpoint that signs a paid licence token bound to a specific hardw
 
 ```
 POST /api/v1/portal/licences/activate
-Cookie: .AspNetCore.Identity.Application=...
+Cookie: laravel_session=...
 Content-Type: application/json
 ```
 
@@ -100,7 +100,7 @@ The transaction wraps steps 6-7 as a single SaveChanges.
 
 ## Contract test
 
-`tests/EgyptTax.Portal.IntegrationTests/Contracts/ActivatePaidLicenceEndpointTests.cs` asserts:
+`portal/tests/Feature/Contracts/ActivatePaidLicenceEndpointTest.php` asserts:
 
 1. Owner of a Paid SMB Subscription submitting a valid HWID returns 200 + a new Licence row whose `SignedTokenBase64` is a valid Ed25519-signed envelope (verifiable by the existing `LicenseVerifier`).
 2. The returned `edition` matches the Subscription's current Tier.

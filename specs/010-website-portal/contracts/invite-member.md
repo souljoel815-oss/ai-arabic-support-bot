@@ -10,7 +10,7 @@ Owner invites a new TeamMember to share their CustomerOrganisation. Generates a 
 
 ```
 POST /api/v1/portal/organisations/8e2a1b4c-9d6f-4e7a-b1c2-3d4e5f6a7b8c/invitations
-Cookie: .AspNetCore.Identity.Application=...
+Cookie: laravel_session=...
 Content-Type: application/json
 ```
 
@@ -108,7 +108,7 @@ Body: `{ "token": "<base64url>", "password": "<min 12 chars>" }`. Verifies the t
 
 ## Contract test
 
-`tests/EgyptTax.Portal.IntegrationTests/Contracts/InviteMemberEndpointTests.cs` asserts:
+`portal/tests/Feature/Contracts/InviteMemberEndpointTest.php` asserts:
 
 1. Owner inviting a fresh email returns 201 + an `Invitation` row + a `member.invited` audit-log entry + a dispatched email (verified via fake Resend adapter).
 2. Non-Owner returns 403.

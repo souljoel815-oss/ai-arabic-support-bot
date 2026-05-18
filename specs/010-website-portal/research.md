@@ -1,216 +1,199 @@
 # Phase 0 Research: DaftarX Website + Customer Portal
 
 **Plan**: [plan.md](./plan.md)
-**Date**: 2026-05-18
+**Date**: 2026-05-18 (stack-switched from .NET to Laravel 11 — same date, replaces the .NET research at commit 6bf395e)
 
-Each decision below resolves a technology / architecture choice from `plan.md`'s Technical Context. There are no `NEEDS CLARIFICATION` markers carried over from the spec — `/speckit-clarify` Session 2026-05-18 closed the 5 ambiguous areas there. This file captures the technical choices the spec deliberately deferred.
+This document records the 17 technical decisions taken before any Laravel code lands. Each entry follows the format:
+
+- **Decision**: what was chosen
+- **Rationale**: why
+- **Alternatives considered**: what else was evaluated + why rejected
 
 ---
 
-## 1. Marketing pages + portal in one process vs split deployment
+## §1 — Hosting platform
 
-**Decision**: Single ASP.NET Core 8 process hosting both surfaces. Razor Pages for marketing under the root URL prefix (`/`, `/features`, `/pricing`, `/downloads`, `/privacy/*`, etc.), Blazor Server for the portal mounted under `/portal/*` with cookie auth required. Cloudflare in front handles edge caching: marketing routes carry `Cache-Control: public, max-age=3600`; portal routes carry `Cache-Control: no-store`.
+**Decision**: Hostinger Shared Hosting (Premium or Business plan — both run PHP 8.4, Nginx + PHP-FPM, MySQL 8, cron with 1-minute resolution).
 
-**Rationale**: Single process keeps the deploy pipeline simple, lets the marketing pages reference the same `Pricing` model object the portal uses for tier upgrades (single source of truth for tier names + EGP prices), and uses the existing team's .NET expertise without forcing a JavaScript build pipeline. Cloudflare's path-based cache rules separate the cache postures cleanly without needing two origins.
+**Rationale**: The customer purchased Hostinger before the architecture conversation. The Shared plan is what's paid for, and it covers everything Laravel needs: PHP 8.4, MySQL 8, SSH access (Premium+), Composer, `.htaccess` / Nginx URL rewriting, Let's Encrypt HTTPS, daily backups. Cloudflare in front (free tier) gives the edge cache + DDoS that satisfy SC-006 from a Cairo broadband connection.
 
 **Alternatives considered**:
-- *Marketing as Astro/Next.js static site + portal as separate Blazor app*: Two repos, two deploy pipelines, two CI lanes, two error-tracking dashboards. The performance gain from a static site is mostly cancelled by Cloudflare edge caching of the Razor pages. Not worth the operational overhead for a single-team project.
-- *Both as Blazor WebAssembly*: WASM ships ~3-5 MB on first load — fatal for marketing SEO scores + Egyptian-broadband first-paint times.
-- *Both as Blazor Server but using only Razor Components everywhere*: Marketing pages don't need a SignalR connection per visitor; the server cost of holding open WebSockets for anonymous prospects is a budget-killer at SEO scale.
+- *Hostinger VPS* (~$5-10/mo) — strictly better technically (Docker, long-running workers, no per-request time limit) but rejected because we have a budget already spent on Shared and the spec's scale target (200 customers year 1) fits comfortably in shared resources.
+- *Azure App Service / DigitalOcean App Platform* — better .NET / Docker support but the customer doesn't have an account there.
+- *Self-host on a Hetzner box* — cheapest long-term but the customer doesn't operate Linux servers.
 
----
+## §2 — Application framework
 
-## 2. Identity stack (per FR-032 — separate from on-prem product)
+**Decision**: Laravel 11 (current LTS — security patches through Aug 2026, framework patches through Mar 2026).
 
-**Decision**: ASP.NET Core Identity with EF Core SQL Server stores, in a completely separate `DaftarXPortal` database. PortalUser class is independent of any on-prem product user. TOTP MFA via `Otp.NET` (the same library the on-prem product uses for its MFA, so the team already knows it).
-
-**Rationale**: AspNetCore.Identity ships with battle-tested password hashing (PBKDF2), email confirmation, account-recovery flows, lockout, and session management. Using it costs ~30 min of setup vs hand-rolling an auth system over a long weekend. The separate database satisfies FR-032 mechanically — there's no physical join from PortalUser to the on-prem product's user store, so accidental coupling is impossible.
+**Rationale**: Laravel is the canonical "boring web app" PHP stack: opinionated MVC, mature ORM (Eloquent), built-in auth scaffold (Breeze), first-class testing (Pest), excellent docs. Standard Laravel directory layout means any Laravel developer can navigate the codebase immediately. Hostinger's Shared plan supports Laravel out of the box (Composer + `.htaccess` rewrite to `public/index.php` work without special config).
 
 **Alternatives considered**:
-- *Auth0 / Clerk / Supabase Auth*: External dependency + monthly cost + GDPR-style data-residency questions for Egyptian customers. AspNetCore.Identity is the local-control, zero-vendor-lock-in default.
-- *Shared identity with the on-prem product*: Explicitly rejected by FR-032 — the spec made the call.
-- *Hand-rolled password hashing*: Anti-pattern; the framework's PBKDF2 work-factor schedule is what we want.
+- *CodeIgniter 4* — lighter, simpler, but no queue, no Mailable system, no auth scaffold. We'd reimplement those, eating any "simpler" savings.
+- *Symfony 7* — more enterprise-grade architecture (DI container, contracts, Doctrine ORM) but the learning curve is steeper and shared hosting is awkward.
+- *No framework — raw PHP* — fastest startup, slowest maintenance. Auth / sessions / CSRF / routing reinvention turns into a security risk.
 
----
+## §3 — Payments
 
-## 3. Payment processor
+**Decision**: Paymob v3 API via direct HTTPS calls (`Illuminate\Http\Client`). Single Egyptian aggregator covers all four required methods (card / Fawry / Vodafone Cash / InstaPay) per FR-015.
 
-**Decision**: Paymob hosted-checkout integration. Paymob is the single Egyptian aggregator that covers all four required FR-015 methods (credit/debit card, Fawry, Vodafone Cash, InstaPay) plus offline bank-transfer reconciliation through their dashboard. We integrate via their hosted-iframe checkout (PCI scope = SAQ A, the minimum), and the portal receives state via the standard webhook callback in `contracts/payment-webhook.md`.
-
-**Rationale**: Going direct to each of the 4 providers separately would mean 4 separate integrations, 4 separate reconciliation pipelines, 4 separate compliance posture proofs, and 4 separate sets of customer-support escalation paths. Paymob is the consolidator that every Egyptian SaaS startup we surveyed uses (Khazna, Sumerge, MoneyHash all standardised on Paymob v3). Hosted-checkout is the lowest-PCI-scope option — the customer's card never touches our origin.
+**Rationale**: Paymob is the dominant Egyptian aggregator and the only one with documented APIs for all four required methods + automated payouts in EGP. Hosted-checkout flow means the portal never touches card numbers (PCI scope = SAQ-A, the easiest tier). HMAC webhook verification protects the asynchronous callback path. No PHP SDK is needed — the API surface is 4-5 endpoints that map cleanly to a thin HTTP adapter.
 
 **Alternatives considered**:
-- *Fawry direct + InstaPay direct + Vodafone Cash direct + Stripe for card*: Four times the integration cost; Stripe doesn't sell to Egyptian merchants directly.
-- *MoneyHash (Paymob competitor)*: Newer, smaller transaction volume, less proven reconciliation tooling. Worth revisiting in year 2.
-- *Building our own payment-aggregator integration*: PCI compliance + bank settlement contracts = wrong job for a vendor of accounting software, not a fintech.
+- *Stripe* — better DX, terrible Egypt support (no Fawry, no Vodafone Cash, EGP only partially supported).
+- *PayTabs* — Egyptian-friendly but lower integration quality (sparse docs, undocumented webhook quirks per community reports).
+- *Multi-provider abstraction layer* — over-engineering for v1.
 
----
+## §4 — Email
 
-## 4. Transactional email provider
+**Decision**: Resend.com via SMTP (`smtp.resend.com:587`), Laravel's `mail` driver pointed at it. Templates as Blade Mailables.
 
-**Decision**: Resend.com for transactional email (invitations, signup confirmations, payment receipts, ticket notifications, refund notifications, trial-ending reminders). Templates authored as MJML, compiled at build time into HTML + plain-text variants. Domain authentication via SPF + DKIM + DMARC on `daftarx.app`.
-
-**Rationale**: Resend has clean deliverability into Egyptian inboxes (which Gmail rate-limits aggressively for low-reputation senders), a friendly API surface, and template management that doesn't require a Node runtime at request time. MJML solves the "email HTML is still 1998-grade table layouts" problem so the templates stay maintainable. The flat $20/month for our expected year-1 volume (~10k emails/month at peak) is trivial.
+**Rationale**: Resend has the simplest dev-experience among modern transactional providers (Postmark / SendGrid / Mailgun), with explicit MENA / Egypt deliverability. SMTP-via-Laravel-mail means the codebase has no Resend-specific code — switching providers is a `.env` change. Hostinger Shared blocks raw SMTP outbound on port 25 but allows port 587 (Resend's SMTP submission port), so this works on the cheap plan.
 
 **Alternatives considered**:
-- *SendGrid*: Larger competitor, more expensive, slightly worse Egyptian deliverability per the surveys; legacy tooling.
-- *Amazon SES*: Cheapest per-email but requires significant warm-up to escape the "transactional sandbox" sender reputation. For 200 customers we'd never escape sandbox in v1.
-- *Self-hosted Postfix*: Egyptian ISPs blocklist self-hosted SMTP almost on sight. Hard no.
+- *Resend HTTP API* — slightly faster + better error reporting but locks the codebase to Resend. SMTP is the lowest-common-denominator.
+- *Hostinger's built-in SMTP relay* — limited to ~200 emails/day on Shared.
+- *Amazon SES* — cheapest long-term but Egypt-specific delivery rate is documented-as-poor.
 
----
+## §5 — PDF invoice generation
 
-## 5. PDF invoice generation (FR-016)
+**Decision**: `barryvdh/laravel-dompdf` (Composer package wrapping DOMPDF), with Arabic shaping via the embedded DejaVu Sans + Cairo fonts.
 
-**Decision**: QuestPDF for server-side rendering of Arabic-RTL PDF invoices. Layout authored as fluent C# code so it composes with the existing invoice-number sequence + the Egyptian-tax-line requirements the on-prem product already encodes (we reuse the same invoice-template structure the on-prem product uses for sales invoices, just with vendor data + Subscription line items).
-
-**Rationale**: QuestPDF is one of the very few PDF libraries that does Arabic RTL correctly out of the box (most break on bidi line-breaking, on connected-letter shaping, or both). The licence is free for revenue < $1M/yr (we're well under) and MIT-equivalent above the threshold — no surprise vendor lock-in. Authoring layouts in C# means designers + devs share the same diff review, no separate template-engine dependency.
+**Rationale**: DOMPDF is the only PHP PDF library with reliable Arabic-RTL rendering that runs without ImageMagick / Ghostscript (both blocked on Hostinger Shared). DejaVu Sans handles bidi text + Arabic shaping correctly when paired with Cairo font for branded headings. Workflow: Blade template → HTML → DOMPDF → PDF, all in one PHP request.
 
 **Alternatives considered**:
-- *DinkToPdf / wkhtmltopdf*: Wraps a C++ HTML-to-PDF engine; Arabic shaping is broken in practice (we've seen this on the on-prem product's earlier attempt).
-- *iText / PDFsharp*: Either AGPL (toxic for a closed-source codebase) or weaker RTL support.
-- *Browserless HTML-to-PDF*: Requires a headless Chromium running alongside our process; heavy on memory + a known source of Linux-container instability.
+- *mPDF* — better Arabic shaping out of the box but 4x larger Composer dependency footprint + slower per-PDF render time.
+- *wkhtmltopdf* — requires a binary install (not available on Hostinger Shared).
+- *Snappy / wkhtmltopdf-as-API service* — adds an external dependency for a feature we can render in-process.
 
----
+## §6 — File storage
 
-## 6. Blob storage (invoice PDFs + ticket attachments)
+**Decision**: Local disk via Laravel's `Storage::disk('local')` writing to `portal/storage/app/private/` on Hostinger. Path layout: `invoices/{org-id}/{invoice-number}.pdf` + `tickets/{org-id}/{ticket-id}/{attachment-id}.{ext}`. No S3 / Azure Blob in v1.
 
-**Decision**: Azure Blob Storage (Hot tier for active invoices/attachments, Cool tier auto-rotation after 90 days via a lifecycle rule). Dev environment runs Azurite (the local Azure-Blob emulator) so devs never need cloud credentials to build + run.
-
-**Rationale**: Azure is the cloud the vendor's team already operates the on-prem desktop installer's update endpoint on, so we get a single billing relationship + a single ops dashboard. Lifecycle rules to Cool tier give us 60% storage-cost reduction on year-old artefacts. Azurite means CI runs against the same API surface as production without any conditional code paths.
+**Rationale**: Hostinger Shared plans include 100-200 GB of disk; the scale target (year-1: ~24,000 invoices × ~50 KB + ~6,000 ticket attachments × ~2 MB = ~13 GB) fits with room to spare. Local disk = zero external dependency, zero monthly cost, simple backup story.
 
 **Alternatives considered**:
-- *S3 / Cloudflare R2*: Both fine technically; switching costs the team a learning-curve hit for no concrete benefit in year 1.
-- *Local-disk only*: Doesn't survive a single-region failover; loses everything on a host loss. Hard no for invoice artefacts (which have regulatory retention requirements).
+- *Backblaze B2* — $5/TB/mo, S3-compatible, sane EU regions. Right answer when scale exceeds ~50 GB or when we add a second region.
+- *Cloudflare R2* — cheapest egress-free but adds account + access-key complexity for a feature we can do for free on local disk.
+- *AWS S3* — Egypt-region only landed in 2024, still pricier than B2.
 
----
+## §7 — Database
 
-## 7. SQL Server vs PostgreSQL for portal DB
+**Decision**: MySQL 8 (Hostinger default) as the portal's `daftarx_portal` schema. Local dev override: SQLite file at `database/database.sqlite` for zero-config startup.
 
-**Decision**: SQL Server (Azure SQL or self-managed on the same Linux VM as the app). EF Core 8 SQL Server provider. Dev override allows SQLite for fast iteration.
-
-**Rationale**: The existing on-prem product uses SQL Server; the team's EF Core migration muscle memory is SQL-Server-flavoured (filtered indexes, sequence objects, MERGE statements). Picking the same engine means one set of migration patterns, one query-tuning skill, one backup playbook. Year-1 scale (200 customers, ≤ 24k invoices/year) is comfortably within SQL Server Express's free tier limits, then bumps to Standard as growth dictates.
-
-**Alternatives considered**:
-- *PostgreSQL*: Technically excellent but the team doesn't operate one today; introducing it doubles the ops surface for a project that has no PostgreSQL-specific need.
-- *SQLite in production*: Charming for tiny apps; loses to SQL Server on concurrent-writer scenarios (payment webhooks + portal UI both writing the Invoice table simultaneously).
-
----
-
-## 8. Localization (FR-008 — ar-EG primary, en-US fallback)
-
-**Decision**: ASP.NET Core's built-in `IStringLocalizer` + `.resx` files per page, with URL-prefix locale resolution (`/ar/...` and `/en/...`). The marketing site's content is in `Pages/.../Index.ar-EG.resx` + `Index.en-US.resx`; the portal's UI text is in shared resource files under `Localization/SharedResource.{locale}.resx`. RTL layout via CSS logical properties (`margin-inline-start` instead of `margin-left`) so the same stylesheet handles both directions.
-
-**Rationale**: `.resx` is the framework-native localization story — no new dependency. URL-prefix locales are an SEO win (Google indexes the Arabic + English versions as distinct pages) and an unambiguous switcher experience (the user always knows which version they're on). CSS logical properties remove the need for a separate `.rtl.css` and the maintenance burden of keeping them in sync.
+**Rationale**: MySQL is what Hostinger provisions automatically; no upcharge, no special config. Eloquent supports both MySQL and SQLite seamlessly so the dev override doesn't fork the code. The portal schema is small (8-13 tables) and read-mostly with bursts on payment-webhook processing — MySQL's row-locked InnoDB handles this trivially.
 
 **Alternatives considered**:
-- *Header-based locale detection only*: Single URL serves both locales depending on `Accept-Language` — bad for SEO (Google sees one URL), bad for sharing (link doesn't preserve locale).
-- *JavaScript-based locale switching (i18next)*: Hydration delay on first paint; not appropriate for marketing pages that want fast SEO render.
+- *PostgreSQL* — better feature set but Hostinger Shared plans don't provision Postgres.
+- *MariaDB* — drop-in MySQL replacement, no concrete advantage.
+- *SQLite in production* — single-file simplicity but Hostinger's shared filesystem doesn't guarantee fsync semantics across multiple PHP-FPM workers.
 
----
+## §8 — Localization + RTL handling
 
-## 9. Cloudflare cache strategy
+**Decision**: Laravel's built-in `__('key')` + `lang/{ar,en}/*.php` files for all UI strings. URL-prefix routing (`/ar/*` + `/en/*`) via a `LocaleResolver` middleware that reads the first path segment and sets `App::setLocale()`. Default locale is `ar-EG`; RTL handled by CSS logical properties (`margin-inline-start`, `padding-inline-end`).
 
-**Decision**: Cloudflare in front of the origin with two cache rules:
-- Marketing routes (`/`, `/ar/*`, `/en/*`, `/features`, `/pricing`, `/downloads`, `/privacy/*`, `/about`, `/contact`, `/terms`, `/refund`): cached at edge for 1 hour, purged on deploy via a CI hook that hits Cloudflare's purge API with the affected route set.
-- Portal routes (`/portal/*`, `/api/*`, `/identity/*`): `Cache-Control: no-store` set at the origin; Cloudflare passes through unchanged.
-
-**Rationale**: Marketing pages are the SEO + first-impression surface — every ms of TTFB matters, and they change infrequently. Portal pages are per-user authenticated data and MUST never be cache-shared between users. The two-rule split satisfies both. Cloudflare's purge-by-URL API is well-documented and integrates cleanly with the deploy pipeline.
+**Rationale**: Laravel's localization is feature-complete (pluralisation, parameter interpolation, nested file structure) and well-trodden by Arabic + Persian + Hebrew Laravel communities. CSS logical properties let one stylesheet serve both directions — no per-locale CSS fork. URL-prefix routing is SEO-friendly (Google indexes ar + en as distinct pages per FR-009 + the `hreflang` alternates).
 
 **Alternatives considered**:
-- *Cache portal pages too with `Vary: Cookie`*: Theoretically safer than no-cache, but burning Cloudflare cache slots on per-user pages with near-zero hit rate is a worse trade than just not caching.
-- *No CDN, origin only*: Cairo broadband + a Frankfurt origin = ~150ms transatlantic latency PER request. Cloudflare's Cairo edge cuts that to ~10ms. Massive win for SEO + UX.
+- *Spatie's `laravel-translatable`* — adds per-row translation in the DB. Overkill for static UI strings.
+- *Subdomain-per-locale* (`ar.daftarx.app`) — better SEO isolation but requires DNS + SSL config per subdomain.
+- *Cookie-only locale detection* — invisible to Google; would tank SC-001 indirectly.
 
----
+## §9 — Cloudflare cache strategy
 
-## 10. Licence signing — in-process call vs separate API
+**Decision**: Cloudflare in front of the Hostinger origin. Two cache rules in `deploy/portal/cloudflare/cache-rules.json`:
+1. **Marketing routes** (`/`, `/features`, `/pricing`, `/downloads`, `/about`, `/contact`, `/terms`, `/refund`, `/privacy/*`) cache HTML at edge for **1 hour**, browser TTL 5 min, purged on every deploy via the Cloudflare purge API.
+2. **Portal + identity + API routes** (`/portal/*`, `/api/*`, `/login`, `/register`) — `Cache-Control: no-store`, never cached.
 
-**Decision**: Wrap the existing `EgyptTax.Web.Tools.LicenseIssueHost` class as an injectable `ILicenceSigningService`. The portal calls it in-process. Same Ed25519 keypair + `vendor-keys.json` file the existing on-prem product reads. The portal deploy has read-only access to `vendor-keys.json` via a Docker secret mount.
-
-**Rationale**: The existing `LicenseIssueHost.Run(args)` is a static CLI entrypoint; wrapping it as a service that takes a typed request object instead of a string array is ~30 lines of glue. Calling it in-process avoids an HTTP hop, avoids needing a second deploy unit, and inherits the existing signing logic 1:1 (so the on-prem product's verifier accepts portal-issued tokens unchanged). The vendor-keys.json secret is sensitive but already managed today; the portal just gets a mount.
-
-**Alternatives considered**:
-- *Standalone signing microservice*: Would isolate the key material to a single deployable, but introduces a network call, a secret-rotation coordination point, and a deploy dependency. Wrong shape for v1.
-- *Re-implement signing in the portal*: Risks divergence from the existing format; pointless duplication.
-
----
-
-## 11. Trial state ownership (FR-030)
-
-**Decision**: The portal database has NO trial-related tables, columns, or state machines. The `Subscription` entity has a `Status` enum with values `Active`, `PastDue`, `Cancelled`, `Paused` — `Trial` is intentionally absent. Trial state is owned entirely by the on-prem product's existing `LicenseStatus.RecordTrial` path.
-
-**Rationale**: Mandated by FR-030 (which itself came from the user's Q2 clarification "Auto-trial on install, no activation"). Removing trial state from the portal eliminates an entire table + an entire state-machine + a clock-skew risk between the portal's day-14 mark and the on-prem product's day-14 mark. The simplification is so deep it's worth restating: the portal has NO concept of "is this customer in trial". The portal only knows about paid Subscriptions.
+**Rationale**: The 1-hour edge cache absorbs almost all marketing traffic with sub-100 ms TTFB from Cairo (Cloudflare has Egypt POPs), comfortably hitting SC-006's 3-second p75 target. Authenticated portal pages contain per-user data + session cookies — caching them at the edge would leak data between customers, so they get `no-store`.
 
 **Alternatives considered**:
-- *Track trial in the portal anyway, just for reporting*: Doubles the source of truth, creates a sync requirement that doesn't exist today, and gives the operations team conflicting trial-end times when the clocks disagree.
+- *Origin-only* (no Cloudflare) — Hostinger's Frankfurt POP has ~80-100 ms latency from Cairo; TLS handshake + initial connection costs eat the 3-second budget on cold visits.
+- *Longer edge TTL (1 day)* — risks stale pricing / downloads pages for a full day after the vendor pushes a fix.
+- *Cache by query string* — risks duplicating cache entries for tracking params.
 
----
+## §10 — Licence signing reuse
 
-## 12. Refund handling (FR-034 — 7-day first-period window only)
+**Decision**: PHP's built-in `sodium_crypto_sign_detached()` (libsodium binding) produces Ed25519 signatures byte-compatible with the on-prem `EgyptTax.Web.Licensing.LicenseVerifier`. Same `vendor-keys.json` keypair file is read by both processes. No code shared, no .NET binary invoked from PHP.
 
-**Decision**: The `Invoice` entity gets a computed `RefundEligibility` field (`Eligible | NotEligible_OutsideWindow | NotEligible_Renewal | NotEligible_TierUpgrade`). The 7-day window starts at `Invoice.PaidAtUtc` and applies only when `Invoice.Kind == FirstPeriod`. The Billing page surfaces eligibility inline per invoice. Refund button triggers a Paymob refund API call + writes an `AuditLogEntry` with the actor + amount.
-
-**Rationale**: Computed at read time (no scheduler needed to flip eligibility flags). The kind discriminator on Invoice (FirstPeriod / Renewal / TierUpgrade / Addon) keeps the eligibility rule trivial. Paymob's refund API is idempotent against the original transaction id, so retries are safe.
+**Rationale**: Ed25519 is a deterministic standard — the same private key + same canonical-bytes input produces the same signature in any language. The on-prem product uses BouncyCastle (.NET), the portal uses sodium (PHP) — both libraries implement RFC 8032 unchanged. The contract test (`portal/tests/Feature/Contracts/ActivatePaidLicenceTest.php` per [contracts/activate-paid-licence.md](./contracts/activate-paid-licence.md)) verifies the round trip end-to-end.
 
 **Alternatives considered**:
-- *Store refund-window expiry as a real timestamp + scheduled job to flag invoices*: Scheduler complexity for no real benefit; the read-time computation is constant-time and obvious.
+- *PHP-FFI calling BouncyCastle.dll* — couples the portal to the on-prem .NET runtime; defeats FR-032 isolation.
+- *Subprocess to `dotnet run --project EgyptTax.Web -- license-issue ...`* — requires .NET 8 runtime on Hostinger (not available on Shared); slow per-call.
+- *Reimplement Ed25519 in pure PHP* — security risk; sodium is the right answer.
 
----
+## §11 — Trial state ownership
 
-## 13. Year-1 scale + DB sizing
+**Decision**: The portal never stores trial state (per FR-030). There is no `Subscription` row for a trial. The portal's dashboard inspects whether the customer has any non-`Cancelled` paid Subscription rows — if zero, the dashboard renders the "Subscribe to keep going" CTA. Trial duration + feature gating remain entirely client-side in the on-prem product's `LicenseStatus.RecordTrial` flow.
 
-**Decision**: Year-1 target = 200 paying customers. Estimated table sizes:
-- `CustomerOrganisations` ≤ 250 rows (some signups never pay)
-- `TeamMembers` ≤ 2,000 rows (avg ~10/org for accounting firms, lower for SMEs)
-- `Subscriptions` ≤ 250 rows (one per paying customer)
-- `Licences` ≤ 750 rows (avg 3 per Subscription for LAN + multi-device cases)
-- `Invoices` ≤ 24,000 rows/year (monthly cadence dominates for Solo/SMB; annual for Enterprise/Firm)
-- `SupportTickets` ≤ 6,000 rows/year (30 tickets/customer/year heuristic)
-- `SalesLeads` ≤ 5,000 rows/year (mostly unconverted)
-- `AuditLogEntries` ≤ 250,000 rows/year (each state change writes one)
+**Rationale**: Reduces complexity (no trial state machine, no trial-renewal cron, no trial-extension admin tool). Matches what the clarification chose. The on-prem product already has battle-tested trial logic.
 
-Total year-1 data footprint < 500 MB. SQL Server Express's 10 GB limit is fine; bump to Standard when AuditLogEntries cross 1 M rows (~year 4 at current growth).
+**Alternatives considered**:
+- *Track trial start/end server-side* — would let the portal show "8 days left". Rejected because the trial happens on a machine the portal can't observe; any server-side counter would drift from reality.
 
-**Rationale**: Estimate from comparable Egyptian SaaS startups + the vendor's pipeline. Scale is intentionally MODEST in year 1; v2 spec when we cross 5,000 customers will revisit DB sharding + read-replica strategy.
+## §12 — Refund handling
 
----
+**Decision**: 7-day full refund on the first paid Subscription period only (per FR-034). Computed inline in the `Invoice` Eloquent model via a `getRefundEligibilityAttribute()` accessor that returns `eligible` / `not_eligible_renewal` / `not_eligible_window_expired` / `not_eligible_tier_change`. The refund itself reverses the Paymob transaction via their refund API.
 
-## 14. Backup + retention
+**Rationale**: Self-service refunds reduce support load. The 7-day window prevents abuse (the customer already had 14 days of trial to evaluate). First-period only prevents long-tenured customers from refunding-then-rejoining as a discount tactic. Computing eligibility as an accessor (not a column) means the rule can be tweaked without a migration.
 
-**Decision**: Daily full backup + hourly differential to a separate Azure storage account (different region from production) with 30-day retention. Invoice PDFs in blob storage have 7-year retention per Egyptian tax-record requirements (the same rule the on-prem product follows for its own customer invoices). Account-deletion soft-delete (FR-024) is a 30-day flag on `CustomerOrganisation` — the nightly purge job moves soft-deleted rows to an audit-only archive table after 30 days, retaining only the AuditLogEntry rows.
+**Alternatives considered**:
+- *30-day refund window* — too generous; encourages "tire-kicker" subscriptions.
+- *No self-service refunds (ticket-only)* — adds support friction; rejected.
 
-**Rationale**: 30-day DB backup retention covers the typical "we accidentally deleted a customer's record" recovery window. 7-year invoice retention is the regulatory floor. Cross-region backup storage costs ~$5/month at year-1 scale and protects against the single-region failure scenario.
+## §13 — Scale + capacity planning
 
----
+**Decision**: Year-1 target = 200 paying customers × 10 Team Members average = ≤ 2,000 portal users. Hostinger Shared plan handles this with ~10% of its resource budget per the published limits (~300 concurrent connections, ~100,000 file inodes, ~100 GB disk).
 
-## 15. Observability + uptime target
+**Rationale**: 200 customers × ~30 page-views/customer/week = ~6,000 portal page-views/week ≈ 1 request/min average. Even a 10x peak is comfortably under the Hostinger limits. Marketing-page traffic is mostly absorbed by Cloudflare edge cache so origin load is dominated by portal traffic.
 
-**Decision**: Serilog with two sinks: structured JSON logs to a file (collected by the vendor's existing log pipeline) and a separate sink to Application Insights for searchable production diagnostics. Single uptime SLO target: 99.5% calendar-month availability (~3.5 hours of allowed downtime per month). Status page at `status.daftarx.app` shows incidents in real time (UptimeRobot pings every 5 min from 3 geographies).
+**Alternatives considered**:
+- *Sizing for 10,000 customers from day one* — over-engineering. Scale concerns trigger an architecture review at 1,000 customers (~5x current target).
 
-**Rationale**: 99.5% is achievable on a single-region single-instance deploy with daily maintenance windows; pushing to 99.9% would require multi-region active-active which is a year-2 feature. Serilog matches the existing on-prem product's logging stack so the team transfers their skill. App Insights gives ad-hoc query power without standing up a separate ELK / Loki pipeline.
+## §14 — Backups
 
----
+**Decision**: Hostinger's automated daily backups (included in Premium+ plans) cover both the MySQL database + the `storage/` tree. Retention: 7 days on Hostinger's side. Weekly off-site dump to Backblaze B2 via a cron-driven Artisan command (`php artisan backup:weekly-snapshot`) — retained 90 days.
 
-## 16. CI / CD pipeline
+**Rationale**: Defence-in-depth — Hostinger's backups protect against operational errors; Backblaze copies protect against catastrophic Hostinger-side incidents. 90-day retention covers the typical disclosure-to-discovery window for security incidents.
 
-**Decision**: GitHub Actions workflow on push to `010-website-portal` and on every PR. Three stages:
-1. **Build + unit-test**: `dotnet build` + `dotnet test tests/EgyptTax.Portal.UnitTests`. ~5 min.
-2. **Integration test**: spin up SQL Server + Azurite via docker-compose, run `tests/EgyptTax.Portal.IntegrationTests`. ~10 min.
-3. **Deploy on main merge**: build Docker image, push to Azure Container Registry, restart the App Service slot, run Playwright E2E smoke against the staging slot, swap slots on green. ~15 min.
+**Alternatives considered**:
+- *Daily off-site* — heavy disk + bandwidth use for marginal additional safety.
+- *Manual weekly* — too easy to forget; automated is the only reliable answer.
 
-**Rationale**: Three-stage gating catches contract + integration issues before they reach customers. Slot-swap deploys give us instant rollback (swap-back) if the post-deploy smoke fails. GitHub Actions is the existing CI the team uses for the on-prem product, so zero net new tooling.
+## §15 — Observability
 
----
+**Decision**: Laravel's built-in log channel writes to `storage/logs/laravel-{date}.log` with daily rotation (30-day retention). UptimeRobot free tier pings `/health` from 3 geographies (Cairo, Frankfurt, US-East) every 5 minutes. No Application Insights / Sentry / Datadog in v1.
 
-## 17. Out-of-scope debt acknowledgments
+**Rationale**: For 200 customers the operational visibility cost-benefit doesn't justify a paid APM. Laravel's `Log::error()` + the daily-rotated files give enough for incident postmortems. UptimeRobot's free tier covers up-down monitoring without code changes. Migrating to Sentry's free tier (5,000 events/month) is a Phase 9 polish task if error volume warrants it.
 
-The following are deliberately NOT addressed in this plan; they belong in follow-up features:
+**Alternatives considered**:
+- *Sentry from day one* — adds Composer dep + per-error tracking. Right answer at scale.
+- *Application Insights via the Laravel SDK* — Azure-coupled, no clear win over Sentry.
 
-- **White-label / reseller portal for accounting firms** — spec out-of-scope; future feature.
-- **Multi-currency** — spec assumption pins to EGP for v1; expansion = a separate `pricing-multi-currency` feature.
-- **Live chat widget** — out-of-scope per spec.
-- **Affiliate / referral program** — out-of-scope; the existing in-product `/settings/referrals` covers product-side; portal variant is a future feature.
-- **Customer's data backup/restore from cloud** — out-of-scope; the on-prem product owns business data.
-- **Multi-region active-active** — year-2 capacity planning, not a v1 functional requirement.
-- **Native mobile app for the portal** — out-of-scope; responsive web is enough.
-- **Public API for customer-built integrations** — FR-018 hints at an "API keys" section but the spec doesn't pin scope; defer to a `portal-public-api` feature once a customer asks.
-- **In-portal product help videos** — defer to a separate `customer-education` feature.
+## §16 — CI/CD
+
+**Decision**: GitHub Actions runs the build + tests on every push (`pest`, `php artisan test`, asset build via Vite). On push to `main`, a separate workflow rsyncs `portal/` to Hostinger via SSH (Premium+ plans expose SSH), runs `composer install --no-dev`, `php artisan migrate --force`, `php artisan config:cache`, and `php artisan view:cache`. No Docker, no container registry.
+
+**Rationale**: SSH + rsync is the canonical "boring" deploy for PHP apps. Faster than Docker pipelines (no image build), simpler than Hostinger's built-in Git auto-deploy (which doesn't run migrations or asset builds). The SSH key is a GitHub Actions secret; rotation procedure documented in `deploy/portal/README.md`.
+
+**Alternatives considered**:
+- *Hostinger Git auto-deploy* (from hPanel) — convenient but doesn't run migrations or `composer install` automatically.
+- *Manual FTP / File Manager upload* — manual + error-prone; OK for emergency hotfixes but not as the primary deploy path.
+
+## §17 — Out-of-scope debt
+
+**Decision**: Items explicitly NOT shipping in v1, listed here so they don't come up as "missing" surprises mid-implementation:
+
+- **Multi-currency** — EGP-only per spec assumptions.
+- **Multi-region hosting** — single Hostinger plan.
+- **Real-time notifications** — no WebSocket support on Shared.
+- **Single sign-on with on-prem** — explicitly rejected per FR-032.
+- **Mobile app for the portal** — the portal is responsive web only.
+- **API for third-party integrations** — the `/api/v1/portal/*` endpoints are internal-only in v1.
+- **White-label / per-firm branding** — out of scope for v1 even though the Firm tier is supported.
+- **In-app help videos / live chat** — support is via tickets + WhatsApp per spec assumptions.
+- **Self-service password rotation policy enforcement** — Laravel Breeze handles password resets; org-level "must change every N days" lands in v2 if a customer asks.
+- **GDPR-style "data export"** — FR-024 covers deletion but data-portability export is out of scope for v1.
+
+Each of these has a "land in v2 if asked" disposition — none are blocking the P1 MVP.
