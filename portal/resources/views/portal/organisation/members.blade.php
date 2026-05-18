@@ -3,10 +3,15 @@
 @section('title', __('organisation.title'))
 
 @section('content')
-    <header class="mb-6">
-        <h1 class="text-2xl font-bold mb-1">{{ __('organisation.title') }}</h1>
-        <p class="text-stone-600">{{ __('organisation.subtitle') }}</p>
-        <p class="text-sm text-stone-500 mt-1">{{ $org->legal_name_ar }}</p>
+    <header class="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+            <h1 class="text-2xl font-bold mb-1">{{ __('organisation.title') }}</h1>
+            <p class="text-stone-600">{{ __('organisation.subtitle') }}</p>
+            <p class="text-sm text-stone-500 mt-1">{{ $org->legal_name_ar }}</p>
+        </div>
+        <a href="{{ route('portal.organisation.audit-log') }}" class="btn-ghost">
+            📜 سجل التدقيق
+        </a>
     </header>
 
     {{-- Active members table --}}

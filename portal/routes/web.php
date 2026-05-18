@@ -3,13 +3,16 @@
 use App\Http\Controllers\AcceptInvitationController;
 use App\Http\Controllers\Marketing\AboutController;
 use App\Http\Controllers\Marketing\ContactController;
-use App\Http\Controllers\Marketing\DownloadsController;
+use App\Http\Controllers\Marketing\DownloadsController as MarketingDownloadsController;
 use App\Http\Controllers\Marketing\FeaturesController;
 use App\Http\Controllers\Marketing\HomeController;
 use App\Http\Controllers\Marketing\PricingController;
 use App\Http\Controllers\Marketing\TermsController;
+use App\Http\Controllers\Portal\AccountController;
+use App\Http\Controllers\Portal\AuditLogController;
 use App\Http\Controllers\Portal\BillingController;
 use App\Http\Controllers\Portal\DashboardController;
+use App\Http\Controllers\Portal\DownloadsController as PortalDownloadsController;
 use App\Http\Controllers\Portal\LicenceController;
 use App\Http\Controllers\Portal\OrganisationController;
 use App\Http\Controllers\Portal\SubscriptionController;
@@ -90,7 +93,7 @@ $marketingRoutes = function (): void {
     Route::get('/', [HomeController::class, 'show'])->name('marketing.home');
     Route::get('/features', [FeaturesController::class, 'show'])->name('marketing.features');
     Route::get('/pricing', [PricingController::class, 'show'])->name('marketing.pricing');
-    Route::get('/downloads', [DownloadsController::class, 'show'])->name('marketing.downloads');
+    Route::get('/downloads', [MarketingDownloadsController::class, 'show'])->name('marketing.downloads');
     Route::get('/about', [AboutController::class, 'show'])->name('marketing.about');
     Route::get('/contact', [ContactController::class, 'show'])->name('marketing.contact');
     Route::post('/contact', [ContactController::class, 'submit'])
@@ -190,8 +193,9 @@ Route::prefix('portal')
         Route::get('/support/attachments/{attachment}', [SupportTicketController::class, 'downloadAttachment'])
             ->name('portal.support.attachment');
 
-        Route::view('/downloads', 'portal.placeholder')
-            ->name('portal.downloads')->defaults('page', 'downloads');
+        // --- US3 tier-aware downloads (T101) ---
+        Route::get('/downloads', [PortalDownloadsController::class, 'show'])
+            ->name('portal.downloads');
 
         // --- US5 multi-user invitations (T125-T127) — Owner-only ---
         Route::get('/organisation', [OrganisationController::class, 'members'])
@@ -204,8 +208,21 @@ Route::prefix('portal')
         Route::post('/organisation/memberships/{membership}/revoke', [OrganisationController::class, 'revoke'])
             ->middleware('verified')
             ->name('portal.organisation.memberships.revoke');
-        Route::view('/account/security', 'portal.placeholder')
-            ->name('portal.account.security')->defaults('page', 'security');
+        // T143 — Audit log viewer (Owner-only).
+        Route::get('/organisation/audit-log', [AuditLogController::class, 'show'])
+            ->name('portal.organisation.audit-log');
+
+        // --- T139 + T140 account + security pages ---
+        Route::get('/account/security', [AccountController::class, 'security'])
+            ->name('portal.account.security');
+        Route::get('/account/delete', [AccountController::class, 'showDelete'])
+            ->name('portal.account.delete');
+        Route::post('/account/delete', [AccountController::class, 'delete'])
+            ->middleware('verified')
+            ->name('portal.account.delete.submit');
+        Route::post('/account/restore', [AccountController::class, 'restore'])
+            ->middleware('verified')
+            ->name('portal.account.restore');
     });
 
 // --- US5 public invitation-accept route (no auth) ----------------------

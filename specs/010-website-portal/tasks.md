@@ -197,7 +197,7 @@ description: "Task list for 010-website-portal feature implementation (Laravel 1
 - [X] T098 [P] [US3] Create `portal/resources/views/portal/dashboard.blade.php` + `DashboardController.php` showing subscription status + active licences + next renewal + open tickets + recent downloads (FR-012)
 - [X] T099 [P] [US3] Create `portal/resources/views/portal/subscription/{index,upgrade,downgrade,convert-trial,cancel}.blade.php` + `SubscriptionController.php` handling all 5 transitions
 - [ ] T100 [P] [US3] Create `portal/resources/views/portal/billing/{invoices,payment-methods,refund}.blade.php` + `BillingController.php` (invoices list + PDF download + `refund_eligibility` badge per Invoice)
-- [ ] T101 [P] [US3] Create `portal/resources/views/portal/downloads.blade.php` + `PortalDownloadsController.php` (authenticated, ties to active Subscription's tier — Solo doesn't see Enterprise downloads)
+- [X] T101 [P] [US3] Create `portal/resources/views/portal/downloads.blade.php` + `PortalDownloadsController.php` (authenticated, ties to active Subscription's tier — Solo doesn't see Enterprise downloads)
 - [ ] T102 [P] [US3] Translation files (ar + en) at `portal/lang/{ar,en}/{subscription,billing,dashboard,downloads}.php` for all US3 UI strings
 - [ ] T103 [P] [US3] Add a "Subscribe to keep going" CTA on the dashboard when the customer has NO active Subscription (the FR-029 + FR-030 trial-ended UX)
 - [ ] T153 [P] [US3] Implement `portal/app/Services/Subscriptions/CancelSubscriptionService.php` per data-model.md §4 lifecycle (`[Active] → [Active until current_period_end_at] → renewal-job → [Cancelled]`). Sets `Subscription.cancelled_at = now()`, keeps `status = Active` until the period ends, then the renewal job flips it. Queues a `SubscriptionCancelled` Mailable. Owner-only; writes a `subscription.cancelled` audit-log entry (FR-013 Cancel action). Cancel view at `portal/resources/views/portal/subscription/cancel.blade.php` with confirmation + "keep going" reverse-CTA
@@ -293,16 +293,16 @@ description: "Task list for 010-website-portal feature implementation (Laravel 1
 
 - [ ] T137 [P] Performance regression test at `portal/tests/Browser/Performance/MarketingPagesPerformanceTest.php` asserting SC-006 (3 s p75 render from Cairo simulator) on every CI build
 - [ ] T138 [P] Accessibility audit at `portal/tests/Browser/Accessibility/Wcag21AaComplianceTest.php` integrating `axe-core` against all marketing pages + portal core flows per FR-027
-- [ ] T139 [P] Implement security pages at `portal/resources/views/portal/account/security.blade.php` — MFA setup (TOTP per FR-011 using `pragmarx/google2fa-laravel`), active sessions list, auth-events log retained 90 days per FR-028
-- [ ] T140 [P] Create `portal/resources/views/portal/account/delete.blade.php` (FR-024 — request account deletion with 30-day soft-delete window, 30-day cancellation grace period)
-- [ ] T141 [P] Implement `portal/app/Services/Organisations/DeleteAccountService.php` (sets `soft_deleted_at` on the CustomerOrganisation + cascade-flag children per data-model.md cross-entity rules)
-- [ ] T142 [P] Implement nightly Artisan command `portal/app/Console/Commands/PurgeSoftDeletedAccounts.php` scheduled via `app/Console/Kernel.php` daily — hard-deletes accounts past 30-day window, RETAINS audit-log rows per data-model.md §9 retention rule
-- [ ] T143 [P] Create `portal/resources/views/portal/organisation/audit-log.blade.php` — paginated, filterable, Owner-only audit-log viewer per FR-023
+- [X] T139 [P] Implement security pages at `portal/resources/views/portal/account/security.blade.php` — MFA setup (TOTP per FR-011 using `pragmarx/google2fa-laravel`), active sessions list, auth-events log retained 90 days per FR-028
+- [X] T140 [P] Create `portal/resources/views/portal/account/delete.blade.php` (FR-024 — request account deletion with 30-day soft-delete window, 30-day cancellation grace period)
+- [X] T141 [P] Implement `portal/app/Services/Organisations/DeleteAccountService.php` (sets `soft_deleted_at` on the CustomerOrganisation + cascade-flag children per data-model.md cross-entity rules)
+- [X] T142 [P] Implement nightly Artisan command `portal/app/Console/Commands/PurgeSoftDeletedAccounts.php` scheduled via `app/Console/Kernel.php` daily — hard-deletes accounts past 30-day window, RETAINS audit-log rows per data-model.md §9 retention rule
+- [X] T143 [P] Create `portal/resources/views/portal/organisation/audit-log.blade.php` — paginated, filterable, Owner-only audit-log viewer per FR-023
 - [ ] T144 [P] Cloudflare cache purge integration in CI: on every deploy, hit Cloudflare's purge API to invalidate marketing-route cache per research §9; document the API token rotation procedure
 - [ ] T145 [P] Production environment variables documentation at `deploy/portal/README.md` (Paymob credentials, Resend API key, Hostinger SSH key, HMAC secret, Cloudflare API token, vendor-keys.json mount path)
 - [ ] T146 [P] Status page setup at `status.daftarx.app` + UptimeRobot pings from 3 geographies (Cairo, Frankfurt, US-East) every 5 min per research §15
 - [ ] T147 [P] Implement rate limiting on the public signup + contact-form endpoints (5/hour/IP for signup, 10/hour/IP for contact form) using Laravel's `RateLimiter::for(...)` in `app/Providers/AppServiceProvider.php`
-- [ ] T148 [P] Implement bilingual error pages at `portal/resources/views/errors/{404,500,503}.blade.php` — fail-friendly per FR-015 even at the platform level
+- [X] T148 [P] Implement bilingual error pages at `portal/resources/views/errors/{404,500,503}.blade.php` — fail-friendly per FR-015 even at the platform level
 - [ ] T149 [P] Update `CLAUDE.md` `<!-- SPECKIT START -->` block to reference `010-website-portal/tasks.md` so future agents resume mid-implementation correctly
 - [ ] T150 [P] Document the new portal endpoints in the existing `008-egypt-tax-accounting` + `009-android-app` quickstarts so the on-prem + mobile teams know about the shared `LicenceSigningService` reuse + portal-issued tokens
 - [ ] T151 [P] Add a `<x-locale-prefix>` Blade component + `_ViewImports`-equivalent (Blade global aliases in `bootstrap/app.php`) so every Blade view can call `{{ __('...') }}` without explicit import directives
