@@ -1,5 +1,7 @@
 # AI Customer Support Agent — Arabic + Egyptian Dialect
 
+### 🟢 [▶ Live Chat Demo](https://chat.107-148-158-132.sslip.io) &nbsp;·&nbsp; [🌐 Portfolio](https://portfolio.107-148-158-132.sslip.io)
+
 A bilingual customer-support agent for a fictional e-commerce store, built
 on **n8n Cloud** + **Google Gemini**. It answers visitor questions in
 **Modern Standard Arabic** (MSA / فصحى) or **Egyptian Arabic dialect**
@@ -8,7 +10,16 @@ Franco-Arabic ("Arabizi") inputs like *"ezzay arga3 el order?"*. Built as
 a portfolio piece to demonstrate dialect-aware retrieval-grounded support
 on a managed workflow platform.
 
+![AI Arabic Support Agent](./docs/screenshots/chat.png)
+
 ## Try the demo
+
+**▶ Live (self-hosted, always on): https://chat.107-148-158-132.sslip.io**
+
+This is a self-hosted version of the same bilingual knowledge base — it detects
+the visitor's register (MSA / Egyptian / Arabizi) and answers from the KB with
+no external LLM, so it's always available. The original **n8n Cloud + Gemini**
+build is also wired to a chat webhook (active only while the workflow is running):
 
 ```
 https://guillaume120.app.n8n.cloud/webhook/da1f362e-200c-4255-a624-9bb6544821d0/chat
